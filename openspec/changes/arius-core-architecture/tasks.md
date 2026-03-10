@@ -32,10 +32,10 @@
 
 ## 4. Chunking (Arius.Core)
 
-- [ ] 4.1 Define IChunker interface: IAsyncEnumerable<Chunk> ChunkAsync(Stream, CancellationToken)
-- [ ] 4.2 Implement GearChunker: gear table generation from seed, rolling hash, min/avg/max boundary logic
-- [ ] 4.3 Write chunker unit tests: boundary detection, min/max enforcement, small file single chunk, deterministic output from same seed
-- [ ] 4.4 Write chunker dedup tests: insert byte at start, verify most chunks unchanged
+- [x] 4.1 Define IChunker interface: IAsyncEnumerable<Chunk> ChunkAsync(Stream, CancellationToken)
+- [x] 4.2 Implement GearChunker: gear table generation from seed, rolling hash, min/avg/max boundary logic
+- [x] 4.3 Write chunker unit tests: boundary detection, min/max enforcement, small file single chunk, deterministic output from same seed
+- [x] 4.4 Write chunker dedup tests: insert byte at start, verify most chunks unchanged
 
 ## 5. Pack File Management (Arius.Core)
 
