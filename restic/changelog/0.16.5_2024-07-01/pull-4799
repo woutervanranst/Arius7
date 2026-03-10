@@ -1,5 +1,0 @@
-Enhancement: Add option to force use of Azure CLI credential
-
-A new environment variable `AZURE_FORCE_CLI_CREDENTIAL=true` allows forcing the use of Azure CLI credential, ignoring other credentials like managed identity.
-
-https://github.com/restic/restic/pull/4799
