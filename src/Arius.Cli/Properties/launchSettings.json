@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "WSL": {
+      "commandName": "WSL2",
+      "distributionName": ""
+    },
+    "10 CLI Init": {
+      "commandName": "Project",
+      "commandLineArgs": "init -r woutervr"
+    },
+    "11 CLI Backup": {
+      "commandName": "Project",
+      "commandLineArgs": "backup -r woutervr \"C:\\Users\\WouterVanRanst\\Downloads\\Photos-001 (1)\""
+    }
+  }
+}
