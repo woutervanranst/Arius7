@@ -39,13 +39,13 @@
 
 ## 5. Pack File Management (Arius.Core)
 
-- [ ] 5.1 Implement PackerManager: accumulate blobs until configurable pack size reached
-- [ ] 5.2 Implement pack file creation: build TAR archive with blob files named by SHA-256 hash + manifest.json
-- [ ] 5.3 Implement gzip compression of TAR archive
-- [ ] 5.4 Implement pack pipeline: TAR → gzip → AES-256-CBC encrypt → SHA-256 hash of encrypted output = pack ID
-- [ ] 5.5 Implement pack file extraction: decrypt → gunzip → untar → read manifest.json → extract blobs by hash
-- [ ] 5.6 Write packer unit tests: pack creation, roundtrip create/extract, manifest parsing, configurable size
-- [ ] 5.7 Write manual recovery test: verify pack can be recovered with openssl + gunzip + tar CLI commands
+- [x] 5.1 Implement PackerManager: accumulate blobs until configurable pack size reached
+- [x] 5.2 Implement pack file creation: build TAR archive with blob files named by SHA-256 hash + manifest.json
+- [x] 5.3 Implement gzip compression of TAR archive
+- [x] 5.4 Implement pack pipeline: TAR → gzip → AES-256-CBC encrypt → SHA-256 hash of encrypted output = pack ID
+- [x] 5.5 Implement pack file extraction: decrypt → gunzip → untar → read manifest.json → extract blobs by hash
+- [x] 5.6 Write packer unit tests: pack creation, roundtrip create/extract, manifest parsing, configurable size
+- [x] 5.7 Write manual recovery test: verify pack can be recovered with openssl + gunzip + tar CLI commands
 
 ## 6. Azure Backend (Arius.Azure)
 
