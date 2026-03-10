@@ -159,10 +159,10 @@
 
 ## 14. Integration Testing
 
-- [ ] 14.1 Write integration test: init → backup → snapshots → ls → verify tree content
-- [ ] 14.2 Write integration test: backup → backup (incremental) → verify dedup (no duplicate blobs)
+- [x] 14.1 Write integration test: init → backup → snapshots → ls → verify tree content
+- [x] 14.2 Write integration test: backup → backup (incremental) → verify dedup (no duplicate blobs)
 - [ ] 14.3 Write integration test: backup → forget → prune → verify unreferenced packs removed
-- [ ] 14.4 Write integration test: backup → restore → verify file content matches original
+- [x] 14.4 Write integration test: backup → restore → verify file content matches original
 - [ ] 14.5 Write integration test: delete local cache → rebuild from Azure → verify operations still work
 - [ ] 14.6 Write integration test: backup 2KB files at scale (1000+ files) → verify chunking/packing behavior
 - [ ] 14.7 Write integration test: concurrent backup attempt → verify lease-based locking
