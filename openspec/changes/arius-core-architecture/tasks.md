@@ -10,7 +10,7 @@
 ## 2. Core Domain Models
 
 - [x] 2.1 Define core types: BlobHash (SHA-256 wrapper), PackId, SnapshotId, TreeHash, RepoId
-- [ ] 2.2 Define Snapshot model: Id, Time, Tree (root hash), Paths, Hostname, Username, Tags, Parent
+- [x] 2.2 Define Snapshot model: Id, Time, Tree (root hash), Paths, Hostname, Username, Tags, Parent
 - [ ] 2.3 Define TreeNode model: Name, Type (file/dir/symlink), Size, MTime, Mode, ContentHashes[], SubtreeHash
 - [ ] 2.4 Define IndexEntry model: BlobHash, PackId, Offset, Length, BlobType (data/tree)
 - [ ] 2.5 Define PackHeader model: array of (BlobHash, BlobType, Offset, Length)
