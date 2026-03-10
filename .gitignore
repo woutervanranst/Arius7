@@ -370,6 +370,10 @@ healthchecksdb
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
 
+# Keep source code backup command handlers in repo
+!src/Arius.Core/Application/Backup/
+!src/Arius.Core/Application/Backup/**
+
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
