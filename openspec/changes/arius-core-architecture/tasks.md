@@ -2,7 +2,7 @@
 
 - [x] 1.1 Create .NET solution with projects: Arius.Core, Arius.Azure, Arius.Cli, Arius.Api
 - [ ] 1.2 Create Vue 3 + TypeScript project for Arius.Web (Vite scaffolding)
-- [ ] 1.3 Create test projects: Arius.Core.Tests, Arius.Azure.Tests, Arius.Integration.Tests
+- [x] 1.3 Create test projects: Arius.Core.Tests, Arius.Azure.Tests, Arius.Integration.Tests
 - [ ] 1.4 Add NuGet dependencies: Azure.Storage.Blobs, Spectre.Console, Spectre.Console.Cli, Mediator, Microsoft.Data.Sqlite, Microsoft.AspNetCore.SignalR, FluentResults, Azurite test containers (for testing), TUnit as test framework (! NOT xUnit), Shouldly if the TUnit assertions do not suffice, ArchUnitNET for architecture testing.
 - [ ] 1.5 Add npm dependencies: vue, typescript, @microsoft/signalr
 - [ ] 1.6 Create Dockerfile (multi-stage: build API + Web → single container)

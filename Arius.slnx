@@ -5,4 +5,9 @@
     <Project Path="src/Arius.Cli/Arius.Cli.csproj" />
     <Project Path="src/Arius.Core/Arius.Core.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Arius.Azure.Tests/Arius.Azure.Tests.csproj" />
+    <Project Path="tests/Arius.Core.Tests/Arius.Core.Tests.csproj" />
+    <Project Path="tests/Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
+  </Folder>
 </Solution>
