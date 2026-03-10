@@ -15,7 +15,7 @@
 - [x] 2.4 Define IndexEntry model: BlobHash, PackId, Offset, Length, BlobType (data/tree)
 - [x] 2.5 Define PackHeader model: array of (BlobHash, BlobType, Offset, Length)
 - [ ] 2.6 Define RepoConfig model: RepoId, Version, GearSeed, PackSize, ChunkMin, ChunkAvg, ChunkMax
-- [ ] 2.7 Define Chunk record: ReadOnlyMemory<byte> Data
+- [x] 2.7 Define Chunk record: ReadOnlyMemory<byte> Data
 
 ## 3. Encryption (Arius.Core)
 
