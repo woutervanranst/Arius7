@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Arius.Api/Arius.Api.csproj" />
+    <Project Path="src/Arius.Azure/Arius.Azure.csproj" />
+    <Project Path="src/Arius.Cli/Arius.Cli.csproj" />
+    <Project Path="src/Arius.Core/Arius.Core.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,16 @@
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\bin\Release\net10.0\Arius.Azure.deps.json
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\bin\Release\net10.0\Arius.Azure.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\bin\Release\net10.0\Arius.Azure.pdb
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\bin\Release\net10.0\Arius.Core.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\bin\Release\net10.0\Arius.Core.pdb
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.csproj.AssemblyReference.cache
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.AssemblyInfoInputs.cache
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.AssemblyInfo.cs
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.csproj.CoreCompileInputs.cache
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.sourcelink.json
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Az.9FAD98FB.Up2Date
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\refint\Arius.Azure.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\Arius.Azure.pdb
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Azure\obj\Release\net10.0\ref\Arius.Azure.dll

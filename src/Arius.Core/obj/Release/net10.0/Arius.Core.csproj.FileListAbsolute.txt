@@ -1,0 +1,12 @@
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\bin\Release\net10.0\Arius.Core.deps.json
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\bin\Release\net10.0\Arius.Core.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\bin\Release\net10.0\Arius.Core.pdb
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.AssemblyInfoInputs.cache
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.AssemblyInfo.cs
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.csproj.CoreCompileInputs.cache
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.sourcelink.json
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\refint\Arius.Core.dll
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\Arius.Core.pdb
+C:\Users\WouterVanRanst\Documents\GitHub\Arius7\src\Arius.Core\obj\Release\net10.0\ref\Arius.Core.dll
