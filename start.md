@@ -10,3 +10,19 @@ Use Mediator (not MediatR) for reuse between the cli and api
 For the web part, use Vue + Typescript. I will want streaming updates from the backend to the frontend
 
 The restic source is avabable in #restic
+
+---
+
+executing a restore should restore whatever is available, and hydrate the necessary ones. Hydrate in a separate data-hydrated folder that we can delete after restore. Do not hydrate in place.
+
+the repository should not be compatible with restic.
+
+For chunking, use a simple gear chunker, but make it interchangeable through an interface
+
+The pack size should be configurable
+
+think through the  scale, as an extreme example consider a 1 TB archive consisting out of 2 KB files
+
+Only the big chunks of data should be in the archive tier, the rest can be in Cool or Cold tier. Or use blob locks if relevant.
+
+You cannot assume that a local database exists; the archive should be fully recoverable from the remote.
