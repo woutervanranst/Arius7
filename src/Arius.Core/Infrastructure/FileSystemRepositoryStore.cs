@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using Arius.Core.Infrastructure.Crypto;
 using Arius.Core.Models;
 
 namespace Arius.Core.Infrastructure;
@@ -33,46 +33,51 @@ public sealed class FileSystemRepositoryStore
             chunkMax);
 
         var configPath = Path.Combine(repoPath, "config.json");
-        var keyPath = Path.Combine(repoPath, "keys", "default.json");
-
-        var saltBytes = RandomNumberGenerator.GetBytes(16);
-        var keyFile = new KeyFile(
-            Convert.ToHexString(saltBytes).ToLowerInvariant(),
-            10_000,
-            Hash(passphrase));
 
         await using (var configStream = File.Create(configPath))
         {
             await JsonSerializer.SerializeAsync(configStream, repoConfig, JsonDefaults.Options, cancellationToken);
         }
 
-        await using (var keyStream = File.Create(keyPath))
-        {
-            await JsonSerializer.SerializeAsync(keyStream, keyFile, JsonDefaults.Options, cancellationToken);
-        }
+        // Create the first key file (generates and encrypts the master key)
+        var keyManager = new KeyManager(repoPath);
+        var (_, keyPath) = await keyManager.CreateFirstKeyAsync(passphrase, cancellationToken);
 
         return (repoConfig.RepoId, configPath, keyPath);
     }
 
-    public async ValueTask<bool> ValidatePassphraseAsync(string repoPath, string passphrase, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> ValidatePassphraseAsync(
+        string repoPath,
+        string passphrase,
+        CancellationToken cancellationToken = default)
     {
-        var keyPath = Path.Combine(repoPath, "keys", "default.json");
-        if (!File.Exists(keyPath))
-        {
-            return false;
-        }
+        var keyManager = new KeyManager(repoPath);
+        var masterKey  = await keyManager.TryUnlockAsync(passphrase, cancellationToken);
+        return masterKey is not null;
+    }
 
-        await using var keyStream = File.OpenRead(keyPath);
-        var keyFile = await JsonSerializer.DeserializeAsync<KeyFile>(keyStream, JsonDefaults.Options, cancellationToken);
-        return keyFile is not null && keyFile.PassphraseHash == Hash(passphrase);
+    /// <summary>
+    /// Unlocks the master key for the given passphrase.
+    /// Throws <see cref="InvalidOperationException"/> if the passphrase is wrong.
+    /// </summary>
+    private static async Task<byte[]> LoadMasterKeyAsync(
+        string repoPath,
+        string passphrase,
+        CancellationToken cancellationToken)
+    {
+        var keyManager = new KeyManager(repoPath);
+        return await keyManager.TryUnlockAsync(passphrase, cancellationToken)
+            ?? throw new InvalidOperationException("Invalid passphrase.");
     }
 
     public async ValueTask<(Snapshot Snapshot, int StoredFiles, int DeduplicatedFiles)> BackupAsync(
         string repoPath,
+        string passphrase,
         IReadOnlyList<string> inputPaths,
         CancellationToken cancellationToken = default)
     {
-        var blobRoot = Path.Combine(repoPath, "blobs");
+        var masterKey  = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
+        var blobRoot   = Path.Combine(repoPath, "blobs");
         var snapshotRoot = Path.Combine(repoPath, "snapshots");
 
         Directory.CreateDirectory(blobRoot);
@@ -81,14 +86,14 @@ public sealed class FileSystemRepositoryStore
         var files = ExpandInputFiles(inputPaths).ToList();
         var snapshotFiles = new List<BackupSnapshotFile>(files.Count);
 
-        var stored = 0;
+        var stored      = 0;
         var deduplicated = 0;
 
         foreach (var filePath in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var bytes = await File.ReadAllBytesAsync(filePath, cancellationToken);
-            var blobHash = BlobHash.FromBytes(bytes);
+            var bytes    = await File.ReadAllBytesAsync(filePath, cancellationToken);
+            var blobHash = BlobHash.FromBytes(bytes, masterKey);
             var blobPath = Path.Combine(blobRoot, blobHash.Value + ".bin");
 
             if (!File.Exists(blobPath))
@@ -150,8 +155,12 @@ public sealed class FileSystemRepositoryStore
 
     public async IAsyncEnumerable<Snapshot> ListSnapshotsAsync(
         string repoPath,
+        string passphrase,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // Validate passphrase before listing
+        _ = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
+
         var snapshotRoot = Path.Combine(repoPath, "snapshots");
         if (!Directory.Exists(snapshotRoot))
             yield break;
@@ -169,13 +178,16 @@ public sealed class FileSystemRepositoryStore
 
     public async ValueTask<(IReadOnlyList<BackupSnapshotFile> Files, long TotalBytes)> PlanRestoreAsync(
         string repoPath,
+        string passphrase,
         string snapshotId,
         string? includePattern,
         CancellationToken cancellationToken = default)
     {
+        // Validate passphrase
+        _ = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
+
         var snapshotRoot = Path.Combine(repoPath, "snapshots");
 
-        // Find snapshot by prefix or exact ID
         var snapshotFile = Directory
             .EnumerateFiles(snapshotRoot, "*.json")
             .FirstOrDefault(f =>
@@ -207,26 +219,27 @@ public sealed class FileSystemRepositoryStore
 
     public async ValueTask RestoreFileAsync(
         string repoPath,
+        string passphrase,
         BackupSnapshotFile file,
         string targetPath,
         CancellationToken cancellationToken = default)
     {
-        var blobRoot = Path.Combine(repoPath, "blobs");
-        var blobPath = Path.Combine(blobRoot, file.BlobHash.Value + ".bin");
+        var masterKey = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
+        var blobRoot  = Path.Combine(repoPath, "blobs");
+        var blobPath  = Path.Combine(blobRoot, file.BlobHash.Value + ".bin");
 
         if (!File.Exists(blobPath))
             throw new InvalidOperationException($"Blob not found for file: {file.Path} (hash: {file.BlobHash.Value})");
 
-        // Compute relative path: strip common root prefix
         var relativePath = GetRelativePath(file.Path);
-        var outputPath = Path.Combine(targetPath, relativePath.TrimStart(Path.DirectorySeparatorChar, '/'));
+        var outputPath   = Path.Combine(targetPath, relativePath.TrimStart(Path.DirectorySeparatorChar, '/'));
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? targetPath);
 
         var bytes = await File.ReadAllBytesAsync(blobPath, cancellationToken);
 
-        // Verify integrity before writing
-        var actualHash = BlobHash.FromBytes(bytes);
+        // Verify integrity: HMAC-SHA256(masterKey, plaintext) == stored blobHash
+        var actualHash = BlobHash.FromBytes(bytes, masterKey);
         if (actualHash != file.BlobHash)
             throw new InvalidDataException(
                 $"Integrity check failed for {file.Path}: expected {file.BlobHash.Value}, got {actualHash.Value}");
@@ -236,8 +249,6 @@ public sealed class FileSystemRepositoryStore
 
     private static string GetRelativePath(string absolutePath)
     {
-        // Return just the file name portion for simple restore
-        // If the path is rooted, keep the last 2 components for readability
         if (!Path.IsPathRooted(absolutePath))
             return absolutePath;
 
@@ -245,13 +256,6 @@ public sealed class FileSystemRepositoryStore
         return parts.Length >= 2
             ? string.Join(Path.DirectorySeparatorChar.ToString(), parts[^2..])
             : parts[^1];
-    }
-
-    private static string Hash(string value)
-    {
-        var bytes = Encoding.UTF8.GetBytes(value);
-        var hashBytes = SHA256.HashData(bytes);
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     private sealed record BackupSnapshotDocument(Snapshot Snapshot, IReadOnlyList<BackupSnapshotFile> Files);

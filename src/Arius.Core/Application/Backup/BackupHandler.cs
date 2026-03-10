@@ -12,13 +12,9 @@ public sealed class BackupHandler : IStreamRequestHandler<BackupRequest, BackupE
         var files = ExpandFiles(request.Paths).ToList();
         yield return new BackupStarted(files.Count);
 
-        var passphraseIsValid = await _repositoryStore.ValidatePassphraseAsync(request.RepoPath, request.Passphrase, cancellationToken);
-        if (!passphraseIsValid)
-        {
-            throw new InvalidOperationException("Invalid repository passphrase.");
-        }
-
-        var (snapshot, stored, deduplicated) = await _repositoryStore.BackupAsync(request.RepoPath, files, cancellationToken);
+        // BackupAsync validates the passphrase and throws InvalidOperationException if wrong
+        var (snapshot, stored, deduplicated) = await _repositoryStore.BackupAsync(
+            request.RepoPath, request.Passphrase, files, cancellationToken);
 
         var deduplicatedLeft = deduplicated;
         foreach (var file in files)

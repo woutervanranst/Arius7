@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Arius.Core.Application.Abstractions;
 using Arius.Core.Infrastructure;
 using Arius.Core.Models;
@@ -13,14 +12,9 @@ public sealed class RestoreHandler : IStreamRequestHandler<RestoreRequest, Resto
         RestoreRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var passphraseIsValid = await _repositoryStore.ValidatePassphraseAsync(
-            request.RepoPath, request.Passphrase, cancellationToken);
-
-        if (!passphraseIsValid)
-            throw new InvalidOperationException("Invalid repository passphrase.");
-
+        // PlanRestoreAsync validates the passphrase and throws InvalidOperationException if wrong
         var (files, totalBytes) = await _repositoryStore.PlanRestoreAsync(
-            request.RepoPath, request.SnapshotId, request.Include, cancellationToken);
+            request.RepoPath, request.Passphrase, request.SnapshotId, request.Include, cancellationToken);
 
         yield return new RestorePlanReady(files.Count, totalBytes);
 
@@ -34,7 +28,7 @@ public sealed class RestoreHandler : IStreamRequestHandler<RestoreRequest, Resto
             cancellationToken.ThrowIfCancellationRequested();
 
             await _repositoryStore.RestoreFileAsync(
-                request.RepoPath, file, request.TargetPath, cancellationToken);
+                request.RepoPath, request.Passphrase, file, request.TargetPath, cancellationToken);
 
             restoredFiles++;
             restoredBytes += file.Size;

@@ -389,25 +389,37 @@ public class DeduplicationTests
 
 public class BlobHashTests
 {
+    private static readonly byte[] TestKey = new byte[32]; // all-zero key for determinism
+
     [Test]
     public void SameContent_SameHash()
     {
         var content = TestHelpers.RandomBytes(1024);
-        BlobHash.FromBytes(content).ShouldBe(BlobHash.FromBytes(content));
+        BlobHash.FromBytes(content, TestKey).ShouldBe(BlobHash.FromBytes(content, TestKey));
     }
 
     [Test]
     public void DifferentContent_DifferentHash()
     {
-        BlobHash.FromBytes(TestHelpers.RandomBytes(64))
-                .ShouldNotBe(BlobHash.FromBytes(TestHelpers.RandomBytes(64)));
+        BlobHash.FromBytes(TestHelpers.RandomBytes(64), TestKey)
+                .ShouldNotBe(BlobHash.FromBytes(TestHelpers.RandomBytes(64), TestKey));
     }
 
     [Test]
-    public void KnownVector_MatchesSha256OfEmptyInput()
+    public void DifferentKey_SameContent_DifferentHash()
     {
-        // SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        BlobHash.FromBytes([]).Value
-                .ShouldBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        var content = TestHelpers.RandomBytes(64);
+        var key1    = TestHelpers.RandomBytes(32);
+        var key2    = TestHelpers.RandomBytes(32);
+        BlobHash.FromBytes(content, key1).ShouldNotBe(BlobHash.FromBytes(content, key2));
+    }
+
+    [Test]
+    public void KnownVector_MatchesHmacSha256OfEmptyInput()
+    {
+        // HMAC-SHA256(key=0x00*32, data=[]) = known constant
+        var expected = System.Security.Cryptography.HMACSHA256.HashData(TestKey, (byte[])[]);
+        var expectedHex = Convert.ToHexString(expected).ToLowerInvariant();
+        BlobHash.FromBytes([], TestKey).Value.ShouldBe(expectedHex);
     }
 }
