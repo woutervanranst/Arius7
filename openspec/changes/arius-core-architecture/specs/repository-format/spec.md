@@ -19,11 +19,21 @@ The `config` blob SHALL be an encrypted JSON document containing: repository ID 
 - **THEN** the `config` blob contains a randomly generated repo ID, format version `1`, a randomly generated gear hash seed, and the configured pack size (default 10 MB)
 
 ### Requirement: Content-addressable storage
-All blobs (packs, trees, index files, snapshots) SHALL be named by the SHA-256 hash of their content (after encryption where applicable).
+All data blobs (chunks) SHALL be addressed by `HMAC-SHA256(master_key, plaintext_content)`. This ensures that an adversary with read access to the repository cannot determine whether a known file is present by computing its plain SHA-256 hash — the blob ID is opaque without the master key.
+
+Pack files and metadata blobs (snapshots, index, trees) SHALL be named by the SHA-256 hash of their **encrypted** content (ciphertext hash). This hash is computed over the encrypted bytes and serves as both the storage address and the integrity check for the ciphertext layer.
+
+#### Scenario: Chunk blob ID derivation
+- **WHEN** a chunk of plaintext content is processed during backup
+- **THEN** its blob ID is computed as `HMAC-SHA256(master_key, plaintext_bytes)` — a 64-character lowercase hex string
 
 #### Scenario: Pack file naming
 - **WHEN** an encrypted pack file is uploaded
-- **THEN** its blob name in Azure is the SHA-256 hex digest of the encrypted content
+- **THEN** its blob name in Azure is the SHA-256 hex digest of the **encrypted** content (ciphertext)
+
+#### Scenario: Presence confidentiality
+- **WHEN** an adversary has read access to the repository blob names but does not have the master key
+- **THEN** the adversary cannot determine whether any specific file or content is present in the repository
 
 ### Requirement: Storage tiering
 The system SHALL store metadata blobs (`config`, `keys/`, `snapshots/`, `index/`, `trees/`) in Cold tier and data packs (`data/`) in Archive tier.
@@ -37,11 +47,11 @@ The system SHALL store metadata blobs (`config`, `keys/`, `snapshots/`, `index/`
 - **THEN** its access tier is set to Archive
 
 ### Requirement: Pack file format
-Pack files SHALL be TAR archives compressed with gzip and encrypted with AES-256-CBC. Each TAR archive SHALL contain blob files named by their SHA-256 hash (with `.bin` extension) and a `manifest.json` file listing all contained blobs with their hash, type, and size.
+Pack files SHALL be TAR archives compressed with gzip and encrypted with AES-256-CBC. Each TAR archive SHALL contain blob files named by their HMAC-SHA256 blob ID (with `.bin` extension) and a `manifest.json` file listing all contained blobs with their ID, type, and size.
 
 #### Scenario: Pack structure
 - **WHEN** a pack file is created with N blobs
-- **THEN** the file is a TAR archive containing `{hash1}.bin, {hash2}.bin, ..., {hashN}.bin, manifest.json`, compressed with gzip, then encrypted with AES-256-CBC in OpenSSL-compatible format
+- **THEN** the file is a TAR archive containing `{blob-id-1}.bin, {blob-id-2}.bin, ..., {blob-id-N}.bin, manifest.json`, compressed with gzip, then encrypted with AES-256-CBC in OpenSSL-compatible format
 
 #### Scenario: Manual extractability
 - **WHEN** a pack file is downloaded from Azure and the master key is known

@@ -16,6 +16,7 @@
 - [x] 2.5 Define PackHeader model: array of (BlobHash, BlobType, Offset, Length)
 - [x] 2.6 Define RepoConfig model: RepoId, Version, GearSeed, PackSize, ChunkMin, ChunkAvg, ChunkMax
 - [x] 2.7 Define Chunk record: ReadOnlyMemory<byte> Data
+- [ ] 2.8 Update BlobHash computation: change from SHA-256(plaintext) to HMAC-SHA256(master_key, plaintext); update BlobHash.FromBytes to accept a key parameter and use HMACSHA256
 
 ## 3. Encryption (Arius.Core)
 
@@ -66,6 +67,7 @@
 - [ ] 7.4 Implement tree management: create/read tree blobs, write to cold tier, walk trees by path
 - [x] 7.5 Implement repo init: generate config (repo ID, version, gear seed, pack size), create first key file
 - [ ] 7.6 Write repository unit tests with mock IBlobStorageProvider
+- [ ] 7.7 Update FileSystemRepositoryStore.BackupAsync to pass master key to BlobHash computation (HMAC-SHA256 instead of plain SHA-256); update ValidatePassphraseAsync to load master key for use in backup/restore operations
 
 ## 8. Local Cache (Arius.Core)
 
