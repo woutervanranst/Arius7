@@ -37,11 +37,15 @@ The system SHALL store metadata blobs (`config`, `keys/`, `snapshots/`, `index/`
 - **THEN** its access tier is set to Archive
 
 ### Requirement: Pack file format
-Pack files SHALL contain concatenated blob data followed by a header and a 4-byte little-endian header length. The header SHALL contain an array of entries, each with: blob SHA-256 hash, blob type (data or tree), offset within the pack, and length.
+Pack files SHALL be TAR archives compressed with gzip and encrypted with AES-256-CBC. Each TAR archive SHALL contain blob files named by their SHA-256 hash (with `.bin` extension) and a `manifest.json` file listing all contained blobs with their hash, type, and size.
 
 #### Scenario: Pack structure
 - **WHEN** a pack file is created with N blobs
-- **THEN** the file contains `Blob₁ || Blob₂ || ... || BlobN || Header || HeaderLength(4 bytes LE)` and the header maps each blob to its offset and length within the pack
+- **THEN** the file is a TAR archive containing `{hash1}.bin, {hash2}.bin, ..., {hashN}.bin, manifest.json`, compressed with gzip, then encrypted with AES-256-CBC in OpenSSL-compatible format
+
+#### Scenario: Manual extractability
+- **WHEN** a pack file is downloaded from Azure and the master key is known
+- **THEN** it can be decrypted with `openssl enc -d ...`, decompressed with `gunzip`, and extracted with `tar x` to recover the individual blobs
 
 ### Requirement: Configurable pack size
 The default pack size SHALL be 10 MB. Users SHALL be able to override this at repository initialization or per-command with `--pack-size`.

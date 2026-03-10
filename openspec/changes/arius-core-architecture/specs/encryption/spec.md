@@ -8,11 +8,15 @@ All repository data (except key files) SHALL be encrypted using AES-256 in CBC m
 - **THEN** it is encrypted with AES-256-CBC and the output begins with the OpenSSL salt prefix `Salted__` followed by an 8-byte random salt, followed by ciphertext
 
 ### Requirement: OpenSSL-compatible format
-Encrypted data SHALL use the OpenSSL-compatible format: `"Salted__" (8 bytes) || salt (8 bytes) || ciphertext`. This format SHALL be decryptable by OpenSSL command-line tools with the correct passphrase.
+Encrypted data SHALL use the OpenSSL-compatible format: `"Salted__" (8 bytes) || salt (8 bytes) || ciphertext`. This format SHALL be decryptable by OpenSSL command-line tools with the correct key.
 
-#### Scenario: OpenSSL interoperability
-- **WHEN** an encrypted blob is downloaded from Azure
-- **THEN** it can be decrypted using `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -md sha256` with the repository passphrase
+#### Scenario: OpenSSL interoperability for key files
+- **WHEN** a key file's encrypted master key payload is extracted
+- **THEN** it can be decrypted using `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -md sha256` with the user's passphrase
+
+#### Scenario: OpenSSL interoperability for data
+- **WHEN** an encrypted blob (pack, snapshot, index, tree) is downloaded from Azure
+- **THEN** it can be decrypted using `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -md sha256` with the master key
 
 ### Requirement: PBKDF2 key derivation
 Encryption keys SHALL be derived from the passphrase and salt using PBKDF2 with SHA-256, 10,000 iterations, producing a 32-byte key and 16-byte IV.
@@ -44,8 +48,16 @@ Encryption and decryption SHALL operate on streams, supporting arbitrarily large
 - **THEN** encryption processes the data as a stream without requiring the full content in memory
 
 ### Requirement: Master key architecture
-The repository SHALL use a master key for all data encryption. Individual passwords encrypt/decrypt this master key via key files. Changing a password SHALL NOT require re-encrypting repository data.
+The repository SHALL use a master key for all data encryption. The user passphrase encrypts/decrypts this master key via key files. The master key encrypts all other repository data (packs, trees, snapshots, index, config). Changing a password SHALL NOT require re-encrypting repository data.
 
 #### Scenario: Password change
 - **WHEN** user changes their password with `key passwd`
 - **THEN** a new key file is created with the master key encrypted under the new password, the old key file is removed, and no data packs are modified
+
+#### Scenario: Key file format
+- **WHEN** a key file is read from `keys/`
+- **THEN** it is a plain JSON document (NOT encrypted by the master key) containing: salt, iteration count, and the master key encrypted with the passphrase-derived key
+
+#### Scenario: Manual master key recovery
+- **WHEN** a user downloads a key file and knows their passphrase
+- **THEN** they can extract the encrypted master key payload, decrypt it with `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -md sha256 -S <salt_hex> -pass pass:PASSPHRASE`, and obtain the raw 32-byte master key for manual decryption of any repository blob

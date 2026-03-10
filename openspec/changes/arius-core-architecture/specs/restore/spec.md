@@ -26,7 +26,11 @@ As individual packs become rehydrated, the system SHALL immediately begin downlo
 - **THEN** files whose blobs are all in pack A are restored immediately
 
 ### Requirement: Rehydration staging area
-Rehydrated packs SHALL be downloaded to a staging directory (`~/.arius/hydrated/`) and deleted after their blobs are extracted.
+Rehydrated packs SHALL be downloaded to a staging directory (`~/.arius/hydrated/`), decrypted, decompressed (gunzip), and extracted (tar) to recover individual blobs. Staging files SHALL be deleted after their blobs are written to the target.
+
+#### Scenario: Pack extraction pipeline
+- **WHEN** a rehydrated pack is downloaded
+- **THEN** the system decrypts (AES-256-CBC) → decompresses (gzip) → extracts (TAR) to recover individual blob files named by their SHA-256 hash
 
 #### Scenario: Staging cleanup
 - **WHEN** all blobs from a downloaded pack have been written to the target

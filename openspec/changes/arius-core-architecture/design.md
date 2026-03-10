@@ -77,27 +77,52 @@ The system has two frontends (CLI, Web UI) sharing business logic via the Mediat
 
 **Encryption scope:** Pack-level (entire pack is one encrypted stream). Since archive tier requires full-blob download anyway, per-blob encryption within packs adds complexity without benefit.
 
-**Key management:** Multiple passwords supported via separate key files (same pattern as restic). Each key file contains scrypt-derived salt + the master key encrypted with the password-derived key. Changing password doesn't require re-encrypting data.
+**Two-level key architecture:**
+1. User passphrase → PBKDF2(passphrase, salt, 10K iterations, SHA-256) → derives a 32-byte key + 16-byte IV
+2. This derived key decrypts the **key file** → yielding the **master key** (32 bytes)
+3. The master key encrypts/decrypts ALL repository data (packs, trees, snapshots, index, config)
 
-**Integrity model:** SHA-256 hash of encrypted pack = pack ID on Azure. On restore: verify ciphertext hash → decrypt → verify each plaintext blob hash against index. Corruption/tampering detected at either layer.
+Key files are plain JSON (NOT encrypted by the master key) stored in `keys/`. Each key file contains: salt, iteration count, and the master key encrypted with the passphrase-derived key. This means:
+- Password change = re-encrypt master key only, no data re-encryption
+- Multiple passwords = multiple key files, same master key inside each
+- Manual recovery = decrypt key file with passphrase to get master key, then use master key with OpenSSL
 
-### D4: Pack File Format
+**Integrity model:** SHA-256 hash of encrypted pack = pack ID on Azure. On restore: verify ciphertext hash → decrypt → decompress → verify each plaintext blob hash against index. Corruption/tampering detected at either layer.
 
+### D4: Pack File Format — TAR + gzip + OpenSSL
+
+**Choice:** Use standard TAR archive format for packing, gzip for compression, and OpenSSL-compatible AES-256-CBC for encryption. This ensures packs can be manually recovered using only standard Unix tools.
+**Alternatives considered:**
+- Custom binary format (restic-style header-at-end): Compact but requires custom tooling for recovery. Since archive tier requires full-blob download anyway, random access within packs provides no benefit.
+- ZIP: Less Unix-native, worse streaming characteristics.
+
+**Pack pipeline:**
 ```
-Encrypted envelope (AES-256-CBC):
-┌─────────────────────────────────────────────────────────────┐
-│ Blob₁ data | Blob₂ data | ... | BlobN data | Header | HLen │
-└─────────────────────────────────────────────────────────────┘
-
-Header (at end of pack, before 4-byte length):
-  Array of { blob_hash: SHA-256, blob_type: data|tree, offset: uint64, length: uint32 }
-
-HLen: uint32 little-endian, length of header in bytes
+Chunks (plaintext blobs) 
+    → TAR archive (blobs named by SHA-256 hash + manifest.json)
+    → gzip compression
+    → AES-256-CBC encryption (OpenSSL-compatible)
+    → Upload to Azure
 ```
+
+**TAR structure inside each pack:**
+```
+{blob-hash-1}.bin      # raw chunk data
+{blob-hash-2}.bin      # raw chunk data
+...
+manifest.json          # { blobs: [{ hash, type, size }] }
+```
+
+**TAR overhead:** With gzip, overhead is negligible — TAR headers are 90%+ zeros and compress to nearly nothing. Even worst-case (4,800 × 2KB blobs in a 10 MB pack), compressed TAR overhead is <1%.
+
+**Compression benefits at archive tier:**
+- Reduces storage cost directly ($0.002/GB/month)
+- Reduces rehydration transfer cost
+- Pays for the TAR header overhead and then some
 
 **Default pack size:** 10 MB (configurable via `--pack-size`).
 
-**Rationale:** Header at end enables streaming writes (append blobs, write header last). 10 MB balances operation cost (fewer packs = cheaper) against partial-restore granularity (don't rehydrate 128 MB for one 2 KB file).
+**Rationale:** 10 MB balances operation cost (fewer packs = cheaper) against partial-restore granularity (don't rehydrate 128 MB for one 2 KB file). TAR + gzip + OpenSSL means any pack can be manually recovered with standard tools — critical for a backup system that may outlive its own software.
 
 ### D5: Locking — Azure Blob Lease
 
@@ -173,6 +198,22 @@ Delta sync: cache stores a watermark (last-synced blob listing marker). On conne
 
 **Critical invariant:** `result(with_cache) ≡ result(without_cache)`. Cache affects performance only, never correctness.
 
+### D11: Manual Recoverability
+
+**Design goal:** In a worst-case scenario where the Arius tool is unavailable, any file in the repository can be manually recovered using only standard tools: `az` CLI, `openssl`, `gzip`, `tar`, and `cat`.
+
+**Recovery procedure (without Arius):**
+1. Download key file from `keys/` (Cold tier, plain JSON) → extract encrypted master key, salt, iterations
+2. Decrypt master key using passphrase: `echo <encrypted_master_key> | base64 -d | openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -md sha256 -S <salt_hex> -pass pass:PASSPHRASE`
+3. Download and decrypt a snapshot: `openssl enc -d ... -pass file:master.key` → get root tree hash
+4. Download and decrypt the tree blob → get content hashes for the target file
+5. Download and decrypt index file → map content hashes to pack IDs
+6. Rehydrate the needed packs: `az storage blob set-tier --tier Hot`
+7. Download, decrypt, decompress, extract the pack: `openssl enc -d ... | gunzip | tar x`
+8. Concatenate the extracted blobs in order: `cat hash1.bin hash2.bin > restored-file`
+
+**Rationale:** A backup tool must be more durable than the tool itself. TAR + gzip + OpenSSL are available on every Unix system and will remain so for decades. This is the ultimate disaster recovery guarantee.
+
 ## Risks / Trade-offs
 
 - **[Cold tier read costs at scale]** → 15 GB index download for 500M-file repo costs ~$0.15. Acceptable. Mitigated by local cache delta sync.
@@ -185,7 +226,6 @@ Delta sync: cache stores a watermark (last-synced blob listing marker). On conne
 
 ## Open Questions
 
-- **Compression:** Add zstd compression before encryption? Restic v2 supports it. Reduces storage cost but adds CPU overhead. Probably yes — storage savings compound at archive tier pricing.
 - **Pack size guidance:** Should the CLI recommend larger pack sizes for large repos? e.g., "You have 100K+ packs, consider `--pack-size 64m` for lower operation costs."
 - **Concurrent backup:** Multiple machines backing up to the same repo simultaneously — what coordination is needed beyond lease-based locking?
 - **Bandwidth limiting:** Should the CLI support `--limit-upload` and `--limit-download` like restic?

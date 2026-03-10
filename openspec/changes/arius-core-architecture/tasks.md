@@ -3,7 +3,7 @@
 - [ ] 1.1 Create .NET solution with projects: Arius.Core, Arius.Azure, Arius.Cli, Arius.Api
 - [ ] 1.2 Create Vue 3 + TypeScript project for Arius.Web (Vite scaffolding)
 - [ ] 1.3 Create test projects: Arius.Core.Tests, Arius.Azure.Tests, Arius.Integration.Tests
-- [ ] 1.4 Add NuGet dependencies: Azure.Storage.Blobs, Spectre.Console, Spectre.Console.Cli, Mediator, Microsoft.Data.Sqlite, Microsoft.AspNetCore.SignalR
+- [ ] 1.4 Add NuGet dependencies: Azure.Storage.Blobs, Spectre.Console, Spectre.Console.Cli, Mediator, Microsoft.Data.Sqlite, Microsoft.AspNetCore.SignalR, FluentResults, Azurite test containers (for testing), TUnit as test framework (! NOT xUnit), Shouldly if the TUnit assertions do not suffice, ArchUnitNET for architecture testing.
 - [ ] 1.5 Add npm dependencies: vue, typescript, @microsoft/signalr
 - [ ] 1.6 Create Dockerfile (multi-stage: build API + Web → single container)
 
@@ -20,11 +20,14 @@
 ## 3. Encryption (Arius.Core)
 
 - [ ] 3.1 Port CryptoExtensions (AES-256-CBC, OpenSSL-compatible, PBKDF2-SHA256) into Arius.Core
-- [ ] 3.2 Implement master key generation and key file format (scrypt params + encrypted master key)
-- [ ] 3.3 Implement key file serialization/deserialization
-- [ ] 3.4 Implement multi-key support: add key, remove key, change password, list keys
-- [ ] 3.5 Write encryption unit tests: roundtrip encrypt/decrypt, OpenSSL compatibility, stream-based large data
-- [ ] 3.6 Write key management unit tests: add/remove/change password, reject removing last key
+- [ ] 3.2 Implement master key generation (32-byte random key)
+- [ ] 3.3 Implement two-level key architecture: passphrase → PBKDF2 → derived key → decrypt key file → master key
+- [ ] 3.4 Implement key file format: plain JSON with salt, iterations, and encrypted master key payload
+- [ ] 3.5 Implement key file serialization/deserialization
+- [ ] 3.6 Implement multi-key support: add key, remove key, change password, list keys
+- [ ] 3.7 Write encryption unit tests: roundtrip encrypt/decrypt, OpenSSL compatibility, stream-based large data
+- [ ] 3.8 Write key management unit tests: add/remove/change password, reject removing last key
+- [ ] 3.9 Write manual key recovery test: verify master key can be extracted using openssl CLI with passphrase
 
 ## 4. Chunking (Arius.Core)
 
@@ -35,11 +38,13 @@
 
 ## 5. Pack File Management (Arius.Core)
 
-- [ ] 5.1 Implement PackerManager: accumulate blobs, build pack file with header-at-end format, configurable pack size
-- [ ] 5.2 Implement pack file serialization: write blobs + header + header-length trailer
-- [ ] 5.3 Implement pack file deserialization: read header-length from end, parse header, extract blobs by offset
-- [ ] 5.4 Implement SHA-256 hashing for pack file naming (hash of encrypted content)
-- [ ] 5.5 Write packer unit tests: pack creation, roundtrip serialize/deserialize, header parsing, configurable size
+- [ ] 5.1 Implement PackerManager: accumulate blobs until configurable pack size reached
+- [ ] 5.2 Implement pack file creation: build TAR archive with blob files named by SHA-256 hash + manifest.json
+- [ ] 5.3 Implement gzip compression of TAR archive
+- [ ] 5.4 Implement pack pipeline: TAR → gzip → AES-256-CBC encrypt → SHA-256 hash of encrypted output = pack ID
+- [ ] 5.5 Implement pack file extraction: decrypt → gunzip → untar → read manifest.json → extract blobs by hash
+- [ ] 5.6 Write packer unit tests: pack creation, roundtrip create/extract, manifest parsing, configurable size
+- [ ] 5.7 Write manual recovery test: verify pack can be recovered with openssl + gunzip + tar CLI commands
 
 ## 6. Azure Backend (Arius.Azure)
 
@@ -161,3 +166,4 @@
 - [ ] 14.5 Write integration test: delete local cache → rebuild from Azure → verify operations still work
 - [ ] 14.6 Write integration test: backup 2KB files at scale (1000+ files) → verify chunking/packing behavior
 - [ ] 14.7 Write integration test: concurrent backup attempt → verify lease-based locking
+- [ ] 14.8 Write integration test: manual recovery → backup file, then recover using only az CLI + openssl + gunzip + tar + cat

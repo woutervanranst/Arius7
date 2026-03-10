@@ -26,3 +26,11 @@ think through the  scale, as an extreme example consider a 1 TB archive consisti
 Only the big chunks of data should be in the archive tier, the rest can be in Cool or Cold tier. Or use blob locks if relevant.
 
 You cannot assume that a local database exists; the archive should be fully recoverable from the remote.
+
+Include gzip compression as well.
+
+The chunks should be packed as TAR
+
+In the worst case event, it should be possible to restore a file _manually_ using tar / gzip / openssl / other OSS cli tools. Describe the procedure.
+
+The passphrase is used to derive the encryption key
