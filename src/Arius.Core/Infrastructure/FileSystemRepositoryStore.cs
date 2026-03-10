@@ -148,6 +148,105 @@ public sealed class FileSystemRepositoryStore
         }
     }
 
+    public async IAsyncEnumerable<Snapshot> ListSnapshotsAsync(
+        string repoPath,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var snapshotRoot = Path.Combine(repoPath, "snapshots");
+        if (!Directory.Exists(snapshotRoot))
+            yield break;
+
+        foreach (var snapshotFile in Directory.EnumerateFiles(snapshotRoot, "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var stream = File.OpenRead(snapshotFile);
+            var doc = await JsonSerializer.DeserializeAsync<BackupSnapshotDocument>(
+                stream, JsonDefaults.Options, cancellationToken);
+            if (doc is not null)
+                yield return doc.Snapshot;
+        }
+    }
+
+    public async ValueTask<(IReadOnlyList<BackupSnapshotFile> Files, long TotalBytes)> PlanRestoreAsync(
+        string repoPath,
+        string snapshotId,
+        string? includePattern,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshotRoot = Path.Combine(repoPath, "snapshots");
+
+        // Find snapshot by prefix or exact ID
+        var snapshotFile = Directory
+            .EnumerateFiles(snapshotRoot, "*.json")
+            .FirstOrDefault(f =>
+            {
+                var name = Path.GetFileNameWithoutExtension(f);
+                return name.Equals(snapshotId, StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith(snapshotId, StringComparison.OrdinalIgnoreCase);
+            });
+
+        if (snapshotFile is null)
+            throw new InvalidOperationException($"Snapshot '{snapshotId}' not found.");
+
+        await using var stream = File.OpenRead(snapshotFile);
+        var doc = await JsonSerializer.DeserializeAsync<BackupSnapshotDocument>(
+            stream, JsonDefaults.Options, cancellationToken)
+            ?? throw new InvalidOperationException("Failed to read snapshot.");
+
+        var files = doc.Files;
+        if (!string.IsNullOrEmpty(includePattern))
+        {
+            files = files
+                .Where(f => f.Path.Contains(includePattern, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        var totalBytes = files.Sum(f => f.Size);
+        return (files, totalBytes);
+    }
+
+    public async ValueTask RestoreFileAsync(
+        string repoPath,
+        BackupSnapshotFile file,
+        string targetPath,
+        CancellationToken cancellationToken = default)
+    {
+        var blobRoot = Path.Combine(repoPath, "blobs");
+        var blobPath = Path.Combine(blobRoot, file.BlobHash.Value + ".bin");
+
+        if (!File.Exists(blobPath))
+            throw new InvalidOperationException($"Blob not found for file: {file.Path} (hash: {file.BlobHash.Value})");
+
+        // Compute relative path: strip common root prefix
+        var relativePath = GetRelativePath(file.Path);
+        var outputPath = Path.Combine(targetPath, relativePath.TrimStart(Path.DirectorySeparatorChar, '/'));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? targetPath);
+
+        var bytes = await File.ReadAllBytesAsync(blobPath, cancellationToken);
+
+        // Verify integrity before writing
+        var actualHash = BlobHash.FromBytes(bytes);
+        if (actualHash != file.BlobHash)
+            throw new InvalidDataException(
+                $"Integrity check failed for {file.Path}: expected {file.BlobHash.Value}, got {actualHash.Value}");
+
+        await File.WriteAllBytesAsync(outputPath, bytes, cancellationToken);
+    }
+
+    private static string GetRelativePath(string absolutePath)
+    {
+        // Return just the file name portion for simple restore
+        // If the path is rooted, keep the last 2 components for readability
+        if (!Path.IsPathRooted(absolutePath))
+            return absolutePath;
+
+        var parts = absolutePath.Replace('\\', '/').Split('/');
+        return parts.Length >= 2
+            ? string.Join(Path.DirectorySeparatorChar.ToString(), parts[^2..])
+            : parts[^1];
+    }
+
     private static string Hash(string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value);

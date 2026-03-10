@@ -77,11 +77,11 @@
 
 ## 9. Mediator Handlers — Requests & Streaming
 
-- [ ] 9.1 Register Mediator in DI container for both CLI and API projects
+- [x] 9.1 Register Mediator in DI container for both CLI and API projects
 - [x] 9.2 Implement InitHandler: IRequestHandler<InitRequest, InitResult>
 - [x] 9.3 Implement BackupHandler: IStreamRequestHandler<BackupRequest, BackupEvent> — scan, chunk, dedup, pack, upload, create snapshot
-- [ ] 9.4 Implement RestoreHandler: IStreamRequestHandler<RestoreRequest, RestoreEvent> — plan, estimate cost, rehydrate, download, decrypt, reassemble
-- [ ] 9.5 Implement SnapshotsHandler: IStreamRequestHandler<ListSnapshotsRequest, Snapshot>
+- [x] 9.4 Implement RestoreHandler: IStreamRequestHandler<RestoreRequest, RestoreEvent> — plan, estimate cost, rehydrate, download, decrypt, reassemble
+- [x] 9.5 Implement SnapshotsHandler: IStreamRequestHandler<ListSnapshotsRequest, Snapshot>
 - [ ] 9.6 Implement LsHandler: IStreamRequestHandler<LsRequest, TreeEntry> — walk tree blobs
 - [ ] 9.7 Implement FindHandler: IStreamRequestHandler<FindRequest, SearchResult> — search across snapshots
 - [ ] 9.8 Implement ForgetHandler: IStreamRequestHandler<ForgetRequest, ForgetEvent> — retention policies
@@ -96,12 +96,12 @@
 
 ## 10. CLI (Arius.Cli)
 
-- [ ] 10.1 Set up System.CommandLine with command registration matching restic command surface
-- [ ] 10.2 Implement global options: --repo, --password-file, --json, --yes, --verbose
-- [ ] 10.3 Implement init command with Spectre prompts
-- [ ] 10.4 Implement backup command with Spectre Progress (file count, bytes, upload speed)
-- [ ] 10.5 Implement restore command with Spectre Live (rehydration + restoration progress)
-- [ ] 10.6 Implement snapshots command with Spectre Table (--compact, --latest, --group-by)
+- [x] 10.1 Set up System.CommandLine with command registration matching restic command surface
+- [x] 10.2 Implement global options: --repo, --password-file, --json, --yes, --verbose
+- [x] 10.3 Implement init command with Spectre prompts
+- [x] 10.4 Implement backup command with Spectre Progress (file count, bytes, upload speed)
+- [x] 10.5 Implement restore command with Spectre Live (rehydration + restoration progress)
+- [x] 10.6 Implement snapshots command with Spectre Table (--compact, --latest, --group-by)
 - [ ] 10.7 Implement ls command with streaming table output
 - [ ] 10.8 Implement find command with streaming results
 - [ ] 10.9 Implement forget command with confirmation prompt and dry-run support
