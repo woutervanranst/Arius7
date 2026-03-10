@@ -62,8 +62,8 @@
 ## 7. Repository Layer (Arius.Core)
 
 - [ ] 7.1 Implement Repository class: connect, load config, validate passphrase, decrypt master key
-- [ ] 7.2 Implement index management: write index delta files, load/merge all index files, lookup blob→pack
-- [ ] 7.3 Implement snapshot management: create/read/delete/list snapshots
+- [x] 7.2 Implement index management: write index delta files, load/merge all index files, lookup blob→pack
+- [x] 7.3 Implement snapshot management: create/read/delete/list snapshots
 - [ ] 7.4 Implement tree management: create/read tree blobs, write to cold tier, walk trees by path
 - [x] 7.5 Implement repo init: generate config (repo ID, version, gear seed, pack size), create first key file
 - [ ] 7.6 Write repository unit tests with mock IBlobStorageProvider

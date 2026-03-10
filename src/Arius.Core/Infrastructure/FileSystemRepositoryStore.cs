@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Arius.Core.Infrastructure.Chunking;
 using Arius.Core.Infrastructure.Crypto;
+using Arius.Core.Infrastructure.Packing;
 using Arius.Core.Models;
 
 namespace Arius.Core.Infrastructure;
@@ -8,6 +10,13 @@ namespace Arius.Core.Infrastructure;
 public sealed class FileSystemRepositoryStore
 {
     private const int RepoVersion = 1;
+
+    // ── Directory layout ─────────────────────────────────────────────────────
+    // {repoPath}/config.json
+    // {repoPath}/keys/           — key files
+    // {repoPath}/snapshots/      — snapshot JSON files
+    // {repoPath}/packs/          — encrypted .pack files
+    // {repoPath}/index/          — index JSON files (one per snapshot)
 
     public async ValueTask<(RepoId RepoId, string ConfigPath, string KeyPath)> InitAsync(
         string repoPath,
@@ -19,9 +28,10 @@ public sealed class FileSystemRepositoryStore
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(repoPath);
-        Directory.CreateDirectory(Path.Combine(repoPath, "blobs"));
         Directory.CreateDirectory(Path.Combine(repoPath, "snapshots"));
         Directory.CreateDirectory(Path.Combine(repoPath, "keys"));
+        Directory.CreateDirectory(Path.Combine(repoPath, "packs"));
+        Directory.CreateDirectory(Path.Combine(repoPath, "index"));
 
         var repoConfig = new RepoConfig(
             RepoId.New(),
@@ -70,46 +80,155 @@ public sealed class FileSystemRepositoryStore
             ?? throw new InvalidOperationException("Invalid passphrase.");
     }
 
+    // ── Config ───────────────────────────────────────────────────────────────
+
+    private static async Task<RepoConfig> LoadConfigAsync(string repoPath, CancellationToken ct)
+    {
+        var configPath = Path.Combine(repoPath, "config.json");
+        await using var stream = File.OpenRead(configPath);
+        return await JsonSerializer.DeserializeAsync<RepoConfig>(stream, JsonDefaults.Options, ct)
+            ?? throw new InvalidOperationException("Failed to read repo config.");
+    }
+
+    // ── Index ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads the merged blob→pack index from all index files in {repoPath}/index/.
+    /// Returns a dictionary: blobHash.Value → IndexEntry
+    /// </summary>
+    private static async Task<Dictionary<string, IndexEntry>> LoadIndexAsync(
+        string repoPath,
+        CancellationToken ct)
+    {
+        var indexRoot = Path.Combine(repoPath, "index");
+        var merged    = new Dictionary<string, IndexEntry>(StringComparer.Ordinal);
+
+        if (!Directory.Exists(indexRoot))
+            return merged;
+
+        foreach (var indexFile in Directory.EnumerateFiles(indexRoot, "*.json"))
+        {
+            ct.ThrowIfCancellationRequested();
+            await using var stream = File.OpenRead(indexFile);
+            var entries = await JsonSerializer.DeserializeAsync<IndexEntry[]>(
+                stream, JsonDefaults.Options, ct);
+            if (entries is null) continue;
+            foreach (var e in entries)
+                merged[e.BlobHash.Value] = e;
+        }
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Persists index entries for a given snapshot into {repoPath}/index/{snapshotId}.json.
+    /// </summary>
+    private static async Task WriteIndexAsync(
+        string repoPath,
+        SnapshotId snapshotId,
+        IEnumerable<IndexEntry> entries,
+        CancellationToken ct)
+    {
+        var indexRoot = Path.Combine(repoPath, "index");
+        Directory.CreateDirectory(indexRoot);
+
+        var indexPath = Path.Combine(indexRoot, snapshotId.Value + ".json");
+        await using var stream = File.Create(indexPath);
+        await JsonSerializer.SerializeAsync(stream, entries.ToArray(), JsonDefaults.Options, ct);
+    }
+
+    // ── Backup ───────────────────────────────────────────────────────────────
+
     public async ValueTask<(Snapshot Snapshot, int StoredFiles, int DeduplicatedFiles)> BackupAsync(
         string repoPath,
         string passphrase,
         IReadOnlyList<string> inputPaths,
         CancellationToken cancellationToken = default)
     {
-        var masterKey  = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
-        var blobRoot   = Path.Combine(repoPath, "blobs");
-        var snapshotRoot = Path.Combine(repoPath, "snapshots");
+        var masterKey = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
+        var config    = await LoadConfigAsync(repoPath, cancellationToken);
+        var chunker   = GearChunker.FromConfig(config);
 
-        Directory.CreateDirectory(blobRoot);
+        var packsRoot    = Path.Combine(repoPath, "packs");
+        var snapshotRoot = Path.Combine(repoPath, "snapshots");
+        Directory.CreateDirectory(packsRoot);
         Directory.CreateDirectory(snapshotRoot);
 
-        var files = ExpandInputFiles(inputPaths).ToList();
+        // Load the existing index to detect already-stored blobs (dedup).
+        var existingIndex = await LoadIndexAsync(repoPath, cancellationToken);
+
+        var files         = ExpandInputFiles(inputPaths).ToList();
         var snapshotFiles = new List<BackupSnapshotFile>(files.Count);
+        var newEntries    = new List<IndexEntry>();
 
         var stored      = 0;
         var deduplicated = 0;
 
+        // Track chunk hashes seen in this backup run (in the packer buffer or already sealed).
+        // Needed so that two files with identical content in the same run count correctly.
+        var seenThisRun = new HashSet<string>(StringComparer.Ordinal);
+
+        // We use a PackerManager per backup run; any sealed packs are written immediately.
+        await using var packer = new PackerManager(masterKey, config.PackSize);
+
+        // Helper: write a sealed pack to disk.
+        async Task WriteSealedPack(SealedPack sp)
+        {
+            var packPath = Path.Combine(packsRoot, sp.PackId.Value + ".pack");
+            await File.WriteAllBytesAsync(packPath, sp.EncryptedBytes, cancellationToken);
+            newEntries.AddRange(sp.IndexEntries);
+        }
+
         foreach (var filePath in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var bytes    = await File.ReadAllBytesAsync(filePath, cancellationToken);
-            var blobHash = BlobHash.FromBytes(bytes, masterKey);
-            var blobPath = Path.Combine(blobRoot, blobHash.Value + ".bin");
 
-            if (!File.Exists(blobPath))
+            var info       = new FileInfo(filePath);
+            var chunkHashes = new List<BlobHash>();
+
+            // Chunk the file and process each chunk.
+            int newChunksThisFile = 0;
+            await using var fileStream = File.OpenRead(filePath);
+            await foreach (var chunk in chunker.ChunkAsync(fileStream, cancellationToken))
             {
-                await File.WriteAllBytesAsync(blobPath, bytes, cancellationToken);
-                stored++;
+                var chunkBytes = chunk.Data.ToArray();
+                var blobHash   = BlobHash.FromBytes(chunkBytes, masterKey);
+                chunkHashes.Add(blobHash);
+
+                bool alreadyKnown =
+                    existingIndex.ContainsKey(blobHash.Value) ||
+                    seenThisRun.Contains(blobHash.Value);
+
+                if (alreadyKnown)
+                {
+                    // Already stored — skip
+                    continue;
+                }
+
+                // New chunk — add to packer.
+                newChunksThisFile++;
+                seenThisRun.Add(blobHash.Value);
+                var blob   = new BlobToPack(blobHash, BlobType.Data, chunkBytes);
+                var sealed_ = await packer.AddAsync(blob, cancellationToken);
+                if (sealed_ is not null)
+                    await WriteSealedPack(sealed_);
             }
-            else
-            {
+
+            // A file is "deduplicated" if it contributed zero new chunks.
+            if (newChunksThisFile == 0)
                 deduplicated++;
-            }
+            else
+                stored++;
 
-            var info = new FileInfo(filePath);
-            snapshotFiles.Add(new BackupSnapshotFile(info.FullName, blobHash, info.Length));
+            snapshotFiles.Add(new BackupSnapshotFile(info.FullName, chunkHashes, info.Length));
         }
 
+        // Flush remaining blobs in the packer.
+        var flushed = await packer.FlushAsync(cancellationToken);
+        if (flushed is not null)
+            await WriteSealedPack(flushed);
+
+        // Create the snapshot record.
         var snapshot = new Snapshot(
             SnapshotId.New(),
             DateTimeOffset.UtcNow,
@@ -120,6 +239,7 @@ public sealed class FileSystemRepositoryStore
             Array.Empty<string>(),
             null);
 
+        // Persist snapshot.
         var snapshotPath = Path.Combine(snapshotRoot, snapshot.Id.Value + ".json");
         await using (var stream = File.Create(snapshotPath))
         {
@@ -129,6 +249,10 @@ public sealed class FileSystemRepositoryStore
                 JsonDefaults.Options,
                 cancellationToken);
         }
+
+        // Persist index delta for this snapshot.
+        if (newEntries.Count > 0)
+            await WriteIndexAsync(repoPath, snapshot.Id, newEntries, cancellationToken);
 
         return (snapshot, stored, deduplicated);
     }
@@ -153,6 +277,8 @@ public sealed class FileSystemRepositoryStore
         }
     }
 
+    // ── List snapshots ───────────────────────────────────────────────────────
+
     public async IAsyncEnumerable<Snapshot> ListSnapshotsAsync(
         string repoPath,
         string passphrase,
@@ -175,6 +301,8 @@ public sealed class FileSystemRepositoryStore
                 yield return doc.Snapshot;
         }
     }
+
+    // ── Plan restore ─────────────────────────────────────────────────────────
 
     public async ValueTask<(IReadOnlyList<BackupSnapshotFile> Files, long TotalBytes)> PlanRestoreAsync(
         string repoPath,
@@ -217,6 +345,8 @@ public sealed class FileSystemRepositoryStore
         return (files, totalBytes);
     }
 
+    // ── Restore file ─────────────────────────────────────────────────────────
+
     public async ValueTask RestoreFileAsync(
         string repoPath,
         string passphrase,
@@ -225,26 +355,46 @@ public sealed class FileSystemRepositoryStore
         CancellationToken cancellationToken = default)
     {
         var masterKey = await LoadMasterKeyAsync(repoPath, passphrase, cancellationToken);
-        var blobRoot  = Path.Combine(repoPath, "blobs");
-        var blobPath  = Path.Combine(blobRoot, file.BlobHash.Value + ".bin");
-
-        if (!File.Exists(blobPath))
-            throw new InvalidOperationException($"Blob not found for file: {file.Path} (hash: {file.BlobHash.Value})");
+        var index     = await LoadIndexAsync(repoPath, cancellationToken);
+        var packsRoot = Path.Combine(repoPath, "packs");
 
         var relativePath = GetRelativePath(file.Path);
         var outputPath   = Path.Combine(targetPath, relativePath.TrimStart(Path.DirectorySeparatorChar, '/'));
-
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? targetPath);
 
-        var bytes = await File.ReadAllBytesAsync(blobPath, cancellationToken);
+        // Cache for pack files we've already read in this restore call.
+        var packCache = new Dictionary<string, Dictionary<string, byte[]>>(StringComparer.Ordinal);
 
-        // Verify integrity: HMAC-SHA256(masterKey, plaintext) == stored blobHash
-        var actualHash = BlobHash.FromBytes(bytes, masterKey);
-        if (actualHash != file.BlobHash)
-            throw new InvalidDataException(
-                $"Integrity check failed for {file.Path}: expected {file.BlobHash.Value}, got {actualHash.Value}");
+        await using var outputStream = File.Create(outputPath);
 
-        await File.WriteAllBytesAsync(outputPath, bytes, cancellationToken);
+        foreach (var chunkHash in file.ChunkHashes)
+        {
+            if (!index.TryGetValue(chunkHash.Value, out var entry))
+                throw new InvalidOperationException(
+                    $"Blob not found in index for file: {file.Path} (hash: {chunkHash.Value})");
+
+            var packIdStr = entry.PackId.Value;
+            if (!packCache.TryGetValue(packIdStr, out var packBlobs))
+            {
+                var packPath    = Path.Combine(packsRoot, packIdStr + ".pack");
+                var packBytes   = await File.ReadAllBytesAsync(packPath, cancellationToken);
+                var (blobs, _)  = await PackReader.ExtractAsync(packBytes, masterKey, cancellationToken);
+                packBlobs       = blobs;
+                packCache[packIdStr] = packBlobs;
+            }
+
+            if (!packBlobs.TryGetValue(chunkHash.Value, out var chunkData))
+                throw new InvalidDataException(
+                    $"Chunk '{chunkHash.Value}' not found in pack '{packIdStr}'.");
+
+            // Verify HMAC integrity.
+            var actualHash = BlobHash.FromBytes(chunkData, masterKey);
+            if (actualHash != chunkHash)
+                throw new InvalidDataException(
+                    $"Integrity check failed for chunk {chunkHash.Value}: got {actualHash.Value}");
+
+            await outputStream.WriteAsync(chunkData, cancellationToken);
+        }
     }
 
     private static string GetRelativePath(string absolutePath)
