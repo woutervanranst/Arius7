@@ -79,7 +79,7 @@
 
 - [ ] 9.1 Register Mediator in DI container for both CLI and API projects
 - [x] 9.2 Implement InitHandler: IRequestHandler<InitRequest, InitResult>
-- [ ] 9.3 Implement BackupHandler: IStreamRequestHandler<BackupRequest, BackupEvent> — scan, chunk, dedup, pack, upload, create snapshot
+- [x] 9.3 Implement BackupHandler: IStreamRequestHandler<BackupRequest, BackupEvent> — scan, chunk, dedup, pack, upload, create snapshot
 - [ ] 9.4 Implement RestoreHandler: IStreamRequestHandler<RestoreRequest, RestoreEvent> — plan, estimate cost, rehydrate, download, decrypt, reassemble
 - [ ] 9.5 Implement SnapshotsHandler: IStreamRequestHandler<ListSnapshotsRequest, Snapshot>
 - [ ] 9.6 Implement LsHandler: IStreamRequestHandler<LsRequest, TreeEntry> — walk tree blobs
