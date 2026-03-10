@@ -7,6 +7,9 @@ The CLI SHALL provide commands mirroring restic's interface: `init`, `backup`, `
 - **WHEN** user runs `arius --help`
 - **THEN** the system displays all available commands with brief descriptions
 
+### Requirement: System.CommandLine parsing
+The CLI SHALL use System.CommandLine for command parsing, argument binding, option handling, and subcommand dispatch.
+
 ### Requirement: Spectre.Console rendering
 The CLI SHALL use Spectre.Console for rich terminal output including tables, progress bars, live updates, and styled text.
 

@@ -450,7 +450,7 @@ Arius/
 ├── src/
 │   ├── Arius.Core/              # Domain: chunking, crypto, repository, packing
 │   ├── Arius.Azure/             # Azure Blob backend implementation
-│   ├── Arius.Cli/               # Spectre.Console CLI
+│   ├── Arius.Cli/               # System.CommandLine CLI (Spectre.Console for rendering)
 │   ├── Arius.Api/               # ASP.NET Core Minimal APIs + SignalR
 │   └── Arius.Web/               # Vue + TypeScript SPA
 ├── tests/

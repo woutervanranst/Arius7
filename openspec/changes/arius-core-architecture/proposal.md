@@ -26,7 +26,7 @@ We need a deduplicated, encrypted backup tool purpose-built for Azure Blob Stora
 - `repository-maintenance`: Prune unreferenced data, check integrity, repair index/snapshots
 - `tree-browsing`: Walk directory trees from snapshots, ls, find — served from cold tier (no rehydration)
 - `local-cache`: Optional SQLite cache for index/tree/snapshot data, delta-synced, fully rebuildable from remote
-- `cli`: Spectre.Console CLI with restic-like command surface
+- `cli`: System.CommandLine CLI with restic-like command surface (Spectre.Console for rich terminal rendering)
 - `api`: ASP.NET Core Minimal APIs + SignalR hubs for web frontend
 - `web-ui`: Vue + TypeScript File Explorer interface with streaming progress updates
 

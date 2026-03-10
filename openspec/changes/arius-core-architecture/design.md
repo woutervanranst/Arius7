@@ -179,7 +179,7 @@ Arius/
 ├── src/
 │   ├── Arius.Core/             # Domain: chunking, crypto, repository, packing, snapshots, trees, index
 │   ├── Arius.Azure/            # Azure Blob backend: upload, download, rehydrate, lease locking, tiering
-│   ├── Arius.Cli/              # Spectre.Console CLI commands
+│   ├── Arius.Cli/              # System.CommandLine CLI commands (Spectre.Console for rendering)
 │   ├── Arius.Api/              # ASP.NET Core Minimal APIs + SignalR hubs
 │   └── Arius.Web/              # Vue 3 + TypeScript SPA (File Explorer UI)
 ├── tests/
