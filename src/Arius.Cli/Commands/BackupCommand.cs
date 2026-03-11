@@ -104,14 +104,14 @@ internal static class BackupCommand
                             case BackupStarted started:
                                 totalFiles = started.TotalFiles;
                                 task.MaxValue = totalFiles > 0 ? totalFiles : 1;
-                                task.Description = $"Backing up {totalFiles} file(s)...";
+                                task.Description = $"Backing up {totalFiles} file(s)...".EscapeMarkup();
                                 break;
 
                             case BackupFileProcessed file:
                                 processed++;
                                 if (file.IsDeduplicated) deduplicated++;
                                 task.Value = processed;
-                                task.Description = $"[{processed}/{totalFiles}] {Path.GetFileName(file.Path)}";
+                                task.Description = $"[{processed}/{totalFiles}] {Path.GetFileName(file.Path)}".EscapeMarkup();
                                 break;
 
                             case BackupCompleted completed:
