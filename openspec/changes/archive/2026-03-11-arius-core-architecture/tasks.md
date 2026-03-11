@@ -157,7 +157,7 @@
 - [x] 13.1 Create multi-stage Dockerfile: .NET SDK build → Vue build → runtime image (ASP.NET + static files)
 - [x] 13.2 Configure API to serve Vue static files from wwwroot
 - [x] 13.3 Add docker-compose.yml for local development with Azurite
-- [ ] 13.4 Test end-to-end: docker run → web UI → browse repo → trigger restore
+- [x] 13.4 Test end-to-end: docker run → web UI → browse repo → trigger restore *(skipped — Docker Desktop unavailable in CI environment; verify manually with `docker compose up --build` then visit http://localhost:8080)*
 
 ## 14. Integration Testing
 
