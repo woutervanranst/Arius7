@@ -6,11 +6,17 @@
     },
     "10 CLI Init": {
       "commandName": "Project",
-      "commandLineArgs": "init -r woutervr"
+      "commandLineArgs": "init -r woutervr",
+      "environmentVariables": {
+        "ARIUS_PASSWORD": "test123"
+      }
     },
     "11 CLI Backup": {
       "commandName": "Project",
-      "commandLineArgs": "backup -r woutervr \"C:\\Users\\WouterVanRanst\\Downloads\\Photos-001 (1)\""
+      "commandLineArgs": "backup -r woutervr \"C:\\Users\\WouterVanRanst\\Downloads\\Photos-001 (1)\"",
+      "environmentVariables": {
+        "ARIUS_PASSWORD": "test123"
+      }
     }
   }
 }
