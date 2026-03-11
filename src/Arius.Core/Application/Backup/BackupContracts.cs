@@ -3,7 +3,7 @@ using Arius.Core.Models;
 
 namespace Arius.Core.Application.Backup;
 
-public sealed record BackupRequest(string RepoPath, string Passphrase, IReadOnlyList<string> Paths, BlobTier TargetTier = BlobTier.Archive) : IStreamRequest<BackupEvent>;
+public sealed record BackupRequest(string RepoPath, string Passphrase, IReadOnlyList<string> Paths) : IStreamRequest<BackupEvent>;
 
 public abstract record BackupEvent;
 
