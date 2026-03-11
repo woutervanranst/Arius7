@@ -22,18 +22,27 @@ using Arius.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 
-// ─── Read required config from environment ───────────────────────────────────
-
-var connStr   = Environment.GetEnvironmentVariable("ARIUS_REPOSITORY")
-             ?? throw new InvalidOperationException("ARIUS_REPOSITORY env var is required");
-var container = Environment.GetEnvironmentVariable("ARIUS_CONTAINER")
-             ?? throw new InvalidOperationException("ARIUS_CONTAINER env var is required");
-var password  = Environment.GetEnvironmentVariable("ARIUS_PASSWORD")
-             ?? throw new InvalidOperationException("ARIUS_PASSWORD env var is required");
-
 // ─── Build ───────────────────────────────────────────────────────────────────
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── Read config (env vars → user secrets in Development) ────────────────────
+// Priority (highest → lowest): environment variables, user secrets, appsettings.
+// In production only environment variables are active; user secrets are a
+// Development-only convenience that never ships in a container image.
+
+var connStr   = builder.Configuration["ARIUS_REPOSITORY"]
+             ?? throw new InvalidOperationException(
+                    "ARIUS_REPOSITORY is not set. " +
+                    "Supply it as an environment variable or, in Development, via 'dotnet user-secrets set ARIUS_REPOSITORY <value>'.");
+var container = builder.Configuration["ARIUS_CONTAINER"]
+             ?? throw new InvalidOperationException(
+                    "ARIUS_CONTAINER is not set. " +
+                    "Supply it as an environment variable or, in Development, via 'dotnet user-secrets set ARIUS_CONTAINER <value>'.");
+var password  = builder.Configuration["ARIUS_PASSWORD"]
+             ?? throw new InvalidOperationException(
+                    "ARIUS_PASSWORD is not set. " +
+                    "Supply it as an environment variable or, in Development, via 'dotnet user-secrets set ARIUS_PASSWORD <value>'.");
 
 builder.Services.ConfigureHttpJsonOptions(opts =>
 {

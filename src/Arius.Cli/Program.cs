@@ -17,7 +17,20 @@ using Arius.Core.Application.Snapshots;
 using Arius.Core.Application.Stats;
 using Arius.Core.Application.Tag;
 using Arius.Core.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+
+// ─── Configuration ────────────────────────────────────────────────────────────
+// Sources (highest → lowest priority): environment variables, user secrets.
+// User secrets are only loaded when the project assembly is present (i.e. dev builds);
+// they are never present in a published/release binary.
+
+var config = new ConfigurationBuilder()
+    .AddEnvironmentVariables()
+    .AddUserSecrets<Program>(optional: true)
+    .Build();
+
+GlobalOptions.Configuration = config;
 
 // Build DI container
 var services = new ServiceCollection()
