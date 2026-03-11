@@ -45,3 +45,12 @@ public readonly record struct RepoId(string Value)
     public static RepoId New() => new(Guid.NewGuid().ToString("N"));
     public override string ToString() => Value;
 }
+
+/// <summary>Azure Blob Storage access tier for uploaded blobs.</summary>
+public enum BlobTier
+{
+    Hot,
+    Cool,
+    Cold,
+    Archive
+}
