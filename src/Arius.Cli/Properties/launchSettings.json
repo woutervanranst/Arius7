@@ -6,16 +6,16 @@
     },
     "10 CLI Init": {
       "commandName": "Project",
-      "commandLineArgs": "init -r woutervr",
+      "commandLineArgs": "init --container arius7testcontainer",
       "environmentVariables": {
-        "ARIUS_PASSWORD": "test123"
+        "ARIUS_PASSWORD": "arius7test1"
       }
     },
     "11 CLI Backup": {
       "commandName": "Project",
-      "commandLineArgs": "backup -r woutervr \"C:\\Users\\WouterVanRanst\\Downloads\\Photos-001 (1)\"",
+      "commandLineArgs": "backup --container arius7testcontainer \"C:\\Users\\WouterVanRanst\\Downloads\\Photos-001 (1)\" --tier cool",
       "environmentVariables": {
-        "ARIUS_PASSWORD": "test123"
+        "ARIUS_PASSWORD": "arius7test1"
       }
     }
   }
