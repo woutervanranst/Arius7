@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Testcontainers.Azurite" Version="4.10.0" />
     <PackageReference Include="TUnit" Version="1.19.22" />
+    <PackageReference Include="Shouldly" Version="4.2.1" />
   </ItemGroup>
 
   <PropertyGroup>

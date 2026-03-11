@@ -14,7 +14,11 @@ internal static class RestoreCommand
 
         var repoOpt = new Option<string?>("--repo", "-r")
         {
-            Description = "Repository path (or set ARIUS_REPOSITORY env var)"
+            Description = "Azure connection string (or set ARIUS_REPOSITORY env var)"
+        };
+        var containerOpt = new Option<string?>("--container", "-c")
+        {
+            Description = "Azure Blob Storage container name (or set ARIUS_CONTAINER env var)"
         };
         var passwordFileOpt = new Option<string?>("--password-file")
         {
@@ -43,6 +47,7 @@ internal static class RestoreCommand
         };
 
         cmd.Options.Add(repoOpt);
+        cmd.Options.Add(containerOpt);
         cmd.Options.Add(passwordFileOpt);
         cmd.Options.Add(targetOpt);
         cmd.Options.Add(includeOpt);
@@ -55,7 +60,15 @@ internal static class RestoreCommand
             var repo = GlobalOptions.ResolveRepo(parseResult.GetValue(repoOpt));
             if (string.IsNullOrEmpty(repo))
             {
-                AnsiConsole.MarkupLine("[red]Error:[/] No repository path specified. Use --repo or set ARIUS_REPOSITORY.");
+                AnsiConsole.MarkupLine("[red]Error:[/] No connection string specified. Use --repo or set ARIUS_REPOSITORY.");
+                return;
+            }
+
+            var container = parseResult.GetValue(containerOpt)
+                ?? Environment.GetEnvironmentVariable("ARIUS_CONTAINER");
+            if (string.IsNullOrEmpty(container))
+            {
+                AnsiConsole.MarkupLine("[red]Error:[/] No container name specified. Use --container or set ARIUS_CONTAINER.");
                 return;
             }
 
@@ -67,7 +80,7 @@ internal static class RestoreCommand
             var yes = parseResult.GetValue(yesOpt);
 
             var handler = services.GetRequiredService<RestoreHandler>();
-            var request = new RestoreRequest(repo, passphrase, snapshotId, target, include);
+            var request = new RestoreRequest(repo, container, passphrase, snapshotId, target, include);
 
             if (asJson)
             {

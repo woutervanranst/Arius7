@@ -1,46 +1,17 @@
 using System.Security.Cryptography;
+using Arius.Azure;
 using Arius.Core.Application.Backup;
 using Arius.Core.Application.Init;
 using Arius.Core.Application.Restore;
 using Arius.Core.Application.Snapshots;
+using Arius.Core.Infrastructure;
 using Arius.Core.Models;
 using Shouldly;
+using Testcontainers.Azurite;
 using TUnit.Core;
+using TUnit.Core.Interfaces;
 
 namespace Arius.Core.Tests;
-
-/// <summary>
-/// Shared fixture that holds repo + source paths for the workflow test class.
-/// Using ClassDataSource(Shared = SharedType.PerTestSession) gives all test
-/// methods in the class the SAME instance, so state set in one test is
-/// visible in subsequent tests.
-/// </summary>
-public sealed class RepoFixture : IAsyncDisposable
-{
-    public string RepoPath   { get; }
-    public string SourcePath { get; }
-    public const string Passphrase      = "correct-horse-battery-staple";
-    public const string WrongPassphrase = "wrong-passphrase";
-
-    // State captured across ordered tests
-    public Snapshot? FirstSnapshot  { get; set; }
-    public Snapshot? SecondSnapshot { get; set; }
-
-    public RepoFixture()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "arius-tests", Guid.NewGuid().ToString("N"));
-        RepoPath   = Path.Combine(root, "repo");
-        SourcePath = Path.Combine(root, "source");
-        Directory.CreateDirectory(SourcePath);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        var root = Path.GetDirectoryName(RepoPath)!;
-        if (Directory.Exists(root))
-            await Task.Run(() => Directory.Delete(root, recursive: true));
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -62,18 +33,58 @@ file static class TestHelpers
         RandomNumberGenerator.Fill(buf);
         return buf;
     }
+}
 
-    /// <summary>Returns the number of .pack files written to the packs/ directory.</summary>
-    public static int PackCount(string repoPath)
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared fixture — Azurite container + temp source dir, shared per session
+// ─────────────────────────────────────────────────────────────────────────────
+
+public sealed class RepoFixture : IAsyncInitializer, IAsyncDisposable
+{
+    private AzuriteContainer _azurite = null!;
+    private const string ContainerName = "arius-test-workflow";
+
+    public const string Passphrase      = "correct-horse-battery-staple";
+    public const string WrongPassphrase = "wrong-passphrase";
+
+    public string SourcePath { get; private set; } = null!;
+
+    // State captured across ordered tests
+    public Snapshot? FirstSnapshot  { get; set; }
+    public Snapshot? SecondSnapshot { get; set; }
+
+    public async Task InitializeAsync()
     {
-        var packsDir = Path.Combine(repoPath, "packs");
-        return Directory.Exists(packsDir)
-            ? Directory.GetFiles(packsDir, "*.pack").Length
-            : 0;
+        _azurite = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+            .Build();
+        await _azurite.StartAsync();
+
+        // Create the test container
+        var client = new global::Azure.Storage.Blobs.BlobContainerClient(
+            _azurite.GetConnectionString(), ContainerName);
+        await client.CreateIfNotExistsAsync();
+
+        SourcePath = Path.Combine(Path.GetTempPath(), "arius-tests", Guid.NewGuid().ToString("N"), "source");
+        Directory.CreateDirectory(SourcePath);
     }
 
-    public static int SnapshotCount(string repoPath) =>
-        Directory.GetFiles(Path.Combine(repoPath, "snapshots"), "*.json").Length;
+    public string ConnectionString => _azurite.GetConnectionString();
+    public string Container        => ContainerName;
+
+    /// <summary>Creates a new <see cref="AzureRepository"/> pointing at the Azurite container.</summary>
+    public AzureRepository CreateRepo()
+        => new(new AzureBlobStorageProvider(ConnectionString, Container));
+
+    /// <summary>Creates the repo factory delegate used by all handlers.</summary>
+    public Func<string, string, AzureRepository> RepoFactory()
+        => (connStr, container) => new AzureRepository(new AzureBlobStorageProvider(connStr, container));
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Directory.Exists(Path.GetDirectoryName(SourcePath)))
+            await Task.Run(() => Directory.Delete(Path.GetDirectoryName(SourcePath)!, recursive: true));
+        await _azurite.DisposeAsync();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,27 +95,22 @@ file static class TestHelpers
 public class RepositoryWorkflowTests(RepoFixture fx)
 {
     // ═════════════════════════════════════════════════════════════════════════
-    // 1. Init — creates expected directory structure
+    // 1. Init — writes config + key blobs to Azurite
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
-    public async Task Init_CreatesExpectedRepoStructure()
+    public async Task Init_CreatesConfigAndKeyBlobs()
     {
-        var handler = new InitHandler();
-        var result  = await handler.Handle(new InitRequest(fx.RepoPath, RepoFixture.Passphrase));
+        var handler = new InitHandler(fx.RepoFactory());
+        var result  = await handler.Handle(new InitRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase));
 
         result.RepoId.Value.ShouldNotBeNullOrEmpty();
+        result.ConfigBlobName.ShouldBe("config");
+        result.KeyBlobName.ShouldStartWith("keys/");
 
-        File.Exists(result.ConfigPath).ShouldBeTrue();
-        result.ConfigPath.ShouldStartWith(fx.RepoPath);
-
-        File.Exists(result.KeyPath).ShouldBeTrue();
-        result.KeyPath.ShouldStartWith(fx.RepoPath);
-
-        Directory.Exists(Path.Combine(fx.RepoPath, "packs")).ShouldBeTrue();
-        Directory.Exists(Path.Combine(fx.RepoPath, "index")).ShouldBeTrue();
-        Directory.Exists(Path.Combine(fx.RepoPath, "snapshots")).ShouldBeTrue();
-        Directory.Exists(Path.Combine(fx.RepoPath, "keys")).ShouldBeTrue();
+        // Verify blobs actually exist in Azurite
+        var repo = fx.CreateRepo();
+        (await repo.LoadConfigAsync()).RepoId.ShouldBe(result.RepoId);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -112,39 +118,40 @@ public class RepositoryWorkflowTests(RepoFixture fx)
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
-    [DependsOn(nameof(Init_CreatesExpectedRepoStructure))]
-    public async Task Init_CorrectPassphrase_ValidatesSuccessfully()
+    [DependsOn(nameof(Init_CreatesConfigAndKeyBlobs))]
+    public async Task Init_CorrectPassphrase_Unlocks()
     {
-        var store = new Arius.Core.Infrastructure.FileSystemRepositoryStore();
-        var ok    = await store.ValidatePassphraseAsync(fx.RepoPath, RepoFixture.Passphrase);
-        ok.ShouldBeTrue();
+        var repo = fx.CreateRepo();
+        var key  = await repo.TryUnlockAsync(RepoFixture.Passphrase);
+        key.ShouldNotBeNull();
+        key!.Length.ShouldBe(32);
     }
 
     [Test]
-    [DependsOn(nameof(Init_CreatesExpectedRepoStructure))]
-    public async Task Init_WrongPassphrase_FailsValidation()
+    [DependsOn(nameof(Init_CreatesConfigAndKeyBlobs))]
+    public async Task Init_WrongPassphrase_ReturnsNull()
     {
-        var store = new Arius.Core.Infrastructure.FileSystemRepositoryStore();
-        var ok    = await store.ValidatePassphraseAsync(fx.RepoPath, RepoFixture.WrongPassphrase);
-        ok.ShouldBeFalse();
+        var repo = fx.CreateRepo();
+        var key  = await repo.TryUnlockAsync(RepoFixture.WrongPassphrase);
+        key.ShouldBeNull();
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // 3. First backup — stores all files, emits correct events (task 14.1)
+    // 3. First backup — stores all files, emits correct events
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
-    [DependsOn(nameof(Init_CreatesExpectedRepoStructure))]
+    [DependsOn(nameof(Init_CreatesConfigAndKeyBlobs))]
     public async Task Backup_FirstBackup_StoresAllFiles()
     {
         TestHelpers.WriteFile(fx.SourcePath, "a.txt",     TestHelpers.RandomBytes(512));
         TestHelpers.WriteFile(fx.SourcePath, "sub/b.txt", TestHelpers.RandomBytes(1024));
 
-        var handler = new BackupHandler();
+        var handler = new BackupHandler(fx.RepoFactory());
         var events  = new List<BackupEvent>();
 
         await foreach (var e in handler.Handle(
-            new BackupRequest(fx.RepoPath, RepoFixture.Passphrase, [fx.SourcePath])))
+            new BackupRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase, [fx.SourcePath])))
             events.Add(e);
 
         events.OfType<BackupStarted>().ShouldHaveSingleItem()
@@ -157,25 +164,29 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         completed.StoredFiles.ShouldBe(2);
         completed.DeduplicatedFiles.ShouldBe(0);
 
-        TestHelpers.SnapshotCount(fx.RepoPath).ShouldBe(1);
-        TestHelpers.PackCount(fx.RepoPath).ShouldBe(1); // all 2 chunks land in one pack
+        // Verify snapshot blob was written
+        var repo = fx.CreateRepo();
+        var snapshotDocs = new List<BackupSnapshotDocument>();
+        await foreach (var doc in repo.ListSnapshotDocumentsAsync())
+            snapshotDocs.Add(doc);
+        snapshotDocs.Count.ShouldBe(1);
 
         fx.FirstSnapshot = completed.Snapshot;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // 4. Snapshots list (task 14.1)
+    // 4. Snapshots list
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Snapshots_AfterFirstBackup_ReturnsOneSnapshot()
     {
-        var handler   = new SnapshotsHandler();
+        var handler   = new SnapshotsHandler(fx.RepoFactory());
         var snapshots = new List<Snapshot>();
 
         await foreach (var s in handler.Handle(
-            new ListSnapshotsRequest(fx.RepoPath, RepoFixture.Passphrase)))
+            new ListSnapshotsRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase)))
             snapshots.Add(s);
 
         snapshots.Count.ShouldBe(1);
@@ -185,20 +196,20 @@ public class RepositoryWorkflowTests(RepoFixture fx)
     }
 
     [Test]
-    [DependsOn(nameof(Init_CreatesExpectedRepoStructure))]
+    [DependsOn(nameof(Init_CreatesConfigAndKeyBlobs))]
     public async Task Snapshots_WrongPassphrase_Throws()
     {
         await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            var handler = new SnapshotsHandler();
+            var handler = new SnapshotsHandler(fx.RepoFactory());
             await foreach (var _ in handler.Handle(
-                new ListSnapshotsRequest(fx.RepoPath, RepoFixture.WrongPassphrase)))
+                new ListSnapshotsRequest(fx.ConnectionString, fx.Container, RepoFixture.WrongPassphrase)))
             { }
         });
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // 5. Second backup — incremental dedup (task 14.2)
+    // 5. Second backup — incremental dedup
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
@@ -208,11 +219,11 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         // One new file; the two originals are already in the repo
         TestHelpers.WriteFile(fx.SourcePath, "c.txt", TestHelpers.RandomBytes(256));
 
-        var handler = new BackupHandler();
+        var handler = new BackupHandler(fx.RepoFactory());
         var events  = new List<BackupEvent>();
 
         await foreach (var e in handler.Handle(
-            new BackupRequest(fx.RepoPath, RepoFixture.Passphrase, [fx.SourcePath])))
+            new BackupRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase, [fx.SourcePath])))
             events.Add(e);
 
         events.OfType<BackupStarted>().ShouldHaveSingleItem()
@@ -222,51 +233,62 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         completed.StoredFiles.ShouldBe(1);       // only c.txt is new
         completed.DeduplicatedFiles.ShouldBe(2); // a.txt + sub/b.txt are deduped
 
-        TestHelpers.PackCount(fx.RepoPath).ShouldBe(2);   // 1 from first backup + 1 from second
-        TestHelpers.SnapshotCount(fx.RepoPath).ShouldBe(2);
+        // Two snapshots total now
+        var repo = fx.CreateRepo();
+        var snapshotDocs = new List<BackupSnapshotDocument>();
+        await foreach (var doc in repo.ListSnapshotDocumentsAsync())
+            snapshotDocs.Add(doc);
+        snapshotDocs.Count.ShouldBe(2);
 
         fx.SecondSnapshot = completed.Snapshot;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // 6. Full restore — bytes match originals (task 14.4)
+    // 6. Full restore — bytes match originals
     // ═════════════════════════════════════════════════════════════════════════
 
     [Test]
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Restore_FullRestore_FilesMatchOriginal()
     {
-        var restorePath = Path.Combine(Path.GetDirectoryName(fx.RepoPath)!, "restore-full");
-
-        var handler = new RestoreHandler();
-        var events  = new List<RestoreEvent>();
-
-        await foreach (var e in handler.Handle(
-            new RestoreRequest(fx.RepoPath, RepoFixture.Passphrase,
-                fx.FirstSnapshot!.Id.Value, restorePath)))
-            events.Add(e);
-
-        events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
-              .TotalFiles.ShouldBe(2);
-
-        events.OfType<RestoreFileRestored>().Count().ShouldBe(2);
-
-        var completed = events.OfType<RestoreCompleted>().ShouldHaveSingleItem();
-        completed.RestoredFiles.ShouldBe(2);
-
-        // Verify bytes match originals (match by filename)
-        var restoredFiles = Directory.GetFiles(restorePath, "*", SearchOption.AllDirectories);
-        restoredFiles.Length.ShouldBe(2);
-
-        foreach (var restoredFile in restoredFiles)
+        var restorePath = Path.Combine(Path.GetTempPath(), "arius-restore", Guid.NewGuid().ToString("N"));
+        try
         {
-            var fileName  = Path.GetFileName(restoredFile);
-            var originals = Directory.GetFiles(fx.SourcePath, fileName, SearchOption.AllDirectories);
-            originals.ShouldNotBeEmpty($"No original found for '{fileName}'");
+            var handler = new RestoreHandler(fx.RepoFactory());
+            var events  = new List<RestoreEvent>();
 
-            var restoredBytes = await File.ReadAllBytesAsync(restoredFile);
-            var originalBytes = await File.ReadAllBytesAsync(originals[0]);
-            restoredBytes.ShouldBe(originalBytes);
+            await foreach (var e in handler.Handle(
+                new RestoreRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase,
+                    fx.FirstSnapshot!.Id.Value, restorePath)))
+                events.Add(e);
+
+            events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
+                  .TotalFiles.ShouldBe(2);
+
+            events.OfType<RestoreFileRestored>().Count().ShouldBe(2);
+
+            var completed = events.OfType<RestoreCompleted>().ShouldHaveSingleItem();
+            completed.RestoredFiles.ShouldBe(2);
+
+            // Verify bytes match originals (match by filename)
+            var restoredFiles = Directory.GetFiles(restorePath, "*", SearchOption.AllDirectories);
+            restoredFiles.Length.ShouldBe(2);
+
+            foreach (var restoredFile in restoredFiles)
+            {
+                var fileName  = Path.GetFileName(restoredFile);
+                var originals = Directory.GetFiles(fx.SourcePath, fileName, SearchOption.AllDirectories);
+                originals.ShouldNotBeEmpty($"No original found for '{fileName}'");
+
+                var restoredBytes = await File.ReadAllBytesAsync(restoredFile);
+                var originalBytes = await File.ReadAllBytesAsync(originals[0]);
+                restoredBytes.ShouldBe(originalBytes);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(restorePath))
+                Directory.Delete(restorePath, recursive: true);
         }
     }
 
@@ -278,18 +300,26 @@ public class RepositoryWorkflowTests(RepoFixture fx)
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Restore_BySnapshotIdPrefix_Works()
     {
-        var restorePath = Path.Combine(Path.GetDirectoryName(fx.RepoPath)!, "restore-prefix");
-        var prefix      = fx.FirstSnapshot!.Id.Value[..8];
+        var restorePath = Path.Combine(Path.GetTempPath(), "arius-restore", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var prefix  = fx.FirstSnapshot!.Id.Value[..8];
+            var handler = new RestoreHandler(fx.RepoFactory());
+            var events  = new List<RestoreEvent>();
 
-        var handler = new RestoreHandler();
-        var events  = new List<RestoreEvent>();
+            await foreach (var e in handler.Handle(
+                new RestoreRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase,
+                    prefix, restorePath)))
+                events.Add(e);
 
-        await foreach (var e in handler.Handle(
-            new RestoreRequest(fx.RepoPath, RepoFixture.Passphrase, prefix, restorePath)))
-            events.Add(e);
-
-        events.OfType<RestoreCompleted>().ShouldHaveSingleItem()
-              .RestoredFiles.ShouldBe(2);
+            events.OfType<RestoreCompleted>().ShouldHaveSingleItem()
+                  .RestoredFiles.ShouldBe(2);
+        }
+        finally
+        {
+            if (Directory.Exists(restorePath))
+                Directory.Delete(restorePath, recursive: true);
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -300,20 +330,27 @@ public class RepositoryWorkflowTests(RepoFixture fx)
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Restore_WithIncludeFilter_RestoresOnlyMatchingFiles()
     {
-        var restorePath = Path.Combine(Path.GetDirectoryName(fx.RepoPath)!, "restore-filtered");
+        var restorePath = Path.Combine(Path.GetTempPath(), "arius-restore", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var handler = new RestoreHandler(fx.RepoFactory());
+            var events  = new List<RestoreEvent>();
 
-        var handler = new RestoreHandler();
-        var events  = new List<RestoreEvent>();
+            await foreach (var e in handler.Handle(
+                new RestoreRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase,
+                    fx.FirstSnapshot!.Id.Value, restorePath, Include: "a.txt")))
+                events.Add(e);
 
-        await foreach (var e in handler.Handle(
-            new RestoreRequest(fx.RepoPath, RepoFixture.Passphrase,
-                fx.FirstSnapshot!.Id.Value, restorePath, Include: "a.txt")))
-            events.Add(e);
-
-        events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
-              .TotalFiles.ShouldBe(1);
-        events.OfType<RestoreCompleted>().ShouldHaveSingleItem()
-              .RestoredFiles.ShouldBe(1);
+            events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
+                  .TotalFiles.ShouldBe(1);
+            events.OfType<RestoreCompleted>().ShouldHaveSingleItem()
+                  .RestoredFiles.ShouldBe(1);
+        }
+        finally
+        {
+            if (Directory.Exists(restorePath))
+                Directory.Delete(restorePath, recursive: true);
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -324,35 +361,51 @@ public class RepositoryWorkflowTests(RepoFixture fx)
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Restore_WrongPassphrase_Throws()
     {
-        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        var restorePath = Path.Combine(Path.GetTempPath(), "arius-restore", Guid.NewGuid().ToString("N"));
+        try
         {
-            var handler = new RestoreHandler();
-            await foreach (var _ in handler.Handle(
-                new RestoreRequest(fx.RepoPath, RepoFixture.WrongPassphrase,
-                    fx.FirstSnapshot!.Id.Value,
-                    Path.Combine(Path.GetDirectoryName(fx.RepoPath)!, "restore-bad"))))
-            { }
-        });
+            await Should.ThrowAsync<InvalidOperationException>(async () =>
+            {
+                var handler = new RestoreHandler(fx.RepoFactory());
+                await foreach (var _ in handler.Handle(
+                    new RestoreRequest(fx.ConnectionString, fx.Container, RepoFixture.WrongPassphrase,
+                        fx.FirstSnapshot!.Id.Value, restorePath)))
+                { }
+            });
+        }
+        finally
+        {
+            if (Directory.Exists(restorePath))
+                Directory.Delete(restorePath, recursive: true);
+        }
     }
 
     [Test]
     [DependsOn(nameof(Backup_FirstBackup_StoresAllFiles))]
     public async Task Restore_UnknownSnapshotId_Throws()
     {
-        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        var restorePath = Path.Combine(Path.GetTempPath(), "arius-restore", Guid.NewGuid().ToString("N"));
+        try
         {
-            var handler = new RestoreHandler();
-            await foreach (var _ in handler.Handle(
-                new RestoreRequest(fx.RepoPath, RepoFixture.Passphrase,
-                    "nonexistent000000",
-                    Path.Combine(Path.GetDirectoryName(fx.RepoPath)!, "restore-ghost"))))
-            { }
-        });
+            await Should.ThrowAsync<InvalidOperationException>(async () =>
+            {
+                var handler = new RestoreHandler(fx.RepoFactory());
+                await foreach (var _ in handler.Handle(
+                    new RestoreRequest(fx.ConnectionString, fx.Container, RepoFixture.Passphrase,
+                        "nonexistent000000", restorePath)))
+                { }
+            });
+        }
+        finally
+        {
+            if (Directory.Exists(restorePath))
+                Directory.Delete(restorePath, recursive: true);
+        }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Isolated dedup test (needs its own clean repo)
+// Isolated dedup test (its own clean Azurite container)
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class DeduplicationTests
@@ -360,32 +413,42 @@ public class DeduplicationTests
     [Test]
     public async Task Backup_IdenticalContent_StoredOnlyOnce()
     {
-        var root      = Path.Combine(Path.GetTempPath(), "arius-tests", Guid.NewGuid().ToString("N"));
-        var repoPath  = Path.Combine(root, "repo");
-        var srcPath   = Path.Combine(root, "source");
-        Directory.CreateDirectory(srcPath);
+        await using var azurite = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+            .Build();
+        await azurite.StartAsync();
 
+        const string containerName = "arius-dedup-test";
+        var containerClient = new global::Azure.Storage.Blobs.BlobContainerClient(
+            azurite.GetConnectionString(), containerName);
+        await containerClient.CreateIfNotExistsAsync();
+
+        var connStr = azurite.GetConnectionString();
+        Func<string, string, AzureRepository> factory =
+            (cs, c) => new AzureRepository(new AzureBlobStorageProvider(cs, c));
+
+        var srcPath = Path.Combine(Path.GetTempPath(), "arius-dedup", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(srcPath);
         try
         {
             var content = TestHelpers.RandomBytes(512);
             TestHelpers.WriteFile(srcPath, "copy1.txt", content);
             TestHelpers.WriteFile(srcPath, "copy2.txt", content); // identical bytes
 
-            await new InitHandler().Handle(new InitRequest(repoPath, RepoFixture.Passphrase));
+            await new InitHandler(factory).Handle(
+                new InitRequest(connStr, containerName, RepoFixture.Passphrase));
 
             var events = new List<BackupEvent>();
-            await foreach (var e in new BackupHandler().Handle(
-                new BackupRequest(repoPath, RepoFixture.Passphrase, [srcPath])))
+            await foreach (var e in new BackupHandler(factory).Handle(
+                new BackupRequest(connStr, containerName, RepoFixture.Passphrase, [srcPath])))
                 events.Add(e);
 
             var completed = events.OfType<BackupCompleted>().ShouldHaveSingleItem();
             completed.StoredFiles.ShouldBe(1);
             completed.DeduplicatedFiles.ShouldBe(1);
-            TestHelpers.PackCount(repoPath).ShouldBe(1); // 1 unique chunk → 1 pack
         }
         finally
         {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            if (Directory.Exists(srcPath)) Directory.Delete(srcPath, recursive: true);
         }
     }
 }

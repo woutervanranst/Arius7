@@ -2,10 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Arius.Core\Arius.Core.csproj" />
+    <ProjectReference Include="..\..\src\Arius.Azure\Arius.Azure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Shouldly" Version="4.3.0" />
+    <PackageReference Include="Testcontainers.Azurite" Version="4.10.0" />
     <PackageReference Include="TngTech.ArchUnitNET.TUnit" Version="0.13.3" />
     <PackageReference Include="TUnit" Version="1.19.22" />
   </ItemGroup>

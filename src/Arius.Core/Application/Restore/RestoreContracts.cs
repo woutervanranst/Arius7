@@ -4,7 +4,8 @@ using Arius.Core.Models;
 namespace Arius.Core.Application.Restore;
 
 public sealed record RestoreRequest(
-    string RepoPath,
+    string ConnectionString,
+    string ContainerName,
     string Passphrase,
     string SnapshotId,
     string TargetPath,

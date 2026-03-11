@@ -4,21 +4,28 @@ using Arius.Core.Models;
 
 namespace Arius.Core.Application.Snapshots;
 
-public sealed record ListSnapshotsRequest(string RepoPath, string Passphrase) : IStreamRequest<Snapshot>;
+public sealed record ListSnapshotsRequest(
+    string ConnectionString,
+    string ContainerName,
+    string Passphrase) : IStreamRequest<Snapshot>;
 
 public sealed class SnapshotsHandler : IStreamRequestHandler<ListSnapshotsRequest, Snapshot>
 {
-    private readonly FileSystemRepositoryStore _repositoryStore = new();
+    private readonly Func<string, string, AzureRepository> _repoFactory;
+
+    public SnapshotsHandler(Func<string, string, AzureRepository> repoFactory)
+        => _repoFactory = repoFactory;
 
     public async IAsyncEnumerable<Snapshot> Handle(
         ListSnapshotsRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // ListSnapshotsAsync validates the passphrase internally and throws if wrong
-        await foreach (var snapshot in _repositoryStore.ListSnapshotsAsync(
-            request.RepoPath, request.Passphrase, cancellationToken))
-        {
-            yield return snapshot;
-        }
+        var repo = _repoFactory(request.ConnectionString, request.ContainerName);
+
+        // Validate passphrase before listing
+        _ = await repo.UnlockAsync(request.Passphrase, cancellationToken);
+
+        await foreach (var doc in repo.ListSnapshotDocumentsAsync(cancellationToken))
+            yield return doc.Snapshot;
     }
 }

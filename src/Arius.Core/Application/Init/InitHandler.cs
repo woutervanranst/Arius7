@@ -5,12 +5,16 @@ namespace Arius.Core.Application.Init;
 
 public sealed class InitHandler : IRequestHandler<InitRequest, InitResult>
 {
-    private readonly FileSystemRepositoryStore _repositoryStore = new();
+    private readonly Func<string, string, AzureRepository> _repoFactory;
+
+    public InitHandler(Func<string, string, AzureRepository> repoFactory)
+        => _repoFactory = repoFactory;
 
     public async ValueTask<InitResult> Handle(InitRequest request, CancellationToken cancellationToken = default)
     {
-        var initResult = await _repositoryStore.InitAsync(
-            request.RepoPath,
+        var repo = _repoFactory(request.ConnectionString, request.ContainerName);
+
+        var (repoId, configBlobName, keyBlobName) = await repo.InitAsync(
             request.Passphrase,
             request.PackSize,
             request.ChunkMin,
@@ -18,6 +22,6 @@ public sealed class InitHandler : IRequestHandler<InitRequest, InitResult>
             request.ChunkMax,
             cancellationToken);
 
-        return new InitResult(initResult.RepoId, initResult.ConfigPath, initResult.KeyPath);
+        return new InitResult(repoId, configBlobName, keyBlobName);
     }
 }
