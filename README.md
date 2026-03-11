@@ -10,8 +10,9 @@ Metadata (snapshots, index, trees, config) is always stored at the Cold tier; da
 
 1. [Architecture overview](#architecture-overview)
 2. [Installation](#installation)
-3. [Configuration](#configuration)
-4. [Commands](#commands)
+3. [Web UI](#web-ui)
+4. [Configuration](#configuration)
+5. [Commands](#commands)
    - [init](#init)
    - [backup](#backup)
    - [restore](#restore)
@@ -74,6 +75,80 @@ Or run directly:
 ```bash
 dotnet run --project src/Arius.Cli -- <command> [options]
 ```
+
+---
+
+## Web UI
+
+Arius ships with a Vue 3 single-page application served by `Arius.Api`.
+It provides a graphical interface for browsing snapshots, exploring files, triggering restores, viewing diffs, managing retention, and monitoring live operation progress via SignalR.
+
+### Option 1 — Docker (recommended)
+
+The simplest way to run the full stack (API + Web UI) is with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+- **Arius API + Web UI** on `http://localhost:8080`
+- **Azurite** (local Azure Blob Storage emulator) on port 10000
+
+Open `http://localhost:8080` in a browser. The API must be configured with the repository credentials (see [Configuration](#configuration)).
+
+### Option 2 — Development mode (hot-reload)
+
+Run the API and the Vite dev server separately. The dev server proxies `/api` and `/hub` to the API automatically.
+
+**1. Start the API:**
+
+```bash
+dotnet run --project src/Arius.Api
+# Listening on http://localhost:5000
+```
+
+**2. Install Node dependencies (first time only):**
+
+```bash
+cd src/Arius.Web
+npm install
+```
+
+**3. Start the Vite dev server:**
+
+```bash
+npm run dev
+# http://localhost:5173
+```
+
+Open `http://localhost:5173`. Changes to Vue files reload instantly without restarting the API.
+
+### Option 3 — Production build (embedded in API)
+
+Build the Vue app into `Arius.Api/wwwroot` so it is served directly by the API:
+
+```bash
+cd src/Arius.Web
+npm install
+npm run build
+```
+
+Then run the API:
+
+```bash
+dotnet run --project src/Arius.Api
+# Web UI available at http://localhost:5000
+```
+
+### Prerequisites
+
+| Requirement | Version |
+|---|---|
+| Node.js | 18 or later |
+| npm | 9 or later |
+| .NET SDK | 10.0 |
+| Docker (option 1 only) | 24 or later |
 
 ---
 
