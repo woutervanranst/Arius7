@@ -1,7 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
 using Arius.Core.Application.Backup;
-using Arius.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -25,11 +24,6 @@ internal static class BackupCommand
         {
             Description = "Output result as JSON"
         };
-        var tierOpt = new Option<BlobTier>("--tier")
-        {
-            Description = "Access tier for uploaded pack files (Hot/Cool/Cold/Archive)",
-            DefaultValueFactory = _ => BlobTier.Archive
-        };
         var pathsArg = new Argument<string[]>("paths")
         {
             Description = "Files or directories to back up",
@@ -39,7 +33,6 @@ internal static class BackupCommand
         cmd.Options.Add(repoOpt);
         cmd.Options.Add(passwordFileOpt);
         cmd.Options.Add(jsonOpt);
-        cmd.Options.Add(tierOpt);
         cmd.Arguments.Add(pathsArg);
 
         cmd.SetAction(async (parseResult, ct) =>
@@ -52,12 +45,11 @@ internal static class BackupCommand
             }
 
             var passphrase = GlobalOptions.ResolvePassphrase(parseResult.GetValue(passwordFileOpt));
-            var paths      = parseResult.GetValue(pathsArg) ?? [];
-            var asJson     = parseResult.GetValue(jsonOpt);
-            var tier       = parseResult.GetValue(tierOpt);
+            var paths = parseResult.GetValue(pathsArg) ?? [];
+            var asJson = parseResult.GetValue(jsonOpt);
 
             var handler = services.GetRequiredService<BackupHandler>();
-            var request = new BackupRequest(repo, passphrase, paths, tier);
+            var request = new BackupRequest(repo, passphrase, paths);
 
             if (asJson)
             {
