@@ -8,15 +8,23 @@ The system SHALL use Azure Blob Storage as the sole storage backend, accessed vi
 - **THEN** the system connects to the specified container and can perform all repository operations
 
 ### Requirement: Upload blobs
-The system SHALL upload blobs to Azure with the correct tier assignment (Cold for metadata, Archive for data packs).
+The system SHALL upload blobs directly to Azure with the correct tier assignment.
 
-#### Scenario: Upload pack file
-- **WHEN** a pack file is uploaded
-- **THEN** it is stored in `data/{prefix}/{hash}` with Archive access tier
+#### Scenario: Upload pack file with default tier
+- **WHEN** a pack file is uploaded without an explicit tier override
+- **THEN** it is stored in `data/{prefix}/{hash}` with the Archive access tier
+
+#### Scenario: Upload pack file with explicit tier
+- **WHEN** a pack file is uploaded with an explicit tier (Hot, Cool, Cold, or Archive)
+- **THEN** it is stored in `data/{prefix}/{hash}` with the specified access tier
 
 #### Scenario: Upload metadata
 - **WHEN** a snapshot, index, tree, or key blob is uploaded
-- **THEN** it is stored with Cold access tier
+- **THEN** it is stored with Cold access tier (metadata tier is fixed; only data pack tier is configurable)
+
+#### Scenario: Direct streaming upload
+- **WHEN** a sealed pack is ready for upload
+- **THEN** the encrypted bytes are streamed directly from memory to Azure — no intermediate file system write occurs
 
 ### Requirement: Download blobs
 The system SHALL download blobs from Cold tier immediately. For Archive tier blobs, the system SHALL rehydrate first.

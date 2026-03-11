@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Multi-phase restore
-The system SHALL restore files from a snapshot through three overlapping phases: plan (identify needed packs), rehydrate (initiate and poll archive-tier rehydration), and restore (download, decrypt, reassemble files).
+The system SHALL restore files from a snapshot through three overlapping phases: plan (identify needed packs), rehydrate (initiate and poll archive-tier rehydration), and restore (download, decrypt, reassemble files). No intermediate filesystem staging of pack data is required — packs are streamed directly from Azure into memory and extracted.
 
 #### Scenario: Full restore
 - **WHEN** user runs `restore <snapshot-id> --target /restore/path`
@@ -25,20 +25,16 @@ As individual packs become rehydrated, the system SHALL immediately begin downlo
 - **WHEN** pack A is rehydrated while packs B and C are still pending
 - **THEN** files whose blobs are all in pack A are restored immediately
 
-### Requirement: Rehydration staging area
-Rehydrated packs SHALL be downloaded to a staging directory (`~/.arius/hydrated/`), decrypted, decompressed (gunzip), and extracted (tar) to recover individual blobs. Staging files SHALL be deleted after their blobs are written to the target.
+### Requirement: In-memory pack streaming
+Rehydrated packs SHALL be downloaded directly from Azure into a memory stream, decrypted, decompressed (gunzip), and extracted (tar) to recover individual blobs. No intermediate file system write of pack data occurs during restore.
 
 #### Scenario: Pack extraction pipeline
-- **WHEN** a rehydrated pack is downloaded
-- **THEN** the system decrypts (AES-256-CBC) → decompresses (gzip) → extracts (TAR) to recover individual blob files named by their SHA-256 hash
+- **WHEN** a rehydrated pack is downloaded from Azure
+- **THEN** the system streams it into memory, decrypts (AES-256-CBC), decompresses (gzip), and extracts (TAR) to recover individual blob bytes — without writing pack data to disk
 
-#### Scenario: Staging cleanup
-- **WHEN** all blobs from a downloaded pack have been written to the target
-- **THEN** the staging file for that pack is deleted
-
-#### Scenario: Keep staged packs
-- **WHEN** user runs restore with `--keep-hydrated`
-- **THEN** staging files are retained after extraction
+#### Scenario: Large pack memory handling
+- **WHEN** a pack exceeds available memory
+- **THEN** the system processes it using a streaming pipeline rather than materialising the full pack in RAM
 
 ### Requirement: Resumable restore
 If a restore is interrupted, re-running the same command SHALL resume from where it left off by checking which packs are already rehydrated in Azure and which files already exist in the target.
@@ -69,8 +65,8 @@ The restore operation SHALL stream progress events for both rehydration and file
 - **THEN** the handler yields `IAsyncEnumerable<RestoreEvent>` including `RestorePlanReady`, `RehydrationProgress`, `FileRestored`, and `RestoreComplete` events
 
 ### Requirement: Integrity verification on restore
-After restoring each file, the system SHALL verify the SHA-256 hash of the reassembled plaintext content against the stored blob hashes.
+After restoring each file, the system SHALL verify the HMAC-SHA256 of the reassembled plaintext content against the stored blob IDs.
 
 #### Scenario: Integrity check
 - **WHEN** a file is restored from its component blobs
-- **THEN** each blob's SHA-256 hash is verified against the index entry; a mismatch causes an error
+- **THEN** each blob's `HMAC-SHA256(master_key, plaintext)` is verified against the index entry; a mismatch causes an error

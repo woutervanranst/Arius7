@@ -43,6 +43,17 @@ The CLI SHALL support `--json` flag for machine-readable JSON output on all list
 - **WHEN** user runs `arius snapshots --json`
 - **THEN** snapshots are output as a JSON array
 
+### Requirement: Backup tier selection
+The `backup` command SHALL accept an optional `--tier` argument (values: `hot`, `cool`, `cold`, `archive`; default: `archive`) to control the Azure Blob Storage access tier for uploaded data packs.
+
+#### Scenario: Backup with default Archive tier
+- **WHEN** user runs `backup /path/to/data` without `--tier`
+- **THEN** data packs are uploaded to Azure with the Archive access tier
+
+#### Scenario: Backup with explicit tier
+- **WHEN** user runs `backup --tier hot /path/to/data`
+- **THEN** data packs are uploaded to Azure with the Hot access tier
+
 ### Requirement: Streaming CLI output
 Long-running operations SHALL render progress using Spectre.Console's `Live`, `Progress`, or `Status` contexts, consuming `IAsyncEnumerable` from the Mediator handlers.
 

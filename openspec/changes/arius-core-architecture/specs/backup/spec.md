@@ -1,15 +1,38 @@
 ## ADDED Requirements
 
-### Requirement: Create snapshot from filesystem paths
-The system SHALL scan specified filesystem paths, chunk files using the configured chunker, deduplicate against the existing index, pack new blobs, encrypt, upload to Azure, and create a snapshot referencing the root tree.
+### Requirement: Create snapshot from filesystem paths via Azure
+The system SHALL scan specified filesystem paths, chunk files using the configured chunker, deduplicate against the existing index, pack new blobs, encrypt, upload directly to Azure Blob Storage, and create a snapshot referencing the root tree. No intermediate filesystem write of pack data is required.
 
 #### Scenario: Backup new files
 - **WHEN** user runs `backup /path/to/data`
-- **THEN** the system scans the path, chunks each file, computes `HMAC-SHA256(master_key, chunk_plaintext)` as each chunk's blob ID, uploads new blobs in packs to archive tier, writes tree blobs to cold tier, writes a new index delta to cold tier, and writes a snapshot to cold tier
+- **THEN** the system scans the path, chunks each file, computes `HMAC-SHA256(master_key, chunk_plaintext)` as each chunk's blob ID, streams sealed packs directly to Azure Blob Storage at the specified data tier, writes tree blobs to cold tier, writes a new index delta to cold tier, and writes a snapshot to cold tier
 
 #### Scenario: Backup with full deduplication
 - **WHEN** a file's chunks all exist in the index (from a previous backup)
 - **THEN** no new pack data is uploaded; only tree and snapshot metadata are created
+
+### Requirement: Data pack tier selection
+The backup command SHALL accept an optional `--tier` parameter to control the Azure Blob Storage access tier for uploaded data packs. If not specified, the Archive tier is used.
+
+#### Scenario: Default tier is Archive
+- **WHEN** user runs `backup /path/to/data` without `--tier`
+- **THEN** data packs are uploaded to Azure with the Archive access tier
+
+#### Scenario: Explicit Hot tier
+- **WHEN** user runs `backup --tier hot /path/to/data`
+- **THEN** data packs are uploaded to Azure with the Hot access tier
+
+#### Scenario: Explicit Cool tier
+- **WHEN** user runs `backup --tier cool /path/to/data`
+- **THEN** data packs are uploaded to Azure with the Cool access tier
+
+#### Scenario: Explicit Cold tier
+- **WHEN** user runs `backup --tier cold /path/to/data`
+- **THEN** data packs are uploaded to Azure with the Cold access tier
+
+#### Scenario: Tier applies only to data packs
+- **WHEN** any tier is specified (or defaulted)
+- **THEN** metadata blobs (snapshots, index, trees, keys) are always uploaded with the Cold tier regardless of the `--tier` setting
 
 ### Requirement: Blob ID computation uses HMAC-SHA256 with master key
 Each chunk's blob ID SHALL be computed as `HMAC-SHA256(master_key, plaintext_chunk_bytes)`. Plain SHA-256 of plaintext SHALL NOT be used as a blob address.

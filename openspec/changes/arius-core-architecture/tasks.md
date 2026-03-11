@@ -49,25 +49,25 @@
 
 ## 6. Azure Backend (Arius.Azure)
 
-- [ ] 6.1 Define IBlobStorageProvider interface: Upload, Download, Rehydrate, GetRehydrationStatus, SetTier, List, Delete, AcquireLease, ReleaseLease
-- [ ] 6.2 Implement AzureBlobStorageProvider using Azure.Storage.Blobs SDK
-- [ ] 6.3 Implement upload with tier assignment (Cold for metadata paths, Archive for data/ paths)
-- [ ] 6.4 Implement download with streaming (non-seekable stream support)
-- [ ] 6.5 Implement rehydration: initiate SetBlobAccessTier to Hot, poll BlobProperties.ArchiveStatus
-- [ ] 6.6 Implement blob lease locking: acquire 60s lease on config blob, auto-renew background task, release on dispose
+- [ ] 6.1 Define `IBlobStorageProvider` interface: `UploadAsync(string blobName, Stream data, AccessTier tier)`, `DownloadAsync(string blobName) → Stream`, `ExistsAsync`, `GetTierAsync`, `SetTierAsync`, `ListAsync(string prefix)`, `DeleteAsync`, `AcquireLeaseAsync`, `RenewLeaseAsync`, `ReleaseLeaseAsync`
+- [ ] 6.2 Implement `AzureBlobStorageProvider` using `Azure.Storage.Blobs` SDK
+- [ ] 6.3 Implement upload with explicit `AccessTier` parameter (caller specifies; no implicit tier logic in the provider)
+- [ ] 6.4 Implement download with streaming (non-seekable stream, no full-buffer copy to memory)
+- [ ] 6.5 Implement rehydration: `SetTierAsync` to Hot, poll `BlobProperties.ArchiveStatus` until `rehydrate-pending-to-hot` clears
+- [ ] 6.6 Implement blob lease locking: acquire 60s lease on `config` blob, auto-renew background task, release on dispose
 - [ ] 6.7 Implement blob listing by prefix with continuation tokens
 - [ ] 6.8 Implement blob deletion
-- [ ] 6.9 Write Azure backend integration tests (with Azurite or live against test container)
+- [ ] 6.9 Write Azure backend integration tests using Azurite (upload/download/delete/tier/lease/list)
 
 ## 7. Repository Layer (Arius.Core)
 
-- [ ] 7.1 Implement Repository class: connect, load config, validate passphrase, decrypt master key
+- [ ] 7.1 Implement `Repository` class: connect to Azure via `IBlobStorageProvider`, load config blob (Cold tier), validate passphrase, decrypt master key
 - [x] 7.2 Implement index management: write index delta files, load/merge all index files, lookup blob→pack
 - [x] 7.3 Implement snapshot management: create/read/delete/list snapshots
 - [ ] 7.4 Implement tree management: create/read tree blobs, write to cold tier, walk trees by path
-- [x] 7.5 Implement repo init: generate config (repo ID, version, gear seed, pack size), create first key file
-- [ ] 7.6 Write repository unit tests with mock IBlobStorageProvider
-- [x] 7.7 Update FileSystemRepositoryStore.BackupAsync to pass master key to BlobHash computation (HMAC-SHA256 instead of plain SHA-256); update ValidatePassphraseAsync to load master key for use in backup/restore operations
+- [x] 7.5 Implement repo init: generate config (repo ID, version, gear seed, pack size), create first key file, upload both to Azure (Cold tier)
+- [ ] 7.6 Write repository unit tests with mock `IBlobStorageProvider`
+- [ ] 7.7 Delete `FileSystemRepositoryStore` — replace with `AzureRepository` backed by `IBlobStorageProvider`; update all handlers (`BackupHandler`, `RestoreHandler`, `InitHandler`, `SnapshotsHandler`) to use the new abstraction via DI
 
 ## 8. Local Cache (Arius.Core)
 
@@ -80,28 +80,28 @@
 ## 9. Mediator Handlers — Requests & Streaming
 
 - [x] 9.1 Register Mediator in DI container for both CLI and API projects
-- [x] 9.2 Implement InitHandler: IRequestHandler<InitRequest, InitResult>
-- [x] 9.3 Implement BackupHandler: IStreamRequestHandler<BackupRequest, BackupEvent> — scan, chunk, dedup, pack, upload, create snapshot
-- [x] 9.4 Implement RestoreHandler: IStreamRequestHandler<RestoreRequest, RestoreEvent> — plan, estimate cost, rehydrate, download, decrypt, reassemble
-- [x] 9.5 Implement SnapshotsHandler: IStreamRequestHandler<ListSnapshotsRequest, Snapshot>
-- [ ] 9.6 Implement LsHandler: IStreamRequestHandler<LsRequest, TreeEntry> — walk tree blobs
-- [ ] 9.7 Implement FindHandler: IStreamRequestHandler<FindRequest, SearchResult> — search across snapshots
-- [ ] 9.8 Implement ForgetHandler: IStreamRequestHandler<ForgetRequest, ForgetEvent> — retention policies
-- [ ] 9.9 Implement PruneHandler: IStreamRequestHandler<PruneRequest, PruneEvent> — identify unreferenced packs, repack, delete
-- [ ] 9.10 Implement CheckHandler: IStreamRequestHandler<CheckRequest, CheckResult> — metadata + optional data integrity check
-- [ ] 9.11 Implement DiffHandler: IStreamRequestHandler<DiffRequest, DiffEntry>
-- [ ] 9.12 Implement StatsHandler: IRequestHandler<StatsRequest, RepoStats>
-- [ ] 9.13 Implement TagHandler: IRequestHandler<TagRequest, TagResult>
-- [ ] 9.14 Implement KeyHandler: IRequestHandler<KeyRequest, KeyResult> — add, remove, list, passwd
-- [ ] 9.15 Implement RepairHandler: IRequestHandler<RepairRequest, RepairResult> — repair index, repair snapshots
-- [ ] 9.16 Implement CostEstimateHandler: IRequestHandler<CostEstimateRequest, RestoreCostEstimate>
+- [x] 9.2 Implement InitHandler: `IRequestHandler<InitRequest, InitResult>` — accepts Azure connection string + container, passphrase, optional pack size
+- [ ] 9.3 Implement BackupHandler: `IStreamRequestHandler<BackupRequest, BackupEvent>` — accepts Azure connection, source paths, passphrase, optional `AccessTier` (default Archive); streams sealed packs directly to Azure, writes metadata to Cold tier
+- [ ] 9.4 Implement RestoreHandler: `IStreamRequestHandler<RestoreRequest, RestoreEvent>` — accepts Azure connection, snapshot ID, target path, passphrase; streams rehydrated packs from Azure into memory (no disk staging), decrypts and writes directly to target
+- [x] 9.5 Implement SnapshotsHandler: `IStreamRequestHandler<ListSnapshotsRequest, Snapshot>`
+- [ ] 9.6 Implement LsHandler: `IStreamRequestHandler<LsRequest, TreeEntry>` — walk tree blobs
+- [ ] 9.7 Implement FindHandler: `IStreamRequestHandler<FindRequest, SearchResult>` — search across snapshots
+- [ ] 9.8 Implement ForgetHandler: `IStreamRequestHandler<ForgetRequest, ForgetEvent>` — retention policies
+- [ ] 9.9 Implement PruneHandler: `IStreamRequestHandler<PruneRequest, PruneEvent>` — identify unreferenced packs, repack, delete
+- [ ] 9.10 Implement CheckHandler: `IStreamRequestHandler<CheckRequest, CheckResult>` — metadata + optional data integrity check
+- [ ] 9.11 Implement DiffHandler: `IStreamRequestHandler<DiffRequest, DiffEntry>`
+- [ ] 9.12 Implement StatsHandler: `IRequestHandler<StatsRequest, RepoStats>`
+- [ ] 9.13 Implement TagHandler: `IRequestHandler<TagRequest, TagResult>`
+- [ ] 9.14 Implement KeyHandler: `IRequestHandler<KeyRequest, KeyResult>` — add, remove, list, passwd
+- [ ] 9.15 Implement RepairHandler: `IRequestHandler<RepairRequest, RepairResult>` — repair index, repair snapshots
+- [ ] 9.16 Implement CostEstimateHandler: `IRequestHandler<CostEstimateRequest, RestoreCostEstimate>`
 
 ## 10. CLI (Arius.Cli)
 
 - [x] 10.1 Set up System.CommandLine with command registration matching restic command surface
-- [x] 10.2 Implement global options: --repo, --password-file, --json, --yes, --verbose
+- [x] 10.2 Implement global options: `--repo` (Azure connection string or URL), `--password-file`, `--json`, `--yes`, `--verbose`
 - [x] 10.3 Implement init command with Spectre prompts
-- [x] 10.4 Implement backup command with Spectre Progress (file count, bytes, upload speed)
+- [x] 10.4 Implement backup command with Spectre Progress (file count, bytes, upload speed); add `--tier` option (hot/cool/cold/archive, default archive)
 - [x] 10.5 Implement restore command with Spectre Live (rehydration + restoration progress)
 - [x] 10.6 Implement snapshots command with Spectre Table (--compact, --latest, --group-by)
 - [ ] 10.7 Implement ls command with streaming table output
@@ -161,11 +161,13 @@
 
 ## 14. Integration Testing
 
-- [x] 14.1 Write integration test: init → backup → snapshots → ls → verify tree content
-- [x] 14.2 Write integration test: backup → backup (incremental) → verify dedup (no duplicate blobs)
-- [ ] 14.3 Write integration test: backup → forget → prune → verify unreferenced packs removed
-- [x] 14.4 Write integration test: backup → restore → verify file content matches original
-- [ ] 14.5 Write integration test: delete local cache → rebuild from Azure → verify operations still work
-- [ ] 14.6 Write integration test: backup 2KB files at scale (1000+ files) → verify chunking/packing behavior
-- [ ] 14.7 Write integration test: concurrent backup attempt → verify lease-based locking
-- [ ] 14.8 Write integration test: manual recovery → backup file, then recover using only az CLI + openssl + gunzip + tar + cat
+- [ ] 14.1 Write integration test (Azurite): init → backup → snapshots → ls → verify tree content
+- [ ] 14.2 Write integration test (Azurite): backup → backup (incremental) → verify dedup (no duplicate blobs uploaded)
+- [ ] 14.3 Write integration test (Azurite): backup → forget → prune → verify unreferenced packs removed
+- [ ] 14.4 Write integration test (Azurite): backup → rehydrate → restore → verify file content matches original
+- [ ] 14.5 Write integration test (Azurite): delete local cache → rebuild from Azure → verify operations still work
+- [ ] 14.6 Write integration test (Azurite): backup 2KB files at scale (1000+ files) → verify chunking/packing behavior
+- [ ] 14.7 Write integration test (Azurite): concurrent backup attempt → verify lease-based locking
+- [ ] 14.8 Write integration test: manual recovery → backup file to Azure, then recover using only az CLI + openssl + gunzip + tar + cat
+- [ ] 14.9 Write integration test: backup with `--tier hot` → verify blobs in Azure have Hot tier (no rehydration needed for restore)
+- [ ] 14.10 Write integration test: backup with `--tier archive` → verify blobs require rehydration for restore

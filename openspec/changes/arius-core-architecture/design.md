@@ -25,6 +25,7 @@ The system has two frontends (CLI, Web UI) sharing business logic via the Mediat
 **Non-Goals:**
 - Compatibility with restic's repository format (spirit, not wire-compatible)
 - Support for any backend other than Azure Blob Storage
+- Local filesystem as an intermediate storage step — packs are streamed directly to/from Azure
 - FUSE mount (restic's `mount` command) — not applicable to archive tier
 - `self-update` or `debug` commands
 - Multi-repository copy (`restic copy`) — may be added later
@@ -105,13 +106,23 @@ Pack files and metadata blobs (snapshots, index, trees) are addressed by `SHA-25
 - Custom binary format (restic-style header-at-end): Compact but requires custom tooling for recovery. Since archive tier requires full-blob download anyway, random access within packs provides no benefit.
 - ZIP: Less Unix-native, worse streaming characteristics.
 
-**Pack pipeline:**
+**Pack pipeline (backup):**
 ```
 Chunks (plaintext blobs) 
     → TAR archive (blobs named by HMAC-SHA256 blob ID + manifest.json)
     → gzip compression
     → AES-256-CBC encryption (OpenSSL-compatible)
-    → Upload to Azure
+    → Stream directly to Azure Blob Storage (no intermediate disk write)
+```
+
+**Pack pipeline (restore):**
+```
+Azure Blob Storage (rehydrated pack)
+    → Stream into memory
+    → AES-256-CBC decryption
+    → gzip decompression
+    → TAR extraction → individual blob bytes
+    → Reassemble file at target path (no intermediate disk write of pack data)
 ```
 
 **TAR structure inside each pack:**
@@ -174,10 +185,10 @@ CLI and API both construct request objects and dispatch through Mediator. Handle
 ```
 Phase 1 (PLAN):     Load snapshot → walk trees → identify packs → cost estimate → confirm
 Phase 2 (REHYDRATE): Initiate rehydration → poll status → stream progress
-Phase 3 (RESTORE):   Download rehydrated packs → decrypt → extract → write files
+Phase 3 (RESTORE):   Stream rehydrated packs from Azure → decrypt → extract in memory → write files
 ```
 
-Phases 2 and 3 overlap: as each pack becomes rehydrated, immediately download and restore from it. Rehydrated packs are downloaded to `~/.arius/hydrated/{pack-id}` staging directory, then deleted after extraction.
+Phases 2 and 3 overlap: as each pack becomes rehydrated, immediately download and restore from it. Packs are streamed from Azure into memory (not to disk), decrypted, decompressed, and extracted — individual blobs are written directly to the target file system. This avoids requiring additional disk space proportional to the repository size.
 
 **Resumability:** Rehydration state tracked in Azure (blob tier status is queryable). On resume, query which packs are already rehydrated and continue from there. No local state needed for resumption.
 
@@ -225,15 +236,30 @@ Note: blob files inside packs are named by their `HMAC-SHA256(master_key, plaint
 
 **Rationale:** A backup tool must be more durable than the tool itself. TAR + gzip + OpenSSL are available on every Unix system and will remain so for decades. This is the ultimate disaster recovery guarantee.
 
-### D12: Large File Hashing — Deferred to Chunking
+### D13: Data Pack Tier Selection
 
-**Known gap (pre-chunking):** The current implementation reads entire files into memory to compute blob hashes (`File.ReadAllBytes`). This will not scale for files approaching or exceeding available RAM (e.g. 2+ GB VM disk images).
+**Choice:** The backup command accepts an optional `--tier` argument (hot/cool/cold/archive) for data packs. Default is Archive.
 
-**Decision:** This is not fixed directly in the current store implementation. Instead, it is resolved structurally by implementing content-defined chunking (tasks 4.x): once chunking is in place, no individual blob ever exceeds `ChunkMax` (default 4 MB), making in-memory hashing of any single blob safe.
+**Rationale:**
+- Archive is optimal for long-term cold backup (lowest storage cost, no access needed).
+- Some users may want Hot/Cool/Cold for data they plan to restore soon, or for testing without rehydration delays.
+- Metadata (config, keys, snapshots, index, trees) is always Cold — it must be readable immediately for all operations.
 
-**Interim constraint:** Until chunking is implemented, the filesystem store has an implicit maximum practical file size of ~500 MB (limited by available working memory and GC pressure). This is acceptable for the current development phase.
+**Tiering contract:**
+- `data/` packs: tier specified by `--tier` at backup time (default: Archive)
+- Everything else: always Cold (immutable rule, not configurable per-command)
 
-**Implementation note for chunking:** When implementing the chunker, blob IDs must be computed as `HMAC-SHA256(master_key, chunk_plaintext)` using an incremental/streaming HMAC (`System.Security.Cryptography.IncrementalHash`) to avoid materialising the chunk in memory before hashing.
+### D14: No Local Filesystem for Repository Data
+
+**Decision:** The local filesystem is never used as intermediate or permanent storage for repository pack data.
+
+- **Backup:** Sealed packs are assembled in memory and streamed directly to Azure Blob Storage. No `.pack` files are written to disk.
+- **Restore:** Packs are streamed from Azure into memory, decrypted, decompressed, and extracted — blobs are written directly to the target path. No staging directory is used.
+- **Non-goal confirmed:** Backing up 1 TB of data must not require 1 TB of additional local disk space. The only local disk usage is the optional SQLite metadata cache, which is O(metadata) not O(data).
+
+Content-defined chunking (Gear hash CDC) ensures no individual blob ever exceeds `ChunkMax` (default 4 MB). In-memory hashing and pack assembly of any single blob is therefore safe regardless of the original file size. Large files (VM disk images, etc.) are split into chunks before any memory operation — the chunker is the gate.
+
+**Implementation note:** Blob IDs must be computed as `HMAC-SHA256(master_key, chunk_plaintext)` using an incremental/streaming HMAC (`System.Security.Cryptography.IncrementalHash`) to avoid materialising the chunk in memory before hashing.
 
 ## Risks / Trade-offs
 
