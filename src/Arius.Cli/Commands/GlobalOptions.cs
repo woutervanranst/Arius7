@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Microsoft.Extensions.Configuration;
 
 namespace Arius.Cli.Commands;
 
@@ -7,6 +8,12 @@ namespace Arius.Cli.Commands;
 /// </summary>
 internal static class GlobalOptions
 {
+    /// <summary>
+    /// Set once during startup. Provides access to user secrets and environment variables
+    /// as a unified configuration source.
+    /// </summary>
+    public static IConfiguration? Configuration { get; set; }
+
     public static readonly Option<string?> Repo = new("--repo", "-r")
     {
         Description = "Repository path (or set ARIUS_REPOSITORY environment variable)"
@@ -33,22 +40,26 @@ internal static class GlobalOptions
     };
 
     /// <summary>
-    /// Resolves the repository path from the option value or ARIUS_REPOSITORY env var.
-    /// Returns null if not set.
+    /// Resolves the repository connection string.
+    /// Priority: --repo option → ARIUS_REPOSITORY env var → user secrets.
+    /// Returns null if not set anywhere.
     /// </summary>
     public static string? ResolveRepo(string? optionValue)
-        => optionValue ?? Environment.GetEnvironmentVariable("ARIUS_REPOSITORY");
+        => optionValue
+        ?? Configuration?["ARIUS_REPOSITORY"]
+        ?? Environment.GetEnvironmentVariable("ARIUS_REPOSITORY");
 
     /// <summary>
-    /// Resolves the passphrase from the password file option, ARIUS_PASSWORD env var,
-    /// or by prompting interactively.
+    /// Resolves the passphrase.
+    /// Priority: ARIUS_PASSWORD env var / user secret → --password-file → interactive prompt.
     /// </summary>
     public static string ResolvePassphrase(string? passwordFile)
     {
-        // 1. Environment variable
-        var envPassword = Environment.GetEnvironmentVariable("ARIUS_PASSWORD");
-        if (!string.IsNullOrEmpty(envPassword))
-            return envPassword;
+        // 1. Configuration (covers env var AND user secrets in one call)
+        var configured = Configuration?["ARIUS_PASSWORD"]
+                      ?? Environment.GetEnvironmentVariable("ARIUS_PASSWORD");
+        if (!string.IsNullOrEmpty(configured))
+            return configured;
 
         // 2. Password file
         if (!string.IsNullOrEmpty(passwordFile) && File.Exists(passwordFile))

@@ -30,8 +30,9 @@ Metadata (snapshots, index, trees, config) is always stored at the Cold tier; da
    - [cat](#cat)
 5. [JSON output mode](#json-output-mode)
 6. [Environment variables](#environment-variables)
-7. [Access tiers and restore costs](#access-tiers-and-restore-costs)
-8. [Manual recovery](#manual-recovery)
+7. [Local development secrets](#local-development-secrets)
+8. [Access tiers and restore costs](#access-tiers-and-restore-costs)
+9. [Manual recovery](#manual-recovery)
 
 ---
 
@@ -876,6 +877,82 @@ export ARIUS_PASSWORD="my-passphrase"
 arius backup /data
 arius snapshots
 ```
+
+---
+
+## Local development secrets
+
+Storing connection strings and passwords in environment variables works fine in CI and
+production, but is cumbersome during local development. Both `Arius.Cli` and `Arius.Api`
+support the [.NET User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets)
+mechanism as an additional configuration source so credentials never have to be committed
+to source control or set globally in the shell.
+
+User secrets are stored in a per-user, per-project JSON file outside the repository tree
+and are never included in a build output or container image.
+
+### How it works
+
+Both projects already have a `UserSecretsId` configured in their `.csproj` files.
+The lookup priority for every credential key is:
+
+```
+environment variable  (highest — always wins)
+  ↓
+.NET user secrets     (Development only)
+  ↓
+--password-file / interactive prompt
+```
+
+### CLI — set secrets
+
+```bash
+cd src/Arius.Cli
+
+dotnet user-secrets set ARIUS_REPOSITORY "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=..."
+dotnet user-secrets set ARIUS_CONTAINER  "mybackups"
+dotnet user-secrets set ARIUS_PASSWORD   "my-passphrase"
+```
+
+After that you can run any command without supplying credentials:
+
+```bash
+dotnet run --project src/Arius.Cli -- snapshots
+dotnet run --project src/Arius.Cli -- backup /home/user/documents
+```
+
+### API — set secrets
+
+```bash
+cd src/Arius.Api
+
+dotnet user-secrets set ARIUS_REPOSITORY "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=..."
+dotnet user-secrets set ARIUS_CONTAINER  "mybackups"
+dotnet user-secrets set ARIUS_PASSWORD   "my-passphrase"
+```
+
+Then start the API without any environment variables:
+
+```bash
+dotnet run --project src/Arius.Api
+```
+
+### Manage secrets
+
+```bash
+# List all secrets for a project
+dotnet user-secrets list --project src/Arius.Cli
+
+# Remove a specific secret
+dotnet user-secrets remove ARIUS_PASSWORD --project src/Arius.Cli
+
+# Clear all secrets
+dotnet user-secrets clear --project src/Arius.Cli
+```
+
+> User secrets are stored in:
+> - **Windows:** `%APPDATA%\Microsoft\UserSecrets\<UserSecretsId>\secrets.json`
+> - **macOS / Linux:** `~/.microsoft/usersecrets/<UserSecretsId>/secrets.json`
 
 ---
 
