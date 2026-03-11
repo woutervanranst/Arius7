@@ -97,6 +97,33 @@ This starts:
 
 Open `http://localhost:8080` in a browser. The API must be configured with the repository credentials (see [Configuration](#configuration)).
 
+**Production: point Docker Compose at real Azure Storage**
+
+The `docker-compose.yml` ships with Azurite defaults. To use a real Azure Storage account, override the three environment variables — either inline:
+
+```bash
+ARIUS_REPOSITORY="DefaultEndpointsProtocol=https;AccountName=<account>;AccountKey=<key>;EndpointSuffix=core.windows.net" \
+ARIUS_CONTAINER="mybackups" \
+ARIUS_PASSWORD="my-passphrase" \
+docker compose up --build
+```
+
+Or edit the `environment` block in `docker-compose.yml` directly:
+
+```yaml
+environment:
+  ARIUS_REPOSITORY: "DefaultEndpointsProtocol=https;AccountName=<account>;AccountKey=<key>;EndpointSuffix=core.windows.net"
+  ARIUS_CONTAINER: "mybackups"
+  ARIUS_PASSWORD: "my-passphrase"
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+```
+
+> The Azure Storage connection string bundles the account name and key together.
+> Find it in the Azure portal under **Storage account → Access keys → Connection string**.
+
+All three variables are **required** — the API throws at startup if any is missing.
+
 ### Option 2 — Development mode (hot-reload)
 
 Run the API and the Vite dev server separately. The dev server proxies `/api` and `/hub` to the API automatically.
