@@ -5,9 +5,14 @@ namespace Arius.Core.Models;
 
 public readonly record struct BlobHash(string Value)
 {
-    public static BlobHash FromBytes(ReadOnlySpan<byte> data)
+    /// <summary>
+    /// Computes HMAC-SHA256(masterKey, data) as the blob ID.
+    /// Using HMAC prevents a presence-confirmation attack: an adversary with
+    /// read access to blob names cannot confirm a file is in the repo without the key.
+    /// </summary>
+    public static BlobHash FromBytes(ReadOnlySpan<byte> data, byte[] masterKey)
     {
-        var hashBytes = SHA256.HashData(data);
+        var hashBytes = HMACSHA256.HashData(masterKey, data);
         var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
         return new BlobHash(hash);
     }
@@ -39,4 +44,13 @@ public readonly record struct RepoId(string Value)
 {
     public static RepoId New() => new(Guid.NewGuid().ToString("N"));
     public override string ToString() => Value;
+}
+
+/// <summary>Azure Blob Storage access tier for uploaded blobs.</summary>
+public enum BlobTier
+{
+    Hot,
+    Cool,
+    Cold,
+    Archive
 }

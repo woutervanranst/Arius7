@@ -16,35 +16,36 @@
 - [x] 2.5 Define PackHeader model: array of (BlobHash, BlobType, Offset, Length)
 - [x] 2.6 Define RepoConfig model: RepoId, Version, GearSeed, PackSize, ChunkMin, ChunkAvg, ChunkMax
 - [x] 2.7 Define Chunk record: ReadOnlyMemory<byte> Data
+- [x] 2.8 Update BlobHash computation: change from SHA-256(plaintext) to HMAC-SHA256(master_key, plaintext); update BlobHash.FromBytes to accept a key parameter and use HMACSHA256
 
 ## 3. Encryption (Arius.Core)
 
-- [ ] 3.1 Port CryptoExtensions (AES-256-CBC, OpenSSL-compatible, PBKDF2-SHA256) into Arius.Core
-- [ ] 3.2 Implement master key generation (32-byte random key)
-- [ ] 3.3 Implement two-level key architecture: passphrase → PBKDF2 → derived key → decrypt key file → master key
-- [ ] 3.4 Implement key file format: plain JSON with salt, iterations, and encrypted master key payload
-- [ ] 3.5 Implement key file serialization/deserialization
-- [ ] 3.6 Implement multi-key support: add key, remove key, change password, list keys
-- [ ] 3.7 Write encryption unit tests: roundtrip encrypt/decrypt, OpenSSL compatibility, stream-based large data
-- [ ] 3.8 Write key management unit tests: add/remove/change password, reject removing last key
-- [ ] 3.9 Write manual key recovery test: verify master key can be extracted using openssl CLI with passphrase
+- [x] 3.1 Port CryptoExtensions (AES-256-CBC, OpenSSL-compatible, PBKDF2-SHA256) into Arius.Core
+- [x] 3.2 Implement master key generation (32-byte random key)
+- [x] 3.3 Implement two-level key architecture: passphrase → PBKDF2 → derived key → decrypt key file → master key
+- [x] 3.4 Implement key file format: plain JSON with salt, iterations, and encrypted master key payload
+- [x] 3.5 Implement key file serialization/deserialization
+- [x] 3.6 Implement multi-key support: add key, remove key, change password, list keys
+- [x] 3.7 Write encryption unit tests: roundtrip encrypt/decrypt, OpenSSL compatibility, stream-based large data
+- [x] 3.8 Write key management unit tests: add/remove/change password, reject removing last key
+- [x] 3.9 Write manual key recovery test: verify master key can be extracted using openssl CLI with passphrase
 
 ## 4. Chunking (Arius.Core)
 
-- [ ] 4.1 Define IChunker interface: IAsyncEnumerable<Chunk> ChunkAsync(Stream, CancellationToken)
-- [ ] 4.2 Implement GearChunker: gear table generation from seed, rolling hash, min/avg/max boundary logic
-- [ ] 4.3 Write chunker unit tests: boundary detection, min/max enforcement, small file single chunk, deterministic output from same seed
-- [ ] 4.4 Write chunker dedup tests: insert byte at start, verify most chunks unchanged
+- [x] 4.1 Define IChunker interface: IAsyncEnumerable<Chunk> ChunkAsync(Stream, CancellationToken)
+- [x] 4.2 Implement GearChunker: gear table generation from seed, rolling hash, min/avg/max boundary logic
+- [x] 4.3 Write chunker unit tests: boundary detection, min/max enforcement, small file single chunk, deterministic output from same seed
+- [x] 4.4 Write chunker dedup tests: insert byte at start, verify most chunks unchanged
 
 ## 5. Pack File Management (Arius.Core)
 
-- [ ] 5.1 Implement PackerManager: accumulate blobs until configurable pack size reached
-- [ ] 5.2 Implement pack file creation: build TAR archive with blob files named by SHA-256 hash + manifest.json
-- [ ] 5.3 Implement gzip compression of TAR archive
-- [ ] 5.4 Implement pack pipeline: TAR → gzip → AES-256-CBC encrypt → SHA-256 hash of encrypted output = pack ID
-- [ ] 5.5 Implement pack file extraction: decrypt → gunzip → untar → read manifest.json → extract blobs by hash
-- [ ] 5.6 Write packer unit tests: pack creation, roundtrip create/extract, manifest parsing, configurable size
-- [ ] 5.7 Write manual recovery test: verify pack can be recovered with openssl + gunzip + tar CLI commands
+- [x] 5.1 Implement PackerManager: accumulate blobs until configurable pack size reached
+- [x] 5.2 Implement pack file creation: build TAR archive with blob files named by SHA-256 hash + manifest.json
+- [x] 5.3 Implement gzip compression of TAR archive
+- [x] 5.4 Implement pack pipeline: TAR → gzip → AES-256-CBC encrypt → SHA-256 hash of encrypted output = pack ID
+- [x] 5.5 Implement pack file extraction: decrypt → gunzip → untar → read manifest.json → extract blobs by hash
+- [x] 5.6 Write packer unit tests: pack creation, roundtrip create/extract, manifest parsing, configurable size
+- [x] 5.7 Write manual recovery test: verify pack can be recovered with openssl + gunzip + tar CLI commands
 
 ## 6. Azure Backend (Arius.Azure)
 
@@ -61,11 +62,12 @@
 ## 7. Repository Layer (Arius.Core)
 
 - [ ] 7.1 Implement Repository class: connect, load config, validate passphrase, decrypt master key
-- [ ] 7.2 Implement index management: write index delta files, load/merge all index files, lookup blob→pack
-- [ ] 7.3 Implement snapshot management: create/read/delete/list snapshots
+- [x] 7.2 Implement index management: write index delta files, load/merge all index files, lookup blob→pack
+- [x] 7.3 Implement snapshot management: create/read/delete/list snapshots
 - [ ] 7.4 Implement tree management: create/read tree blobs, write to cold tier, walk trees by path
 - [x] 7.5 Implement repo init: generate config (repo ID, version, gear seed, pack size), create first key file
 - [ ] 7.6 Write repository unit tests with mock IBlobStorageProvider
+- [x] 7.7 Update FileSystemRepositoryStore.BackupAsync to pass master key to BlobHash computation (HMAC-SHA256 instead of plain SHA-256); update ValidatePassphraseAsync to load master key for use in backup/restore operations
 
 ## 8. Local Cache (Arius.Core)
 

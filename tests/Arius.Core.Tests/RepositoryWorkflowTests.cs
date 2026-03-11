@@ -63,8 +63,14 @@ file static class TestHelpers
         return buf;
     }
 
-    public static int BlobCount(string repoPath) =>
-        Directory.GetFiles(Path.Combine(repoPath, "blobs"), "*.bin").Length;
+    /// <summary>Returns the number of .pack files written to the packs/ directory.</summary>
+    public static int PackCount(string repoPath)
+    {
+        var packsDir = Path.Combine(repoPath, "packs");
+        return Directory.Exists(packsDir)
+            ? Directory.GetFiles(packsDir, "*.pack").Length
+            : 0;
+    }
 
     public static int SnapshotCount(string repoPath) =>
         Directory.GetFiles(Path.Combine(repoPath, "snapshots"), "*.json").Length;
@@ -95,7 +101,8 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         File.Exists(result.KeyPath).ShouldBeTrue();
         result.KeyPath.ShouldStartWith(fx.RepoPath);
 
-        Directory.Exists(Path.Combine(fx.RepoPath, "blobs")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fx.RepoPath, "packs")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fx.RepoPath, "index")).ShouldBeTrue();
         Directory.Exists(Path.Combine(fx.RepoPath, "snapshots")).ShouldBeTrue();
         Directory.Exists(Path.Combine(fx.RepoPath, "keys")).ShouldBeTrue();
     }
@@ -151,7 +158,7 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         completed.DeduplicatedFiles.ShouldBe(0);
 
         TestHelpers.SnapshotCount(fx.RepoPath).ShouldBe(1);
-        TestHelpers.BlobCount(fx.RepoPath).ShouldBe(2);
+        TestHelpers.PackCount(fx.RepoPath).ShouldBe(1); // all 2 chunks land in one pack
 
         fx.FirstSnapshot = completed.Snapshot;
     }
@@ -215,7 +222,7 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         completed.StoredFiles.ShouldBe(1);       // only c.txt is new
         completed.DeduplicatedFiles.ShouldBe(2); // a.txt + sub/b.txt are deduped
 
-        TestHelpers.BlobCount(fx.RepoPath).ShouldBe(3);    // 2 original + 1 new
+        TestHelpers.PackCount(fx.RepoPath).ShouldBe(2);   // 1 from first backup + 1 from second
         TestHelpers.SnapshotCount(fx.RepoPath).ShouldBe(2);
 
         fx.SecondSnapshot = completed.Snapshot;
@@ -374,7 +381,7 @@ public class DeduplicationTests
             var completed = events.OfType<BackupCompleted>().ShouldHaveSingleItem();
             completed.StoredFiles.ShouldBe(1);
             completed.DeduplicatedFiles.ShouldBe(1);
-            TestHelpers.BlobCount(repoPath).ShouldBe(1);
+            TestHelpers.PackCount(repoPath).ShouldBe(1); // 1 unique chunk → 1 pack
         }
         finally
         {
@@ -389,25 +396,37 @@ public class DeduplicationTests
 
 public class BlobHashTests
 {
+    private static readonly byte[] TestKey = new byte[32]; // all-zero key for determinism
+
     [Test]
     public void SameContent_SameHash()
     {
         var content = TestHelpers.RandomBytes(1024);
-        BlobHash.FromBytes(content).ShouldBe(BlobHash.FromBytes(content));
+        BlobHash.FromBytes(content, TestKey).ShouldBe(BlobHash.FromBytes(content, TestKey));
     }
 
     [Test]
     public void DifferentContent_DifferentHash()
     {
-        BlobHash.FromBytes(TestHelpers.RandomBytes(64))
-                .ShouldNotBe(BlobHash.FromBytes(TestHelpers.RandomBytes(64)));
+        BlobHash.FromBytes(TestHelpers.RandomBytes(64), TestKey)
+                .ShouldNotBe(BlobHash.FromBytes(TestHelpers.RandomBytes(64), TestKey));
     }
 
     [Test]
-    public void KnownVector_MatchesSha256OfEmptyInput()
+    public void DifferentKey_SameContent_DifferentHash()
     {
-        // SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        BlobHash.FromBytes([]).Value
-                .ShouldBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        var content = TestHelpers.RandomBytes(64);
+        var key1    = TestHelpers.RandomBytes(32);
+        var key2    = TestHelpers.RandomBytes(32);
+        BlobHash.FromBytes(content, key1).ShouldNotBe(BlobHash.FromBytes(content, key2));
+    }
+
+    [Test]
+    public void KnownVector_MatchesHmacSha256OfEmptyInput()
+    {
+        // HMAC-SHA256(key=0x00*32, data=[]) = known constant
+        var expected = System.Security.Cryptography.HMACSHA256.HashData(TestKey, (byte[])[]);
+        var expectedHex = Convert.ToHexString(expected).ToLowerInvariant();
+        BlobHash.FromBytes([], TestKey).Value.ShouldBe(expectedHex);
     }
 }

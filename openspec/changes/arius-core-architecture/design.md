@@ -87,7 +87,16 @@ Key files are plain JSON (NOT encrypted by the master key) stored in `keys/`. Ea
 - Multiple passwords = multiple key files, same master key inside each
 - Manual recovery = decrypt key file with passphrase to get master key, then use master key with OpenSSL
 
-**Integrity model:** SHA-256 hash of encrypted pack = pack ID on Azure. On restore: verify ciphertext hash → decrypt → decompress → verify each plaintext blob hash against index. Corruption/tampering detected at either layer.
+**Blob ID derivation — HMAC-SHA256:**
+Chunk blob IDs are `HMAC-SHA256(master_key, plaintext_chunk)`, NOT plain `SHA-256(plaintext)`. This prevents a **presence-confirmation attack**: an adversary with read access to blob names and knowledge of a specific file's content cannot confirm the file is present in the repository without the master key.
+
+- The master key is used directly as the HMAC key (per-repository, randomly generated at init)
+- Deduplication is preserved: same plaintext + same master key → same HMAC → same blob ID
+- Cross-repository presence detection is also prevented: same file in two repos produces different blob IDs
+
+Pack files and metadata blobs (snapshots, index, trees) are addressed by `SHA-256(ciphertext)` — the hash is over the encrypted bytes, serving as both the Azure blob name and the ciphertext integrity check.
+
+**Integrity model:** `SHA-256(ciphertext)` = pack ID on Azure → verify ciphertext hash → decrypt → decompress → for each blob, verify `HMAC-SHA256(master_key, plaintext) == blob_id`. Corruption or tampering is detected at either layer.
 
 ### D4: Pack File Format — TAR + gzip + OpenSSL
 
@@ -99,7 +108,7 @@ Key files are plain JSON (NOT encrypted by the master key) stored in `keys/`. Ea
 **Pack pipeline:**
 ```
 Chunks (plaintext blobs) 
-    → TAR archive (blobs named by SHA-256 hash + manifest.json)
+    → TAR archive (blobs named by HMAC-SHA256 blob ID + manifest.json)
     → gzip compression
     → AES-256-CBC encryption (OpenSSL-compatible)
     → Upload to Azure
@@ -107,10 +116,10 @@ Chunks (plaintext blobs)
 
 **TAR structure inside each pack:**
 ```
-{blob-hash-1}.bin      # raw chunk data
-{blob-hash-2}.bin      # raw chunk data
+{blob-id-1}.bin      # raw chunk data
+{blob-id-2}.bin      # raw chunk data
 ...
-manifest.json          # { blobs: [{ hash, type, size }] }
+manifest.json          # { blobs: [{ id, type, size }] }
 ```
 
 **TAR overhead:** With gzip, overhead is negligible — TAR headers are 90%+ zeros and compress to nearly nothing. Even worst-case (4,800 × 2KB blobs in a 10 MB pack), compressed TAR overhead is <1%.
@@ -210,9 +219,21 @@ Delta sync: cache stores a watermark (last-synced blob listing marker). On conne
 5. Download and decrypt index file → map content hashes to pack IDs
 6. Rehydrate the needed packs: `az storage blob set-tier --tier Hot`
 7. Download, decrypt, decompress, extract the pack: `openssl enc -d ... | gunzip | tar x`
-8. Concatenate the extracted blobs in order: `cat hash1.bin hash2.bin > restored-file`
+8. Concatenate the extracted blobs in order: `cat blob-id-1.bin blob-id-2.bin > restored-file`
+
+Note: blob files inside packs are named by their `HMAC-SHA256(master_key, plaintext)` ID. The index provides the mapping from those IDs to their ordering within a file — required for correct reassembly.
 
 **Rationale:** A backup tool must be more durable than the tool itself. TAR + gzip + OpenSSL are available on every Unix system and will remain so for decades. This is the ultimate disaster recovery guarantee.
+
+### D12: Large File Hashing — Deferred to Chunking
+
+**Known gap (pre-chunking):** The current implementation reads entire files into memory to compute blob hashes (`File.ReadAllBytes`). This will not scale for files approaching or exceeding available RAM (e.g. 2+ GB VM disk images).
+
+**Decision:** This is not fixed directly in the current store implementation. Instead, it is resolved structurally by implementing content-defined chunking (tasks 4.x): once chunking is in place, no individual blob ever exceeds `ChunkMax` (default 4 MB), making in-memory hashing of any single blob safe.
+
+**Interim constraint:** Until chunking is implemented, the filesystem store has an implicit maximum practical file size of ~500 MB (limited by available working memory and GC pressure). This is acceptable for the current development phase.
+
+**Implementation note for chunking:** When implementing the chunker, blob IDs must be computed as `HMAC-SHA256(master_key, chunk_plaintext)` using an incremental/streaming HMAC (`System.Security.Cryptography.IncrementalHash`) to avoid materialising the chunk in memory before hashing.
 
 ## Risks / Trade-offs
 

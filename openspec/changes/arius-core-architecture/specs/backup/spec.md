@@ -5,11 +5,22 @@ The system SHALL scan specified filesystem paths, chunk files using the configur
 
 #### Scenario: Backup new files
 - **WHEN** user runs `backup /path/to/data`
-- **THEN** the system scans the path, chunks each file, uploads new blobs in packs to archive tier, writes tree blobs to cold tier, writes a new index delta to cold tier, and writes a snapshot to cold tier
+- **THEN** the system scans the path, chunks each file, computes `HMAC-SHA256(master_key, chunk_plaintext)` as each chunk's blob ID, uploads new blobs in packs to archive tier, writes tree blobs to cold tier, writes a new index delta to cold tier, and writes a snapshot to cold tier
 
 #### Scenario: Backup with full deduplication
 - **WHEN** a file's chunks all exist in the index (from a previous backup)
 - **THEN** no new pack data is uploaded; only tree and snapshot metadata are created
+
+### Requirement: Blob ID computation uses HMAC-SHA256 with master key
+Each chunk's blob ID SHALL be computed as `HMAC-SHA256(master_key, plaintext_chunk_bytes)`. Plain SHA-256 of plaintext SHALL NOT be used as a blob address.
+
+#### Scenario: Blob ID derivation
+- **WHEN** a chunk of plaintext bytes is processed
+- **THEN** its ID is `hex(HMAC-SHA256(master_key, chunk_bytes))` — opaque without the master key
+
+#### Scenario: Deduplication with HMAC IDs
+- **WHEN** the same plaintext chunk appears in two different files or backups
+- **THEN** both produce the same HMAC-SHA256 ID (given the same master key) and only one copy is stored
 
 ### Requirement: Incremental backup via metadata comparison
 The system SHALL compare file metadata (mtime, size) against the previous snapshot to skip unchanged files without re-reading their content.

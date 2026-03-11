@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace Arius.Core.Infrastructure;
 
-internal static class JsonDefaults
+public static class JsonDefaults
 {
     public static readonly JsonSerializerOptions Options = new()
     {
