@@ -1,11 +1,11 @@
 ## 1. Solution Structure & Project Setup
 
 - [x] 1.1 Create .NET solution with projects: Arius.Core, Arius.Azure, Arius.Cli, Arius.Api
-- [ ] 1.2 Create Vue 3 + TypeScript project for Arius.Web (Vite scaffolding)
+- [x] 1.2 Create Vue 3 + TypeScript project for Arius.Web (Vite scaffolding)
 - [x] 1.3 Create test projects: Arius.Core.Tests, Arius.Azure.Tests, Arius.Integration.Tests
 - [x] 1.4 Add NuGet dependencies: Azure.Storage.Blobs, Spectre.Console, System.CommandLine, Mediator, Microsoft.Data.Sqlite, Microsoft.AspNetCore.SignalR, FluentResults, Azurite test containers (for testing), TUnit as test framework (! NOT xUnit), Shouldly if the TUnit assertions do not suffice, ArchUnitNET for architecture testing.
-- [ ] 1.5 Add npm dependencies: vue, typescript, @microsoft/signalr
-- [ ] 1.6 Create Dockerfile (multi-stage: build API + Web → single container)
+- [x] 1.5 Add npm dependencies: vue, typescript, @microsoft/signalr
+- [x] 1.6 Create Dockerfile (multi-stage: build API + Web → single container)
 
 ## 2. Core Domain Models
 
@@ -138,25 +138,25 @@
 
 ## 12. Web UI (Arius.Web)
 
-- [ ] 12.1 Set up Vue 3 + TypeScript project with Vite, router, and Pinia state management
-- [ ] 12.2 Create TypeScript types matching API response models (Snapshot, TreeEntry, BackupEvent, RestoreEvent, etc.)
-- [ ] 12.3 Create SignalR client service for real-time event streaming
-- [ ] 12.4 Implement API client service with typed fetch wrappers
-- [ ] 12.5 Build snapshot sidebar component: chronological grouping, tag/host filtering
-- [ ] 12.6 Build file browser component: directory listing with icons, breadcrumb navigation, sorting
-- [ ] 12.7 Build restore dialog component: file selection, cost estimate display, priority selection, confirmation
-- [ ] 12.8 Build progress overlay component: rehydration + restoration progress bars
-- [ ] 12.9 Build backup trigger component (for server-side paths)
-- [ ] 12.10 Build diff view component: side-by-side or unified diff between snapshots
-- [ ] 12.11 Build stats dashboard component: repo statistics, tier breakdown
-- [ ] 12.12 Build forget/prune management component: retention policy UI, dry-run preview
-- [ ] 12.13 Implement responsive layout and styling
+- [x] 12.1 Set up Vue 3 + TypeScript project with Vite, router, and Pinia state management
+- [x] 12.2 Create TypeScript types matching API response models (Snapshot, TreeEntry, BackupEvent, RestoreEvent, etc.)
+- [x] 12.3 Create SignalR client service for real-time event streaming
+- [x] 12.4 Implement API client service with typed fetch wrappers
+- [x] 12.5 Build snapshot sidebar component: chronological grouping, tag/host filtering
+- [x] 12.6 Build file browser component: directory listing with icons, breadcrumb navigation, sorting
+- [x] 12.7 Build restore dialog component: file selection, cost estimate display, priority selection, confirmation
+- [x] 12.8 Build progress overlay component: rehydration + restoration progress bars
+- [x] 12.9 Build backup trigger component (for server-side paths)
+- [x] 12.10 Build diff view component: side-by-side or unified diff between snapshots
+- [x] 12.11 Build stats dashboard component: repo statistics, tier breakdown
+- [x] 12.12 Build forget/prune management component: retention policy UI, dry-run preview
+- [x] 12.13 Implement responsive layout and styling
 
 ## 13. Docker & Deployment
 
-- [ ] 13.1 Create multi-stage Dockerfile: .NET SDK build → Vue build → runtime image (ASP.NET + static files)
-- [ ] 13.2 Configure API to serve Vue static files from wwwroot
-- [ ] 13.3 Add docker-compose.yml for local development with Azurite
+- [x] 13.1 Create multi-stage Dockerfile: .NET SDK build → Vue build → runtime image (ASP.NET + static files)
+- [x] 13.2 Configure API to serve Vue static files from wwwroot
+- [x] 13.3 Add docker-compose.yml for local development with Azurite
 - [ ] 13.4 Test end-to-end: docker run → web UI → browse repo → trigger restore
 
 ## 14. Integration Testing

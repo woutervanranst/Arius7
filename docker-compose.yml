@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  # ── Azurite (Azure Storage emulator) ────────────────────────────────────────
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: azurite --loose --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    ports:
+      - "10000:10000"  # Blob
+      - "10001:10001"  # Queue
+      - "10002:10002"  # Table
+    volumes:
+      - azurite-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Arius API + Web UI ───────────────────────────────────────────────────────
+  arius:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Use Azurite connection string for local dev
+      ARIUS_REPOSITORY: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tiqAjQ==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      ARIUS_CONTAINER: "arius-backup"
+      ARIUS_PASSWORD: "changeme"
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+    depends_on:
+      azurite:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  azurite-data:
