@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This document defines instructions for OpenCode agents working on this repository.
+This document defines instructions for agents working on this repository.
 
 ## OpenSpec Task Completion Workflow
 
