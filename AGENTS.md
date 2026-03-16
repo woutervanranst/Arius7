@@ -1,8 +1,8 @@
-# OpenSpec Task Workflow
+# Agent Instructions
 
-This document defines the standard workflow for completing OpenSpec tasks in this repository.
+This document defines instructions for OpenCode agents working on this repository.
 
-## Completion Checklist
+## OpenSpec Task Completion Workflow
 
 After completing any OpenSpec task, you **MUST** follow these steps before continuing to the next task:
 
