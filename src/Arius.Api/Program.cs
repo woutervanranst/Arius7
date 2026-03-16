@@ -148,8 +148,12 @@ app.MapPost("/api/backup", async (
     {
         try
         {
+            var parallelismOpts = body.Parallelism is > 0
+                ? new ParallelismOptions(body.Parallelism.Value, 0, 0, 0, 0)
+                : null;
+
             await foreach (var ev in handler.Handle(
-                new BackupRequest(connStr, container, password, body.Paths ?? []), tracker.TokenFor(opId)))
+                new BackupRequest(connStr, container, password, body.Paths ?? [], Parallelism: parallelismOpts), tracker.TokenFor(opId)))
             {
                 await hub.Clients.All.SendAsync("BackupEvent", opId, ev);
             }
@@ -179,9 +183,14 @@ app.MapPost("/api/restore", async (
     {
         try
         {
+            var parallelismOpts = body.Parallelism is > 0
+                ? new ParallelismOptions(0, 0, 0, body.Parallelism.Value, body.Parallelism.Value)
+                : null;
+
             await foreach (var ev in handler.Handle(
                 new RestoreRequest(connStr, container, password,
-                    body.SnapshotId, body.TargetPath, body.Include), tracker.TokenFor(opId)))
+                    body.SnapshotId, body.TargetPath, body.Include,
+                    Parallelism: parallelismOpts, TempPath: body.TempPath), tracker.TokenFor(opId)))
             {
                 await hub.Clients.All.SendAsync("RestoreEvent", opId, ev);
             }
@@ -273,8 +282,8 @@ static IResult StreamResponse<T>(IAsyncEnumerable<T> items)
 
 // ─── Request / Response bodies ───────────────────────────────────────────────
 
-record BackupStartBody(IReadOnlyList<string>? Paths);
-record RestoreStartBody(string? SnapshotId, string? TargetPath, string? Include);
+record BackupStartBody(IReadOnlyList<string>? Paths, int? Parallelism = null);
+record RestoreStartBody(string? SnapshotId, string? TargetPath, string? Include, int? Parallelism = null, string? TempPath = null);
 record ForgetStartBody(RetentionPolicy? Policy, bool DryRun = false);
 record PruneStartBody(bool DryRun = false);
 

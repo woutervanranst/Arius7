@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Arius.Core.Application.Prune;
+using Humanizer;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -53,7 +54,7 @@ internal static class PruneCommand
                 return;
             }
 
-            AnsiConsole.MarkupLine($"Will delete {toDelete.Count} pack(s), repack {toRepack.Count} pack(s).");
+            AnsiConsole.MarkupLine($"Will delete {"pack".ToQuantity(toDelete.Count)}, repack {"pack".ToQuantity(toRepack.Count)}.");
 
             if (!dryRun)
             {

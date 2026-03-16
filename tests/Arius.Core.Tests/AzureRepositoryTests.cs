@@ -167,6 +167,35 @@ public class AzureRepositoryTests
     }
 
     [Test]
+    public async Task LoadIndex_ParallelLoad_MergesAllEntriesCorrectly()
+    {
+        // Verify that LoadIndexAsync (which uses Parallel.ForEachAsync) correctly
+        // merges many index blobs loaded concurrently.
+        var storage = new InMemoryBlobStorageProvider();
+        var repo    = new AzureRepository(storage);
+        await repo.InitAsync(Passphrase);
+
+        var masterKey = (await repo.TryUnlockAsync(Passphrase))!;
+        var packId    = PackId.New();
+
+        const int indexBlobCount = 10; // exceeds the default MaxDegreeOfParallelism of 8
+        var entries = new List<IndexEntry>();
+        for (int i = 0; i < indexBlobCount; i++)
+        {
+            var snap  = SnapshotId.New();
+            var entry = new IndexEntry(BlobHash.FromBytes([(byte)i], masterKey), packId, i * 100, 100, BlobType.Data);
+            entries.Add(entry);
+            await repo.WriteIndexAsync(snap, [entry]);
+        }
+
+        var index = await repo.LoadIndexAsync();
+
+        index.Count.ShouldBe(indexBlobCount, "all entries from all parallel-loaded index blobs must be merged");
+        foreach (var entry in entries)
+            index.ContainsKey(entry.BlobHash.Value).ShouldBeTrue();
+    }
+
+    [Test]
     public async Task IndexBlobs_AreInColdTier()
     {
         var storage = new InMemoryBlobStorageProvider();

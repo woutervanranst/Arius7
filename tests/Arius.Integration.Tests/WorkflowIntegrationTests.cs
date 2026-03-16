@@ -130,6 +130,8 @@ public class InitBackupLsTests(IntegFixture fx)
 
         var completed = events.OfType<BackupCompleted>().ShouldHaveSingleItem();
         completed.StoredFiles.ShouldBe(2);
+        completed.Failed.ShouldBe(0);
+        completed.TotalChunks.ShouldBeGreaterThan(0);
         fx.Snap1 = completed.Snapshot;
     }
 
@@ -198,6 +200,7 @@ public class IncrementalBackupDedupTests
 
             ev1.OfType<BackupCompleted>().Single().StoredFiles.ShouldBe(2);
             ev1.OfType<BackupCompleted>().Single().DeduplicatedFiles.ShouldBe(0);
+            ev1.OfType<BackupCompleted>().Single().Failed.ShouldBe(0);
 
             // Add a new file only
             IntegHelpers.WriteFile(src, "c.txt", IntegHelpers.RandomBytes(256));
@@ -211,6 +214,7 @@ public class IncrementalBackupDedupTests
             var comp2 = ev2.OfType<BackupCompleted>().Single();
             comp2.StoredFiles.ShouldBe(1,      "only c.txt is new");
             comp2.DeduplicatedFiles.ShouldBe(2, "a.txt + b.txt are already in the repo");
+            comp2.Failed.ShouldBe(0);
         }
         finally { if (Directory.Exists(src)) Directory.Delete(Path.GetDirectoryName(src)!, recursive: true); }
     }
@@ -332,6 +336,8 @@ public class RestoreIntegTests
                 restoreEvents.Add(e);
 
             restoreEvents.OfType<RestoreCompleted>().Single().RestoredFiles.ShouldBe(2);
+            restoreEvents.OfType<RestoreCompleted>().Single().Failed.ShouldBe(0);
+            restoreEvents.OfType<RestorePlanReady>().Single().PacksToDownload.ShouldBeGreaterThan(0);
 
             // Verify bytes match
             var files = Directory.GetFiles(dst, "*", SearchOption.AllDirectories);
@@ -447,6 +453,8 @@ public class ScaleTests
             started.TotalFiles.ShouldBe(fileCount);
             completed.StoredFiles.ShouldBe(fileCount);
             completed.DeduplicatedFiles.ShouldBe(0);
+            completed.Failed.ShouldBe(0);
+            completed.TotalChunks.ShouldBeGreaterThan(0);
 
             // Verify snapshots count
             var snaps = new List<Snapshot>();

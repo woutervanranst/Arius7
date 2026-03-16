@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using Arius.Core.Application.Snapshots;
+using Humanizer;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -79,15 +80,18 @@ internal static class SnapshotsCommand
             var table = new Table();
             table.AddColumn("ID");
             table.AddColumn("Time");
+            table.AddColumn("Age");
             table.AddColumn("Paths");
             table.AddColumn("Host");
             table.AddColumn("Tags");
 
             await foreach (var snapshot in handler.Handle(request, ct))
             {
+                var localTime = snapshot.Time.ToLocalTime();
                 table.AddRow(
                     snapshot.Id.Value[..8],
-                    snapshot.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                    localTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    snapshot.Time.Humanize(),
                     string.Join(", ", snapshot.Paths),
                     snapshot.Hostname,
                     string.Join(", ", snapshot.Tags));

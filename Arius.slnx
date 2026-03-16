@@ -8,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Arius.Azure.Tests/Arius.Azure.Tests.csproj" />
     <Project Path="tests/Arius.Core.Tests/Arius.Core.Tests.csproj" />
+    <Project Path="tests/Arius.Coyote.Tests/Arius.Coyote.Tests.csproj" />
     <Project Path="tests/Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
   </Folder>
 </Solution>

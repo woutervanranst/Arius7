@@ -2,6 +2,8 @@ using System.CommandLine;
 using System.Text.Json;
 using Arius.Core.Application.Abstractions;
 using Arius.Core.Application.Backup;
+using Arius.Core.Models;
+using Humanizer;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -34,6 +36,11 @@ internal static class BackupCommand
             Description = "Access tier for data packs: hot, cool, cold, archive (default: archive)",
             DefaultValueFactory = _ => "archive"
         };
+        var parallelismOpt = new Option<int>("--parallelism")
+        {
+            Description = "Maximum number of parallel file processors (0 = auto)",
+            DefaultValueFactory = _ => 0
+        };
         var pathsArg = new Argument<string[]>("paths")
         {
             Description = "Files or directories to back up",
@@ -45,6 +52,7 @@ internal static class BackupCommand
         cmd.Options.Add(passwordFileOpt);
         cmd.Options.Add(jsonOpt);
         cmd.Options.Add(tierOpt);
+        cmd.Options.Add(parallelismOpt);
         cmd.Arguments.Add(pathsArg);
 
         cmd.SetAction(async (parseResult, ct) =>
@@ -64,13 +72,18 @@ internal static class BackupCommand
                 return;
             }
 
-            var passphrase = GlobalOptions.ResolvePassphrase(parseResult.GetValue(passwordFileOpt));
-            var paths = parseResult.GetValue(pathsArg) ?? [];
-            var asJson = parseResult.GetValue(jsonOpt);
-            var tier = ParseTier(parseResult.GetValue(tierOpt) ?? "archive");
+            var passphrase  = GlobalOptions.ResolvePassphrase(parseResult.GetValue(passwordFileOpt));
+            var paths       = parseResult.GetValue(pathsArg) ?? [];
+            var asJson      = parseResult.GetValue(jsonOpt);
+            var tier        = ParseTier(parseResult.GetValue(tierOpt) ?? "archive");
+            var parallelism = parseResult.GetValue(parallelismOpt);
+
+            ParallelismOptions? parallelismOpts = parallelism > 0
+                ? new ParallelismOptions(parallelism, 0, 0, 0, 0)
+                : null;
 
             var handler = services.GetRequiredService<BackupHandler>();
-            var request = new BackupRequest(repo, container, passphrase, paths, tier);
+            var request = new BackupRequest(repo, container, passphrase, paths, tier, parallelismOpts);
 
             if (asJson)
             {
@@ -85,6 +98,7 @@ internal static class BackupCommand
             int totalFiles = 0;
             int processed = 0;
             int deduplicated = 0;
+            var errors = new List<string>();
 
             await AnsiConsole.Progress()
                 .AutoClear(false)
@@ -104,7 +118,7 @@ internal static class BackupCommand
                             case BackupStarted started:
                                 totalFiles = started.TotalFiles;
                                 task.MaxValue = totalFiles > 0 ? totalFiles : 1;
-                                task.Description = $"Backing up {totalFiles} file(s)...".EscapeMarkup();
+                                task.Description = $"Backing up {"file".ToQuantity(totalFiles)}...".EscapeMarkup();
                                 break;
 
                             case BackupFileProcessed file:
@@ -114,15 +128,29 @@ internal static class BackupCommand
                                 task.Description = $"[{processed}/{totalFiles}] {Path.GetFileName(file.Path)}".EscapeMarkup();
                                 break;
 
+                            case BackupFileError err:
+                                errors.Add(err.Path);
+                                AnsiConsole.MarkupLine($"[red]Error:[/] {err.Path.EscapeMarkup()} — {err.Error.EscapeMarkup()}");
+                                break;
+
                             case BackupCompleted completed:
                                 task.Value = task.MaxValue;
-                                task.Description = $"Done — snapshot [cyan]{completed.Snapshot.Id.Value[..8]}[/]";
+                                var snapshotId = completed.Snapshot?.Id.Value[..8] ?? "none";
+                                task.Description =
+                                    $"Done — snapshot [cyan]{snapshotId}[/] | " +
+                                    $"new: {completed.NewBytes.Bytes().Humanize()} in {"chunk".ToQuantity(completed.NewChunks)} | " +
+                                    $"dedup: {completed.DeduplicatedBytes.Bytes().Humanize()}";
                                 break;
                         }
                     }
                 });
 
-            AnsiConsole.MarkupLine($"\n[green]Backup complete![/] {processed} files processed, {deduplicated} deduplicated.");
+            if (errors.Count > 0)
+                AnsiConsole.MarkupLine($"\n[yellow]Warning:[/] {"file".ToQuantity(errors.Count)} failed.");
+
+            AnsiConsole.MarkupLine(
+                $"\n[green]Backup complete![/] " +
+                $"{"file".ToQuantity(processed)} processed, {deduplicated} deduplicated.");
         });
 
         return cmd;

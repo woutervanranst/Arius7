@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.Text.Json;
 using Arius.Core.Application.Restore;
+using Arius.Core.Models;
+using Humanizer;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -41,6 +43,11 @@ internal static class RestoreCommand
         {
             Description = "Skip cost confirmation prompt"
         };
+        var parallelismOpt = new Option<int>("--parallelism")
+        {
+            Description = "Maximum number of parallel downloaders/assemblers (0 = auto)",
+            DefaultValueFactory = _ => 0
+        };
         var snapshotArg = new Argument<string>("snapshot-id")
         {
             Description = "Snapshot ID (or prefix) to restore from"
@@ -53,6 +60,7 @@ internal static class RestoreCommand
         cmd.Options.Add(includeOpt);
         cmd.Options.Add(jsonOpt);
         cmd.Options.Add(yesOpt);
+        cmd.Options.Add(parallelismOpt);
         cmd.Arguments.Add(snapshotArg);
 
         cmd.SetAction(async (parseResult, ct) =>
@@ -72,15 +80,20 @@ internal static class RestoreCommand
                 return;
             }
 
-            var passphrase = GlobalOptions.ResolvePassphrase(parseResult.GetValue(passwordFileOpt));
-            var snapshotId = parseResult.GetValue(snapshotArg) ?? string.Empty;
-            var target = parseResult.GetValue(targetOpt) ?? string.Empty;
-            var include = parseResult.GetValue(includeOpt);
-            var asJson = parseResult.GetValue(jsonOpt);
-            var yes = parseResult.GetValue(yesOpt);
+            var passphrase  = GlobalOptions.ResolvePassphrase(parseResult.GetValue(passwordFileOpt));
+            var snapshotId  = parseResult.GetValue(snapshotArg) ?? string.Empty;
+            var target      = parseResult.GetValue(targetOpt) ?? string.Empty;
+            var include     = parseResult.GetValue(includeOpt);
+            var asJson      = parseResult.GetValue(jsonOpt);
+            var yes         = parseResult.GetValue(yesOpt);
+            var parallelism = parseResult.GetValue(parallelismOpt);
+
+            ParallelismOptions? parallelismOpts = parallelism > 0
+                ? new ParallelismOptions(0, 0, 0, parallelism, parallelism)
+                : null;
 
             var handler = services.GetRequiredService<RestoreHandler>();
-            var request = new RestoreRequest(repo, container, passphrase, snapshotId, target, include);
+            var request = new RestoreRequest(repo, container, passphrase, snapshotId, target, include, parallelismOpts);
 
             if (asJson)
             {
@@ -93,6 +106,8 @@ internal static class RestoreCommand
 
             int restoredFiles = 0;
             long restoredBytes = 0;
+            int packsDownloaded = 0;
+            int failedFiles = 0;
 
             await AnsiConsole.Live(new Markup("Starting restore..."))
                 .StartAsync(async ctx =>
@@ -105,38 +120,52 @@ internal static class RestoreCommand
                                 if (!yes)
                                 {
                                     ctx.UpdateTarget(new Markup(
-                                        $"[yellow]Plan:[/] {plan.TotalFiles} file(s), {FormatBytes(plan.TotalBytes)}"));
+                                        $"[yellow]Plan:[/] {"file".ToQuantity(plan.TotalFiles)}, " +
+                                        $"{plan.TotalBytes.Bytes().Humanize()}, " +
+                                        $"{"pack".ToQuantity(plan.PacksToDownload)} to download"));
                                 }
+                                break;
+
+                            case RestorePackFetched pack:
+                                packsDownloaded++;
+                                ctx.UpdateTarget(new Markup(
+                                    $"Fetching packs... {packsDownloaded} — [dim]{pack.PackId[..8]}[/] ({pack.BlobCount} blobs)"));
                                 break;
 
                             case RestoreFileRestored file:
                                 restoredFiles++;
                                 restoredBytes += file.Size;
                                 ctx.UpdateTarget(new Markup(
-                                    $"Restoring... {restoredFiles} file(s) — [dim]{Path.GetFileName(file.Path)}[/]"));
+                                    $"Restoring... {"file".ToQuantity(restoredFiles)} — [dim]{Path.GetFileName(file.Path)}[/]"));
+                                break;
+
+                            case RestoreFileError err:
+                                failedFiles++;
+                                AnsiConsole.MarkupLine($"[red]Error:[/] {err.Path.EscapeMarkup()} — {err.Error.EscapeMarkup()}");
                                 break;
 
                             case RestoreCompleted completed:
                                 ctx.UpdateTarget(new Markup(
-                                    $"[green]Done:[/] {completed.RestoredFiles} file(s) restored ({FormatBytes(completed.RestoredBytes)})"));
+                                    $"[green]Done:[/] {"file".ToQuantity(completed.RestoredFiles)} restored " +
+                                    $"({completed.RestoredBytes.Bytes().Humanize()})" +
+                                    (completed.Failed > 0 ? $" [red]{completed.Failed} failed[/]" : "")));
                                 restoredFiles = completed.RestoredFiles;
                                 restoredBytes = completed.RestoredBytes;
+                                failedFiles   = completed.Failed;
                                 break;
                         }
                     }
                 });
 
-            AnsiConsole.MarkupLine($"\n[green]Restore complete![/] {restoredFiles} files restored to [dim]{target}[/]");
+            if (failedFiles > 0)
+                AnsiConsole.MarkupLine($"\n[yellow]Warning:[/] {"file".ToQuantity(failedFiles)} failed to restore.");
+
+            AnsiConsole.MarkupLine(
+                $"\n[green]Restore complete![/] " +
+                $"{"file".ToQuantity(restoredFiles)} restored to [dim]{target}[/] " +
+                $"({restoredBytes.Bytes().Humanize()})");
         });
 
         return cmd;
     }
-
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
-        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):F1} MB",
-        _ => $"{bytes / (1024.0 * 1024 * 1024):F1} GB"
-    };
 }

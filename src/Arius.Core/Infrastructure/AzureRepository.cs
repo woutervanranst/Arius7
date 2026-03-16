@@ -165,21 +165,37 @@ public sealed class AzureRepository
     /// <summary>
     /// Loads and merges all index files from index/ into a single dictionary.
     /// Returns blobHash.Value → IndexEntry.
+    /// Downloads all index blobs concurrently (up to 8 in parallel) then merges single-threaded.
     /// </summary>
     public async Task<Dictionary<string, IndexEntry>> LoadIndexAsync(CancellationToken ct = default)
     {
-        var merged = new Dictionary<string, IndexEntry>(StringComparer.Ordinal);
-
+        // Collect all blob names first
+        var blobNames = new List<string>();
         await foreach (var item in _storage.ListAsync("index/", ct))
-        {
-            ct.ThrowIfCancellationRequested();
-            await using var stream = await _storage.DownloadAsync(item.Name, ct);
-            var entries = await JsonSerializer.DeserializeAsync<IndexEntry[]>(
-                stream, JsonDefaults.Options, ct);
-            if (entries is null) continue;
+            blobNames.Add(item.Name);
+
+        if (blobNames.Count == 0)
+            return new Dictionary<string, IndexEntry>(StringComparer.Ordinal);
+
+        // Download and parse all index blobs concurrently
+        var bags = new System.Collections.Concurrent.ConcurrentBag<IndexEntry[]>();
+        await Parallel.ForEachAsync(
+            blobNames,
+            new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },
+            async (blobName, token) =>
+            {
+                await using var stream = await _storage.DownloadAsync(blobName, token);
+                var entries = await JsonSerializer.DeserializeAsync<IndexEntry[]>(
+                    stream, JsonDefaults.Options, token);
+                if (entries is not null)
+                    bags.Add(entries);
+            });
+
+        // Merge single-threaded
+        var merged = new Dictionary<string, IndexEntry>(StringComparer.Ordinal);
+        foreach (var entries in bags)
             foreach (var e in entries)
                 merged[e.BlobHash.Value] = e;
-        }
 
         return merged;
     }

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Arius.Core.Application.Forget;
+using Humanizer;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 
@@ -60,7 +61,7 @@ internal static class ForgetCommand
             {
                 var color = ev.Decision == ForgetDecision.Keep ? "green" : "red";
                 var label = ev.Decision == ForgetDecision.Keep ? "keep  " : "remove";
-                AnsiConsole.MarkupLine($"[{color}]{label}[/] {ev.SnapshotId[..8]}  {ev.SnapshotTime:yyyy-MM-dd HH:mm}  {ev.Reason}");
+                AnsiConsole.MarkupLine($"[{color}]{label}[/] {ev.SnapshotId[..8]}  {ev.SnapshotTime:yyyy-MM-dd HH:mm}  ({ev.SnapshotTime.Humanize()})  {ev.Reason}");
                 if (ev.Decision == ForgetDecision.Remove)
                     toRemove.Add(ev.SnapshotId);
             }
@@ -73,7 +74,7 @@ internal static class ForgetCommand
 
             if (!dryRun)
             {
-                if (!yes && !AnsiConsole.Confirm($"Remove {toRemove.Count} snapshot(s)?"))
+                if (!yes && !AnsiConsole.Confirm($"Remove {"snapshot".ToQuantity(toRemove.Count)}?"))
                     return;
 
                 // Execute for real
@@ -83,7 +84,7 @@ internal static class ForgetCommand
                     if (ev.Decision == ForgetDecision.Remove)
                         AnsiConsole.MarkupLine($"[red]Removed[/] {ev.SnapshotId[..8]}");
                 }
-                AnsiConsole.MarkupLine($"[green]Done.[/] Removed {toRemove.Count} snapshot(s).");
+                AnsiConsole.MarkupLine($"[green]Done.[/] Removed {"snapshot".ToQuantity(toRemove.Count)}.");
             }
             else
             {

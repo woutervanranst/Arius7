@@ -163,6 +163,12 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         var completed = events.OfType<BackupCompleted>().ShouldHaveSingleItem();
         completed.StoredFiles.ShouldBe(2);
         completed.DeduplicatedFiles.ShouldBe(0);
+        completed.Failed.ShouldBe(0);
+        completed.TotalChunks.ShouldBeGreaterThan(0);
+        completed.NewChunks.ShouldBeGreaterThan(0);
+        completed.DeduplicatedChunks.ShouldBe(0);
+        completed.TotalBytes.ShouldBeGreaterThan(0);
+        completed.NewBytes.ShouldBeGreaterThan(0);
 
         // Verify snapshot blob was written
         var repo = fx.CreateRepo();
@@ -232,6 +238,9 @@ public class RepositoryWorkflowTests(RepoFixture fx)
         var completed = events.OfType<BackupCompleted>().ShouldHaveSingleItem();
         completed.StoredFiles.ShouldBe(1);       // only c.txt is new
         completed.DeduplicatedFiles.ShouldBe(2); // a.txt + sub/b.txt are deduped
+        completed.Failed.ShouldBe(0);
+        completed.TotalChunks.ShouldBeGreaterThan(0);
+        completed.DeduplicatedChunks.ShouldBeGreaterThan(0);
 
         // Two snapshots total now
         var repo = fx.CreateRepo();
@@ -264,11 +273,14 @@ public class RepositoryWorkflowTests(RepoFixture fx)
 
             events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
                   .TotalFiles.ShouldBe(2);
+            events.OfType<RestorePlanReady>().ShouldHaveSingleItem()
+                  .PacksToDownload.ShouldBeGreaterThan(0);
 
             events.OfType<RestoreFileRestored>().Count().ShouldBe(2);
 
             var completed = events.OfType<RestoreCompleted>().ShouldHaveSingleItem();
             completed.RestoredFiles.ShouldBe(2);
+            completed.Failed.ShouldBe(0);
 
             // Verify bytes match originals (match by filename)
             var restoredFiles = Directory.GetFiles(restorePath, "*", SearchOption.AllDirectories);
