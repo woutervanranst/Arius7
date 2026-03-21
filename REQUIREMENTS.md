@@ -38,6 +38,12 @@ Should store the RELATIVE path of files
 
 The enumeration of the local file system should be graceful, eg. system protected folders. If a file cannot be read, it should be skipped with a warning and the process should continue.
 
+An archive can be 'thin' (ie it was previously archived with --remove-local flag): only the pointer files are present, and drive the files present in the snapshot.
+
+The snapshot should only contain the files (pointer of binary) that are present. Files that are deleted between runs are not present in the snapshot (there is no concept of marked as deleted, if we want to revert to a previous state we'll specify the -v snapshot version)
+
+There is an edge case where a filepair is 'out of sync': the binary file was previously archived, the pointer was created but the binary has since been updated --> the hash doesnt match anymore. In this case, the pointerfile should be overwritten and the snapshot updated.
+
 ## arius restore
 
 CLI capabilities:
@@ -74,6 +80,7 @@ CLI capabilities:
 
 - Binary File: another name for the original file that holds the actual content.
 - Pointer File: `<filename>.pointer.arius` containing the hex content hash. Pointer files can be renamed/duplicated alongside their binaries and the snapshot will capture the new paths.
+- File Pair: a binary file & pointer file pair, defined by having the same relative path + filename
 
 ## Azure Blob concepts
 
@@ -91,9 +98,11 @@ Archive/restore should be paralallized/concurrent (use Channels): avoid going fi
 
 It should run in a Docker container (on my Synology)
 
-For `restore` or `ls`, the local file system should not know anything: all knowledge about the repository should live in blob storage. The local file system can be used as a cache but should be fully restoreable from blob storage.
+For `restore` or `ls`, the local file system should not know anything: all knowledge about the repository should live in blob storage. The local file system can be used as a cache but should be fully restoreable from blob storage. If a file is already present, the hash should be checked - if it doesnt matches it should be overwritten after asking the user.
 
-For archive, the local file system is the source of truth. if a binary is hashed and the pointer file already exists but is out of sync, it should be updated
+For archive, the local file system is the source of truth. Use the FilePair concept as 'unit' of archivable file. A file is present in the snapshot if the binaryfile is present (the poitnerfile will be created), the pointerfile is present (double check if the chunk is present, if not log a warning) or they are both present.
+
+if a binary is hashed and the pointer file already exists but is out of sync, it should be updated
 
 Worst case, files should be recoverable using open source tools (openssl, gzip, tar), eg. use the hash in the pointer file to locate the chunk, download it, decrypt it, and extract the file. So compatiblity is a must.
 
@@ -113,7 +122,7 @@ Make unit tests for the critical parts
 
 Otherwise, treat the system as black box: start from the Mediator command that archives or restores files, execute it and see whether a restore contains the correct data. Think through all the scenarios here: a file is updated in place (ie. same filename but different hash, both versions should be in the achive and depending on the restore command the correct version should be restored, ...)
 
-think through the edge cases, eg what if the pointer file hash and the binary hash are out of sync
+think through the edge cases, eg what if the pointer file hash and the binary hash are out of sync, what happens when a file is renamed, only the binary is renamed, when a file is deleted, when a pointerfile alone is present but does not have a chunk, ...
 
 Use Azure Test Containers here as well as the option to use a real Azure Blob storage account (eg. a test account with a small budget).
 
