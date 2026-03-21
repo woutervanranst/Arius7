@@ -1,144 +1,39 @@
-User: Follow instructions in [opsx-explore.prompt.md](file:///c%3A/Users/UU16DK/source/repos/Arius7/.github/prompts/opsx-explore.prompt.md).
-I want to make a restic clone in (mainly) C# that is specifically made for Azure Blob Archive tier. Drop support for all other storage providers.
+I want to make an archival tool, loosely inspired on Restic in C#.
 
-I want a cli that is very similar to the restic one
+Arius is specifically made for the Azure Blob Archive tier: cheap long term offline storage for the bulk of the binaries.
 
-Next to that, I want a File Explorer-alike web interface as a docker container that can browse repositories and perform the same actions as the CLI
+It should run in a Docker container (on my Synology)
 
-For the CLI, use spectre
-For the API, use aspnetcore minimal apis
-Use Mediator (not MediatR) for reuse between the cli and api
-For the web part, use Vue + Typescript. I will want streaming updates from the backend to the frontend
+I want to start with a solid foundation and three use cases
 
-The restic source is avabable in #restic
+# Use cases
 
-GitHub Copilot: 
+## arius archive
 
-  
+## arius restore
 
-Ran terminal command: openspec list --json 2>$null
+## arius ls
 
-Research restic architecture
+# Non Functionals
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic)
+It should be designed to be highly scalable. Think 
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal)
+# Architecture
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend)
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/crypto)
+As a design, use Arius.Core that uses Mediator (not MediatR) for easy future reuse between the CLI and the API.
+Make an Arius.Cli project (using System.CommandLine). I m doubting between Spectre.Console and Terminal.Gui.
+The Core should send streaming updates to the CLI as files are hashed, uploaded
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/doc/design.rst#1-1), lines 1 to 400
+There should be extensive logging throughout to follow the trace of every file through the archival/restore paths to troubleshoot.
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/crypto/crypto.go#1-1), lines 1 to 200
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/backend.go)
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/crypto/kdf.go#1-1), lines 1 to 100
+In the future (out of scope for now), I ll want a File Explorer-alike web interface as a docker container that can browse repositories and perform the same actions as the CLI
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/main.go#1-1), lines 1 to 200
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/doc/design.rst#400-400), lines 400 to 835
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/crypto/crypto.go#200-200), lines 200 to 329
 
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_backup.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_restore.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_init.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/archiver)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restorer)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/repository)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restic)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/archiver/archiver.go#1-1), lines 1 to 120
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/archiver/file_saver.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restorer/restorer.go#1-1), lines 1 to 150
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restic/repository.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restic/blob.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/repository/repository.go#1-1), lines 1 to 120
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/archiver/file_saver.go#100-100), lines 100 to 275
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_forget.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_prune.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_check.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/repository/repository.go#120-120), lines 120 to 300
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_copy.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_diff.go#1-1), lines 1 to 80
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_snapshots.go#1-1), lines 1 to 80
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/file.go)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_cat.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_dump.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_find.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_ls.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_mount.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_stats.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_tag.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_rewrite.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_migrate.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/location)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/location/registry.go#1-1), lines 1 to 100
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/all)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_key.go)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_unlock.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_cache.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/backend/all/all.go)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_recover.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_repair.go)
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_list.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/cmd/restic/cmd_generate.go#1-1), lines 1 to 60
-
-Searched for text `func (arch *Archiver) Snapshot` (`**/restic/internal/archiver/archiver.go`), 1 result
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/repository/packer_manager.go#1-1), lines 1 to 80
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/restic/config.go#1-1), lines 1 to 60
-
-Read [](file:///c%3A/Users/UU16DK/source/repos/Arius7/restic/internal/archiver/archiver.go#864-864), lines 864 to 972
-
-Read [](file:///c%3A/Users/UU16DK/AppData/Roaming/Code/User/workspaceStorage/2c33af9a3d1078caf36eed71cc566897/GitHub.copilot-chat/chat-session-resources/228ed3df-9bd6-469f-9832-2219afd1349d/toolu_vrtx_015nJgeArmdpkHYTyqGW2oqu__vscode-1773129890322/content.txt)
-
-This is a fascinating project. Let me digest what I've learned from the restic codebase and think through the implications of targeting Azure Blob Archive tier specifically.
-
----
 
 ## The Big Picture
 
