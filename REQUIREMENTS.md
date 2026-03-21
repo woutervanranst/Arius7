@@ -2,7 +2,7 @@ I want to make an archival tool, loosely inspired on Restic in C#.
 
 Arius is specifically made for the Azure Blob Archive tier: cheap long term offline storage for the bulk of the binaries. However: archive tier blobs cannot be read without rehydration, which takes hours and costs money per transaction.
 
-It is a content addressable backup system with file level deduplication, client side encryption (AES-256/openssl-compatible).
+It is a content addressable backup system with file level deduplication, optional client side encryption (AES-256/openssl-compatible). Encryption is enabled by providing a `--passphrase`; without it, data is stored as plaintext.
 
 I want to start with a solid foundation and three use cases.
 
@@ -13,7 +13,7 @@ I want to start with a solid foundation and three use cases.
 most CLI commands (since local system is stateless) will require:
 - accountname
 - accountkey
-- passphrase
+- passphrase (optional — omit for plaintext mode)
 - container
 
 ## arius archive
@@ -26,11 +26,11 @@ CLI switches:
 --remove-local (delete local files after successful archive, only keep the pointer files)
 
 
-File level deduplication: every file is hashed (SHA-256 seeded with the passphrase to avoid hash collision attacks)
+File level deduplication: every file is hashed (SHA-256 seeded with the passphrase when provided, plain SHA-256 when not, to avoid hash collision attacks when encrypted)
 
 Large files should be encrypted and then uploaded
 
-Small files (use a configurable boundary eg. under 1 MB) should be added to a TAR file and then GZIPpeped and then encrypted and then uploaded (because of the prohibitive cost of rehydrating small files from archive storage).
+Small files (use a configurable boundary eg. under 1 MB, `--small-file-threshold`) should be added to a TAR file and then GZIPped and then encrypted and then uploaded (because of the prohibitive cost of rehydrating small files from archive storage). The TAR is sealed when it reaches a configurable target size (`--tar-target-size`, default 64 MB). The chunk name for a tar bundle is the hash of the tar file itself.
 
 To have local visibility on what files are in an archive (ie. when i search in file explorer) i want to have pointer files (<original filename>.pointer.arius) that just contain the content hash. it lives alongside the binary
 
@@ -70,10 +70,18 @@ CLI capabilities:
 
 # Domain concepts
 
-Pointer File
-Chunk (actual content blob), stored in the storage container under 'chunks'. Content type is set to `application/aes256cbc+tar+gzip` for a chunk with tarred small files and `application/aes256cbc+gzip` for a chunk with a single large file
-Snapshot: a 'version' of the repository at a point in time, basically all the files that are present (ie the mapping of the relative path to the content hash). Ideally something human interpretable like a sortable datetime (not a hash)
-Repository: the whole collection of snapshots, chunks, and state
+## Local Concepts
+
+- Binary File: another name for the original file that holds the actual content.
+- Pointer File: `<filename>.pointer.arius` containing the hex content hash. Pointer files can be renamed/duplicated alongside their binaries and the snapshot will capture the new paths.
+
+## Azure Blob concepts
+
+- Chunk (actual content blob), stored in the storage container under `chunks/`. Content type is set to `application/aes256cbc+tar+gzip` (or `application/tar+gzip` without encryption) for a chunk with tarred small files and `application/aes256cbc+gzip` (or `application/gzip`) for a chunk with a single large file.
+- File Tree Blob: an encrypted (when passphrase provided) JSON blob representing a single directory's listing (name, type, hash + metadata (size, created date, modified date) for each entry). Stored under `filetrees/<file-tree-hash>.enc`. Content-addressed: unchanged directories reuse the same tree blob across snapshots. Tree hashes are passphrase-seeded (when encrypted) to prevent structural leakage.
+- Snapshot: a 'version' of the repository at a point in time. A small encrypted manifest stored under `snapshots/<UTC-timestamp>.enc` (e.g., `2026-03-21T140000.000Z`) containing the root tree hash and metadata (timestamp, file count, total size, Arius version). Snapshots are never deleted.
+- Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index.bin` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Stored as plaintext (contains only opaque hash-to-hash mappings). Used for existence checks during archive (especially when pointer files are missing) and for locating tar bundles during restore.
+- Repository: the whole collection of snapshots, chunks, tree blobs, chunk index, and local cache.
 
 # Non Functionals
 
@@ -93,7 +101,9 @@ The chunks should be backwards compatible with a previous version of Arius (they
 
 Use streaming/IAsyncEnumerable where appropriate
 
-Everything in azure blob storage should be encrypted: the chunks but also the snapshots cannot be plaintext
+Everything in azure blob storage should be encrypted when a passphrase is provided: the chunks, tree blobs, and snapshots. The chunk index is always plaintext (it only contains opaque hashes). When no passphrase is provided, everything is plaintext. 
+
+All blob names should be opaque passphrase-seeded hashes when encrypted (no file names or directory structure leakage).
 
 The local file system can be trusted: plaintext files can be stored
 
@@ -124,6 +134,23 @@ In the future (out of scope for now), I ll want a File Explorer-alike web interf
 
 
 
-The key question i still want to think through is the design of the 'state' storage. I previously had a sqlite database but that is prohibitive at scale (think 2 TB of 2 KB files each having a hash entry in the index is a very large file we need to download and parse on every CLI invocation). The state storage should be in Cool tier.
+# State Storage Design
 
-There should be a quick way to figure out if a file (content) is already present in the archive. A merkle tree / bloom filter?
+The state lives in blob storage in Cool tier, using a Git-style content-addressed merkle tree:
+
+- Each directory becomes an individual encrypted tree blob (one per directory, content-addressed)
+- Snapshots are small manifests pointing to the root tree hash
+- A chunk index (65,536 shards by 2-byte hash prefix) maps every content hash to its chunk hash, serving as a global registry of all archived content
+- `ls` traverses the tree on demand (only downloads tree blobs for the requested path — fast for directory listings, slower for full-text search on cold cache)
+- The chunk index shards are downloaded lazily to check existence (10 GB total at 500M scale, cached locally after first download)
+- File Tree blobs are cached locally and valid indefinitely (content-addressed = immutable)
+- Tree node metadata is extensible (versioned JSON format, currently: name, type, hash, size, created, modified)
+
+Container layout:
+```
+chunks/              ← Archive tier (configurable)
+chunks-rehydrated/   ← Hot tier, temporary
+filetrees/               ← Cool tier
+snapshots/           ← Cool tier
+chunk-index/         ← Cool tier (always plaintext)
+```
