@@ -9,7 +9,7 @@ Existing archive-tier chunks in blob storage must remain compatible (openssl AES
 **Constraints:**
 - Archive tier blobs cannot be read without rehydration (hours, costs per transaction)
 - Must handle 500M files / 1 TB+ archives
-- Client-side encryption on everything stored remotely — no plaintext, no structural leakage
+- Client-side encryption optional: when passphrase provided, everything stored remotely is encrypted with no structural leakage; when omitted, data is plaintext
 - Recoverable using open source tools (openssl, gzip, tar) as worst-case fallback
 - Single archive machine at a time; restore/ls from any machine
 - Runs in Docker on Synology NAS
@@ -23,7 +23,7 @@ Existing archive-tier chunks in blob storage must remain compatible (openssl AES
 - Cross-platform (Windows/Linux) path handling
 - Backwards-compatible chunk format with existing archive-tier blobs
 - Extensible metadata format in snapshots for future fields
-- All remote storage encrypted with no structural leakage
+- Optional encryption with no structural leakage when enabled
 
 **Non-Goals:**
 - Snapshot deletion / garbage collection (snapshots are never deleted)
@@ -98,18 +98,21 @@ Container layout:
 - Sharded flat index (partition by hash prefix): good for dedup lookups but bad for path-based browsing (`ls`)
 - Batched tree nodes: fewer blobs but worse random access for `ls` and complex rebalancing. Individual blobs chosen for simplicity; full tree export can be added later as a read optimization.
 
-### D3: Hashing — Passphrase-Seeded SHA-256
+### D3: Hashing — Passphrase-Seeded or Plain SHA-256
 
-All hashes (content hashes, tree hashes) use `SHA256(passphrase + data)`. This:
-- Prevents hash collision attacks (attacker can't predict hashes without passphrase)
+When a passphrase is provided, all hashes (content hashes, tree hashes) use `SHA256(passphrase + data)`. This:
+- Prevents hash collision attacks (attacker can’t predict hashes without passphrase)
 - Ensures blob names in storage are opaque (no structural leakage across repositories)
 - Means identical content under different passphrases produces different hashes
 
-Content hash = `SHA256(passphrase + file bytes)`.
-Tree hash = `SHA256(passphrase + serialized tree node entries)`.
+When no passphrase is provided, hashes use plain `SHA256(data)`. Blob names are still content-addressed but are deterministic and not obscured.
 
-### D4: Encryption — OpenSSL-Compatible AES-256-CBC
+Content hash = `SHA256([passphrase +] file bytes)`.
+Tree hash = `SHA256([passphrase +] serialized tree node entries)`.
 
+### D4: Encryption — Optional OpenSSL-Compatible AES-256-CBC
+
+When `--passphrase` is provided:
 ```
 Format: Salted__<8-byte-salt><ciphertext>
 Key derivation: PBKDF2 with SHA-256, 10,000 iterations
@@ -118,7 +121,11 @@ Cipher: AES-256-CBC
 
 Applied to: chunks, tree blobs, snapshot manifests, chunk index shards. Every blob in storage is encrypted with this format.
 
+When `--passphrase` is omitted: no encryption is applied. Data is stored as plaintext (gzip-compressed where applicable). This is useful for testing, non-sensitive archives, or environments where storage-level encryption suffices.
+
 **Why openssl-compatible:** worst-case recovery with standard tools. Download blob, run `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase>`, pipe through `gunzip` (and `tar x` for bundles).
+
+The encryption/decryption layer is implemented as a pluggable stream wrapper: when passphrase is present, streams are wrapped with encrypt/decrypt; when absent, streams pass through unmodified.
 
 ### D5: Small File Bundling — Fill-to-Threshold Tar Archives
 
@@ -130,7 +137,7 @@ Files are added to the current tar buffer in filesystem walk order. When the buf
 
 Each file's content-hash → tar-chunk-hash mapping is recorded in the chunk index.
 
-Content type: `application/aes256cbc+tar+gzip` for tar bundles, `application/aes256cbc+gzip` for solo large files.
+Content type: `application/aes256cbc+tar+gzip` for encrypted tar bundles, `application/aes256cbc+gzip` for encrypted solo large files, `application/tar+gzip` for plaintext tar bundles, `application/gzip` for plaintext solo large files.
 
 ### D6: Content-Hash → Chunk Resolution — Try Direct, Fall Back to Index
 
@@ -224,6 +231,8 @@ All paths stored in tree nodes use forward slash `/` as separator, regardless of
 
 **[500M HEAD requests during tree upload]** → Each tree node needs an existence check before upload. Mitigation: most tree nodes are unchanged between runs (same hash = already exists). Only new/modified directories produce new tree hashes. A typical weekly run with 10K changed files touches a few hundred tree nodes.
 
-**[Passphrase loss = total data loss]** → All content and metadata is encrypted. Mitigation: this is by design (client-side encryption). Document prominently. Consider future support for passphrase escrow or key splitting (out of scope).
+**[Passphrase loss = total data loss]** → When encryption is enabled, all content and metadata is encrypted. Mitigation: this is by design (client-side encryption). Document prominently. Consider future support for passphrase escrow or key splitting (out of scope). Without a passphrase, data is plaintext and always recoverable.
+
+**[Plaintext mode exposes all data]** → When no passphrase is provided, all data in blob storage is readable by anyone with storage access. Mitigation: this is an explicit user choice. The system relies on Azure’s storage-level access controls. Document the security implications clearly.
 
 **[Single tar buffer serialization point]** → Files are added to the tar buffer sequentially while uploads are parallel. Mitigation: tar addition is fast (mostly I/O into a memory buffer); the bottleneck is upload bandwidth, not tar construction. Multiple tar buffers could be used if this becomes a bottleneck.

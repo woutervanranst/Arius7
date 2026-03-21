@@ -16,8 +16,7 @@ Arius needs a complete redesign of its core architecture to support content-addr
 - **Concurrent pipeline architecture** using Channels for archive (enumerate → hash → decide → upload → finalize) and restore (resolve → rehydrate → download → decrypt → write)
 - **Two-phase restore**: immediately process already-rehydrated chunks while polling for remaining rehydrations
 - **Extensible tree node metadata**: file size, created date, modified date, with versioned format for future fields
-- **Client-side encryption** throughout: chunks, tree blobs, snapshot manifests, chunk index shards — nothing in blob storage is plaintext
-- **All blob names are opaque hashes** seeded with the passphrase — no file names, paths, or directory structure leak to storage
+- **Optional client-side encryption**: when `--passphrase` is provided, all data is AES-256-CBC encrypted and blob names are passphrase-seeded opaque hashes (no structural leakage). When omitted, data is stored as plaintext and hashes use plain SHA-256
 - **Cross-platform path handling** (normalize `/` vs `\`, reserved characters)
 - **Graceful filesystem enumeration** (skip unreadable files/folders with warnings)
 - **`--remove-local` option** for archive: delete local binaries after successful archive, keeping only pointer files
@@ -30,8 +29,8 @@ Arius needs a complete redesign of its core architecture to support content-addr
 - `restore`: Restore files from Azure Blob Storage with rehydration management, two-phase processing, local chunk caching, concurrent downloading/decryption, and tar extraction
 - `ls`: List files in a snapshot with path-based browsing via merkle tree traversal, metadata display (size, dates), prefix/substring filtering, and version selection
 - `storage-abstraction`: Storage backend interface abstracting blob operations (upload, download, HEAD, list, set tier, rehydrate) away from Core
-- `encryption`: AES-256-CBC encryption/decryption compatible with openssl CLI, using PBKDF2 with SHA-256 and 10K iterations, `Salted__` prefix
-- `snapshot-state`: Encrypted merkle tree snapshot model with content-addressed tree blobs, snapshot manifests, and chunk index for content-hash → chunk-hash resolution
+- `encryption`: Optional AES-256-CBC encryption/decryption compatible with openssl CLI (PBKDF2 SHA-256, 10K iterations, `Salted__` prefix). When no passphrase is provided, all data is stored as plaintext
+- `snapshot-state`: Merkle tree snapshot model (encrypted when passphrase provided) with content-addressed tree blobs, snapshot manifests, and chunk index for content-hash → chunk-hash resolution
 - `concurrency`: Channel-based pipeline architecture with bounded parallelism, dedup guards for concurrent uploads/rehydrations, and backpressure
 
 ### Modified Capabilities

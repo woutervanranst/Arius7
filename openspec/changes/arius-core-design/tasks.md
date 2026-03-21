@@ -8,8 +8,9 @@
 ## 2. Encryption & Hashing
 
 - [ ] 2.1 Implement AES-256-CBC encrypt/decrypt (openssl-compatible: `Salted__` prefix, PBKDF2 SHA-256, 10K iterations) as streaming operations
-- [ ] 2.2 Implement passphrase-seeded SHA-256 hashing (`SHA256(passphrase + data)`) as streaming operation
-- [ ] 2.3 Unit tests: encrypt → decrypt roundtrip, decrypt openssl-generated ciphertext, passphrase-seeded hash determinism, different passphrases produce different hashes
+- [ ] 2.2 Implement passphrase-seeded SHA-256 hashing (`SHA256(passphrase + data)`) and plain SHA-256 hashing as streaming operations
+- [ ] 2.3 Implement pluggable encryption stream wrapper: encrypt/decrypt when passphrase present, pass-through when absent
+- [ ] 2.4 Unit tests: encrypt → decrypt roundtrip, decrypt openssl-generated ciphertext, passphrase-seeded hash determinism, different passphrases produce different hashes, plaintext mode produces plain SHA-256 hashes, stream pass-through without passphrase
 
 ## 3. Storage Abstraction
 
@@ -82,7 +83,7 @@
 ## 10. CLI
 
 - [ ] 10.1 Set up System.CommandLine with `arius archive`, `arius restore`, `arius ls` commands
-- [ ] 10.2 Implement global options: `--account-name`, `--account-key`, `--passphrase`, `--container`
+- [ ] 10.2 Implement global options: `--account-name`, `--account-key`, `--passphrase` (optional), `--container`
 - [ ] 10.3 Implement archive-specific options: `--tier`, `--remove-local`, `--small-file-threshold`, `--tar-target-size`
 - [ ] 10.4 Implement restore-specific options: `-v`, file/directory path arguments
 - [ ] 10.5 Implement ls-specific options: `-v`, prefix filter, substring filter
@@ -110,3 +111,5 @@
 - [ ] 12.11 E2E test: restore single file, directory, full snapshot
 - [ ] 12.12 E2E test: graceful handling of unreadable files/directories during archive
 - [ ] 12.13 E2E test: cross-platform path handling (paths with backslashes stored as forward slashes)
+- [ ] 12.14 E2E test: archive and restore without passphrase (plaintext mode), verify all data stored unencrypted and restorable
+- [ ] 12.15 E2E test: archive with passphrase, attempt restore without passphrase, verify failure
