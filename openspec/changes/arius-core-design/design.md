@@ -66,7 +66,7 @@ Container layout:
 │   └── <UTC-timestamp>.enc  ← manifest: root tree hash + metadata
 ├── chunk-index/         ← Cool tier
 │   └── <2-byte-prefix>/
-│       └── index.bin    ← content-hash → tar-chunk-hash mappings (plaintext, hashes only)
+│       └── index.enc    ← content-hash → tar-chunk-hash mappings
 └── chunks-rehydrated/   ← Hot tier, temporary
     └── <hash>           ← rehydrated copies for restore
 ```
@@ -119,7 +119,7 @@ Key derivation: PBKDF2 with SHA-256, 10,000 iterations
 Cipher: AES-256-CBC
 ```
 
-Applied to: chunks, tree blobs, snapshot manifests. The chunk index is NOT encrypted (it contains only opaque hash-to-hash mappings with no meaningful content).
+Applied to: chunks, tree blobs, snapshot manifests, and chunk index shards. Every blob in storage is encrypted with this format.
 
 When `--passphrase` is omitted: no encryption is applied. Data is stored as plaintext (gzip-compressed where applicable). This is useful for testing, non-sensitive archives, or environments where storage-level encryption suffices.
 
@@ -143,7 +143,7 @@ Content type: `application/aes256cbc+tar+gzip` for encrypted tar bundles, `appli
 
 For restore, to find the chunk containing a file:
 1. `HEAD chunks/<content-hash>` — if 200, it's a large file stored as a solo chunk. Download directly.
-2. If 404, look up `chunk-index/<2-byte-prefix>/index.bin` — find the tar-chunk-hash, download and extract.
+2. If 404, look up `chunk-index/<2-byte-prefix>/index.enc` — find the tar-chunk-hash, download and extract.
 
 This avoids the chunk index entirely for large files (the common case by data volume).
 

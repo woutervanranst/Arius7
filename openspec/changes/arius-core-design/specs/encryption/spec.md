@@ -5,11 +5,11 @@ The system SHALL support an optional `--passphrase` parameter. When provided, al
 
 #### Scenario: Archive without passphrase
 - **WHEN** the user runs `arius archive` without `--passphrase`
-- **THEN** all chunks, tree blobs, and snapshot manifests SHALL be stored as plaintext (gzip-compressed where applicable, not encrypted). Chunk index shards are always plaintext regardless of passphrase.
+- **THEN** all blobs (chunks, tree blobs, snapshot manifests, and chunk index shards) SHALL be stored as plaintext (gzip-compressed where applicable, not encrypted)
 
 #### Scenario: Archive with passphrase
 - **WHEN** the user runs `arius archive` with `--passphrase`
-- **THEN** all chunks, tree blobs, and snapshot manifests SHALL be AES-256-CBC encrypted before upload. Chunk index shards are always stored as plaintext (they contain only opaque hash-to-hash mappings).
+- **THEN** all blobs (chunks, tree blobs, snapshot manifests, and chunk index shards) SHALL be AES-256-CBC encrypted before upload
 
 #### Scenario: Restore must use same passphrase as archive
 - **WHEN** a repository was archived with a passphrase
@@ -31,7 +31,7 @@ When encryption is enabled, the system SHALL encrypt all data using AES-256-CBC 
 - **THEN** the original plaintext SHALL be recovered
 
 ### Requirement: All remote data encrypted when passphrase provided
-When a passphrase is provided, the system SHALL encrypt chunks, tree blobs, and snapshot manifests stored in blob storage. Chunk index shards are excluded from encryption as they contain only opaque hash-to-hash mappings.
+When a passphrase is provided, the system SHALL encrypt every blob stored in blob storage: chunks, tree blobs, snapshot manifests, and chunk index shards. There is no mixing — a repository is either fully encrypted or fully plaintext.
 
 #### Scenario: Tree blob encrypted
 - **WHEN** a tree node is uploaded with a passphrase configured
@@ -41,12 +41,9 @@ When a passphrase is provided, the system SHALL encrypt chunks, tree blobs, and 
 - **WHEN** a snapshot manifest is uploaded with a passphrase configured
 - **THEN** its content SHALL be AES-256-CBC encrypted before upload
 
-### Requirement: Chunk index always plaintext
-Chunk index shards SHALL NOT be encrypted regardless of whether a passphrase is provided. They contain only content-hash to tar-chunk-hash mappings (opaque SHA-256 hashes) which reveal no meaningful information.
-
-#### Scenario: Chunk index shard stored as plaintext
-- **WHEN** a chunk index shard is uploaded (with or without passphrase)
-- **THEN** its content SHALL be stored as plaintext (compressed but not encrypted)
+#### Scenario: Chunk index shard encrypted
+- **WHEN** a chunk index shard is uploaded with a passphrase configured
+- **THEN** its content SHALL be AES-256-CBC encrypted before upload
 
 ### Requirement: Backwards-compatible chunk encryption
 The system SHALL use the same encryption format as the previous Arius version for chunks: `Salted__` prefix, PBKDF2 with SHA-256 and 10,000 iterations.

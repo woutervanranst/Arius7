@@ -2,7 +2,7 @@ I want to make an archival tool, loosely inspired on Restic in C#.
 
 Arius is specifically made for the Azure Blob Archive tier: cheap long term offline storage for the bulk of the binaries. However: archive tier blobs cannot be read without rehydration, which takes hours and costs money per transaction.
 
-It is a content addressable backup system with file level deduplication, optional client side encryption (AES-256/openssl-compatible). Encryption is enabled by providing a `--passphrase`; without it, data is stored as plaintext.
+It is a content addressable backup system with file level deduplication and optional client side encryption.
 
 I want to start with a solid foundation and three use cases.
 
@@ -26,9 +26,9 @@ CLI switches:
 --remove-local (delete local files after successful archive, only keep the pointer files)
 
 
-File level deduplication: every file is hashed (SHA-256 seeded with the passphrase when provided, plain SHA-256 when not, to avoid hash collision attacks when encrypted)
+File level deduplication: every file is hashed to determine identity. See Encryption section for hashing details.
 
-Large files should be encrypted and then uploaded
+Large files should be uploaded as individual chunks (gzip compressed, optionally encrypted when passphrase provided).
 
 Small files (use a configurable boundary eg. under 1 MB, `--small-file-threshold`) should be added to a TAR file and then GZIPped and then encrypted and then uploaded (because of the prohibitive cost of rehydrating small files from archive storage). The TAR is sealed when it reaches a configurable target size (`--tar-target-size`, default 64 MB). The chunk name for a tar bundle is the hash of the tar file itself.
 
@@ -77,10 +77,10 @@ CLI capabilities:
 
 ## Azure Blob concepts
 
-- Chunk (actual content blob), stored in the storage container under `chunks/`. Content type is set to `application/aes256cbc+tar+gzip` (or `application/tar+gzip` without encryption) for a chunk with tarred small files and `application/aes256cbc+gzip` (or `application/gzip`) for a chunk with a single large file.
-- File Tree Blob: an encrypted (when passphrase provided) JSON blob representing a single directory's listing (name, type, hash + metadata (size, created date, modified date) for each entry). Stored under `filetrees/<file-tree-hash>.enc`. Content-addressed: unchanged directories reuse the same tree blob across snapshots. Tree hashes are passphrase-seeded (when encrypted) to prevent structural leakage.
-- Snapshot: a 'version' of the repository at a point in time. A small encrypted manifest stored under `snapshots/<UTC-timestamp>.enc` (e.g., `2026-03-21T140000.000Z`) containing the root tree hash and metadata (timestamp, file count, total size, Arius version). Snapshots are never deleted.
-- Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index.bin` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Stored as plaintext (contains only opaque hash-to-hash mappings). Used for existence checks during archive (especially when pointer files are missing) and for locating tar bundles during restore.
+- Chunk (actual content blob), stored in the storage container under `chunks/`. Content type is set to `application/aes256cbc+tar+gzip` for a chunk with tarred small files and `application/aes256cbc+gzip`for a chunk with a single large file.
+- File Tree Blob: a JSON blob representing a single directory's listing (name, type, hash + metadata (size, created date, modified date) for each entry). Stored under `filetrees/<file-tree-hash>`. Content-addressed: unchanged directories reuse the same tree blob across snapshots.
+- Snapshot: a 'version' of the repository at a point in time. A small manifest stored under `snapshots/<UTC-timestamp>` (e.g., `2026-03-21T140000.000Z`) containing the root tree hash and metadata (timestamp, file count, total size, Arius version). Snapshots are never deleted.
+- Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Used for existence checks during archive and for locating tar bundles during restore.
 - Repository: the whole collection of snapshots, chunks, tree blobs, chunk index, and local cache.
 
 # Non Functionals
@@ -97,13 +97,9 @@ For archive, the local file system is the source of truth. if a binary is hashed
 
 Worst case, files should be recoverable using open source tools (openssl, gzip, tar), eg. use the hash in the pointer file to locate the chunk, download it, decrypt it, and extract the file. So compatiblity is a must.
 
-The chunks should be backwards compatible with a previous version of Arius (they are alreayd in archive storage, we can't break them). We will make a snapshot migration separately. As long as it uses openssl/tar/gzip it should be fine (`Salted__` prefix, PBKDF2 with SHA-256 and 10K iterations key derivation
+The chunks should be backwards compatible with a previous version of Arius (they are already in archive storage, we can't break them). We will make a snapshot migration separately. As long as it uses openssl/tar/gzip it should be fine.
 
 Use streaming/IAsyncEnumerable where appropriate
-
-Everything in azure blob storage should be encrypted when a passphrase is provided: the chunks, tree blobs, and snapshots. The chunk index is always plaintext (it only contains opaque hashes). When no passphrase is provided, everything is plaintext. 
-
-All blob names should be opaque passphrase-seeded hashes when encrypted (no file names or directory structure leakage).
 
 The local file system can be trusted: plaintext files can be stored
 
@@ -138,7 +134,7 @@ In the future (out of scope for now), I ll want a File Explorer-alike web interf
 
 The state lives in blob storage in Cool tier, using a Git-style content-addressed merkle tree:
 
-- Each directory becomes an individual encrypted tree blob (one per directory, content-addressed)
+- Each directory becomes an individual tree blob (one per directory, content-addressed)
 - Snapshots are small manifests pointing to the root tree hash
 - A chunk index (65,536 shards by 2-byte hash prefix) maps every content hash to its chunk hash, serving as a global registry of all archived content
 - `ls` traverses the tree on demand (only downloads tree blobs for the requested path — fast for directory listings, slower for full-text search on cold cache)
@@ -150,7 +146,26 @@ Container layout:
 ```
 chunks/              ← Archive tier (configurable)
 chunks-rehydrated/   ← Hot tier, temporary
-filetrees/               ← Cool tier
+filetrees/           ← Cool tier
 snapshots/           ← Cool tier
-chunk-index/         ← Cool tier (always plaintext)
+chunk-index/         ← Cool tier
 ```
+
+# Encryption
+
+Encryption is optional, controlled by the `--passphrase` CLI parameter.
+
+**When `--passphrase` is provided:**
+- ALL blobs in Azure Blob Storage are encrypted: chunks, tree blobs, snapshot manifests, and chunk index shards
+- Encryption: AES-256-CBC, openssl-compatible (`Salted__` prefix, PBKDF2 with SHA-256 and 10K iterations)
+- All hashes (content hashes, tree hashes) are passphrase-seeded: `SHA256(passphrase + data)`
+- All blob names are opaque passphrase-seeded hashes (no file names or directory structure leakage)
+- Worst case recovery: download blob, `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase>`, pipe through `gunzip` (and `tar x` for bundles)
+- Backwards compatible with previous Arius chunks already in archive storage
+
+**When `--passphrase` is omitted:**
+- ALL blobs are stored as plaintext (gzip-compressed where applicable)
+- All hashes use plain `SHA256(data)`
+- Blob names are plain content hashes
+
+The encryption layer is a pluggable stream wrapper: when passphrase present, streams are wrapped with encrypt/decrypt; when absent, streams pass through unmodified. There is no mixing — a repository is either fully encrypted or fully plaintext.

@@ -33,8 +33,8 @@
 ## 5. Chunk Index
 
 - [ ] 5.1 Implement chunk index shard model: content-hash → tar-chunk-hash entries, sharded by 2-byte prefix
-- [ ] 5.2 Implement chunk index read: download shard, decompress, deserialize, lookup content hash
-- [ ] 5.3 Implement chunk index write: add entries, serialize, compress, upload affected shards
+- [ ] 5.2 Implement chunk index read: download shard, decrypt (if encrypted), decompress, deserialize, lookup content hash
+- [ ] 5.3 Implement chunk index write: add entries, serialize, compress, encrypt (if passphrase), upload affected shards
 - [ ] 5.4 Implement content-hash → chunk resolution: try `HEAD chunks/<content-hash>`, fall back to chunk index
 - [ ] 5.5 Unit tests: shard lookup, shard update with new entries, resolution strategy (direct vs index fallback)
 
