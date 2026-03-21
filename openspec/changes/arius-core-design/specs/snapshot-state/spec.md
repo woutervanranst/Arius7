@@ -35,7 +35,7 @@ The system SHALL maintain a chunk index mapping content hashes to tar-chunk hash
 
 #### Scenario: Chunk index lookup for tar-bundled file
 - **WHEN** a file's content hash does not exist as a direct chunk (`HEAD chunks/<hash>` returns 404)
-- **THEN** the system SHALL look up `chunk-index/<2-byte-prefix>/index.enc`, decrypt it, and find the tar-chunk-hash containing that file
+- **THEN** the system SHALL look up `chunk-index/<2-byte-prefix>/index.bin`, decompress it, and find the tar-chunk-hash containing that file
 
 #### Scenario: Chunk index shard size
 - **WHEN** there are 500M small files in the archive
