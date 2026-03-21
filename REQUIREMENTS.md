@@ -149,6 +149,7 @@ FluentResults
 
 TUnit for testing (not xUnit)
 NSubstitute
+TngTech.ArchUnitNET for enforcing architecture
 
 ### CLI
 
