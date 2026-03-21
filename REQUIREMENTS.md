@@ -128,6 +128,28 @@ There should be extensive logging throughout to follow the trace of every file t
 
 In the future (out of scope for now), I ll want a File Explorer-alike web interface as a docker container that can browse repositories and perform the same actions as the CLI
 
+## Nuget Packages to use
+
+### General
+
+Mediator (not MediatR)
+FluentValidation
+FluentResults
+
+### Testing
+
+TUnit for testing (not xUnit)
+NSubstitute
+
+### CLI
+
+The CLI uses Microsoft.Extensions.Configuration.UserSecrets to resolve account key during local development
+Humanizer
+
+### Azure Blob
+
+Azure.Storage.Blobs
+
 
 
 # State Storage Design
