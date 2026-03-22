@@ -28,17 +28,17 @@
 
 ## 4. Chunk Index
 
-- [ ] 4.1 Implement shard entry format: parse and serialize `<content-hash> <chunk-hash> <original-size> <compressed-size>\n`
-- [ ] 4.2 Implement shard merge: load existing shard, append new entries, serialize
-- [ ] 4.3 Implement shard compression: gzip (+ encrypt if passphrase) before upload, decompress on load
-- [ ] 4.4 Implement L1 in-memory LRU cache with configurable size budget
-- [ ] 4.5 Implement L2 disk cache at `~/.arius/cache/<repo-id>/chunk-index/`
-- [ ] 4.6 Implement L3 Azure download with save-to-L2 and promote-to-L1
-- [ ] 4.7 Implement batched dedup lookup: buffer N hashes, group by prefix, resolve through tiers
-- [ ] 4.8 Implement in-flight set (ConcurrentDictionary) for duplicate prevention within a run
-- [ ] 4.9 Implement repo-id derivation: SHA256(accountname + container)[:12]
-- [ ] 4.10 Unit tests: shard parse/serialize roundtrip, merge correctness, LRU eviction, batch grouping
-- [ ] 4.11 Integration tests: tiered lookup through Azurite, cache persistence across runs
+- [x] 4.1 Implement shard entry format: parse and serialize `<content-hash> <chunk-hash> <original-size> <compressed-size>\n`
+- [x] 4.2 Implement shard merge: load existing shard, append new entries, serialize
+- [x] 4.3 Implement shard compression: gzip (+ encrypt if passphrase) before upload, decompress on load
+- [x] 4.4 Implement L1 in-memory LRU cache with configurable size budget
+- [x] 4.5 Implement L2 disk cache at `~/.arius/cache/<repo-id>/chunk-index/`
+- [x] 4.6 Implement L3 Azure download with save-to-L2 and promote-to-L1
+- [x] 4.7 Implement batched dedup lookup: buffer N hashes, group by prefix, resolve through tiers
+- [x] 4.8 Implement in-flight set (ConcurrentDictionary) for duplicate prevention within a run
+- [x] 4.9 Implement repo-id derivation: SHA256(accountname + container)[:12]
+- [x] 4.10 Unit tests: shard parse/serialize roundtrip, merge correctness, LRU eviction, batch grouping
+- [x] 4.11 Integration tests: tiered lookup through Azurite, cache persistence across runs
 
 ## 5. File Tree (Merkle Tree)
 
