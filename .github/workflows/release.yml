@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       matrix:
         include:
@@ -17,6 +17,8 @@ jobs:
             rid: win-x64
           - os: ubuntu-latest
             rid: linux-x64
+          - os: macos-latest
+            rid: osx-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -46,14 +48,6 @@ jobs:
       - name: Install vpk
         run: dotnet tool install -g vpk
 
-      - name: Download previous release
-        run: >
-          vpk download github
-          --repoUrl https://github.com/${{ github.repository }}
-          --token ${{ secrets.GITHUB_TOKEN }}
-          --channel ${{ matrix.rid }}
-        continue-on-error: true
-
       - name: Pack with Velopack
         run: >
           vpk pack
@@ -63,12 +57,42 @@ jobs:
           -e Arius.Cli${{ matrix.rid == 'win-x64' && '.exe' || '' }}
           --channel ${{ matrix.rid }}
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: releases-${{ matrix.rid }}
+          path: Releases/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: Releases/
+          pattern: releases-*
+          merge-multiple: true
+
       - name: Upload to GitHub Releases
         run: >
           vpk upload github
           --repoUrl https://github.com/${{ github.repository }}
           --token ${{ secrets.GITHUB_TOKEN }}
-          --channel ${{ matrix.rid }}
           --publish
           --releaseName "Arius ${{ steps.version.outputs.version }}"
           --tag ${{ github.ref_name }}
