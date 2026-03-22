@@ -24,15 +24,22 @@ CLI capability:
 CLI switches:
 --tier (default to Archive, but can be Hot/Cool/Cold as well)
 --remove-local (delete local files after successful archive, only keep the pointer files)
+--no-pointers (skip creating pointer files)
+--small-file-threshold (default 1 MB)
+--tar-target-size (default 64 MB)
 
 
 File level deduplication: every file is hashed to determine identity. See Encryption section for hashing details.
 
 Large files should be uploaded as individual chunks (gzip compressed, optionally encrypted when passphrase provided).
 
-Small files (use a configurable boundary eg. under 1 MB, `--small-file-threshold`) should be added to a TAR file and then GZIPped and then encrypted and then uploaded (because of the prohibitive cost of rehydrating small files from archive storage). The TAR is sealed when it reaches a configurable target size (`--tar-target-size`, default 64 MB). The chunk name for a tar bundle is the hash of the tar file itself.
+Small files (use a configurable boundary eg. under 1 MB, `--small-file-threshold`) should be added to a TAR file and then GZIPped and then encrypted and then uploaded (because of the prohibitive cost of rehydrating small files from archive storage). The TAR is sealed when it reaches a configurable target size (`--tar-target-size`, default 64 MB). The chunk name for a tar bundle is the hash of the tar file itself. Files inside the tar are named by their content-hash (not their original path).
 
-To have local visibility on what files are in an archive (ie. when i search in file explorer) i want to have pointer files (<original filename>.pointer.arius) that just contain the content hash. it lives alongside the binary
+To have local visibility on what files are in an archive (ie. when i search in file explorer) i want to have pointer files (<original filename>.pointer.arius) that just contain the content hash. it lives alongside the binary.
+
+Pointer files are NEVER trusted as a hashing cache. Every archive run is a full re-scan and re-hash of all binary files. The pointer file hash is only used when the binary is absent (thin archive).
+
+A file with the `.pointer.arius` suffix is always treated as a pointer file. If its content is not a valid hex hash, warn and overwrite with the correct hash.
 
 Should store the RELATIVE path of files
 
@@ -40,7 +47,7 @@ The enumeration of the local file system should be graceful, eg. system protecte
 
 An archive can be 'thin' (ie it was previously archived with --remove-local flag): only the pointer files are present, and drive the files present in the snapshot.
 
-The snapshot should only contain the files (pointer of binary) that are present. Files that are deleted between runs are not present in the snapshot (there is no concept of marked as deleted, if we want to revert to a previous state we'll specify the -v snapshot version)
+A snapshot is purely "what exists right now." No rename detection, no delete tracking. Files that are deleted between runs are simply absent from the new snapshot (there is no concept of marked as deleted, if we want to revert to a previous state we'll specify the -v snapshot version)
 
 There is an edge case where a filepair is 'out of sync': the binary file was previously archived, the pointer was created but the binary has since been updated --> the hash doesnt match anymore. In this case, the pointerfile should be overwritten and the snapshot updated.
 
@@ -55,13 +62,15 @@ arius restore a full snapshot
 CLI switches:
 -v specify the snapshot (v for version), optional. default to the latest version
 
-Cost estimation
+Cost estimation: before restoring, show the user a breakdown of chunks needed, chunks already rehydrated, estimated rehydration cost (Standard vs High Priority), and estimated download cost. The user must confirm before proceeding.
 
-Chunks in Archive tier should not be rehydrated in place but in blob storage under `chunks-rehydrated`, then downloaded, decrypted, and reassembled locally
+Rehydration priority: the user selects Standard or High Priority. Rehydrate all needed chunks at once; if Azure throttles, retry with backoff.
 
-When an restore is requested, we should first check which files are already rehydrated and only rehydrate the missing ones. Then we can start downloading and restoring the already rehydrated ones while waiting for the others to be ready.
-You can keep a local cache of downloaded chunks to avoid re-downloading if the same chunk is needed again (eg. a chunk with TAR small files)
-After the full restore is done, the local cache and the `chunks-rehydrated` can be deleted
+Chunks in Archive tier should not be rehydrated in place but copied to `chunks-rehydrated/` (Hot tier), then downloaded.
+
+Restore is non-blocking: the command restores whatever is immediately available (local files, Hot/Cool chunks, already-rehydrated chunks), starts rehydration for archive-tier chunks, then exits. The user re-runs the same idempotent command later to fetch newly rehydrated chunks. No polling loop, no long-running process.
+
+After a full restore is complete, the `chunks-rehydrated/` blobs should be cleaned up.
 
 ## arius ls
 
@@ -84,15 +93,19 @@ CLI capabilities:
 
 ## Azure Blob concepts
 
-- Chunk (actual content blob), stored in the storage container under `chunks/`. Content type is set to `application/aes256cbc+tar+gzip` for a chunk with tarred small files and `application/aes256cbc+gzip`for a chunk with a single large file.
+- Chunk (actual content blob), stored in the storage container under `chunks/`. Three types distinguished by blob metadata (`arius-type`):
+  - `large`: a gzip+encrypted single file, blob name = content-hash
+  - `tar`: a tar+gzip+encrypted bundle of small files, blob name = tar-hash
+  - `thin`: a small pointer blob for a tar-bundled file, blob name = content-hash, body = tar-hash. Ensures every content-hash has a corresponding blob in `chunks/` regardless of whether the file was individually uploaded or tar-bundled.
+- Content type is set to `application/aes256cbc+tar+gzip` for a tar bundle and `application/aes256cbc+gzip` for a single large file.
 - File Tree Blob: a JSON blob representing a single directory's listing (name, type, hash + metadata (size, created date, modified date) for each entry). Stored under `filetrees/<file-tree-hash>`. Content-addressed: unchanged directories reuse the same tree blob across snapshots.
 - Snapshot: a 'version' of the repository at a point in time. A small manifest stored under `snapshots/<UTC-timestamp>` (e.g., `2026-03-21T140000.000Z`) containing the root tree hash and metadata (timestamp, file count, total size, Arius version). Snapshots are never deleted.
-- Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Used for existence checks during archive and for locating tar bundles during restore.
+- Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Each entry also stores original file size and compressed chunk size. Used for existence checks during archive, for locating tar bundles during restore, and for cost estimation. Shards are gzip-compressed (and encrypted if passphrase is set). The index is uploaded once at the end of an archive run (not incrementally).
 - Repository: the whole collection of snapshots, chunks, tree blobs, chunk index, and local cache.
 
 # Non Functionals
 
-It should be designed to be highly scalable. Think a 1 TB archive consisting of 2 KB files (500 million files). The design should be able to handle this scale without breaking a sweat.
+It should be designed to be highly scalable. Think a 1 TB archive consisting of 2 KB files (500 million files). The design should be able to handle this scale without breaking a sweat. Memory consumption must be bounded and constant — independent of total file count. Files must never be fully loaded into memory; use streaming throughout.
 
 Archive/restore should be paralallized/concurrent (use Channels): avoid going file by file, hashing one, then uploading one etc. this will take way too long and is not time efficient. Be careful with concurrency (eg. is a file already being uploaded by another thread, is a chunk already being rehydrated by another thread etc.)
 
@@ -107,6 +120,10 @@ if a binary is hashed and the pointer file already exists but is out of sync, it
 Worst case, files should be recoverable using open source tools (openssl, gzip, tar), eg. use the hash in the pointer file to locate the chunk, download it, decrypt it, and extract the file. So compatiblity is a must.
 
 The chunks should be backwards compatible with a previous version of Arius (they are already in archive storage, we can't break them). We will make a snapshot migration separately. As long as it uses openssl/tar/gzip it should be fine.
+
+Archive runs must be crash-recoverable and idempotent on re-run. Each uploaded chunk blob carries metadata (arius-complete flag, arius-type, sizes) so that a re-run can detect previously completed uploads without re-uploading. Restore runs are inherently idempotent (re-running restores only the missing files).
+
+A GC hook for orphaned tree blobs and chunks should be designed (not implemented). Snapshots are never deleted.
 
 Use streaming/IAsyncEnumerable where appropriate
 
@@ -124,7 +141,13 @@ Otherwise, treat the system as black box: start from the Mediator command that a
 
 think through the edge cases, eg what if the pointer file hash and the binary hash are out of sync, what happens when a file is renamed, only the binary is renamed, when a file is deleted, when a pointerfile alone is present but does not have a chunk, ...
 
-Use Azure Test Containers here as well as the option to use a real Azure Blob storage account (eg. a test account with a small budget).
+Use Azure Test Containers (Azurite) as well as the option to use a real Azure Blob storage account (eg. a test account with a small budget, gated behind a test category).
+
+Critical tests:
+- Encryption backwards compatibility: golden file tests using actual encrypted chunks from the previous Arius version
+- OpenSSL compatibility: automated tests that shell out to `openssl`/`gunzip`/`tar` to verify worst-case recovery
+- Crash recovery: fault injection tests that simulate crashes at various pipeline stages and verify idempotent re-run produces correct results
+- Roundtrip: archive → restore produces byte-identical files for all file types and edge cases
 
 # Architecture
 
@@ -171,9 +194,11 @@ The state lives in blob storage in Cool tier, using a Git-style content-addresse
 - Snapshots are small manifests pointing to the root tree hash
 - A chunk index (65,536 shards by 2-byte hash prefix) maps every content hash to its chunk hash, serving as a global registry of all archived content
 - `ls` traverses the tree on demand (only downloads tree blobs for the requested path — fast for directory listings, slower for full-text search on cold cache)
-- The chunk index shards are downloaded lazily to check existence (10 GB total at 500M scale, cached locally after first download)
+- The chunk index shards use a tiered cache: in-memory LRU (configurable size, default 512 MB) → local disk cache → remote Azure download. Shards are downloaded lazily on first access and cached on disk indefinitely. Total shard size at 500M scale: ~25 GB (compressed)
 - File Tree blobs are cached locally and valid indefinitely (content-addressed = immutable)
 - Tree node metadata is extensible (versioned JSON format, currently: name, type, hash, size, created, modified)
+- Tree hash is computed over the full serialized blob including metadata. A metadata-only change (e.g. `touch`) produces a new tree hash. This is intentional.
+- Local cache is per-repository, identified by account+container. In Docker, the cache directory should be on a mounted volume.
 
 Container layout:
 ```
@@ -191,7 +216,7 @@ Encryption is optional, controlled by the `--passphrase` CLI parameter.
 **When `--passphrase` is provided:**
 - ALL blobs in Azure Blob Storage are encrypted: chunks, tree blobs, snapshot manifests, and chunk index shards
 - Encryption: AES-256-CBC, openssl-compatible (`Salted__` prefix, PBKDF2 with SHA-256 and 10K iterations)
-- All hashes (content hashes, tree hashes) are passphrase-seeded: `SHA256(passphrase + data)`
+- All hashes (content hashes, tree hashes) are passphrase-seeded: `SHA256(passphrase + data)` (literal byte concatenation, not HMAC — locked for backwards compatibility with previous Arius version)
 - All blob names are opaque passphrase-seeded hashes (no file names or directory structure leakage)
 - Worst case recovery: download blob, `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase>`, pipe through `gunzip` (and `tar x` for bundles)
 - Backwards compatible with previous Arius chunks already in archive storage
