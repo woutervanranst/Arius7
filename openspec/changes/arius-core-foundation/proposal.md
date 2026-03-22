@@ -24,10 +24,10 @@ This change establishes the entire foundation: the three core use cases (archive
 ### New Capabilities
 - `archive-pipeline`: File enumeration, FilePair resolution, streaming hash, dedup check against chunk index, size-based routing, large file upload, tar builder (single, directory-affinity, seal at 64 MB), thin chunk creation, index shard merge and upload, merkle tree construction (external sort + bottom-up build), snapshot creation, pointer file writing. Crash recovery via blob metadata receipts and idempotent re-run.
 - `restore-pipeline`: Snapshot resolution, tree traversal to target path, conflict check against local files, chunk index lookup, rehydration status check, cost estimation with user confirmation, streaming download+decrypt+gunzip+extract (no local cache, stream-and-discard), rehydration kick-off for archive-tier chunks, idempotent re-run for remaining files, cleanup of rehydrated blobs.
-- `ls-command`: Snapshot listing, tree blob traversal, path prefix filtering, filename substring filtering, metadata display (size, dates).
+- `ls-command`: Snapshot listing, tree blob traversal, path prefix filtering, filename substring filtering, metadata display (dates; size from chunk index).
 - `encryption`: AES-256-CBC with openssl-compatible format (Salted__ prefix, PBKDF2 SHA-256 10K iterations), passphrase-seeded hashing (SHA256(passphrase + data)), pluggable stream wrapper (encrypt/passthrough), backwards compatibility with previous Arius encrypted chunks.
 - `blob-storage`: Azure Blob abstraction (IBlobStorageService), chunk types (large/thin/tar) with blob metadata (arius-type, arius-complete, sizes), container layout (chunks/, chunks-rehydrated/, filetrees/, snapshots/, chunk-index/), tiered chunk index cache (L1 memory LRU → L2 disk → L3 Azure), tree blob caching (immutable, indefinite), per-repo cache directory.
-- `cli`: System.CommandLine verbs (archive, restore, ls), common options (account, key, passphrase, container), archive progress display with in-flight file visibility, restore cost confirmation UX, streaming progress events from Core via Mediator.
+- `cli`: System.CommandLine verbs (archive, restore, ls), Spectre.Console for progress display and interactive prompts, common options (account, key, passphrase, container), archive progress display with in-flight file visibility, restore cost confirmation UX, streaming progress events from Core via Mediator.
 
 ### Modified Capabilities
 <!-- No existing specs to modify — this is a greenfield project -->
@@ -36,6 +36,6 @@ This change establishes the entire foundation: the three core use cases (archive
 
 - New .NET solution with three projects: Arius.Core, Arius.Cli, Arius.AzureBlob
 - New test projects: Arius.Core.Tests, Arius.Integration.Tests, Arius.E2E.Tests, Arius.Architecture.Tests
-- Dependencies: Mediator, FluentValidation, FluentResults, Azure.Storage.Blobs, System.CommandLine, Humanizer, TUnit, NSubstitute, ArchUnitNET
+- Dependencies: Mediator, FluentValidation, FluentResults, Azure.Storage.Blobs, System.CommandLine, Spectre.Console, Humanizer, TUnit, NSubstitute, ArchUnitNET
 - Docker support for deployment on Synology NAS
 - Must maintain backwards compatibility with existing encrypted chunks in Azure Archive tier from previous Arius version

@@ -98,7 +98,7 @@ CLI capabilities:
   - `tar`: a tar+gzip+encrypted bundle of small files, blob name = tar-hash
   - `thin`: a small pointer blob for a tar-bundled file, blob name = content-hash, body = tar-hash. Ensures every content-hash has a corresponding blob in `chunks/` regardless of whether the file was individually uploaded or tar-bundled.
 - Content type is set to `application/aes256cbc+tar+gzip` for a tar bundle and `application/aes256cbc+gzip` for a single large file.
-- File Tree Blob: a JSON blob representing a single directory's listing (name, type, hash + metadata (size, created date, modified date) for each entry). Stored under `filetrees/<file-tree-hash>`. Content-addressed: unchanged directories reuse the same tree blob across snapshots.
+- File Tree Blob: a JSON blob representing a single directory's listing (name, type, hash + metadata (created date, modified date) for each entry). File size is NOT stored in tree blobs — it lives in the chunk index (single source of truth for size data). Stored under `filetrees/<file-tree-hash>`. Content-addressed: unchanged directories reuse the same tree blob across snapshots. Empty directories are skipped (no tree blob created).
 - Snapshot: a 'version' of the repository at a point in time. A small manifest stored under `snapshots/<UTC-timestamp>` (e.g., `2026-03-21T140000.000Z`) containing the root tree hash and metadata (timestamp, file count, total size, Arius version). Snapshots are never deleted.
 - Chunk Index: a set of shards under `chunk-index/<2-byte-prefix>/index` mapping content-hash → chunk-hash for ALL content (both tar-bundled small files and large files). Each entry also stores original file size and compressed chunk size. Used for existence checks during archive, for locating tar bundles during restore, and for cost estimation. Shards are gzip-compressed (and encrypted if passphrase is set). The index is uploaded once at the end of an archive run (not incrementally).
 - Repository: the whole collection of snapshots, chunks, tree blobs, chunk index, and local cache.
@@ -152,7 +152,7 @@ Critical tests:
 # Architecture
 
 As a design, use Arius.Core that uses Mediator (not MediatR) for easy future reuse between the CLI and the API.
-Make an Arius.Cli project (using System.CommandLine). I m doubting between Spectre.Console and Terminal.Gui.
+Make an Arius.Cli project (using System.CommandLine) with Spectre.Console for progress display and interactive prompts.
 The Core should send streaming updates to the CLI as files go through the archive/restore phase (hashed, uploaded, downloaded, decrypted etc)
 Arius.AzureBlob should contain all blob storage specific implementations as an abstraction. Core should not know anything about Azure Blob (imagine i want to add another backend later, eg. S3 or local filesystem)
 
@@ -178,6 +178,7 @@ TngTech.ArchUnitNET for enforcing architecture
 ### CLI
 
 The CLI uses Microsoft.Extensions.Configuration.UserSecrets to resolve account key during local development
+Spectre.Console
 Humanizer
 
 ### Azure Blob
@@ -196,7 +197,8 @@ The state lives in blob storage in Cool tier, using a Git-style content-addresse
 - `ls` traverses the tree on demand (only downloads tree blobs for the requested path — fast for directory listings, slower for full-text search on cold cache)
 - The chunk index shards use a tiered cache: in-memory LRU (configurable size, default 512 MB) → local disk cache → remote Azure download. Shards are downloaded lazily on first access and cached on disk indefinitely. Total shard size at 500M scale: ~25 GB (compressed)
 - File Tree blobs are cached locally and valid indefinitely (content-addressed = immutable)
-- Tree node metadata is extensible (versioned JSON format, currently: name, type, hash, size, created, modified)
+- Tree node metadata is extensible (versioned JSON format, currently: name, type, hash, created, modified). File size is stored in the chunk index only (not duplicated in tree blobs).
+- Empty directories are skipped — only directories containing at least one file (directly or in subdirectories) get a tree blob
 - Tree hash is computed over the full serialized blob including metadata. A metadata-only change (e.g. `touch`) produces a new tree hash. This is intentional.
 - Local cache is per-repository, identified by account+container. In Docker, the cache directory should be on a mounted volume.
 

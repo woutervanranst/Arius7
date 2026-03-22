@@ -42,7 +42,7 @@ Arius.Cli → Arius.Core → IBlobStorageService ← Arius.AzureBlob
 ```
 
 - **Arius.Core**: Mediator commands, domain logic, pipeline orchestration. No Azure references.
-- **Arius.Cli**: System.CommandLine verbs, progress display, user interaction.
+- **Arius.Cli**: System.CommandLine verbs, Spectre.Console for progress display and interactive prompts.
 - **Arius.AzureBlob**: `IBlobStorageService` implementation using Azure.Storage.Blobs.
 
 Core defines interfaces (`IBlobStorageService`, `IEncryptionService`); implementations are injected. This allows future backends (S3, local filesystem) without touching Core.
@@ -154,7 +154,7 @@ Tree blobs are JSON, one per directory:
 ```json
 {
   "entries": [
-    {"name": "photo.jpg", "type": "file", "hash": "a1b2...", "size": 4200000,
+    {"name": "photo.jpg", "type": "file", "hash": "a1b2...",
      "created": "2024-06-15T10:30:00Z", "modified": "2024-06-15T10:30:00Z"},
     {"name": "subdir/", "type": "dir", "hash": "d4e5..."}
   ]
@@ -164,6 +164,8 @@ Tree blobs are JSON, one per directory:
 Tree hash = SHA256 of the full serialized JSON (passphrase-seeded if encrypted). Metadata changes (e.g., `touch`) produce a new tree hash. This is intentional — the snapshot should reflect the actual filesystem state.
 
 Tree blobs are cached locally forever (content-addressed = immutable).
+
+Empty directories are skipped — only directories with at least one file (directly or in subdirectories) produce a tree blob.
 
 **Tree construction** is a two-phase process:
 1. During pipeline: write all completed files to a manifest temp file (unsorted).
@@ -184,8 +186,6 @@ On re-run after crash:
 2. Recovered entries merge into in-memory index
 3. Normal pipeline continues (dedup against recovered + cached index)
 4. Index shards uploaded at end
-
-Crash detection: write `.archive-in-progress` marker at start, delete on snapshot creation. If present on startup → recovery path.
 
 ### 8. Restore Pipeline — Stream-and-Discard, No Cache
 
@@ -232,7 +232,7 @@ FileScanned, FileHashing, FileHashed, ChunkUploading, ChunkUploaded,
 TarBundleSealing, TarBundleUploaded, SnapshotCreated
 ```
 
-The CLI subscribes and renders a live display showing:
+The CLI subscribes and renders a live Spectre.Console display showing:
 - Aggregate progress (scanned, hashed, deduped, uploaded)
 - In-flight files: which files are currently being hashed and uploaded (with progress %)
 - Tar bundle status (sealing, uploading)
@@ -257,8 +257,8 @@ Every archive run re-hashes all binary files (pointers never trusted as cache). 
 **[Orphan thin chunks on crash] → Low impact**
 If archive crashes after some thin chunks are created but before the snapshot, those thin chunks remain orphaned until the next successful run (which creates the correct snapshot). They don't cause data loss — they're small (~80 bytes each) Cool-tier blobs. Future GC can clean them.
 
-**[Orphan tar chunks on crash] → Accepted cost**
-If a tar is uploaded but the archive crashes and re-runs with different file ordering, a new tar with a different hash is created. The old tar is orphaned in archive tier. Cost: ~64 MB × $0.00012/month = negligible. Future GC can clean.
+**[Orphan tar chunks on crash] → Mostly solved by thin chunks**
+Thin chunks ensure each content-hash maps to its tar. If a crash occurs after the tar is uploaded but before all thin chunks are created, the re-run may rebundle some files into a new tar (since their thin chunks don't exist yet). The old tar becomes partially referenced (some thin chunks point to it, the rebundled files point to the new tar). This is a non-atomic edge case — not a data loss issue, just a minor storage inefficiency (~64 MB orphaned per crash). Future GC can detect tars not referenced by any thin chunk.
 
 **[Proportional compressed size estimate] → Approximation**
 Per-file compressed size in tar bundles is estimated proportionally (file_size / total_uncompressed × total_compressed). Actual per-file compression varies. Acceptable for cost estimation — worst case the estimate is off by ~50%.
@@ -268,9 +268,3 @@ The on-disk manifest at 500M entries is ~18 GB compressed. External sort require
 
 **[Single tar builder] → Sequential bottleneck for small files**
 The tar builder is single-threaded. At 500M small files, tar creation is the bottleneck if accumulation is slower than upload. In practice, tar sealing triggers upload and the builder continues immediately — the upload pool handles parallelism. If this becomes a bottleneck, the builder can be parallelized later (multiple builders with prefix-based partitioning).
-
-## Open Questions
-
-- **Spectre.Console vs Terminal.Gui**: Spectre.Console is simpler (progress bars, tables) while Terminal.Gui provides a full TUI. Decide based on UX needs for the progress display.
-- **Empty directories**: Include in tree blobs or skip? Git skips them. Arius should probably skip (an empty dir has no files to archive).
-- **Pointer file for file at exactly the threshold**: Treat as large or small? Define: `>=` threshold → large.
