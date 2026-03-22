@@ -15,6 +15,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
+using Velopack;
+using Velopack.Sources;
+
+// ── Velopack install/uninstall hooks (must be first) ──────────────────────────
+
+VelopackApp.Build().Run();
 
 // ── 12.2: Common options ──────────────────────────────────────────────────────
 
@@ -330,12 +336,69 @@ lsCommand.SetAction(async (parseResult, ct) =>
     return 0;
 });
 
+// ── Update verb ───────────────────────────────────────────────────────────────
+
+var updateCommand = new Command("update", "Check for updates and apply them");
+
+updateCommand.SetAction(async (parseResult, ct) =>
+{
+    const string repoUrl = "https://github.com/woutervanranst/Arius7";
+
+    try
+    {
+        var mgr = new UpdateManager(new GithubSource(repoUrl, null, false));
+
+        if (!mgr.IsInstalled)
+        {
+            AnsiConsole.MarkupLine("[yellow]Update check skipped:[/] not running from a Velopack install.");
+            return 0;
+        }
+
+        AnsiConsole.MarkupLine($"[dim]Current version: {mgr.CurrentVersion}[/]");
+        AnsiConsole.MarkupLine("[dim]Checking for updates...[/]");
+
+        var newVersion = await mgr.CheckForUpdatesAsync();
+
+        if (newVersion is null)
+        {
+            AnsiConsole.MarkupLine("[green]You are running the latest version.[/]");
+            return 0;
+        }
+
+        AnsiConsole.MarkupLine($"[blue]New version available: {newVersion.TargetFullRelease.Version}[/]");
+
+        await AnsiConsole.Progress()
+            .AutoClear(false)
+            .Columns(
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new SpinnerColumn())
+            .StartAsync(async ctx =>
+            {
+                var downloadTask = ctx.AddTask("[green]Downloading update[/]");
+                await mgr.DownloadUpdatesAsync(newVersion, p => downloadTask.Value = p);
+            });
+
+        AnsiConsole.MarkupLine("[green]Update downloaded. Applying and restarting...[/]");
+        mgr.ApplyUpdatesAndRestart(newVersion);
+    }
+    catch (Exception ex)
+    {
+        AnsiConsole.MarkupLine($"[red]Update failed:[/] {ex.Message}");
+        return 1;
+    }
+
+    return 0;
+});
+
 // ── Root command ──────────────────────────────────────────────────────────────
 
 var rootCommand = new RootCommand("Arius — content-addressable archival to Azure Blob Storage");
 rootCommand.Subcommands.Add(archiveCommand);
 rootCommand.Subcommands.Add(restoreCommand);
 rootCommand.Subcommands.Add(lsCommand);
+rootCommand.Subcommands.Add(updateCommand);
 
 return await rootCommand.Parse(args).InvokeAsync();
 
