@@ -75,99 +75,99 @@
 
 ## 8. Archive Pipeline
 
-- [ ] 8.1 Define Mediator ArchiveCommand and ArchiveResult
-- [ ] 8.2 Implement pipeline orchestration: Channel<T> between stages, bounded channels with backpressure
-- [ ] 8.3 Implement enumerate stage: produce Channel<FilePair> from depth-first enumeration
-- [ ] 8.4 Implement hash stage (×N workers): stream file through IEncryptionService.ComputeHash, produce Channel<HashedFilePair>
-- [ ] 8.5 Implement dedup stage (×1): batched index lookup, in-flight set, route results to manifest writer + upload channel or skip
-- [ ] 8.6 Implement size router: split Channel into large file channel and small file channel based on threshold
-- [ ] 8.7 Implement large file upload: stream read → gzip → encrypt → upload with blob metadata, emit IndexEntry
-- [ ] 8.8 Implement tar builder (×1): accumulate small files to temp file, name entries by content-hash, seal at target size, hand off to Channel<SealedTar>
-- [ ] 8.9 Implement tar upload: gzip → encrypt → upload tar blob, then create thin chunks for each entry, emit IndexEntries
-- [ ] 8.10 Implement index updater: collect all IndexEntries, merge into shards, upload once at end
-- [ ] 8.11 Implement tree building: external sort manifest → bottom-up tree construction → snapshot creation
-- [ ] 8.12 Implement pointer writer (×N parallel): create/update .pointer.arius files, skip if --no-pointers
-- [ ] 8.13 Implement --remove-local: delete binaries after successful snapshot, reject if combined with --no-pointers
-- [ ] 8.14 Implement progress event emission: FileScanned, FileHashing, FileHashed, ChunkUploading, ChunkUploaded, TarBundleSealing, TarBundleUploaded, SnapshotCreated
+- [x] 8.1 Define Mediator ArchiveCommand and ArchiveResult
+- [x] 8.2 Implement pipeline orchestration: Channel<T> between stages, bounded channels with backpressure
+- [x] 8.3 Implement enumerate stage: produce Channel<FilePair> from depth-first enumeration
+- [x] 8.4 Implement hash stage (×N workers): stream file through IEncryptionService.ComputeHash, produce Channel<HashedFilePair>
+- [x] 8.5 Implement dedup stage (×1): batched index lookup, in-flight set, route results to manifest writer + upload channel or skip
+- [x] 8.6 Implement size router: split Channel into large file channel and small file channel based on threshold
+- [x] 8.7 Implement large file upload: stream read → gzip → encrypt → upload with blob metadata, emit IndexEntry
+- [x] 8.8 Implement tar builder (×1): accumulate small files to temp file, name entries by content-hash, seal at target size, hand off to Channel<SealedTar>
+- [x] 8.9 Implement tar upload: gzip → encrypt → upload tar blob, then create thin chunks for each entry, emit IndexEntries
+- [x] 8.10 Implement index updater: collect all IndexEntries, merge into shards, upload once at end
+- [x] 8.11 Implement tree building: external sort manifest → bottom-up tree construction → snapshot creation
+- [x] 8.12 Implement pointer writer (×N parallel): create/update .pointer.arius files, skip if --no-pointers
+- [x] 8.13 Implement --remove-local: delete binaries after successful snapshot, reject if combined with --no-pointers
+- [x] 8.14 Implement progress event emission: FileScanned, FileHashing, FileHashed, ChunkUploading, ChunkUploaded, TarBundleSealing, TarBundleUploaded, SnapshotCreated
 
 ## 9. Archive Crash Recovery
 
-- [ ] 9.1 Implement HEAD check before upload: 200+arius-complete → skip and recover index entry, 200 without → overwrite, 404 → upload
-- [ ] 9.2 Implement thin chunk recovery: read tar-hash from thin chunk body on HEAD hit
-- [ ] 9.3 Implement large chunk recovery: read original-size and chunk-size from blob metadata on HEAD hit
-- [ ] 9.4 Integration test: fault-injection blob service that throws after N uploads, verify re-run produces correct snapshot
-- [ ] 9.5 Integration test: crash after tar upload but before thin chunks, verify re-run handles partial thin chunks
+- [x] 9.1 Implement HEAD check before upload: 200+arius-complete → skip and recover index entry, 200 without → overwrite, 404 → upload
+- [x] 9.2 Implement thin chunk recovery: read tar-hash from thin chunk body on HEAD hit
+- [x] 9.3 Implement large chunk recovery: read original-size and chunk-size from blob metadata on HEAD hit
+- [x] 9.4 Integration test: fault-injection blob service that throws after N uploads, verify re-run produces correct snapshot
+- [x] 9.5 Integration test: crash after tar upload but before thin chunks, verify re-run handles partial thin chunks
 
 ## 10. Restore Pipeline
 
-- [ ] 10.1 Define Mediator RestoreCommand and RestoreResult (supports: single file, multiple files, directory, full snapshot)
-- [ ] 10.2 Implement snapshot resolution and tree traversal to target path(s)
-- [ ] 10.3 Implement conflict check: hash local files, skip matches, prompt on mismatch (y/N/all), support --overwrite
-- [ ] 10.4 Implement chunk resolution: index lookup for each content hash, group by chunk hash
-- [ ] 10.5 Implement rehydration status check: check chunks-rehydrated/ existence, check blob tier
-- [ ] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
-- [ ] 10.7 Implement Phase 1 — download available chunks: streaming download → decrypt → gunzip → write to path (large) or stream tar extraction (tar bundles)
-- [ ] 10.8 Implement Phase 2 — rehydration kick-off: copy-blob to chunks-rehydrated/ with priority, retry with backoff on throttle
-- [ ] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
-- [ ] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
-- [ ] 10.11 Implement pointer file creation during restore (unless --no-pointers), set file dates from tree metadata
-- [ ] 10.12 Implement progress event emission for restore: download progress, files restored, rehydration status
+- [x] 10.1 Define Mediator RestoreCommand and RestoreResult (supports: single file, multiple files, directory, full snapshot)
+- [x] 10.2 Implement snapshot resolution and tree traversal to target path(s)
+- [x] 10.3 Implement conflict check: hash local files, skip matches, prompt on mismatch (y/N/all), support --overwrite
+- [x] 10.4 Implement chunk resolution: index lookup for each content hash, group by chunk hash
+- [x] 10.5 Implement rehydration status check: check chunks-rehydrated/ existence, check blob tier
+- [x] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
+- [x] 10.7 Implement Phase 1 — download available chunks: streaming download → decrypt → gunzip → write to path (large) or stream tar extraction (tar bundles)
+- [x] 10.8 Implement Phase 2 — rehydration kick-off: copy-blob to chunks-rehydrated/ with priority, retry with backoff on throttle
+- [x] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
+- [x] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
+- [x] 10.11 Implement pointer file creation during restore (unless --no-pointers), set file dates from tree metadata
+- [x] 10.12 Implement progress event emission for restore: download progress, files restored, rehydration status
 
 ## 11. Ls Command
 
-- [ ] 11.1 Define Mediator LsCommand and LsResult
-- [ ] 11.2 Implement tree traversal for ls: walk tree blobs, collect file entries
-- [ ] 11.3 Implement path prefix filter: only traverse matching subtree
-- [ ] 11.4 Implement filename substring filter (case-insensitive)
-- [ ] 11.5 Implement size lookup from chunk index original-size field
-- [ ] 11.6 Implement output formatting: path, size (humanized), created, modified
-- [ ] 11.7 Integration tests: ls with various filters, verify correct files returned
+- [x] 11.1 Define Mediator LsCommand and LsResult
+- [x] 11.2 Implement tree traversal for ls: walk tree blobs, collect file entries
+- [x] 11.3 Implement path prefix filter: only traverse matching subtree
+- [x] 11.4 Implement filename substring filter (case-insensitive)
+- [x] 11.5 Implement size lookup from chunk index original-size field
+- [x] 11.6 Implement output formatting: path, size (humanized), created, modified
+- [x] 11.7 Integration tests: ls with various filters, verify correct files returned
 
 ## 12. CLI
 
-- [ ] 12.1 Set up System.CommandLine with three root verbs: archive, restore, ls
-- [ ] 12.2 Implement common options: --account, --key, --passphrase, --container
-- [ ] 12.3 Implement archive-specific options: --tier, --remove-local, --no-pointers, --small-file-threshold, --tar-target-size, --dedup-cache-mb
-- [ ] 12.4 Implement restore-specific options: -v, --no-pointers, --overwrite
-- [ ] 12.5 Implement ls-specific options: -v, --prefix, --filter
-- [ ] 12.6 Implement FluentValidation for command options (e.g., reject --remove-local + --no-pointers)
-- [ ] 12.7 Implement account key resolution: CLI parameter → UserSecrets fallback
-- [ ] 12.8 Implement Spectre.Console archive progress display: aggregate progress + in-flight files with % + tar bundle status
-- [ ] 12.9 Implement Spectre.Console restore display: cost estimation table, priority prompt, download progress, remaining summary
-- [ ] 12.10 Implement Spectre.Console ls output: table with path, size, dates
-- [ ] 12.11 Wire up DI: register Core services, encryption service (based on passphrase), blob storage
+- [x] 12.1 Set up System.CommandLine with three root verbs: archive, restore, ls
+- [x] 12.2 Implement common options: --account, --key, --passphrase, --container
+- [x] 12.3 Implement archive-specific options: --tier, --remove-local, --no-pointers, --small-file-threshold, --tar-target-size, --dedup-cache-mb
+- [x] 12.4 Implement restore-specific options: -v, --no-pointers, --overwrite
+- [x] 12.5 Implement ls-specific options: -v, --prefix, --filter
+- [x] 12.6 Implement FluentValidation for command options (e.g., reject --remove-local + --no-pointers)
+- [x] 12.7 Implement account key resolution: CLI parameter → UserSecrets fallback
+- [x] 12.8 Implement Spectre.Console archive progress display: aggregate progress + in-flight files with % + tar bundle status
+- [x] 12.9 Implement Spectre.Console restore display: cost estimation table, priority prompt, download progress, remaining summary
+- [x] 12.10 Implement Spectre.Console ls output: table with path, size, dates
+- [x] 12.11 Wire up DI: register Core services, encryption service (based on passphrase), blob storage
 
 ## 13. Integration Tests — Roundtrip Scenarios
 
-- [ ] 13.1 Archive single large file → restore → verify byte-identical
-- [ ] 13.2 Archive single small file (tar-bundled) → restore → verify byte-identical
-- [ ] 13.3 Archive mix of large and small files → restore full snapshot → verify all files
-- [ ] 13.4 Archive with encryption → restore → verify byte-identical
-- [ ] 13.5 Archive nested directory structure → restore → verify tree structure and all files
-- [ ] 13.6 Incremental archive: add/modify/delete files between runs → restore each snapshot version → verify correct content per version
-- [ ] 13.7 Deduplication: archive two identical files in different directories → verify single chunk uploaded, both files restored
-- [ ] 13.8 Thin archive: archive with --remove-local → archive again (pointer-only) → restore → verify
+- [x] 13.1 Archive single large file → restore → verify byte-identical
+- [x] 13.2 Archive single small file (tar-bundled) → restore → verify byte-identical
+- [x] 13.3 Archive mix of large and small files → restore full snapshot → verify all files
+- [x] 13.4 Archive with encryption → restore → verify byte-identical
+- [x] 13.5 Archive nested directory structure → restore → verify tree structure and all files
+- [x] 13.6 Incremental archive: add/modify/delete files between runs → restore each snapshot version → verify correct content per version
+- [x] 13.7 Deduplication: archive two identical files in different directories → verify single chunk uploaded, both files restored
+- [x] 13.8 Thin archive: archive with --remove-local → archive again (pointer-only) → restore → verify
 
 ## 14. Integration Tests — Edge Cases
 
-- [ ] 14.1 Stale pointer (binary hash ≠ pointer hash): verify pointer overwritten, correct hash archived
-- [ ] 14.2 Pointer-only file with missing chunk in index: verify warning logged, file excluded from snapshot
-- [ ] 14.3 File renamed between runs: verify old path absent in new snapshot, new path present, same chunk deduplicated
-- [ ] 14.4 File deleted between runs: verify absent from new snapshot, present in previous snapshot
-- [ ] 14.5 Special characters in filenames: spaces, unicode, brackets, dots, very long names — archive and restore roundtrip
-- [ ] 14.6 Empty file (0 bytes) roundtrip
-- [ ] 14.7 File exactly at small-file-threshold boundary → routed to large pipeline
-- [ ] 14.8 Binary file named `something.pointer.arius` (naming collision): treated as pointer, warn if invalid hex content
-- [ ] 14.9 --no-pointers: verify no pointer files created
-- [ ] 14.10 --remove-local + --no-pointers: verify rejected
+- [x] 14.1 Stale pointer (binary hash ≠ pointer hash): verify pointer overwritten, correct hash archived
+- [x] 14.2 Pointer-only file with missing chunk in index: verify warning logged, file excluded from snapshot
+- [x] 14.3 File renamed between runs: verify old path absent in new snapshot, new path present, same chunk deduplicated
+- [x] 14.4 File deleted between runs: verify absent from new snapshot, present in previous snapshot
+- [x] 14.5 Special characters in filenames: spaces, unicode, brackets, dots, very long names — archive and restore roundtrip
+- [x] 14.6 Empty file (0 bytes) roundtrip
+- [x] 14.7 File exactly at small-file-threshold boundary → routed to large pipeline
+- [x] 14.8 Binary file named `something.pointer.arius` (naming collision): treated as pointer, warn if invalid hex content
+- [x] 14.9 --no-pointers: verify no pointer files created
+- [x] 14.10 --remove-local + --no-pointers: verify rejected
 
 ## 15. Integration Tests — Crash Recovery & OpenSSL Compat
 
-- [ ] 15.1 Crash recovery: fault injection after large file uploads → re-run → verify no duplicate uploads, correct snapshot
-- [ ] 15.2 Crash recovery: fault injection after tar upload but before all thin chunks → re-run → verify correct snapshot
-- [ ] 15.3 Crash recovery: fault injection after all uploads but before index → re-run → verify index correct
-- [ ] 15.4 OpenSSL compatibility: archive encrypted large file → download raw blob → decrypt with openssl CLI → gunzip → verify byte-identical
-- [ ] 15.5 OpenSSL compatibility: archive encrypted tar bundle → download raw blob → decrypt → gunzip → tar extract → verify files by content-hash name
+- [x] 15.1 Crash recovery: fault injection after large file uploads → re-run → verify no duplicate uploads, correct snapshot
+- [x] 15.2 Crash recovery: fault injection after tar upload but before all thin chunks → re-run → verify correct snapshot
+- [x] 15.3 Crash recovery: fault injection after all uploads but before index → re-run → verify index correct
+- [x] 15.4 OpenSSL compatibility: archive encrypted large file → download raw blob → decrypt with openssl CLI → gunzip → verify byte-identical
+- [x] 15.5 OpenSSL compatibility: archive encrypted tar bundle → download raw blob → decrypt → gunzip → tar extract → verify files by content-hash name
 
 ## 16. E2E Tests (Real Azure, Gated)
 
