@@ -57,6 +57,16 @@ jobs:
           -e Arius.Cli${{ matrix.rid == 'win-x64' && '.exe' || '' }}
           --channel ${{ matrix.rid }}
 
+      - name: Create portable zip
+        shell: bash
+        run: |
+          cd publish
+          if [[ "${{ matrix.rid }}" == win-* ]]; then
+            7z a -tzip ../Releases/Arius-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip .
+          else
+            zip -r ../Releases/Arius-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip .
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
