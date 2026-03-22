@@ -4,22 +4,45 @@ Content-addressable archival to Azure Blob Storage. Deduplicated, optionally enc
 
 ## Installation
 
-### Windows (installer)
+### Windows
 
-Download and run `Arius-win-x64-Setup.exe` from the
+Download and run **`Arius-win-x64-Setup.exe`** from the
 [latest release](https://github.com/woutervanranst/Arius7/releases/latest).
+This installs Arius and enables auto-updating via `arius update`.
 
-Velopack handles installation and future updates. To update later:
+### Linux
 
+Download **`Arius-linux-x64.AppImage`** from the
+[latest release](https://github.com/woutervanranst/Arius7/releases/latest),
+make it executable, and run it:
+
+```bash
+chmod +x Arius-linux-x64.AppImage
+./Arius-linux-x64.AppImage archive ./photos --account myaccount --container mycontainer
 ```
-arius update
+
+Or move it to a directory on your `PATH`:
+
+```bash
+mv Arius-linux-x64.AppImage /usr/local/bin/arius
 ```
 
-### Windows / Linux (portable)
+### macOS
 
-Download the zip for your platform from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest)
-and extract it to a directory on your `PATH`.
+Download **`Arius-osx-arm64.zip`** from the
+[latest release](https://github.com/woutervanranst/Arius7/releases/latest),
+extract it, and move the binary to your `PATH`:
+
+```bash
+unzip Arius-osx-arm64.zip -d arius
+mv arius/Arius.Cli /usr/local/bin/arius
+```
+
+### Portable (all platforms)
+
+Every release also includes a portable zip per platform
+(`Arius-<version>-win-x64.zip`, `Arius-<version>-linux-x64.zip`, `Arius-<version>-osx-arm64.zip`).
+Extract and add to your `PATH`.
 
 ### Docker
 
