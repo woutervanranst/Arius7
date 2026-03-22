@@ -262,23 +262,10 @@ public sealed class ArchivePipelineHandler
                         var fullPath = Path.Combine(opts.RootDirectory,
                             upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
-                        var countingStream = new CountingStream();
-                        await using var fs      = File.OpenRead(fullPath);
-                        await using var counting = countingStream;
-                        await using var encStream = _encryption.WrapForEncryption(countingStream);
-                        await using var gzip      = new GZipStream(encStream, CompressionLevel.Optimal);
-                        await fs.CopyToAsync(gzip, cancellationToken);
-                        await gzip.FlushAsync(cancellationToken);
-                        compressedSize = countingStream.BytesWritten;
-
-                        // Re-open for actual upload
-                        var uploadMs = new MemoryStream();
-                        await using var fs2      = File.OpenRead(fullPath);
-                        await using var encStr2  = _encryption.WrapForEncryption(uploadMs);
-                        await using var gzip2    = new GZipStream(encStr2, CompressionLevel.Optimal);
-                        await fs2.CopyToAsync(gzip2, cancellationToken);
-                        await gzip2.FlushAsync(cancellationToken);
-                        uploadMs.Position = 0;
+                        // Gzip + encrypt to memory in a single pass
+                        MemoryStream uploadMs;
+                        await using (var fs = File.OpenRead(fullPath))
+                            uploadMs = await GzipEncryptToMemoryAsync(fs, _encryption, cancellationToken);
 
                         var uploadMeta = new Dictionary<string, string>
                         {
@@ -382,7 +369,7 @@ public sealed class ArchivePipelineHandler
                         }
                         tarEntry.DataStream = null;
 
-                        tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize));
+                        tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
                         currentSize += upload.FileSize;
 
                         if (currentSize >= opts.TarTargetSize)
@@ -419,13 +406,10 @@ public sealed class ArchivePipelineHandler
                         else
                         {
                             // Upload: tar → gzip → encrypt
-                            var uploadMs = new MemoryStream();
-                            await using (var fs      = File.OpenRead(sealed_.TarFilePath))
-                            await using (var encStr  = _encryption.WrapForEncryption(uploadMs))
-                            await using (var gzip    = new GZipStream(encStr, CompressionLevel.Optimal))
-                                await fs.CopyToAsync(gzip, cancellationToken);
+                            MemoryStream uploadMs;
+                            await using (var fs = File.OpenRead(sealed_.TarFilePath))
+                                uploadMs = await GzipEncryptToMemoryAsync(fs, _encryption, cancellationToken);
                             compressedSize = uploadMs.Length;
-                            uploadMs.Position = 0;
 
                             var uploadMeta = new Dictionary<string, string>
                             {
@@ -472,6 +456,20 @@ public sealed class ArchivePipelineHandler
                             await indexEntryChannel.Writer.WriteAsync(
                                 new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional),
                                 cancellationToken);
+
+                            // Write manifest entry so the tree builder includes this file
+                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, cancellationToken);
+
+                            if (!opts.NoPointers)
+                                pendingPointers.Add((
+                                    Path.Combine(opts.RootDirectory,
+                                        entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+                                    entry.ContentHash));
+
+                            if (opts.RemoveLocal)
+                                pendingDeletes.Add(
+                                    Path.Combine(opts.RootDirectory,
+                                        entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
                         }
 
                         await _mediator.Publish(
@@ -577,6 +575,37 @@ public sealed class ArchivePipelineHandler
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads <paramref name="source"/>, gzips it, encrypts it via <paramref name="encryption"/>,
+    /// and returns the result as a rewound <see cref="MemoryStream"/>.
+    ///
+    /// Handles the plaintext case where <c>WrapForEncryption</c> returns the same stream
+    /// instance (which must not be disposed prematurely).
+    /// </summary>
+    private static async Task<MemoryStream> GzipEncryptToMemoryAsync(
+        Stream            source,
+        IEncryptionService encryption,
+        CancellationToken ct)
+    {
+        var ms         = new MemoryStream();
+        var encWrapper = encryption.WrapForEncryption(ms);
+        var isSameStream = ReferenceEquals(encWrapper, ms);
+
+        await using (var gzip = new GZipStream(encWrapper, CompressionLevel.Optimal, leaveOpen: true))
+            await source.CopyToAsync(gzip, ct);
+
+        // Flush the encryption layer (if distinct) before rewinding
+        if (!isSameStream)
+            await encWrapper.FlushAsync(ct);
+
+        // Only dispose the wrapper if it's a distinct stream (not ms itself)
+        if (!isSameStream)
+            await encWrapper.DisposeAsync();
+
+        ms.Position = 0;
+        return ms;
+    }
 
     private static async Task WriteManifestEntry(
         HashedFilePair    hashed,

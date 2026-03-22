@@ -7,19 +7,19 @@ namespace Arius.Core.Storage;
 public static class BlobMetadataKeys
 {
     /// <summary>Chunk type: "large", "tar", or "thin".</summary>
-    public const string AriusType          = "arius-type";
+    public const string AriusType          = "arius_type";
 
     /// <summary>Set to "true" once an upload completes successfully. Absence means incomplete.</summary>
-    public const string AriusComplete      = "arius-complete";
+    public const string AriusComplete      = "arius_complete";
 
     /// <summary>Original uncompressed file size in bytes (for large and thin chunks).</summary>
-    public const string OriginalSize       = "original-size";
+    public const string OriginalSize       = "original_size";
 
     /// <summary>Compressed (encrypted+gzipped) blob body size in bytes (for large and tar chunks).</summary>
-    public const string ChunkSize         = "chunk-size";
+    public const string ChunkSize         = "chunk_size";
 
     /// <summary>Proportional compressed size estimate for this file within a tar bundle (for thin chunks).</summary>
-    public const string CompressedSize    = "compressed-size";
+    public const string CompressedSize    = "compressed_size";
 
     // ── Chunk type values ──────────────────────────────────────────────────────
 

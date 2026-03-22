@@ -36,11 +36,13 @@ public sealed record IndexEntry(
 
 /// <summary>
 /// A small file that has been added to the current tar accumulator.
-/// Carries original-size for proportional compressed-size estimation.
+/// Carries original-size for proportional compressed-size estimation,
+/// and the full <see cref="HashedFilePair"/> for manifest-entry writing.
 /// </summary>
 public sealed record TarEntry(
-    string ContentHash,
-    long   OriginalSize
+    string         ContentHash,
+    long           OriginalSize,
+    HashedFilePair HashedPair
 );
 
 /// <summary>
