@@ -99,10 +99,13 @@ jobs:
           merge-multiple: true
 
       - name: Upload to GitHub Releases
-        run: >
-          vpk upload github
-          --repoUrl https://github.com/${{ github.repository }}
-          --token ${{ secrets.GITHUB_TOKEN }}
-          --publish
-          --releaseName "Arius ${{ steps.version.outputs.version }}"
-          --tag ${{ github.ref_name }}
+        run: |
+          for channel in win-x64 linux-x64 osx-arm64; do
+            vpk upload github \
+              --repoUrl https://github.com/${{ github.repository }} \
+              --token ${{ secrets.GITHUB_TOKEN }} \
+              --channel $channel \
+              --publish \
+              --releaseName "Arius ${{ steps.version.outputs.version }}" \
+              --tag ${{ github.ref_name }}
+          done
