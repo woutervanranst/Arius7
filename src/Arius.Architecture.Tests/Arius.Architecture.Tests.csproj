@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Shouldly" Version="4.3.0" />
+    <PackageReference Include="TngTech.ArchUnitNET" Version="0.13.3" />
+    <PackageReference Include="TUnit" Version="1.20.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+    <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
+    <ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
+  </ItemGroup>
+
+</Project>

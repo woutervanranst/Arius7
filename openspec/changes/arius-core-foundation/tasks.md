@@ -1,21 +1,21 @@
 ## 1. Solution Structure & Project Setup
 
-- [ ] 1.1 Create .NET solution with projects: Arius.Core, Arius.Cli, Arius.AzureBlob
-- [ ] 1.2 Create test projects: Arius.Core.Tests, Arius.Integration.Tests, Arius.E2E.Tests, Arius.Architecture.Tests
-- [ ] 1.3 Add NuGet dependencies: Mediator, FluentValidation, FluentResults, Azure.Storage.Blobs, System.CommandLine, Spectre.Console, Humanizer, TUnit, NSubstitute, Shouldly, ArchUnitNET
-- [ ] 1.4 Configure project references: Cli → Core, AzureBlob → Core (implements interfaces)
-- [ ] 1.5 Add Dockerfile for Synology deployment
-- [ ] 1.6 Architecture tests: enforce Core has no Azure dependency, no circular references, Mediator commands in Core
+- [x] 1.1 Create .NET solution with projects: Arius.Core, Arius.Cli, Arius.AzureBlob
+- [x] 1.2 Create test projects: Arius.Core.Tests, Arius.Integration.Tests, Arius.E2E.Tests, Arius.Architecture.Tests
+- [x] 1.3 Add NuGet dependencies: Mediator, FluentValidation, FluentResults, Azure.Storage.Blobs, System.CommandLine, Spectre.Console, Humanizer, TUnit, NSubstitute, Shouldly, ArchUnitNET
+- [x] 1.4 Configure project references: Cli → Core, AzureBlob → Core (implements interfaces)
+- [x] 1.5 Add Dockerfile for Synology deployment
+- [x] 1.6 Architecture tests: enforce Core has no Azure dependency, no circular references, Mediator commands in Core
 
 ## 2. Encryption & Hashing
 
-- [ ] 2.1 Define `IEncryptionService` interface in Core (WrapForEncryption, WrapForDecryption, ComputeHash streaming + byte[])
-- [ ] 2.2 Implement `PassphraseEncryptionService`: AES-256-CBC, openssl-compatible (Salted__ prefix, PBKDF2 SHA-256 10K iterations), streaming encrypt/decrypt
-- [ ] 2.3 Implement `PlaintextPassthroughService`: no-op stream wrapper, plain SHA256
-- [ ] 2.4 Implement passphrase-seeded hashing: SHA256(passphrase_bytes + data_bytes) with streaming support
-- [ ] 2.5 Unit tests: encrypt/decrypt roundtrip, openssl CLI compatibility (shell out to openssl), Salted__ prefix check, streaming large file (no memory spike)
-- [ ] 2.6 Golden file tests: decrypt actual chunks from previous Arius version with known passphrase
-- [ ] 2.7 Unit tests: hash determinism, passphrase-seeded vs. plaintext, same file different passphrase produces different hash
+- [x] 2.1 Define `IEncryptionService` interface in Core (WrapForEncryption, WrapForDecryption, ComputeHash streaming + byte[])
+- [x] 2.2 Implement `PassphraseEncryptionService`: AES-256-CBC, openssl-compatible (Salted__ prefix, PBKDF2 SHA-256 10K iterations), streaming encrypt/decrypt
+- [x] 2.3 Implement `PlaintextPassthroughService`: no-op stream wrapper, plain SHA256
+- [x] 2.4 Implement passphrase-seeded hashing: SHA256(passphrase_bytes + data_bytes) with streaming support
+- [x] 2.5 Unit tests: encrypt/decrypt roundtrip, openssl CLI compatibility (shell out to openssl), Salted__ prefix check, streaming large file (no memory spike)
+- [x] 2.6 Golden file tests: decrypt actual chunks from previous Arius version with known passphrase
+- [x] 2.7 Unit tests: hash determinism, passphrase-seeded vs. plaintext, same file different passphrase produces different hash
 
 ## 3. Blob Storage Abstraction
 
