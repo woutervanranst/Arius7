@@ -171,8 +171,8 @@
 
 ## 16. E2E Tests (Real Azure, Gated)
 
-- [ ] 16.1 Set up real Azure test configuration: env vars for account name/key, unique container per run, auto-cleanup
-- [ ] 16.2 Archive to Hot tier → restore → verify content
-- [ ] 16.3 Archive to Cool tier → restore → verify content
-- [ ] 16.4 Archive to Archive tier → verify blob tier is set (no rehydration test — too slow/costly)
-- [ ] 16.5 Large file (100 MB+) upload/download streaming works end-to-end
+- [x] 16.1 Set up real Azure test configuration: env vars for account name/key, unique container per run, auto-cleanup
+- [x] 16.2 Archive to Hot tier → restore → verify content
+- [x] 16.3 Archive to Cool tier → restore → verify content
+- [x] 16.4 Archive to Archive tier → verify blob tier is set (no rehydration test — too slow/costly)
+- [x] 16.5 Large file (100 MB+) upload/download streaming works end-to-end
