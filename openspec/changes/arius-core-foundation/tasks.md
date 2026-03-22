@@ -42,36 +42,36 @@
 
 ## 5. File Tree (Merkle Tree)
 
-- [ ] 5.1 Define tree blob JSON format: entries with name, type, hash, created, modified (no size)
-- [ ] 5.2 Implement tree blob serialization/deserialization with deterministic JSON output (sorted entries by name)
-- [ ] 5.3 Implement tree hash computation: SHA256 of serialized JSON (passphrase-seeded if encrypted)
-- [ ] 5.4 Implement manifest writer: append (path, hash, created, modified) entries to unsorted temp file during pipeline
-- [ ] 5.5 Implement external sort of manifest file by path
-- [ ] 5.6 Implement bottom-up tree builder: stream sorted manifest, build one directory at a time, upload tree blobs, cascade hashes up
-- [ ] 5.7 Implement tree blob dedup: check if tree hash already exists in filetrees/ before uploading
-- [ ] 5.8 Skip empty directories (no tree blob for dirs without files)
-- [ ] 5.9 Implement tree blob caching on disk at `~/.arius/cache/<repo-id>/filetrees/`
-- [ ] 5.10 Unit tests: JSON serialization roundtrip, tree hash determinism, empty dir skipping, metadata change produces new hash
-- [ ] 5.11 Integration tests: tree blob upload/download, dedup across runs, cache hit
+- [x] 5.1 Define tree blob JSON format: entries with name, type, hash, created, modified (no size)
+- [x] 5.2 Implement tree blob serialization/deserialization with deterministic JSON output (sorted entries by name)
+- [x] 5.3 Implement tree hash computation: SHA256 of serialized JSON (passphrase-seeded if encrypted)
+- [x] 5.4 Implement manifest writer: append (path, hash, created, modified) entries to unsorted temp file during pipeline
+- [x] 5.5 Implement external sort of manifest file by path
+- [x] 5.6 Implement bottom-up tree builder: stream sorted manifest, build one directory at a time, upload tree blobs, cascade hashes up
+- [x] 5.7 Implement tree blob dedup: check if tree hash already exists in filetrees/ before uploading
+- [x] 5.8 Skip empty directories (no tree blob for dirs without files)
+- [x] 5.9 Implement tree blob caching on disk at `~/.arius/cache/<repo-id>/filetrees/`
+- [x] 5.10 Unit tests: JSON serialization roundtrip, tree hash determinism, empty dir skipping, metadata change produces new hash
+- [x] 5.11 Integration tests: tree blob upload/download, dedup across runs, cache hit
 
 ## 6. Snapshot
 
-- [ ] 6.1 Define snapshot manifest format: root tree hash, timestamp, file count, total size, Arius version
-- [ ] 6.2 Implement snapshot creation: serialize, compress/encrypt, upload to snapshots/<timestamp>
-- [ ] 6.3 Implement snapshot listing: list snapshots/ prefix, parse timestamps, sort
-- [ ] 6.4 Implement snapshot resolution: latest or specific -v version
-- [ ] 6.5 Unit tests: manifest serialization roundtrip, timestamp format
-- [ ] 6.6 Integration tests: create snapshot, list snapshots, resolve latest
+- [x] 6.1 Define snapshot manifest format: root tree hash, timestamp, file count, total size, Arius version
+- [x] 6.2 Implement snapshot creation: serialize, compress/encrypt, upload to snapshots/<timestamp>
+- [x] 6.3 Implement snapshot listing: list snapshots/ prefix, parse timestamps, sort
+- [x] 6.4 Implement snapshot resolution: latest or specific -v version
+- [x] 6.5 Unit tests: manifest serialization roundtrip, timestamp format
+- [x] 6.6 Integration tests: create snapshot, list snapshots, resolve latest
 
 ## 7. FilePair & Local Enumeration
 
-- [ ] 7.1 Define FilePair model: RelativePath, BinaryExists, PointerExists, PointerHash, FileSize, Created, Modified
-- [ ] 7.2 Implement recursive depth-first file enumeration with graceful error handling (skip inaccessible, log warning)
-- [ ] 7.3 Implement .pointer.arius detection: always treat suffix as pointer, validate hex hash content, warn on invalid
-- [ ] 7.4 Implement FilePair assembly: match binaries with pointers, detect orphan pointers (thin archive), detect standalone binaries
-- [ ] 7.5 Implement OS-neutral path normalization: backslash → forward slash, handle reserved characters
-- [ ] 7.6 Unit tests: FilePair assembly (all combinations: binary+pointer, binary-only, pointer-only, stale pointer, invalid pointer content)
-- [ ] 7.7 Unit tests: path normalization edge cases (Windows paths, unicode filenames, deeply nested)
+- [x] 7.1 Define FilePair model: RelativePath, BinaryExists, PointerExists, PointerHash, FileSize, Created, Modified
+- [x] 7.2 Implement recursive depth-first file enumeration with graceful error handling (skip inaccessible, log warning)
+- [x] 7.3 Implement .pointer.arius detection: always treat suffix as pointer, validate hex hash content, warn on invalid
+- [x] 7.4 Implement FilePair assembly: match binaries with pointers, detect orphan pointers (thin archive), detect standalone binaries
+- [x] 7.5 Implement OS-neutral path normalization: backslash → forward slash, handle reserved characters
+- [x] 7.6 Unit tests: FilePair assembly (all combinations: binary+pointer, binary-only, pointer-only, stale pointer, invalid pointer content)
+- [x] 7.7 Unit tests: path normalization edge cases (Windows paths, unicode filenames, deeply nested)
 
 ## 8. Archive Pipeline
 
