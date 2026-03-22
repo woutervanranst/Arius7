@@ -78,14 +78,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Install vpk
-        run: dotnet tool install -g vpk
-
       - name: Extract version from tag
         id: version
         shell: bash
@@ -98,20 +90,12 @@ jobs:
           pattern: releases-*
           merge-multiple: true
 
-      - name: Upload to GitHub Releases
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          channels=(win-x64 linux-x64 osx-arm64)
-          last=$((${#channels[@]} - 1))
-          for i in "${!channels[@]}"; do
-            publish_flag=""
-            if [ "$i" -eq "$last" ]; then
-              publish_flag="--publish"
-            fi
-            vpk upload github \
-              --repoUrl https://github.com/${{ github.repository }} \
-              --token ${{ secrets.GITHUB_TOKEN }} \
-              --channel "${channels[$i]}" \
-              --releaseName "Arius ${{ steps.version.outputs.version }}" \
-              --tag ${{ github.ref_name }} \
-              $publish_flag
-          done
+          gh release create ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --title "Arius ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            Releases/*
