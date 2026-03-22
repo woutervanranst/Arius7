@@ -1,0 +1,106 @@
+namespace Arius.Core.ChunkIndex;
+
+/// <summary>
+/// One line in a chunk index shard file.
+/// Format: <c>&lt;content-hash&gt; &lt;chunk-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt;\n</c>
+/// All hashes are lowercase hex strings (SHA256 = 64 chars).
+/// </summary>
+public sealed record ShardEntry(
+    string ContentHash,
+    string ChunkHash,
+    long   OriginalSize,
+    long   CompressedSize)
+{
+    // ── Serialization ──────────────────────────────────────────────────────────
+
+    /// <summary>Serializes this entry to the shard line format (no trailing newline).</summary>
+    public string Serialize() =>
+        $"{ContentHash} {ChunkHash} {OriginalSize} {CompressedSize}";
+
+    /// <summary>Parses a single shard line. Returns <c>null</c> on blank or comment lines.</summary>
+    public static ShardEntry? TryParse(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+            return null;
+
+        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 4)
+            throw new FormatException($"Invalid shard entry (expected 4 fields): '{line}'");
+
+        return new ShardEntry(
+            ContentHash    : parts[0],
+            ChunkHash      : parts[1],
+            OriginalSize   : long.Parse(parts[2]),
+            CompressedSize : long.Parse(parts[3]));
+    }
+}
+
+/// <summary>
+/// An in-memory shard: a collection of <see cref="ShardEntry"/> keyed by content-hash.
+/// </summary>
+public sealed class Shard
+{
+    private readonly Dictionary<string, ShardEntry> _entries;
+
+    public Shard() => _entries = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
+
+    private Shard(Dictionary<string, ShardEntry> entries) => _entries = entries;
+
+    public int Count => _entries.Count;
+
+    // ── Lookup ─────────────────────────────────────────────────────────────────
+
+    public bool TryLookup(string contentHash, out ShardEntry? entry) =>
+        _entries.TryGetValue(contentHash, out entry);
+
+    // ── Merge ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a new shard that contains all entries from this shard plus
+    /// the provided <paramref name="newEntries"/>. Existing entries are kept
+    /// (last-writer-wins if duplicate content-hash is present in newEntries).
+    /// </summary>
+    public Shard Merge(IEnumerable<ShardEntry> newEntries)
+    {
+        var combined = new Dictionary<string, ShardEntry>(_entries, StringComparer.Ordinal);
+        foreach (var e in newEntries)
+            combined[e.ContentHash] = e;
+        return new Shard(combined);
+    }
+
+    // ── Serialize ──────────────────────────────────────────────────────────────
+
+    /// <summary>Serializes all entries to a text stream (one line per entry, sorted by content-hash).</summary>
+    public void WriteTo(TextWriter writer)
+    {
+        foreach (var entry in _entries.Values.OrderBy(e => e.ContentHash, StringComparer.Ordinal))
+            writer.WriteLine(entry.Serialize());
+    }
+
+    // ── Deserialize ───────────────────────────────────────────────────────────
+
+    /// <summary>Parses a shard from a text reader.</summary>
+    public static Shard ReadFrom(TextReader reader)
+    {
+        var entries = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            var entry = ShardEntry.TryParse(line);
+            if (entry is not null)
+                entries[entry.ContentHash] = entry;
+        }
+        return new Shard(entries);
+    }
+
+    // ── Prefix calculation ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the 2-character (1-byte / 4-bit + 4-bit) shard prefix for a content-hash.
+    /// With 65,536 shards this is the first 4 hex chars (2 bytes) of the hash.
+    /// </summary>
+    public static string PrefixOf(string contentHash) =>
+        contentHash.Length >= 4
+            ? contentHash[..4]
+            : throw new ArgumentException($"Hash too short to derive prefix: '{contentHash}'");
+}

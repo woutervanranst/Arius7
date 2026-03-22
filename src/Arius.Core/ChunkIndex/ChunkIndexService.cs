@@ -1,0 +1,270 @@
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
+using Arius.Core.Encryption;
+using Arius.Core.Storage;
+
+namespace Arius.Core.ChunkIndex;
+
+/// <summary>
+/// Three-tier chunk index cache.
+///
+/// L1: In-memory LRU (configurable byte budget, default 512 MB).
+/// L2: Local disk at <c>~/.arius/cache/&lt;repo-id&gt;/chunk-index/</c>.
+/// L3: Remote blob storage (download on miss, save to L2, promote to L1).
+///
+/// Dedup lookups are batched by shard prefix to amortize downloads.
+/// An in-flight ConcurrentDictionary prevents duplicate uploads within one run.
+/// </summary>
+public sealed class ChunkIndexService : IDisposable
+{
+    // ── Configuration ─────────────────────────────────────────────────────────
+
+    public const long DefaultCacheBudgetBytes = 512L * 1024 * 1024; // 512 MB
+
+    // ── Dependencies ──────────────────────────────────────────────────────────
+
+    private readonly IBlobStorageService _blobs;
+    private readonly IEncryptionService  _encryption;
+    private readonly string              _l2Dir;
+
+    // ── L1 LRU cache ──────────────────────────────────────────────────────────
+
+    private sealed record L1Entry(string Prefix, Shard Shard, long Size);
+
+    private readonly long                              _l1BudgetBytes;
+    private readonly LinkedList<L1Entry>               _l1Lru  = new();
+    private readonly Dictionary<string, LinkedListNode<L1Entry>> _l1Map = new(StringComparer.Ordinal);
+    private          long                              _l1UsedBytes;
+    private readonly object                            _l1Lock = new();
+
+    // ── In-flight set (task 4.8) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Content hashes that have been successfully determined as "already uploaded" or
+    /// "just queued for upload" during this run, to prevent redundant uploads.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ShardEntry> _inFlight
+        = new(StringComparer.Ordinal);
+
+    // ── Pending new entries (collected during run, flushed at end) ────────────
+
+    private readonly ConcurrentBag<ShardEntry> _pendingEntries = new();
+
+    public ChunkIndexService(
+        IBlobStorageService blobs,
+        IEncryptionService  encryption,
+        string              accountName,
+        string              containerName,
+        long                cacheBudgetBytes = DefaultCacheBudgetBytes)
+    {
+        _blobs         = blobs;
+        _encryption    = encryption;
+        _l1BudgetBytes = cacheBudgetBytes;
+        _l2Dir         = GetL2Directory(accountName, containerName);
+        Directory.CreateDirectory(_l2Dir);
+    }
+
+    // ── Repo-id derivation (task 4.9) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Computes the repo-id: <c>SHA256(accountname + container)[:12]</c> (hex).
+    /// </summary>
+    public static string ComputeRepoId(string accountName, string containerName)
+    {
+        var input = Encoding.UTF8.GetBytes(accountName + containerName);
+        var hash  = SHA256.HashData(input);
+        return Convert.ToHexString(hash)[..12].ToLowerInvariant();
+    }
+
+    /// <summary>Returns the L2 disk cache directory for a given account+container.</summary>
+    public static string GetL2Directory(string accountName, string containerName)
+    {
+        var home   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var repoId = ComputeRepoId(accountName, containerName);
+        return Path.Combine(home, ".arius", "cache", repoId, "chunk-index");
+    }
+
+    // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Batched dedup lookup: given a collection of content-hashes, returns the set
+    /// that are already known (either from the tiered cache or the in-flight set).
+    /// Hashes are grouped by shard prefix to amortize shard downloads.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, ShardEntry>> LookupAsync(
+        IEnumerable<string> contentHashes,
+        CancellationToken   cancellationToken = default)
+    {
+        var result = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
+
+        // First pass: check in-flight set (no I/O)
+        var remaining = new List<string>();
+        foreach (var hash in contentHashes)
+        {
+            if (_inFlight.TryGetValue(hash, out var entry))
+                result[hash] = entry;
+            else
+                remaining.Add(hash);
+        }
+
+        if (remaining.Count == 0) return result;
+
+        // Group remaining by shard prefix and resolve each prefix through tiers
+        var byPrefix = remaining.GroupBy(Shard.PrefixOf);
+        foreach (var group in byPrefix)
+        {
+            var shard = await LoadShardAsync(group.Key, cancellationToken);
+            foreach (var hash in group)
+            {
+                if (shard.TryLookup(hash, out var entry) && entry is not null)
+                    result[hash] = entry;
+            }
+        }
+
+        return result;
+    }
+
+    // ── Record new entry ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Records a newly uploaded chunk entry in the in-flight set and pending list.
+    /// At end-of-run, call <see cref="FlushAsync"/> to persist all pending entries.
+    /// </summary>
+    public void RecordEntry(ShardEntry entry)
+    {
+        _inFlight[entry.ContentHash] = entry;
+        _pendingEntries.Add(entry);
+    }
+
+    // ── Flush (upload shards at end of run) ───────────────────────────────────
+
+    /// <summary>
+    /// Merges all pending entries into existing shards and uploads changed shards.
+    /// Should be called once at the end of an archive run.
+    /// </summary>
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        if (_pendingEntries.IsEmpty) return;
+
+        // Group pending entries by shard prefix
+        var byPrefix = _pendingEntries.GroupBy(e => Shard.PrefixOf(e.ContentHash));
+
+        foreach (var group in byPrefix)
+        {
+            var prefix      = group.Key;
+            var existing    = await LoadShardAsync(prefix, cancellationToken);
+            var merged      = existing.Merge(group);
+
+            // Serialize and upload
+            var bytes     = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
+            var blobName  = BlobPaths.ChunkIndexShard(prefix);
+
+            await _blobs.UploadAsync(
+                blobName,
+                new MemoryStream(bytes),
+                new Dictionary<string, string>(),
+                BlobTier.Cool,
+                overwrite: true,
+                cancellationToken: cancellationToken);
+
+            // Save to L2 disk cache
+            SaveToL2(prefix, bytes);
+
+            // Promote merged shard to L1
+            PromoteToL1(prefix, merged, bytes.Length);
+        }
+
+        // Clear pending
+        while (_pendingEntries.TryTake(out _)) { }
+    }
+
+    // ── Tier resolution ───────────────────────────────────────────────────────
+
+    private async Task<Shard> LoadShardAsync(string prefix, CancellationToken cancellationToken)
+    {
+        // L1 hit?
+        lock (_l1Lock)
+        {
+            if (_l1Map.TryGetValue(prefix, out var node))
+            {
+                // Move to front (most recently used)
+                _l1Lru.Remove(node);
+                _l1Lru.AddFirst(node);
+                return node.Value.Shard;
+            }
+        }
+
+        // L2 hit?
+        var l2Path = Path.Combine(_l2Dir, prefix);
+        if (File.Exists(l2Path))
+        {
+            var bytes = await File.ReadAllBytesAsync(l2Path, cancellationToken);
+            var shard = ShardSerializer.Deserialize(bytes, _encryption);
+            PromoteToL1(prefix, shard, bytes.Length);
+            return shard;
+        }
+
+        // L3 (Azure)
+        var blobName = BlobPaths.ChunkIndexShard(prefix);
+        var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
+        if (!meta.Exists)
+        {
+            // New prefix — empty shard
+            var empty = new Shard();
+            PromoteToL1(prefix, empty, 0);
+            return empty;
+        }
+
+        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
+        var ms = new MemoryStream();
+        await stream.CopyToAsync(ms, cancellationToken);
+        var downloaded = ms.ToArray();
+
+        var loadedShard = ShardSerializer.Deserialize(downloaded, _encryption);
+        SaveToL2(prefix, downloaded);
+        PromoteToL1(prefix, loadedShard, downloaded.Length);
+        return loadedShard;
+    }
+
+    // ── L1 LRU management (task 4.4) ──────────────────────────────────────────
+
+    private void PromoteToL1(string prefix, Shard shard, long approximateSizeBytes)
+    {
+        lock (_l1Lock)
+        {
+            // Evict old entry for this prefix if present
+            if (_l1Map.TryGetValue(prefix, out var existing))
+            {
+                _l1UsedBytes -= existing.Value.Size;
+                _l1Lru.Remove(existing);
+                _l1Map.Remove(prefix);
+            }
+
+            // Evict LRU entries until budget is satisfied
+            while (_l1UsedBytes + approximateSizeBytes > _l1BudgetBytes && _l1Lru.Count > 0)
+            {
+                var lru = _l1Lru.Last!;
+                _l1UsedBytes -= lru.Value.Size;
+                _l1Map.Remove(lru.Value.Prefix);
+                _l1Lru.RemoveLast();
+            }
+
+            // Add to front
+            var node = _l1Lru.AddFirst(new L1Entry(prefix, shard, approximateSizeBytes));
+            _l1Map[prefix] = node;
+            _l1UsedBytes  += approximateSizeBytes;
+        }
+    }
+
+    // ── L2 disk write (task 4.5) ──────────────────────────────────────────────
+
+    private void SaveToL2(string prefix, byte[] data)
+    {
+        var path = Path.Combine(_l2Dir, prefix);
+        File.WriteAllBytes(path, data);
+    }
+
+    public void Dispose() { /* future: flush in-progress state */ }
+}
