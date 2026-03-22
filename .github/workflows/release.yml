@@ -100,12 +100,18 @@ jobs:
 
       - name: Upload to GitHub Releases
         run: |
-          for channel in win-x64 linux-x64 osx-arm64; do
+          channels=(win-x64 linux-x64 osx-arm64)
+          last=$((${#channels[@]} - 1))
+          for i in "${!channels[@]}"; do
+            publish_flag=""
+            if [ "$i" -eq "$last" ]; then
+              publish_flag="--publish"
+            fi
             vpk upload github \
               --repoUrl https://github.com/${{ github.repository }} \
               --token ${{ secrets.GITHUB_TOKEN }} \
-              --channel $channel \
-              --publish \
+              --channel "${channels[$i]}" \
               --releaseName "Arius ${{ steps.version.outputs.version }}" \
-              --tag ${{ github.ref_name }}
+              --tag ${{ github.ref_name }} \
+              $publish_flag
           done
