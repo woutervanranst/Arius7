@@ -19,12 +19,12 @@
 
 ## 3. Blob Storage Abstraction
 
-- [ ] 3.1 Define `IBlobStorageService` in Core: upload (streaming + metadata + tier), download (streaming), HEAD (exists + metadata + tier), list by prefix, set metadata, copy blob
-- [ ] 3.2 Implement Azure Blob Storage service in Arius.AzureBlob using Azure.Storage.Blobs SDK
-- [ ] 3.3 Implement blob metadata handling: arius-type (large/tar/thin), arius-complete, original-size, chunk-size, compressed-size
-- [ ] 3.4 Implement container layout: chunks/, chunks-rehydrated/, filetrees/, snapshots/, chunk-index/ with correct tier management
-- [ ] 3.5 Integration test fixture: Azurite via TestContainers, shared across test run, unique container per test
-- [ ] 3.6 Integration tests: upload/download roundtrip, HEAD check with metadata, tier setting, list by prefix
+- [x] 3.1 Define `IBlobStorageService` in Core: upload (streaming + metadata + tier), download (streaming), HEAD (exists + metadata + tier), list by prefix, set metadata, copy blob
+- [x] 3.2 Implement Azure Blob Storage service in Arius.AzureBlob using Azure.Storage.Blobs SDK
+- [x] 3.3 Implement blob metadata handling: arius-type (large/tar/thin), arius-complete, original-size, chunk-size, compressed-size
+- [x] 3.4 Implement container layout: chunks/, chunks-rehydrated/, filetrees/, snapshots/, chunk-index/ with correct tier management
+- [x] 3.5 Integration test fixture: Azurite via TestContainers, shared across test run, unique container per test
+- [x] 3.6 Integration tests: upload/download roundtrip, HEAD check with metadata, tier setting, list by prefix
 
 ## 4. Chunk Index
 
