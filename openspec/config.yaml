@@ -3,11 +3,10 @@ schema: spec-driven
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Tech stack: C#
+  We use conventional commits (feat:, fix:, refactor:, test:, chore:, docs:)
+  Domain: archival tool for Azure Blob Archive tier
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
