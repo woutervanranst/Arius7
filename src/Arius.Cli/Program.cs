@@ -380,13 +380,10 @@ updateCommand.SetAction(async (parseResult, ct) =>
 
         // Determine platform asset name
         var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
-        string assetRid;
-        string ext;
-        if (rid.Contains("win"))    { assetRid = "win-x64";   ext = ".zip"; }
-        else if (rid.Contains("osx"))  { assetRid = "osx-arm64"; ext = ".tar.gz"; }
-        else                           { assetRid = "linux-x64"; ext = ".tar.gz"; }
-
-        var assetName = $"arius-{versionStr}-{assetRid}{ext}";
+        string assetName;
+        if (rid.Contains("win"))       assetName = "arius-win-x64.exe";
+        else if (rid.Contains("osx"))  assetName = "arius-osx-arm64";
+        else                           assetName = "arius-linux-x64";
 
         // Find the download URL
         var assetKey = $"\"name\":\"{assetName}\"";
@@ -443,54 +440,9 @@ updateCommand.SetAction(async (parseResult, ct) =>
                 task.Value = task.MaxValue;
             });
 
-        // Extract
-        var extractDir = Path.Combine(tempDir, "extracted");
-        Directory.CreateDirectory(extractDir);
-
-        if (ext == ".zip")
-        {
-            System.IO.Compression.ZipFile.ExtractToDirectory(tempFile, extractDir, true);
-        }
-        else
-        {
-            // tar.gz — use system tar
-            var psi = new System.Diagnostics.ProcessStartInfo("tar", $"xzf \"{tempFile}\" -C \"{extractDir}\"")
-            {
-                RedirectStandardError = true,
-            };
-            var proc = System.Diagnostics.Process.Start(psi)!;
-            await proc.WaitForExitAsync(ct);
-            if (proc.ExitCode != 0)
-            {
-                var err = await proc.StandardError.ReadToEndAsync(ct);
-                AnsiConsole.MarkupLine($"[red]Extraction failed:[/] {err}");
-                return 1;
-            }
-        }
-
         // Replace the current binary
-        var currentExe  = Environment.ProcessPath!;
-        var exeName     = Path.GetFileName(currentExe);
-        var newExe      = Path.Combine(extractDir, exeName);
-
-        if (!File.Exists(newExe))
-        {
-            // Try without extension or with different name
-            var candidates = Directory.GetFiles(extractDir, "Arius.Cli*")
-                .Where(f => !f.EndsWith(".dll") && !f.EndsWith(".json") && !f.EndsWith(".pdb"))
-                .ToArray();
-            newExe = candidates.FirstOrDefault() ?? newExe;
-        }
-
-        if (!File.Exists(newExe))
-        {
-            AnsiConsole.MarkupLine($"[red]Could not find updated binary in extracted files.[/]");
-            return 1;
-        }
-
-        var backupPath = currentExe + ".bak";
-        File.Move(currentExe, backupPath, true);
-        File.Move(newExe, currentExe, true);
+        var currentExe = Environment.ProcessPath!;
+        File.Move(tempFile, currentExe, true);
 
         // Make executable on Unix
         if (!OperatingSystem.IsWindows())
@@ -503,7 +455,6 @@ updateCommand.SetAction(async (parseResult, ct) =>
 
         // Cleanup
         try { Directory.Delete(tempDir, true); } catch { }
-        try { File.Delete(backupPath); } catch { }
 
         AnsiConsole.MarkupLine($"[green]Updated to {versionStr}. Please restart arius.[/]");
         return 0;

@@ -4,32 +4,32 @@ Content-addressable archival to Azure Blob Storage. Deduplicated, optionally enc
 
 ## Installation
 
-Download the archive for your platform from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest)
-and extract it.
+Download the binary for your platform from the
+[latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
 ### Windows
 
 ```powershell
-Expand-Archive arius-*-win-x64.zip -DestinationPath C:\Tools\arius
-# Add C:\Tools\arius to your PATH
+# Download arius-win-x64.exe and add its directory to your PATH
 ```
 
 ### Linux
 
 ```bash
-tar xzf arius-*-linux-x64.tar.gz -C ~/.local/bin
-chmod +x ~/.local/bin/Arius.Cli
+curl -Lo arius https://github.com/woutervanranst/Arius7/releases/latest/download/arius-linux-x64
+chmod +x arius
+sudo mv arius /usr/local/bin/
 ```
 
 ### macOS
 
 ```bash
-tar xzf arius-*-osx-arm64.tar.gz -C /usr/local/bin
-chmod +x /usr/local/bin/Arius.Cli
+curl -Lo arius https://github.com/woutervanranst/Arius7/releases/latest/download/arius-osx-arm64
+chmod +x arius
+sudo mv arius /usr/local/bin/
 ```
 
-> **Note:** macOS may block the binary the first time. Run `xattr -cr /usr/local/bin/Arius.Cli` to clear the quarantine flag.
+> **Note:** macOS may block the binary. Run `xattr -c /usr/local/bin/arius` to clear the quarantine flag.
 
 ### Docker
 
