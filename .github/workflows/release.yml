@@ -45,23 +45,21 @@ jobs:
           -o publish
           -p:Version=${{ steps.version.outputs.version }}
 
-      - name: Install vpk
-        run: dotnet tool install -g vpk
-
-      - name: Pack with Velopack
-        run: >
-          vpk pack
-          -u Arius
-          -v ${{ steps.version.outputs.version }}
-          -p publish
-          -e Arius.Cli${{ matrix.rid == 'win-x64' && '.exe' || '' }}
-          --channel ${{ matrix.rid }}
+      - name: Create archive
+        shell: bash
+        run: |
+          cd publish
+          if [[ "${{ matrix.rid }}" == win-* ]]; then
+            7z a -tzip ../arius-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip .
+          else
+            tar czf ../arius-${{ steps.version.outputs.version }}-${{ matrix.rid }}.tar.gz .
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: releases-${{ matrix.rid }}
-          path: Releases/
+          name: archive-${{ matrix.rid }}
+          path: arius-${{ steps.version.outputs.version }}-${{ matrix.rid }}.*
 
   release:
     needs: build
@@ -76,8 +74,8 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: Releases/
-          pattern: releases-*
+          path: dist/
+          pattern: archive-*
           merge-multiple: true
 
       - name: Create GitHub Release
@@ -88,4 +86,4 @@ jobs:
             --repo ${{ github.repository }} \
             --title "Arius ${{ steps.version.outputs.version }}" \
             --generate-notes \
-            Releases/*
+            dist/*

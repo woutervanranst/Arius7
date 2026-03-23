@@ -15,12 +15,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
-using Velopack;
-using Velopack.Sources;
-
-// ── Velopack install/uninstall hooks (must be first) ──────────────────────────
-
-VelopackApp.Build().Run();
 
 // ── 12.2: Common options ──────────────────────────────────────────────────────
 
@@ -342,30 +336,83 @@ var updateCommand = new Command("update", "Check for updates and apply them");
 
 updateCommand.SetAction(async (parseResult, ct) =>
 {
-    const string repoUrl = "https://github.com/woutervanranst/Arius7";
+    const string repoOwner = "woutervanranst";
+    const string repoName  = "Arius7";
 
     try
     {
-        var mgr = new UpdateManager(new GithubSource(repoUrl, null, false));
+        var currentVersion = typeof(Arius.Cli.AssemblyMarker).Assembly
+            .GetName().Version ?? new Version(0, 0, 0);
 
-        if (!mgr.IsInstalled)
-        {
-            AnsiConsole.MarkupLine("[yellow]Update check skipped:[/] not running from a Velopack install.");
-            return 0;
-        }
-
-        AnsiConsole.MarkupLine($"[dim]Current version: {mgr.CurrentVersion}[/]");
+        AnsiConsole.MarkupLine($"[dim]Current version: {currentVersion.Major}.{currentVersion.Minor}.{currentVersion.Build}[/]");
         AnsiConsole.MarkupLine("[dim]Checking for updates...[/]");
 
-        var newVersion = await mgr.CheckForUpdatesAsync();
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Arius-CLI");
 
-        if (newVersion is null)
+        var json = await http.GetStringAsync(
+            $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest", ct);
+
+        var tagStart = json.IndexOf("\"tag_name\":\"", StringComparison.Ordinal);
+        if (tagStart < 0)
+        {
+            AnsiConsole.MarkupLine("[red]Could not determine latest version.[/]");
+            return 1;
+        }
+        tagStart += "\"tag_name\":\"".Length;
+        var tagEnd     = json.IndexOf('"', tagStart);
+        var tag        = json[tagStart..tagEnd];
+        var versionStr = tag.TrimStart('v');
+
+        if (!Version.TryParse(versionStr, out var latestVersion))
+        {
+            AnsiConsole.MarkupLine($"[red]Could not parse version from tag '{tag}'.[/]");
+            return 1;
+        }
+
+        if (latestVersion <= currentVersion)
         {
             AnsiConsole.MarkupLine("[green]You are running the latest version.[/]");
             return 0;
         }
 
-        AnsiConsole.MarkupLine($"[blue]New version available: {newVersion.TargetFullRelease.Version}[/]");
+        AnsiConsole.MarkupLine($"[blue]New version available: {versionStr}[/]");
+
+        // Determine platform asset name
+        var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+        string assetRid;
+        string ext;
+        if (rid.Contains("win"))    { assetRid = "win-x64";   ext = ".zip"; }
+        else if (rid.Contains("osx"))  { assetRid = "osx-arm64"; ext = ".tar.gz"; }
+        else                           { assetRid = "linux-x64"; ext = ".tar.gz"; }
+
+        var assetName = $"arius-{versionStr}-{assetRid}{ext}";
+
+        // Find the download URL
+        var assetKey = $"\"name\":\"{assetName}\"";
+        var assetIdx = json.IndexOf(assetKey, StringComparison.Ordinal);
+        if (assetIdx < 0)
+        {
+            AnsiConsole.MarkupLine($"[red]Asset '{assetName}' not found in release.[/]");
+            return 1;
+        }
+
+        // Find browser_download_url near this asset
+        var urlKey = "\"browser_download_url\":\"";
+        var urlIdx = json.IndexOf(urlKey, assetIdx, StringComparison.Ordinal);
+        if (urlIdx < 0)
+        {
+            AnsiConsole.MarkupLine("[red]Could not find download URL.[/]");
+            return 1;
+        }
+        urlIdx += urlKey.Length;
+        var urlEnd     = json.IndexOf('"', urlIdx);
+        var downloadUrl = json[urlIdx..urlEnd];
+
+        // Download
+        var tempDir  = Path.Combine(Path.GetTempPath(), $"arius-update-{versionStr}");
+        var tempFile = Path.Combine(tempDir, assetName);
+        Directory.CreateDirectory(tempDir);
 
         await AnsiConsole.Progress()
             .AutoClear(false)
@@ -376,20 +423,96 @@ updateCommand.SetAction(async (parseResult, ct) =>
                 new SpinnerColumn())
             .StartAsync(async ctx =>
             {
-                var downloadTask = ctx.AddTask("[green]Downloading update[/]");
-                await mgr.DownloadUpdatesAsync(newVersion, p => downloadTask.Value = p);
+                var task = ctx.AddTask("[green]Downloading update[/]");
+                using var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+                response.EnsureSuccessStatusCode();
+                var totalBytes = response.Content.Headers.ContentLength ?? -1;
+                if (totalBytes > 0) task.MaxValue = totalBytes;
+
+                await using var stream = await response.Content.ReadAsStreamAsync(ct);
+                await using var file   = File.Create(tempFile);
+                var buffer  = new byte[81920];
+                long downloaded = 0;
+                int bytesRead;
+                while ((bytesRead = await stream.ReadAsync(buffer, ct)) > 0)
+                {
+                    await file.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                    downloaded += bytesRead;
+                    if (totalBytes > 0) task.Value = downloaded;
+                }
+                task.Value = task.MaxValue;
             });
 
-        AnsiConsole.MarkupLine("[green]Update downloaded. Applying and restarting...[/]");
-        mgr.ApplyUpdatesAndRestart(newVersion);
+        // Extract
+        var extractDir = Path.Combine(tempDir, "extracted");
+        Directory.CreateDirectory(extractDir);
+
+        if (ext == ".zip")
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(tempFile, extractDir, true);
+        }
+        else
+        {
+            // tar.gz — use system tar
+            var psi = new System.Diagnostics.ProcessStartInfo("tar", $"xzf \"{tempFile}\" -C \"{extractDir}\"")
+            {
+                RedirectStandardError = true,
+            };
+            var proc = System.Diagnostics.Process.Start(psi)!;
+            await proc.WaitForExitAsync(ct);
+            if (proc.ExitCode != 0)
+            {
+                var err = await proc.StandardError.ReadToEndAsync(ct);
+                AnsiConsole.MarkupLine($"[red]Extraction failed:[/] {err}");
+                return 1;
+            }
+        }
+
+        // Replace the current binary
+        var currentExe  = Environment.ProcessPath!;
+        var exeName     = Path.GetFileName(currentExe);
+        var newExe      = Path.Combine(extractDir, exeName);
+
+        if (!File.Exists(newExe))
+        {
+            // Try without extension or with different name
+            var candidates = Directory.GetFiles(extractDir, "Arius.Cli*")
+                .Where(f => !f.EndsWith(".dll") && !f.EndsWith(".json") && !f.EndsWith(".pdb"))
+                .ToArray();
+            newExe = candidates.FirstOrDefault() ?? newExe;
+        }
+
+        if (!File.Exists(newExe))
+        {
+            AnsiConsole.MarkupLine($"[red]Could not find updated binary in extracted files.[/]");
+            return 1;
+        }
+
+        var backupPath = currentExe + ".bak";
+        File.Move(currentExe, backupPath, true);
+        File.Move(newExe, currentExe, true);
+
+        // Make executable on Unix
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(currentExe,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        // Cleanup
+        try { Directory.Delete(tempDir, true); } catch { }
+        try { File.Delete(backupPath); } catch { }
+
+        AnsiConsole.MarkupLine($"[green]Updated to {versionStr}. Please restart arius.[/]");
+        return 0;
     }
     catch (Exception ex)
     {
         AnsiConsole.MarkupLine($"[red]Update failed:[/] {ex.Message}");
         return 1;
     }
-
-    return 0;
 });
 
 // ── Root command ──────────────────────────────────────────────────────────────

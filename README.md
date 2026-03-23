@@ -4,48 +4,32 @@ Content-addressable archival to Azure Blob Storage. Deduplicated, optionally enc
 
 ## Installation
 
+Download the archive for your platform from the
+[latest release](https://github.com/woutervanranst/Arius7/releases/latest)
+and extract it.
+
 ### Windows
 
-Download and run **`Arius-win-x64-Setup.exe`** from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest).
-This installs Arius and enables auto-updating via `arius update`.
+```powershell
+Expand-Archive arius-*-win-x64.zip -DestinationPath C:\Tools\arius
+# Add C:\Tools\arius to your PATH
+```
 
 ### Linux
 
-Download **`Arius-linux-x64.AppImage`** from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest),
-make it executable, and run it:
-
 ```bash
-chmod +x Arius-linux-x64.AppImage
-./Arius-linux-x64.AppImage archive ./photos --account myaccount --container mycontainer
-```
-
-Or move it to a directory on your `PATH`:
-
-```bash
-mv Arius-linux-x64.AppImage /usr/local/bin/arius
+tar xzf arius-*-linux-x64.tar.gz -C ~/.local/bin
+chmod +x ~/.local/bin/Arius.Cli
 ```
 
 ### macOS
 
-Download **`Arius-osx-arm64-Setup.pkg`** or **`Arius-osx-arm64-Portable.zip`** from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest).
+```bash
+tar xzf arius-*-osx-arm64.tar.gz -C /usr/local/bin
+chmod +x /usr/local/bin/Arius.Cli
+```
 
-Since the binaries are not Apple-notarized, macOS Gatekeeper will block them.
-To work around this:
-
-- **Setup.pkg**: Right-click → **Open**, or go to System Settings → Privacy & Security → **Open Anyway**.
-- **Portable (.app)**: Remove the quarantine attribute after extracting:
-  ```bash
-  xattr -cr Arius.app
-  ```
-
-### Portable (all platforms)
-
-Every release also includes a portable zip per platform
-(`Arius-win-x64-Portable.zip`, `Arius-osx-arm64-Portable.zip`).
-Linux uses AppImage as its portable format.
+> **Note:** macOS may block the binary the first time. Run `xattr -cr /usr/local/bin/Arius.Cli` to clear the quarantine flag.
 
 ### Docker
 
@@ -103,13 +87,13 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 
 ## Updating
 
-If installed via the Windows installer, run:
+Run:
 
 ```
 arius update
 ```
 
-This checks GitHub Releases for a newer version, downloads it, and restarts.
+This checks GitHub Releases for a newer version, downloads it, and replaces the binary in-place.
 
 ## License
 
