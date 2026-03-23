@@ -29,20 +29,23 @@ mv Arius-linux-x64.AppImage /usr/local/bin/arius
 
 ### macOS
 
-Download **`Arius-osx-arm64.zip`** from the
-[latest release](https://github.com/woutervanranst/Arius7/releases/latest),
-extract it, and move the binary to your `PATH`:
+Download **`Arius-osx-arm64-Setup.pkg`** or **`Arius-osx-arm64-Portable.zip`** from the
+[latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
-```bash
-unzip Arius-osx-arm64.zip -d arius
-mv arius/Arius.Cli /usr/local/bin/arius
-```
+Since the binaries are not Apple-notarized, macOS Gatekeeper will block them.
+To work around this:
+
+- **Setup.pkg**: Right-click → **Open**, or go to System Settings → Privacy & Security → **Open Anyway**.
+- **Portable (.app)**: Remove the quarantine attribute after extracting:
+  ```bash
+  xattr -cr Arius.app
+  ```
 
 ### Portable (all platforms)
 
 Every release also includes a portable zip per platform
-(`Arius-<version>-win-x64.zip`, `Arius-<version>-linux-x64.zip`, `Arius-<version>-osx-arm64.zip`).
-Extract and add to your `PATH`.
+(`Arius-win-x64-Portable.zip`, `Arius-osx-arm64-Portable.zip`).
+Linux uses AppImage as its portable format.
 
 ### Docker
 
