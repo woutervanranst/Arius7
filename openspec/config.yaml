@@ -1,21 +1,20 @@
 schema: spec-driven
 
-context: |
-  Tech stack: C# / .NET, Azure.Storage.Blobs, System.CommandLine, Spectre.Console, TUnit
-  We use conventional commits (feat:, fix:, refactor:, test:, chore:, docs:)
-  Domain: archival tool for Azure Blob Archive tier
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
 
-  ## Apply workflow
-  After completing each task:
-  1. Run `dotnet test` (or the relevant subset) to verify the change
-  2. If tests pass, commit with a conventional commit message scoped to the task
-  3. If tests fail, fix the issue before moving on
-  Do NOT batch multiple tasks into a single commit.
-
-rules:
-  tasks:
-    - Each task must be small and atomic — completable in a single focused step
-    - A task should touch at most 2-3 files (excluding test files)
-    - Prefer many small tasks over fewer large ones
-    - If a task seems too large, split it into sub-tasks
-    - Each task should be independently testable
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
