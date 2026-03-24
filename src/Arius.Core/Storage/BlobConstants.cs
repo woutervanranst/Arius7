@@ -29,6 +29,35 @@ public static class BlobMetadataKeys
 }
 
 /// <summary>
+/// Well-known content types for blobs uploaded by Arius.
+/// Allows quick identification of blob content without inspecting metadata.
+/// </summary>
+public static class ContentTypes
+{
+    // ── Chunk content types (encrypted) ────────────────────────────────────────
+    public const string LargeEncrypted = "application/aes256cbc+gzip";
+    public const string TarEncrypted   = "application/aes256cbc+tar+gzip";
+
+    // ── Chunk content types (plaintext) ────────────────────────────────────────
+    public const string LargePlaintext = "application/gzip";
+    public const string TarPlaintext   = "application/tar+gzip";
+
+    // ── Thin pointer ───────────────────────────────────────────────────────────
+    public const string Thin           = "text/plain; charset=utf-8";
+
+    // ── File tree ──────────────────────────────────────────────────────────────
+    public const string FileTree       = "application/json";
+
+    // ── Snapshot manifest ──────────────────────────────────────────────────────
+    public const string SnapshotEncrypted = "application/aes256cbc+gzip";
+    public const string SnapshotPlaintext = "application/gzip";
+
+    // ── Chunk index shard ──────────────────────────────────────────────────────
+    public const string ChunkIndexEncrypted = "application/aes256cbc+gzip";
+    public const string ChunkIndexPlaintext = "application/gzip";
+}
+
+/// <summary>
 /// Virtual directory prefixes within the blob container.
 /// </summary>
 public static class BlobPaths
