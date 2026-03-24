@@ -28,13 +28,15 @@ jobs:
       - name: Build
         run: dotnet build src/Arius.slnx --no-restore -c Release
 
+      - name: Install dotnet-coverage
+        run: dotnet tool install --global dotnet-coverage
+
       - name: Test
         run: >
-          dotnet test --solution src/Arius.slnx
-          --no-build
-          -c Release
-          /p:CollectCoverage=true
-          /p:CoverletOutputFormat=cobertura
+          dotnet-coverage collect
+          --output coverage.cobertura.xml
+          --output-format cobertura
+          "dotnet test --solution src/Arius.slnx --no-build -c Release"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
@@ -43,5 +45,5 @@ jobs:
         if: always()
         uses: codecov/codecov-action@v5
         with:
-          files: src/Arius.Core.Tests/coverage.cobertura.xml,src/Arius.Integration.Tests/coverage.cobertura.xml
+          files: coverage.cobertura.xml
           token: ${{ secrets.CODECOV_TOKEN }}
