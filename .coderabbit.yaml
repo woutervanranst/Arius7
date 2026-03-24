@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - master
+  path_instructions:
+    - path: src/Arius.Core/**
+      instructions: >
+        Core library. Pay close attention to deduplication logic, encryption
+        correctness, and thread safety. Flag any changes that could cause data
+        loss or corruption.
+    - path: src/Arius.AzureBlob/**
+      instructions: >
+        Azure Blob Storage integration layer. Watch for proper resource
+        disposal, retry policies, and credential handling. Ensure no secrets
+        are hardcoded.
+    - path: src/Arius.Cli/**
+      instructions: >
+        CLI entry point. Validate command argument handling and user-facing
+        error messages.
+    - path: "**/*.Tests/**"
+      instructions: >
+        Test projects. Focus on test coverage gaps and assertion quality
+        rather than style.
+
+chat:
+  auto_reply: true
