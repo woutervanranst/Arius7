@@ -97,6 +97,11 @@ public sealed class ArchivePipelineHandler
         var pendingPointers = new ConcurrentBag<(string FullPath, string Hash)>();
         var pendingDeletes  = new ConcurrentBag<string>();
 
+        // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+        // Used by the dedup stage to detect duplicates within the same run before the
+        // index is updated.
+        var inFlightHashes = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
         // Channels between stages (task 8.2)
         var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
         var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
@@ -182,7 +187,8 @@ public sealed class ArchivePipelineHandler
                             // Check for pointer-only with missing chunk (task 8.5)
                             if (!hashed.FilePair.BinaryExists)
                             {
-                                if (!known.ContainsKey(hashed.ContentHash))
+                                if (!known.ContainsKey(hashed.ContentHash) &&
+                                    !inFlightHashes.ContainsKey(hashed.ContentHash))
                                 {
                                     _logger.LogWarning(
                                         "Pointer-only file references missing chunk, skipping: {Path}",
@@ -195,9 +201,10 @@ public sealed class ArchivePipelineHandler
                                 continue;
                             }
 
-                            if (known.TryGetValue(hashed.ContentHash, out _))
+                            if (known.TryGetValue(hashed.ContentHash, out _) ||
+                                inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
-                                // Already in index → dedup hit
+                                // Already in index OR already queued in this run → dedup hit
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 if (!opts.NoPointers)
@@ -208,7 +215,8 @@ public sealed class ArchivePipelineHandler
                             }
                             else
                             {
-                                // Needs upload → route by size
+                                // Needs upload → mark in-flight, route by size
+                                inFlightHashes.TryAdd(hashed.ContentHash, hashed.ContentHash);
                                 var fileSize = hashed.FilePair.FileSize ?? 0;
                                 Interlocked.Add(ref totalSize, fileSize);
                                 var upload = new FileToUpload(hashed, fileSize);

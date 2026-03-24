@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Arius.Integration.Tests": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOCKER_API_VERSION": "1.43"
+      }
+    }
+  }
+}

@@ -227,8 +227,11 @@ public sealed class RestorePipelineHandler
                 }
                 else
                 {
-                    // Tar bundle: stream through tar, extract matching entries
-                    var filesByContentHash = filesForChunk.ToDictionary(f => f.ContentHash, StringComparer.Ordinal);
+                    // Tar bundle: stream through tar, extract matching entries.
+                    // Multiple files may share the same content hash (duplicates), so use a lookup.
+                    var filesByContentHash = filesForChunk
+                        .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                     var restored = await RestoreTarBundleAsync(
                         blobName, filesByContentHash, opts, cancellationToken);
                     filesRestored += restored;
@@ -405,10 +408,10 @@ public sealed class RestorePipelineHandler
     /// an entry in <paramref name="filesNeeded"/>.
     /// </summary>
     private async Task<int> RestoreTarBundleAsync(
-        string                         blobName,
-        Dictionary<string, FileToRestore> filesNeeded,
-        RestoreOptions                 opts,
-        CancellationToken              cancellationToken)
+        string                                    blobName,
+        Dictionary<string, List<FileToRestore>>   filesNeeded,
+        RestoreOptions                            opts,
+        CancellationToken                         cancellationToken)
     {
         int restored = 0;
 
@@ -422,31 +425,46 @@ public sealed class RestorePipelineHandler
         {
             var contentHash = tarEntry.Name; // entries are named by content-hash
 
-            if (!filesNeeded.TryGetValue(contentHash, out var file))
+            if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
-            var localPath = Path.Combine(opts.RootDirectory,
-                file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-            Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
-
+            // Buffer the entry data once (multiple output paths may share same content)
+            byte[]? dataBuffer = null;
             if (tarEntry.DataStream is not null)
             {
-                await using var outputStream = new FileStream(
-                    localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
-                await tarEntry.DataStream.CopyToAsync(outputStream, cancellationToken);
+                using var ms = new MemoryStream();
+                await tarEntry.DataStream.CopyToAsync(ms, cancellationToken);
+                dataBuffer = ms.ToArray();
             }
 
-            // Set timestamps
-            File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-            File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+            foreach (var file in filesForHash)
+            {
+                var localPath = Path.Combine(opts.RootDirectory,
+                    file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
-            // Create pointer file (task 10.11)
-            if (!opts.NoPointers)
-                await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
+                Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
-            await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
-            restored++;
+                if (dataBuffer is not null)
+                {
+                    await File.WriteAllBytesAsync(localPath, dataBuffer, cancellationToken);
+                }
+                else
+                {
+                    // Empty file (0 bytes): create an empty file
+                    await using var _ = File.Create(localPath);
+                }
+
+                // Set timestamps
+                File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
+                File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+
+                // Create pointer file (task 10.11)
+                if (!opts.NoPointers)
+                    await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
+
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                restored++;
+            }
         }
 
         return restored;

@@ -68,9 +68,23 @@ public class PassphraseEncryptionServiceTests
     // ── 2.5 OpenSSL compatibility (shell out) ─────────────────────────────────
 
     [Test]
-    [Skip("Requires openssl CLI on PATH — run manually or in CI with openssl installed")]
     public async Task Encrypt_IsDecryptableByOpenSslCli()
     {
+        // Skip dynamically if openssl is not on PATH
+        var opensslAvailable = false;
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("openssl", "version")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+            });
+            p?.WaitForExit(3000);
+            opensslAvailable = p?.ExitCode == 0;
+        }
+        catch { }
+        Skip.Unless(opensslAvailable, "openssl not on PATH — skipping");
+
         var svc      = new PassphraseEncryptionService(Passphrase);
         var original = "OpenSSL compatibility check"u8.ToArray();
 

@@ -204,6 +204,20 @@ public sealed class TreeBuilder
 
         if (dirEntries.Count == 0) return null;
 
+        // Ensure all intermediate directories exist in dirEntries
+        // (directories that only contain subdirectories, not files, would otherwise be missing)
+        var allDirs = new HashSet<string>(dirEntries.Keys, StringComparer.Ordinal);
+        foreach (var dirPath in dirEntries.Keys.ToList())
+        {
+            var parent = GetDirectoryPath(dirPath);
+            while (parent != string.Empty && !allDirs.Contains(parent))
+            {
+                allDirs.Add(parent);
+                dirEntries[parent] = new List<TreeEntry>();
+                parent = GetDirectoryPath(parent);
+            }
+        }
+
         // Process directories bottom-up: deepest paths first (more slashes → deeper)
         var sortedDirs = dirEntries.Keys
             .OrderByDescending(d => d.Count(c => c == '/'))

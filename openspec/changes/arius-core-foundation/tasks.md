@@ -105,11 +105,11 @@
 - [x] 10.3 Implement conflict check: hash local files, skip matches, prompt on mismatch (y/N/all), support --overwrite
 - [x] 10.4 Implement chunk resolution: index lookup for each content hash, group by chunk hash
 - [x] 10.5 Implement rehydration status check: check chunks-rehydrated/ existence, check blob tier
-- [x] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
+- [ ] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
 - [x] 10.7 Implement Phase 1 — download available chunks: streaming download → decrypt → gunzip → write to path (large) or stream tar extraction (tar bundles)
 - [x] 10.8 Implement Phase 2 — rehydration kick-off: copy-blob to chunks-rehydrated/ with priority, retry with backoff on throttle
-- [x] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
-- [x] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
+- [ ] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
+- [ ] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
 - [x] 10.11 Implement pointer file creation during restore (unless --no-pointers), set file dates from tree metadata
 - [x] 10.12 Implement progress event emission for restore: download progress, files restored, rehydration status
 
@@ -136,6 +136,7 @@
 - [x] 12.9 Implement Spectre.Console restore display: cost estimation table, priority prompt, download progress, remaining summary
 - [x] 12.10 Implement Spectre.Console ls output: table with path, size, dates
 - [x] 12.11 Wire up DI: register Core services, encryption service (based on passphrase), blob storage
+- [x] 12.12 Implement `update` verb: self-update binary from GitHub releases (download latest release asset, replace current executable)
 
 ## 13. Integration Tests — Roundtrip Scenarios
 
