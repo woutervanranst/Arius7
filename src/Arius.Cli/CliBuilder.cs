@@ -149,20 +149,27 @@ public static class CliBuilder
             };
 
             ArchiveResult? result = null;
-            await AnsiConsole.Progress()
-                .AutoClear(false)
-                .Columns(
-                    new TaskDescriptionColumn(),
-                    new ProgressBarColumn(),
-                    new PercentageColumn(),
-                    new SpinnerColumn())
-                .StartAsync(async ctx =>
-                {
-                    var overallTask = ctx.AddTask("[green]Archiving[/]");
-                    overallTask.IsIndeterminate = true;
-                    result = await mediator.Send(new ArchiveCommand(opts), ct);
-                    overallTask.Value = overallTask.MaxValue;
-                });
+            if (AnsiConsole.Console.Profile.Capabilities.Interactive)
+            {
+                await AnsiConsole.Progress()
+                    .AutoClear(false)
+                    .Columns(
+                        new TaskDescriptionColumn(),
+                        new ProgressBarColumn(),
+                        new PercentageColumn(),
+                        new SpinnerColumn())
+                    .StartAsync(async ctx =>
+                    {
+                        var overallTask = ctx.AddTask("[green]Archiving[/]");
+                        overallTask.IsIndeterminate = true;
+                        result = await mediator.Send(new ArchiveCommand(opts), ct);
+                        overallTask.Value = overallTask.MaxValue;
+                    });
+            }
+            else
+            {
+                result = await mediator.Send(new ArchiveCommand(opts), ct);
+            }
 
             if (result is null || !result.Success)
             {
@@ -303,12 +310,19 @@ public static class CliBuilder
             };
 
             RestoreResult? result = null;
-            await AnsiConsole.Status()
-                .StartAsync("Restoring...", async ctx =>
-                {
-                    ctx.Spinner(Spinner.Known.Dots);
-                    result = await mediator.Send(new RestoreCommand(opts), ct);
-                });
+            if (AnsiConsole.Console.Profile.Capabilities.Interactive)
+            {
+                await AnsiConsole.Status()
+                    .StartAsync("Restoring...", async ctx =>
+                    {
+                        ctx.Spinner(Spinner.Known.Dots);
+                        result = await mediator.Send(new RestoreCommand(opts), ct);
+                    });
+            }
+            else
+            {
+                result = await mediator.Send(new RestoreCommand(opts), ct);
+            }
 
             if (result is null || !result.Success)
             {

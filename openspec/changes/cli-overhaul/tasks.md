@@ -24,22 +24,22 @@
 
 ## 5. Test Project Setup
 
-- [ ] 5.1 Create `src/Arius.Cli.Tests/Arius.Cli.Tests.csproj` (TUnit, NSubstitute, Shouldly; references `Arius.Cli` and `Arius.Core`)
-- [ ] 5.2 Create test helper/fixture that builds `ServiceCollection`, calls `AddMediator()`, registers NSubstitute mock `ICommandHandler<,>` implementations, and provides a method to invoke System.CommandLine parsing
+- [x] 5.1 Create `src/Arius.Cli.Tests/Arius.Cli.Tests.csproj` (TUnit, NSubstitute, Shouldly; references `Arius.Cli` and `Arius.Core`)
+- [x] 5.2 Create test helper/fixture that builds `ServiceCollection`, calls `AddMediator()`, registers NSubstitute mock `ICommandHandler<,>` implementations, and provides a method to invoke System.CommandLine parsing
 
 ## 6. CLI Parsing Tests
 
-- [ ] 6.1 Archive command tests: all options parsed, defaults applied, tier mapping, `--remove-local` + `--no-pointers` rejection (exit code 1)
-- [ ] 6.2 Restore command tests: version parsing (short `-v` and long `--version`), defaults, `--overwrite` and `--no-pointers` flags
-- [ ] 6.3 Ls command tests: `--prefix`, `--filter`/`-f`, version, defaults
+- [x] 6.1 Archive command tests: all options parsed, defaults applied, tier mapping, `--remove-local` + `--no-pointers` rejection (exit code 1)
+- [x] 6.2 Restore command tests: version parsing (short `-v` and long `--version`), defaults, `--overwrite` and `--no-pointers` flags
+- [x] 6.3 Ls command tests: `--prefix`, `--filter`/`-f`, version, defaults
 
 ## 7. Account/Key Resolution Tests
 
-- [ ] 7.1 Test CLI flag overrides env var for account
-- [ ] 7.2 Test env var used when CLI flag omitted for account
-- [ ] 7.3 Test missing account from all sources returns exit code 1
-- [ ] 7.4 Test env var used when CLI flag omitted for key
-- [ ] 7.5 Test missing key from all sources returns exit code 1
+- [x] 7.1 Test CLI flag overrides env var for account
+- [x] 7.2 Test env var used when CLI flag omitted for account
+- [x] 7.3 Test missing account from all sources returns exit code 1
+- [x] 7.4 Test env var used when CLI flag omitted for key
+- [x] 7.5 Test missing key from all sources returns exit code 1
 
 ## 8. Docker Removal and Documentation
 
