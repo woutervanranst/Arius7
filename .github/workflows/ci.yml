@@ -30,7 +30,7 @@ jobs:
 
       - name: Test
         run: >
-          dotnet test src/Arius.slnx
+          dotnet test --solution src/Arius.slnx
           --no-build
           -c Release
           /p:CollectCoverage=true
