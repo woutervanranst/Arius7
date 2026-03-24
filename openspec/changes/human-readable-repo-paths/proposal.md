@@ -17,7 +17,7 @@ _(none)_
 
 ### Modified Capabilities
 
-- `cli`: The DI wiring passes `accountName` and `containerName` into Core services that construct `~/.arius/` paths. The path scheme changes but the CLI interface and option parsing are unaffected — no spec-level requirement change.
+- `blob-storage`: The "Per-repository cache identification" requirement currently specifies `SHA256(accountname + container)[:12]` as the repo-id and `~/.arius/cache/<repo-id>/` as the cache path. This changes to `{accountName}-{containerName}` with path `~/.arius/{account}-{container}/`. The tiered chunk index cache and tree blob caching requirements reference this path.
 
 ## Impact
 
