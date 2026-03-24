@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using Arius.Core.Encryption;
 using Arius.Core.Storage;
 
@@ -11,7 +9,7 @@ namespace Arius.Core.ChunkIndex;
 /// Three-tier chunk index cache.
 ///
 /// L1: In-memory LRU (configurable byte budget, default 512 MB).
-/// L2: Local disk at <c>~/.arius/cache/&lt;repo-id&gt;/chunk-index/</c>.
+/// L2: Local disk at <c>~/.arius/{accountName}-{containerName}/chunk-index/</c>.
 /// L3: Remote blob storage (download on miss, save to L2, promote to L1).
 ///
 /// Dedup lookups are batched by shard prefix to amortize downloads.
@@ -66,24 +64,22 @@ public sealed class ChunkIndexService : IDisposable
         Directory.CreateDirectory(_l2Dir);
     }
 
-    // ── Repo-id derivation (task 4.9) ─────────────────────────────────────────
+    // ── Repo directory naming ──────────────────────────────────────────────────
 
     /// <summary>
-    /// Computes the repo-id: <c>SHA256(accountname + container)[:12]</c> (hex).
+    /// Returns the human-readable directory name for a given account+container:
+    /// <c>{accountName}-{containerName}</c>.
+    /// Azure account names are <c>[a-z0-9]</c> only (no hyphens), so the first
+    /// hyphen unambiguously separates account from container.
     /// </summary>
-    public static string ComputeRepoId(string accountName, string containerName)
-    {
-        var input = Encoding.UTF8.GetBytes(accountName + containerName);
-        var hash  = SHA256.HashData(input);
-        return Convert.ToHexString(hash)[..12].ToLowerInvariant();
-    }
+    public static string GetRepoDirectoryName(string accountName, string containerName)
+        => $"{accountName}-{containerName}";
 
     /// <summary>Returns the L2 disk cache directory for a given account+container.</summary>
     public static string GetL2Directory(string accountName, string containerName)
     {
-        var home   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var repoId = ComputeRepoId(accountName, containerName);
-        return Path.Combine(home, ".arius", "cache", repoId, "chunk-index");
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName), "chunk-index");
     }
 
     // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────

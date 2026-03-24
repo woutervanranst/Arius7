@@ -158,14 +158,12 @@ public sealed class TreeBuilder
 
     /// <summary>
     /// Returns the local disk cache directory for tree blobs:
-    /// <c>~/.arius/cache/&lt;repo-id&gt;/filetrees/</c>
+    /// <c>~/.arius/{accountName}-{containerName}/filetrees/</c>
     /// </summary>
     public static string GetDiskCacheDirectory(string accountName, string containerName)
     {
-        var home   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        // Reuse ChunkIndexService.ComputeRepoId to get the same repo-id
-        var repoId = ChunkIndex.ChunkIndexService.ComputeRepoId(accountName, containerName);
-        return Path.Combine(home, ".arius", "cache", repoId, "filetrees");
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(home, ".arius", ChunkIndex.ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
