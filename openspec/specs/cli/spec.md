@@ -106,3 +106,39 @@ The system SHALL register command handlers by their `ICommandHandler<TCommand, T
 #### Scenario: Handler receives string parameters
 - **WHEN** `AddArius("myaccount", "mykey", null, "mycontainer")` is called
 - **THEN** the `ArchivePipelineHandler` SHALL be constructed with `accountName="myaccount"` and `containerName="mycontainer"`
+
+### Requirement: Archive progress display
+The CLI SHALL display live progress during archive using Spectre.Console. The display SHALL show: scan progress (files found), hash progress (files hashed / total), dedup results (new vs. skipped), upload progress (chunks uploaded / total, bytes), and in-flight items (which files are currently being hashed and which chunks are being uploaded, with individual progress percentages). Tar bundle status (sealing, uploading, file count) SHALL also be displayed.
+
+#### Scenario: Live progress during archive
+- **WHEN** archiving 10,000 files
+- **THEN** the CLI SHALL show a live-updating Spectre.Console display with aggregate counters and in-flight file names
+
+#### Scenario: In-flight visibility
+- **WHEN** 4 files are being hashed and 3 chunks are being uploaded concurrently
+- **THEN** the display SHALL list each in-flight item with its name and progress percentage
+
+### Requirement: Restore cost confirmation display
+The CLI SHALL display a cost estimate before restoring and require interactive confirmation. The display SHALL include: files to restore, chunks categorized by availability (cached, Hot/Cool, needs rehydration), estimated costs (rehydration Standard vs. High, download egress), and a prompt for rehydration priority and proceed/cancel.
+
+#### Scenario: Cost confirmation flow
+- **WHEN** a restore requires 62 archive-tier chunks
+- **THEN** the CLI SHALL display rehydration cost estimates for both Standard and High Priority, prompt for priority selection, then prompt for proceed/cancel
+
+### Requirement: Restore progress display
+The CLI SHALL display progress during the restore download phase. The display SHALL show: files restored from available chunks, bytes downloaded, and a summary on exit indicating how many files remain pending rehydration.
+
+#### Scenario: Partial restore progress
+- **WHEN** 500 files are available for immediate restore
+- **THEN** the CLI SHALL show download progress and report "875 files remaining (pending rehydration)" on exit
+
+### Requirement: Streaming progress events from Core
+Arius.Core SHALL emit progress events via Mediator notifications. Event types SHALL include: FileScanned, FileHashing (with byte progress), FileHashed (with dedup result), ChunkUploading (with byte progress), ChunkUploaded, TarBundleSealing, TarBundleUploaded, SnapshotCreated, and equivalent restore events. The CLI SHALL subscribe to these events to drive the display.
+
+#### Scenario: Progress event emission
+- **WHEN** a file is hashed during archive
+- **THEN** Core SHALL emit FileHashing events with bytes processed and FileHashed with the result
+
+#### Scenario: CLI subscription
+- **WHEN** Core emits a ChunkUploaded event
+- **THEN** the CLI SHALL update the upload progress counter in the Spectre.Console display

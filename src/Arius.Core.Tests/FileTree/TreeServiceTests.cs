@@ -250,7 +250,7 @@ public class TreeBuilderTests
         public readonly HashSet<string> HeadChecked = new();
 
         public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata,
-            Storage.BlobTier tier, bool overwrite = false, CancellationToken ct = default)
+            Storage.BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         {
             Uploaded.Add(blobName);
             return Task.CompletedTask;

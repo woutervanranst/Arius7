@@ -358,6 +358,7 @@ public sealed class TreeBuilder
             new MemoryStream(json),
             new Dictionary<string, string>(),
             BlobTier.Cool,
+            ContentTypes.FileTree,
             overwrite: false,
             cancellationToken: cancellationToken);
 

@@ -9,6 +9,12 @@ namespace Arius.Core.Encryption;
 public interface IEncryptionService
 {
     /// <summary>
+    /// Returns <c>true</c> when this service applies real encryption (AES-256-CBC);
+    /// <c>false</c> for the plaintext passthrough.
+    /// </summary>
+    bool IsEncrypted { get; }
+
+    /// <summary>
     /// Wraps <paramref name="inner"/> with an encryption layer.
     /// The returned stream is write-only; data written to it is encrypted and forwarded to <paramref name="inner"/>.
     /// Dispose the returned stream to flush and finalize the cipher.
