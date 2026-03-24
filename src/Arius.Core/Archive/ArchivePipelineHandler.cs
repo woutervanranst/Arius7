@@ -9,6 +9,7 @@ using Arius.Core.FileTree;
 using Arius.Core.LocalFile;
 using Arius.Core.Snapshot;
 using Arius.Core.Storage;
+using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
 
@@ -71,6 +72,11 @@ public sealed class ArchivePipelineHandler
     {
         var opts = command.Options;
 
+        // ── Operation start marker (task 3.10) ───────────────────────────────
+        _logger.LogInformation(
+            "[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}",
+            opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
+
         // Validate options (task 8.13)
         if (opts.RemoveLocal && opts.NoPointers)
             return new ArchiveResult
@@ -121,6 +127,7 @@ public sealed class ArchivePipelineHandler
                     var pairs      = enumerator.Enumerate(opts.RootDirectory).ToList();
                     Interlocked.Add(ref filesScanned, pairs.Count);
                     await _mediator.Publish(new FileScannedEvent(pairs.Count), cancellationToken);
+                    _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", pairs.Count);
 
                     foreach (var pair in pairs)
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
@@ -161,6 +168,14 @@ public sealed class ArchivePipelineHandler
                     }
 
                     await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), cancellationToken);
+
+                    var fileSize = pair.BinaryExists
+                        ? new FileInfo(Path.Combine(opts.RootDirectory,
+                            pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))).Length
+                        : 0;
+                    _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})",
+                        pair.RelativePath, contentHash[..8], fileSize.Bytes().Humanize());
+
                     await hashedChannel.Writer.WriteAsync(
                         new HashedFilePair(pair, contentHash, opts.RootDirectory), cancellationToken);
                 }
@@ -182,6 +197,9 @@ public sealed class ArchivePipelineHandler
                         var hashes  = batch.Select(p => p.ContentHash).Distinct().ToList();
                         var known   = await _index.LookupAsync(hashes, cancellationToken);
 
+                        int batchHits = 0;
+                        int batchNew  = 0;
+
                         foreach (var hashed in batch)
                         {
                             // Check for pointer-only with missing chunk (task 8.5)
@@ -196,8 +214,10 @@ public sealed class ArchivePipelineHandler
                                     continue;
                                 }
                                 // Known dedup: add to manifest only
+                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
+                                batchHits++;
                                 continue;
                             }
 
@@ -205,8 +225,10 @@ public sealed class ArchivePipelineHandler
                                 inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
                                 // Already in index OR already queued in this run → dedup hit
+                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
+                                batchHits++;
                                 if (!opts.NoPointers)
                                     pendingPointers.Add((
                                         Path.Combine(opts.RootDirectory,
@@ -220,6 +242,10 @@ public sealed class ArchivePipelineHandler
                                 var fileSize = hashed.FilePair.FileSize ?? 0;
                                 Interlocked.Add(ref totalSize, fileSize);
                                 var upload = new FileToUpload(hashed, fileSize);
+                                var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
+                                _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
+                                    hashed.FilePair.RelativePath, route, hashed.ContentHash[..8], fileSize.Bytes().Humanize());
+                                batchNew++;
 
                                 if (fileSize >= opts.SmallFileThreshold)
                                     await largeChannel.Writer.WriteAsync(upload, cancellationToken);
@@ -228,6 +254,8 @@ public sealed class ArchivePipelineHandler
                             }
                         }
 
+                        _logger.LogInformation("[dedup] Batch flush: {BatchSize} file(s), hits={Hits}, new={New}",
+                            batch.Count, batchHits, batchNew);
                         batch.Clear();
                     }
 
@@ -252,6 +280,11 @@ public sealed class ArchivePipelineHandler
             {
                 await foreach (var upload in largeChannel.Reader.ReadAllAsync(cancellationToken))
                 {
+                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})",
+                        upload.HashedPair.FilePair.RelativePath,
+                        upload.HashedPair.ContentHash[..8],
+                        upload.FileSize.Bytes().Humanize());
+
                     await _mediator.Publish(
                         new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), cancellationToken);
 
@@ -314,6 +347,12 @@ public sealed class ArchivePipelineHandler
 
                     await _mediator.Publish(
                         new ChunkUploadedEvent(upload.HashedPair.ContentHash, compressedSize), cancellationToken);
+
+                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})",
+                        upload.HashedPair.FilePair.RelativePath,
+                        upload.HashedPair.ContentHash[..8],
+                        upload.FileSize.Bytes().Humanize(),
+                        compressedSize.Bytes().Humanize());
                 }
             }, cancellationToken)).ToArray();
 
@@ -344,6 +383,12 @@ public sealed class ArchivePipelineHandler
 
                         await _mediator.Publish(
                             new TarBundleSealingEvent(tarEntries.Count, currentSize), cancellationToken);
+
+                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}",
+                            tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
+                        foreach (var te in tarEntries)
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})",
+                                te.HashedPair.FilePair.RelativePath, te.ContentHash[..8], te.OriginalSize.Bytes().Humanize());
 
                         await sealedTarChannel.Writer.WriteAsync(
                             new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()),
@@ -488,6 +533,8 @@ public sealed class ArchivePipelineHandler
                         await _mediator.Publish(
                             new TarBundleUploadedEvent(sealed_.TarHash, compressedSize, sealed_.Entries.Count),
                             cancellationToken);
+                        _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}",
+                            sealed_.TarHash[..8], sealed_.Entries.Count, compressedSize.Bytes().Humanize());
                         Interlocked.Add(ref filesUploaded, sealed_.Entries.Count);
                     }
                     finally
@@ -510,6 +557,7 @@ public sealed class ArchivePipelineHandler
 
             // Task 8.10: Index flush
             await _index.FlushAsync(cancellationToken);
+            _logger.LogInformation("[index] Flush complete");
 
             // Task 8.11: Sort manifest → build tree → create snapshot
             await manifestWriter.DisposeAsync();
@@ -517,6 +565,8 @@ public sealed class ArchivePipelineHandler
 
             var treeBuilder = new TreeBuilder(_blobs, _encryption, _accountName, _containerName);
             var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
+            _logger.LogInformation("[tree] Build complete: rootHash={RootHash}",
+                rootHash is not null ? rootHash[..8] : "(none)");
 
             string? snapshotRootHash = null;
             DateTimeOffset snapshotTime = DateTimeOffset.UtcNow;
@@ -528,6 +578,8 @@ public sealed class ArchivePipelineHandler
                     rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
+                _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}",
+                    snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
 
                 await _mediator.Publish(
                     new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount),
@@ -554,6 +606,12 @@ public sealed class ArchivePipelineHandler
                     catch (Exception ex) { _logger.LogWarning(ex, "Failed to delete local file: {Path}", path); }
                 }
             }
+
+            _logger.LogInformation(
+                "[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}",
+                filesScanned, filesUploaded, filesDeduped,
+                totalSize.Bytes().Humanize(),
+                snapshotTime.ToString("o"));
 
             return new ArchiveResult
             {

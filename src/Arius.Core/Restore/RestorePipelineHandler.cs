@@ -5,6 +5,7 @@ using Arius.Core.Encryption;
 using Arius.Core.FileTree;
 using Arius.Core.Snapshot;
 using Arius.Core.Storage;
+using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
 
@@ -60,6 +61,11 @@ public sealed class RestorePipelineHandler
     {
         var opts = command.Options;
 
+        // ── Operation start marker (task 4.7) ────────────────────────────────
+        _logger.LogInformation(
+            "[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}",
+            opts.RootDirectory, _accountName, _containerName, opts.Version ?? "latest", opts.Overwrite);
+
         try
         {
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
@@ -81,10 +87,15 @@ public sealed class RestorePipelineHandler
                 };
             }
 
+            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}",
+                snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
             var treeCache = new TreeBuilder(_blobs, _encryption, _accountName, _containerName);
             var files     = await CollectFilesAsync(snapshot.RootHash, opts.TargetPath, treeCache, cancellationToken);
+
+            _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
             await _mediator.Publish(new RestoreStartedEvent(files.Count), cancellationToken);
 
@@ -109,11 +120,20 @@ public sealed class RestorePipelineHandler
 
                         if (localHash == file.ContentHash)
                         {
+                            _logger.LogInformation("[conflict] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
                             await _mediator.Publish(new FileSkippedEvent(file.RelativePath), cancellationToken);
                             continue;
                         }
                     }
+                    else
+                    {
+                        _logger.LogInformation("[conflict] {Path} -> overwrite", file.RelativePath);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("[conflict] {Path} -> new", file.RelativePath);
                 }
 
                 toRestore.Add(file);
@@ -154,6 +174,10 @@ public sealed class RestorePipelineHandler
                 list.Add(file);
             }
 
+            int largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
+            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}",
+                filesByChunkHash.Count, largeChunks, filesByChunkHash.Count - largeChunks);
+
             // ── Step 5: Rehydration status check ──────────────────────────────
 
             var available          = new List<string>();   // chunk hashes ready to download
@@ -193,6 +217,10 @@ public sealed class RestorePipelineHandler
                     available.Add(chunkHash);
                 }
             }
+
+            _logger.LogInformation(
+                "[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}",
+                available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count);
 
             // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
 
@@ -265,6 +293,12 @@ public sealed class RestorePipelineHandler
                     continue;
 
                 bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
+
+                _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})",
+                    chunkHash[..8],
+                    isLargeChunk ? "large" : "tar",
+                    filesForChunk.Count,
+                    indexEntry.CompressedSize.Bytes().Humanize());
 
                 if (isLargeChunk)
                 {
@@ -350,6 +384,10 @@ public sealed class RestorePipelineHandler
                     }
                 }
             }
+
+            _logger.LogInformation(
+                "[restore] Done: restored={Restored} skipped={Skipped} pendingRehydration={Pending}",
+                filesRestored, skipped, totalPending);
 
             return new RestoreResult
             {

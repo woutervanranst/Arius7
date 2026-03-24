@@ -12,6 +12,8 @@ using Mediator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 using Spectre.Console;
 using System.CommandLine;
 
@@ -158,6 +160,14 @@ public static class CliBuilder
                 return 1;
             }
 
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "archive");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
 
@@ -207,6 +217,12 @@ public static class CliBuilder
                 $"Size: {result.TotalSize.Bytes().Humanize()}, " +
                 $"Snapshot: {result.SnapshotTime:yyyy-MM-ddTHHmmss.fffZ}");
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -277,6 +293,15 @@ public static class CliBuilder
                 AnsiConsole.MarkupLine("[red]Error:[/] No account key provided. Use --key / -k or set ARIUS_KEY.");
                 return 1;
             }
+
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "restore");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
 
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
@@ -366,6 +391,12 @@ public static class CliBuilder
                     "Re-run this command in ~15 hours to complete the restore.");
             }
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -431,6 +462,15 @@ public static class CliBuilder
                 return 1;
             }
 
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "ls");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
+
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
 
@@ -470,6 +510,12 @@ public static class CliBuilder
             AnsiConsole.Write(table);
             AnsiConsole.MarkupLine($"[dim]{result.Entries.Count} file(s)[/]");
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -666,7 +712,7 @@ public static class CliBuilder
         string  containerName)
     {
         var services = new ServiceCollection();
-        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddLogging(b => b.AddSerilog(dispose: true));
 
         var credential          = new StorageSharedKeyCredential(accountName, accountKey);
         var serviceUri          = new Uri($"https://{accountName}.blob.core.windows.net");
@@ -682,5 +728,47 @@ public static class CliBuilder
             ChunkIndexService.DefaultCacheBudgetBytes);
 
         return services.BuildServiceProvider();
+    }
+
+    // ── Audit logging setup ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Configures the global Serilog logger for one CLI invocation.
+    /// Console sink: Warning+.  File sink: Information+.
+    /// Must be called before <see cref="BuildProductionServices"/>.
+    /// </summary>
+    public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
+    {
+        var home    = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var logDir  = Path.Combine(home, ".arius",
+            ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "logs");
+        Directory.CreateDirectory(logDir);
+
+        var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        var logFile   = Path.Combine(logDir, $"{timestamp}_{commandName}.txt");
+
+        const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}";
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .Enrich.WithThreadId()
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning)
+            .WriteTo.File(logFile, outputTemplate: outputTemplate, restrictedToMinimumLevel: LogEventLevel.Information)
+            .CreateLogger();
+
+        return logFile;
+    }
+
+    /// <summary>
+    /// Logs the captured console output (from a Spectre.Console <see cref="Recorder"/>)
+    /// to the current Serilog logger, then closes and flushes the logger.
+    /// </summary>
+    public static void FlushAuditLog(Recorder recorder)
+    {
+        var consoleText = recorder.ExportText();
+        if (!string.IsNullOrWhiteSpace(consoleText))
+            Log.Information("--- Console Output ---\n{Output}", consoleText);
+
+        Log.CloseAndFlush();
     }
 }

@@ -3,6 +3,7 @@ using Arius.Core.Encryption;
 using Arius.Core.FileTree;
 using Arius.Core.Snapshot;
 using Arius.Core.Storage;
+using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
 
@@ -49,6 +50,11 @@ public sealed class LsHandler
     {
         var opts = command.Options;
 
+        // ── Operation start marker (task 5.3) ────────────────────────────────
+        _logger.LogInformation(
+            "[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter}",
+            _accountName, _containerName, opts.Version ?? "latest", opts.Prefix ?? "(none)", opts.Filter ?? "(none)");
+
         try
         {
             // ── Resolve snapshot ─────────────────────────────────────────────
@@ -68,11 +74,17 @@ public sealed class LsHandler
                 };
             }
 
+            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}",
+                snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+
             // ── Collect file entries from tree ───────────────────────────────
 
             var prefix = NormalizePath(opts.Prefix);
             var rawEntries = new List<(string Path, string Hash, DateTimeOffset Created, DateTimeOffset Modified)>();
             await WalkTreeAsync(snapshot.RootHash, string.Empty, prefix, rawEntries, cancellationToken);
+
+            _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected (prefix={Prefix})",
+                rawEntries.Count, prefix ?? "(none)");
 
             // ── Apply filename substring filter (task 11.4) ───────────────────
 
@@ -102,6 +114,9 @@ public sealed class LsHandler
                     return new LsEntry(e.Path, e.Hash, size, e.Created, e.Modified);
                 })
                 .ToList();
+
+            _logger.LogInformation("[ls] Done: {Count} file(s) matched (prefix={Prefix} filter={Filter})",
+                lsEntries.Count, prefix ?? "(none)", filter ?? "(none)");
 
             return new LsResult
             {
