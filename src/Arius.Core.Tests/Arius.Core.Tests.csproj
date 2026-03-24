@@ -17,4 +17,8 @@
     <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Encryption\GoldenFiles\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

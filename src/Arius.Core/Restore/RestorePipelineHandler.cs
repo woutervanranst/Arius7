@@ -194,6 +194,55 @@ public sealed class RestorePipelineHandler
                 }
             }
 
+            // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
+
+            long rehydrationBytes = 0;
+            long downloadBytes    = 0;
+
+            foreach (var chunkHash in available.Concat(rehydrated))
+            {
+                if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
+                    downloadBytes += ie.CompressedSize;
+            }
+            foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
+            {
+                if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
+                    rehydrationBytes += ie.CompressedSize;
+            }
+
+            var costEstimate = new RehydrationCostEstimate
+            {
+                ChunksAvailable          = available.Count,
+                ChunksAlreadyRehydrated  = rehydrated.Count,
+                ChunksNeedingRehydration = needsRehydration.Count,
+                ChunksPendingRehydration = rehydrationPending.Count,
+                RehydrationBytes         = rehydrationBytes,
+                DownloadBytes            = downloadBytes,
+            };
+
+            // If there are archive-tier chunks, invoke confirmation callback (task 10.6)
+            RehydratePriority rehydratePriority = RehydratePriority.Standard;
+
+            if (needsRehydration.Count > 0 || rehydrationPending.Count > 0)
+            {
+                if (opts.ConfirmRehydration is not null)
+                {
+                    var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
+                    if (chosenPriority is null)
+                    {
+                        // User cancelled rehydration — exit without downloading or rehydrating
+                        return new RestoreResult
+                        {
+                            Success                  = true,
+                            FilesRestored            = 0,
+                            FilesSkipped             = skipped,
+                            ChunksPendingRehydration = needsRehydration.Count + rehydrationPending.Count,
+                        };
+                    }
+                    rehydratePriority = chosenPriority.Value;
+                }
+            }
+
             // ── Step 7: Phase 1 — download available chunks ───────────────────
 
             int filesRestored = 0;
@@ -227,28 +276,34 @@ public sealed class RestorePipelineHandler
                 }
                 else
                 {
-                    // Tar bundle: stream through tar, extract matching entries
-                    var filesByContentHash = filesForChunk.ToDictionary(f => f.ContentHash, StringComparer.Ordinal);
+                    // Tar bundle: stream through tar, extract matching entries.
+                    // Multiple files may share the same content hash (duplicates), so use a lookup.
+                    var filesByContentHash = filesForChunk
+                        .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                     var restored = await RestoreTarBundleAsync(
                         blobName, filesByContentHash, opts, cancellationToken);
                     filesRestored += restored;
                 }
             }
 
-            // ── Step 8: Phase 2 — kick off rehydration ────────────────────────
+            // ── Step 8: Phase 2 — kick off rehydration (tasks 10.8, 10.9) ────────
 
-            int chunksToRehydrate = needsRehydration.Count;
+            // Task 10.9: also re-request chunks that are still pending from a previous run.
+            var chunksToRequest = needsRehydration.Concat(rehydrationPending).ToList();
+            int chunksToRehydrate = chunksToRequest.Count;
+
             if (chunksToRehydrate > 0)
             {
                 long totalRehydrateBytes = 0;
-                foreach (var chunkHash in needsRehydration)
+                foreach (var chunkHash in chunksToRequest)
                 {
                     var chunkName = BlobPaths.Chunk(chunkHash);
                     var dst       = BlobPaths.ChunkRehydrated(chunkHash);
                     try
                     {
                         await _blobs.CopyAsync(chunkName, dst, BlobTier.Hot,
-                            RehydratePriority.Standard, cancellationToken);
+                            rehydratePriority, cancellationToken);
 
                         if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
                             totalRehydrateBytes += ie.CompressedSize;
@@ -264,7 +319,37 @@ public sealed class RestorePipelineHandler
                     cancellationToken);
             }
 
-            int totalPending = chunksToRehydrate + rehydrationPending.Count;
+            int totalPending = chunksToRehydrate;
+
+            // ── Step 9 (task 10.10): Cleanup rehydrated blobs after full restore ─
+
+            if (totalPending == 0 && rehydrated.Count > 0)
+            {
+                // All chunks were downloaded; rehydrated copies can be cleaned up.
+                long totalRehydratedBytes = 0;
+                foreach (var chunkHash in rehydrated)
+                {
+                    if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
+                        totalRehydratedBytes += ie.CompressedSize;
+                }
+
+                if (opts.ConfirmCleanup is not null &&
+                    await opts.ConfirmCleanup(rehydrated.Count, totalRehydratedBytes, cancellationToken))
+                {
+                    foreach (var chunkHash in rehydrated)
+                    {
+                        var blobName = BlobPaths.ChunkRehydrated(chunkHash);
+                        try
+                        {
+                            await _blobs.DeleteAsync(blobName, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete rehydrated chunk {ChunkHash}", chunkHash);
+                        }
+                    }
+                }
+            }
 
             return new RestoreResult
             {
@@ -405,10 +490,10 @@ public sealed class RestorePipelineHandler
     /// an entry in <paramref name="filesNeeded"/>.
     /// </summary>
     private async Task<int> RestoreTarBundleAsync(
-        string                         blobName,
-        Dictionary<string, FileToRestore> filesNeeded,
-        RestoreOptions                 opts,
-        CancellationToken              cancellationToken)
+        string                                    blobName,
+        Dictionary<string, List<FileToRestore>>   filesNeeded,
+        RestoreOptions                            opts,
+        CancellationToken                         cancellationToken)
     {
         int restored = 0;
 
@@ -422,31 +507,46 @@ public sealed class RestorePipelineHandler
         {
             var contentHash = tarEntry.Name; // entries are named by content-hash
 
-            if (!filesNeeded.TryGetValue(contentHash, out var file))
+            if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
-            var localPath = Path.Combine(opts.RootDirectory,
-                file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-            Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
-
+            // Buffer the entry data once (multiple output paths may share same content)
+            byte[]? dataBuffer = null;
             if (tarEntry.DataStream is not null)
             {
-                await using var outputStream = new FileStream(
-                    localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
-                await tarEntry.DataStream.CopyToAsync(outputStream, cancellationToken);
+                using var ms = new MemoryStream();
+                await tarEntry.DataStream.CopyToAsync(ms, cancellationToken);
+                dataBuffer = ms.ToArray();
             }
 
-            // Set timestamps
-            File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-            File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+            foreach (var file in filesForHash)
+            {
+                var localPath = Path.Combine(opts.RootDirectory,
+                    file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
-            // Create pointer file (task 10.11)
-            if (!opts.NoPointers)
-                await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
+                Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
-            await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
-            restored++;
+                if (dataBuffer is not null)
+                {
+                    await File.WriteAllBytesAsync(localPath, dataBuffer, cancellationToken);
+                }
+                else
+                {
+                    // Empty file (0 bytes): create an empty file
+                    await using var _ = File.Create(localPath);
+                }
+
+                // Set timestamps
+                File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
+                File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+
+                // Create pointer file (task 10.11)
+                if (!opts.NoPointers)
+                    await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
+
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                restored++;
+            }
         }
 
         return restored;

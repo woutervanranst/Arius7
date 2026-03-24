@@ -218,6 +218,56 @@ restoreCommand.SetAction(async (parseResult, ct) =>
         Version       = version,
         NoPointers    = noPointers,
         Overwrite     = overwrite,
+
+        // 10.6: Cost estimation + rehydration confirmation prompt
+        ConfirmRehydration = async (estimate, ct) =>
+        {
+            // Display cost table
+            var table = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
+            table.AddColumn("Category");
+            table.AddColumn(new TableColumn("Chunks").RightAligned());
+            table.AddColumn(new TableColumn("Size").RightAligned());
+
+            table.AddRow("Available (Hot/Cool)",
+                estimate.ChunksAvailable.ToString(),
+                estimate.DownloadBytes.Bytes().Humanize());
+            table.AddRow("Already rehydrated",
+                estimate.ChunksAlreadyRehydrated.ToString(),
+                "-");
+            table.AddRow("[yellow]Needs rehydration[/]",
+                estimate.ChunksNeedingRehydration.ToString(),
+                estimate.RehydrationBytes.Bytes().Humanize());
+            table.AddRow("[dim]Rehydration pending[/]",
+                estimate.ChunksPendingRehydration.ToString(),
+                "-");
+            AnsiConsole.Write(table);
+
+            if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
+                return RehydratePriority.Standard; // nothing to rehydrate, proceed
+
+            AnsiConsole.MarkupLine($"Estimated rehydration cost: " +
+                $"[cyan]Standard ${estimate.EstimatedCostStandardUsd:F4}[/] / " +
+                $"[yellow]High ${estimate.EstimatedCostHighUsd:F4}[/]");
+
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Select rehydration priority (or cancel):")
+                    .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
+
+            return choice switch
+            {
+                "Standard (~15h)" => RehydratePriority.Standard,
+                "High (~1h)"      => RehydratePriority.High,
+                _                 => (RehydratePriority?)null,
+            };
+        },
+
+        // 10.10: Cleanup prompt after full restore
+        ConfirmCleanup = async (count, bytes, ct) =>
+        {
+            return AnsiConsole.Confirm(
+                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+        },
     };
 
     // 12.9: Progress display

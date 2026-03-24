@@ -26,6 +26,7 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
     {
         _azurite = new AzuriteBuilder()
             .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+            .WithCommand("--skipApiVersionCheck")
             .Build();
         await _azurite.StartAsync();
     }

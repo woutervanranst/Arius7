@@ -50,6 +50,9 @@ internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAf
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
         => inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
+
+    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+        => inner.DeleteAsync(blobName, cancellationToken);
 }
 
 // ── Crash recovery tests ──────────────────────────────────────────────────────

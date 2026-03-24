@@ -86,9 +86,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         try
         {
             // Download the raw encrypted+gzipped blob
-            await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobName);
-            await using var fileStream     = File.Create(encryptedFile);
-            await downloadStream.CopyToAsync(fileStream);
+            {
+                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobName);
+                await using var fileStream     = File.Create(encryptedFile);
+                await downloadStream.CopyToAsync(fileStream);
+            }
 
             // Decrypt with openssl (AES-256-CBC, PBKDF2 SHA-256 10K iterations)
             RunOpenSsl(
@@ -99,9 +101,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 "-out", decryptedFile);
 
             // Gunzip
-            await using var gz  = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
-            await using var out_ = File.Create(finalFile);
-            await gz.CopyToAsync(out_);
+            {
+                await using var gz   = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
+                await using var out_ = File.Create(finalFile);
+                await gz.CopyToAsync(out_);
+            }
 
             File.ReadAllBytes(finalFile).ShouldBe(original);
         }
@@ -156,9 +160,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         try
         {
             // Download raw blob
-            await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobs[0]);
-            await using var fileStream     = File.Create(encryptedFile);
-            await downloadStream.CopyToAsync(fileStream);
+            {
+                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobs[0]);
+                await using var fileStream     = File.Create(encryptedFile);
+                await downloadStream.CopyToAsync(fileStream);
+            }
 
             // Decrypt
             RunOpenSsl(
@@ -169,9 +175,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 "-out", decryptedFile);
 
             // Gunzip
-            await using var gz   = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
-            await using var tarFs = File.Create(tarFile);
-            await gz.CopyToAsync(tarFs);
+            {
+                await using var gz    = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
+                await using var tarFs = File.Create(tarFile);
+                await gz.CopyToAsync(tarFs);
+            }
 
             // Read tar entries (named by content-hash)
             var extracted = new Dictionary<string, byte[]>();

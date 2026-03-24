@@ -132,6 +132,16 @@ public sealed class AzureBlobStorageService : IBlobStorageService
         await destBlob.StartCopyFromUriAsync(sourceUri, copyOptions, cancellationToken);
     }
 
+    // ── Delete ────────────────────────────────────────────────────────────────
+
+    public async Task DeleteAsync(
+        string            blobName,
+        CancellationToken cancellationToken = default)
+    {
+        var blobClient = _container.GetBlobClient(blobName);
+        await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+    }
+
     // ── Tier conversion helpers ───────────────────────────────────────────────
 
     private static AccessTier ToAzureTier(BlobTier tier) => tier switch

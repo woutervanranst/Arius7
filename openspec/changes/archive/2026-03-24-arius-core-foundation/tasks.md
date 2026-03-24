@@ -136,6 +136,7 @@
 - [x] 12.9 Implement Spectre.Console restore display: cost estimation table, priority prompt, download progress, remaining summary
 - [x] 12.10 Implement Spectre.Console ls output: table with path, size, dates
 - [x] 12.11 Wire up DI: register Core services, encryption service (based on passphrase), blob storage
+- [x] 12.12 Implement `update` verb: self-update binary from GitHub releases (download latest release asset, replace current executable)
 
 ## 13. Integration Tests — Roundtrip Scenarios
 
