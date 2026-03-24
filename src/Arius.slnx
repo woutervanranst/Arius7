@@ -1,9 +1,12 @@
 <Solution>
-  <Project Path="Arius.Architecture.Tests/Arius.Architecture.Tests.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="Arius.Architecture.Tests/Arius.Architecture.Tests.csproj" />
+    <Project Path="Arius.Cli.Tests/Arius.Cli.Tests.csproj" />
+    <Project Path="Arius.Core.Tests/Arius.Core.Tests.csproj" />
+    <Project Path="Arius.E2E.Tests/Arius.E2E.Tests.csproj" />
+    <Project Path="Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
+  </Folder>
   <Project Path="Arius.AzureBlob/Arius.AzureBlob.csproj" />
   <Project Path="Arius.Cli/Arius.Cli.csproj" />
-  <Project Path="Arius.Core.Tests/Arius.Core.Tests.csproj" />
   <Project Path="Arius.Core/Arius.Core.csproj" />
-  <Project Path="Arius.E2E.Tests/Arius.E2E.Tests.csproj" />
-  <Project Path="Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
 </Solution>
