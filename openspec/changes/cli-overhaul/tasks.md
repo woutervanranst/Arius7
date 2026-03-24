@@ -43,6 +43,6 @@
 
 ## 8. Docker Removal and Documentation
 
-- [ ] 8.1 Delete `src/Dockerfile`
-- [ ] 8.2 Remove Docker sections from `README.md`
-- [ ] 8.3 Update CLI usage examples in `README.md` with short aliases
+- [x] 8.1 Delete `src/Dockerfile`
+- [x] 8.2 Remove Docker sections from `README.md`
+- [x] 8.3 Update CLI usage examples in `README.md` with short aliases
