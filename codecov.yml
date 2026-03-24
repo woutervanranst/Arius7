@@ -1,0 +1,5 @@
+ignore:
+  - "src/Arius.Architecture.Tests/**"
+  - "src/Arius.Core.Tests/**"
+  - "src/Arius.E2E.Tests/**"
+  - "src/Arius.Integration.Tests/**"
