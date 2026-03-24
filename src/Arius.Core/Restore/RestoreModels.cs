@@ -34,7 +34,7 @@ public sealed record RestoreOptions
     /// <summary>
     /// Task 10.6: Optional callback invoked with the cost estimate before rehydration begins.
     /// Return the desired <see cref="RehydratePriority"/> to proceed, or <c>null</c> to cancel.
-    /// When <c>null</c>, all archive-tier chunks are rehydrated using Standard priority.
+    /// When this callback is <c>null</c>, all archive-tier chunks are rehydrated using Standard priority without confirmation.
     /// </summary>
     public Func<RehydrationCostEstimate, CancellationToken, Task<RehydratePriority?>>? ConfirmRehydration { get; init; }
 
