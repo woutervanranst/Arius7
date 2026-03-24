@@ -34,22 +34,12 @@ sudo mv arius /usr/local/bin/
 
 > **Note:** macOS may block the binary. Run `xattr -c /usr/local/bin/arius` to clear the quarantine flag.
 
-### Docker
-
-```bash
-docker run --rm \
-  -v /path/to/data:/data \
-  -v arius-cache:/root/.arius/cache \
-  ghcr.io/woutervanranst/arius7 \
-  archive /data --account <name> --key <key> --container <container>
-```
-
 ## Usage
 
 ```
-arius archive <path> --account <name> --key <key> --container <container> [options]
-arius restore <path> --account <name> --key <key> --container <container> [options]
-arius ls          --account <name> --key <key> --container <container> [options]
+arius archive <path> -a <name> -k <key> -c <container> [options]
+arius restore <path> -a <name> -k <key> -c <container> [options]
+arius ls          -a <name> -k <key> -c <container> [options]
 arius update
 ```
 
@@ -57,9 +47,9 @@ arius update
 
 ```bash
 arius archive ./photos \
-  --account mystorageaccount \
-  --container photos-backup \
-  --tier Archive \
+  -a mystorageaccount \
+  -c photos-backup \
+  -t Archive \
   --remove-local
 ```
 
@@ -67,21 +57,21 @@ arius archive ./photos \
 
 ```bash
 arius restore ./photos \
-  --account mystorageaccount \
-  --container photos-backup
+  -a mystorageaccount \
+  -c photos-backup
 ```
 
 ### List snapshots
 
 ```bash
 arius ls \
-  --account mystorageaccount \
-  --container photos-backup
+  -a mystorageaccount \
+  -c photos-backup
 ```
 
 ### Account key
 
-Pass `--key` on the command line or store it in
+Pass `-k` on the command line, set `ARIUS_KEY` environment variable, or store it in
 [.NET user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets):
 
 ```bash
