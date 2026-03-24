@@ -110,4 +110,13 @@ public interface IBlobStorageService
         BlobTier           destinationTier,
         RehydratePriority? rehydratePriority  = null,
         CancellationToken  cancellationToken  = default);
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Deletes the blob at <paramref name="blobName"/>. No-ops if the blob does not exist.
+    /// </summary>
+    Task DeleteAsync(
+        string            blobName,
+        CancellationToken cancellationToken = default);
 }

@@ -105,11 +105,11 @@
 - [x] 10.3 Implement conflict check: hash local files, skip matches, prompt on mismatch (y/N/all), support --overwrite
 - [x] 10.4 Implement chunk resolution: index lookup for each content hash, group by chunk hash
 - [x] 10.5 Implement rehydration status check: check chunks-rehydrated/ existence, check blob tier
-- [ ] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
+- [x] 10.6 Implement cost estimation: calculate rehydration cost (Standard/High), download egress from chunk-size values
 - [x] 10.7 Implement Phase 1 — download available chunks: streaming download → decrypt → gunzip → write to path (large) or stream tar extraction (tar bundles)
 - [x] 10.8 Implement Phase 2 — rehydration kick-off: copy-blob to chunks-rehydrated/ with priority, retry with backoff on throttle
-- [ ] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
-- [ ] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
+- [x] 10.9 Implement idempotent re-run: skip already-restored files, download newly rehydrated, re-request pending
+- [x] 10.10 Implement cleanup prompt: delete chunks-rehydrated/ blobs after full restore
 - [x] 10.11 Implement pointer file creation during restore (unless --no-pointers), set file dates from tree metadata
 - [x] 10.12 Implement progress event emission for restore: download progress, files restored, rehydration status
 
