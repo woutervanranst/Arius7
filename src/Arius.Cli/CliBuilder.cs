@@ -23,23 +23,38 @@ namespace Arius.Cli;
 /// </summary>
 public static class CliBuilder
 {
-    // ── Common options ────────────────────────────────────────────────────────
+    /// <summary>
+    /// Creates the CLI option for specifying the Azure Storage account name (`--account` / `-a`).
+    /// </summary>
+    /// <returns>An Option&lt;string?&gt; configured for the account name with description "Azure Storage account name".</returns>
 
     public static Option<string?> AccountOption() => new("--account", "-a")
     {
         Description = "Azure Storage account name",
     };
 
+    /// <summary>
+    /// Creates a command-line option for specifying the Azure Storage account key.
+    /// </summary>
+    /// <returns>An <see cref="Option{T}"/> configured as <c>--key</c> / <c>-k</c> that yields the account key string or <c>null</c> when not provided.</returns>
     public static Option<string?> KeyOption() => new Option<string?>("--key", "-k")
     {
         Description = "Azure Storage account key",
     };
 
+    /// <summary>
+    /// Creates the --passphrase (-p) option used to provide an optional encryption passphrase.
+    /// </summary>
+    /// <returns>An Option&lt;string?&gt; that accepts an encryption passphrase; a null value indicates no passphrase (no encryption).</returns>
     public static Option<string?> PassphraseOption() => new Option<string?>("--passphrase", "-p")
     {
         Description = "Encryption passphrase (omit for no encryption)",
     };
 
+    /// <summary>
+    /// Creates the required CLI option for specifying the Azure Blob container name (`--container` / `-c`).
+    /// </summary>
+    /// <returns>An Option&lt;string&gt; configured for the required container name.</returns>
     public static Option<string> ContainerOption() => new Option<string>("--container", "-c")
     {
         Description = "Azure Blob container name",
@@ -51,7 +66,11 @@ public static class CliBuilder
     /// <summary>
     /// Builds the root command. Optionally accepts a service-provider factory so tests
     /// can inject mock handlers instead of real Azure-backed ones.
+    /// <summary>
+    /// Create the top-level CLI root command with all built-in subcommands and dependency-injection wiring.
     /// </summary>
+    /// <param name="serviceProviderFactory">Optional factory to create an <see cref="IServiceProvider"/> for the given account name, account key, optional passphrase, and container name; if null, production services are used.</param>
+    /// <returns>The configured <see cref="RootCommand"/> containing the archive, restore, ls, and update subcommands.</returns>
     public static RootCommand BuildRootCommand(
         Func<string, string, string?, string, IServiceProvider>? serviceProviderFactory = null)
     {
@@ -65,7 +84,11 @@ public static class CliBuilder
         return rootCommand;
     }
 
-    // ── Archive verb ──────────────────────────────────────────────────────────
+    /// <summary>
+    /// Builds the "archive" subcommand that uploads a local directory to Azure Blob Storage.
+    /// </summary>
+    /// <param name="serviceProviderFactory">Factory that creates an <see cref="IServiceProvider"/> given account name, account key, optional passphrase, and container name.</param>
+    /// <returns>A configured <see cref="Command"/> for the archive operation.</returns>
 
     private static Command BuildArchiveCommand(
         Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
@@ -189,7 +212,11 @@ public static class CliBuilder
         return cmd;
     }
 
-    // ── Restore verb ──────────────────────────────────────────────────────────
+    /// <summary>
+    /// Creates the "restore" command that restores files from Azure Blob Storage into a local directory.
+    /// </summary>
+    /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the given account name, account key, optional passphrase, and container name.</param>
+    /// <returns>A configured <see cref="Command"/> representing the "restore" subcommand.</returns>
 
     private static Command BuildRestoreCommand(
         Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
@@ -344,7 +371,11 @@ public static class CliBuilder
         return cmd;
     }
 
-    // ── Ls verb ───────────────────────────────────────────────────────────────
+    /// <summary>
+    /// Creates and configures the "ls" subcommand which lists files in a snapshot.
+    /// </summary>
+    /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the given account name, account key, optional passphrase, and container name.</param>
+    /// <returns>The configured <see cref="Command"/> for the "ls" verb.</returns>
 
     private static Command BuildLsCommand(
         Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
@@ -444,7 +475,10 @@ public static class CliBuilder
         return cmd;
     }
 
-    // ── Update verb ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// Builds the "update" command that checks GitHub for a newer release and, if available, downloads the appropriate platform asset and replaces the running executable.
+    /// </summary>
+    /// <returns>Process exit code: `0` on success, `1` on failure.</returns>
 
     private static Command BuildUpdateCommand()
     {
@@ -582,7 +616,11 @@ public static class CliBuilder
 
     /// <summary>
     /// Resolves account name: CLI flag > ARIUS_ACCOUNT env var.
+    /// <summary>
+    /// Determine the Azure Storage account name from the provided CLI value or the ARIUS_ACCOUNT environment variable.
     /// </summary>
+    /// <param name="cliAccount">Account name supplied via the CLI; used when not null or whitespace.</param>
+    /// <returns>`cliAccount` if not null or whitespace; otherwise the value of the `ARIUS_ACCOUNT` environment variable, or `null` if neither is present.</returns>
     public static string? ResolveAccount(string? cliAccount)
     {
         if (!string.IsNullOrWhiteSpace(cliAccount)) return cliAccount;
@@ -592,7 +630,12 @@ public static class CliBuilder
 
     /// <summary>
     /// Resolves account key: CLI flag > ARIUS_KEY env var > user secrets.
+    /// <summary>
+    /// Resolve the Azure Storage account key from the provided CLI value, environment, or user secrets.
     /// </summary>
+    /// <param name="cliKey">The key provided via CLI option, if any.</param>
+    /// <param name="accountName">The account name used to look up a per-account user secret.</param>
+    /// <returns>`cliKey` if non-empty; otherwise the `ARIUS_KEY` environment variable; otherwise the user secret `arius:{accountName}:key` or `arius:key`; or `null` if no key is found.</returns>
     public static string? ResolveKey(string? cliKey, string accountName)
     {
         if (!string.IsNullOrWhiteSpace(cliKey)) return cliKey;
@@ -607,7 +650,14 @@ public static class CliBuilder
         return config[$"arius:{accountName}:key"] ?? config["arius:key"];
     }
 
-    // ── Production DI factory ─────────────────────────────────────────────────
+    /// <summary>
+    /// Builds a production <see cref="IServiceProvider"/> configured with Azure Blob Storage clients and Arius services for the specified account and container.
+    /// </summary>
+    /// <param name="accountName">Azure Storage account name used to authenticate and construct storage clients.</param>
+    /// <param name="accountKey">Azure Storage account key used for authentication.</param>
+    /// <param name="passphrase">Optional encryption passphrase; pass <c>null</c> to disable encryption-related configuration.</param>
+    /// <param name="containerName">Name of the blob container the services will target.</param>
+    /// <returns>An <see cref="IServiceProvider"/> containing production-ready services wired to the specified storage account and container.</returns>
 
     private static IServiceProvider BuildProductionServices(
         string  accountName,

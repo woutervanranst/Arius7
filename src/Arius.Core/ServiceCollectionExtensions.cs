@@ -21,7 +21,16 @@ public static class ServiceCollectionExtensions
     /// generated <c>Mediator</c> class), then re-registers each handler by its
     /// <c>ICommandHandler&lt;,&gt;</c> interface using explicit factory delegates — MS DI's
     /// "last registration wins" behaviour ensures these factories are what Mediator resolves.
+    /// <summary>
+    /// Registers Arius core services and command handlers into the provided <see cref="IServiceCollection"/>.
     /// </summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="blobStorage">The blob storage implementation to use for persisted data.</param>
+    /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
+    /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
+    /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
+    /// <param name="cacheBudgetBytes">Maximum cache budget, in bytes, for the chunk index service.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
         IBlobStorageService     blobStorage,
