@@ -293,11 +293,8 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        var cacheBase = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".arius", "cache");
-        var repoId = ChunkIndexService.ComputeRepoId(_account, _container);
-        var cacheDir = Path.Combine(cacheBase, repoId);
+        var home     = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var cacheDir = Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(_account, _container));
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

@@ -12,6 +12,8 @@ using Mediator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 using Spectre.Console;
 using System.CommandLine;
 
@@ -88,7 +90,11 @@ public static class CliBuilder
     /// Builds the "archive" subcommand that uploads a local directory to Azure Blob Storage.
     /// </summary>
     /// <param name="serviceProviderFactory">Factory that creates an <see cref="IServiceProvider"/> given account name, account key, optional passphrase, and container name.</param>
-    /// <returns>A configured <see cref="Command"/> for the archive operation.</returns>
+    /// <summary>
+    /// Creates the "archive" subcommand that archives a local directory to Azure Blob Storage.
+    /// </summary>
+    /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the resolved account name, account key, optional passphrase, and container name.</param>
+    /// <returns>The configured <see cref="Command"/> for the archive operation.</returns>
 
     private static Command BuildArchiveCommand(
         Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
@@ -158,6 +164,14 @@ public static class CliBuilder
                 return 1;
             }
 
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "archive");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
 
@@ -207,6 +221,12 @@ public static class CliBuilder
                 $"Size: {result.TotalSize.Bytes().Humanize()}, " +
                 $"Snapshot: {result.SnapshotTime:yyyy-MM-ddTHHmmss.fffZ}");
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -216,7 +236,10 @@ public static class CliBuilder
     /// Creates the "restore" command that restores files from Azure Blob Storage into a local directory.
     /// </summary>
     /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the given account name, account key, optional passphrase, and container name.</param>
-    /// <returns>A configured <see cref="Command"/> representing the "restore" subcommand.</returns>
+    /// <summary>
+    /// Creates the "restore" subcommand that restores files from an Arius Azure container into a local directory.
+    /// </summary>
+    /// <returns>The configured <see cref="Command"/> for the "restore" subcommand.</returns>
 
     private static Command BuildRestoreCommand(
         Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
@@ -277,6 +300,15 @@ public static class CliBuilder
                 AnsiConsole.MarkupLine("[red]Error:[/] No account key provided. Use --key / -k or set ARIUS_KEY.");
                 return 1;
             }
+
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "restore");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
 
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
@@ -366,6 +398,12 @@ public static class CliBuilder
                     "Re-run this command in ~15 hours to complete the restore.");
             }
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -375,6 +413,10 @@ public static class CliBuilder
     /// Creates and configures the "ls" subcommand which lists files in a snapshot.
     /// </summary>
     /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the given account name, account key, optional passphrase, and container name.</param>
+    /// <summary>
+    /// Creates the "ls" command which lists files in a snapshot.
+    /// </summary>
+    /// <param name="serviceProviderFactory">A factory that, given account name, account key, optional passphrase, and container name, returns an <see cref="IServiceProvider"/> configured for command execution.</param>
     /// <returns>The configured <see cref="Command"/> for the "ls" verb.</returns>
 
     private static Command BuildLsCommand(
@@ -431,6 +473,15 @@ public static class CliBuilder
                 return 1;
             }
 
+            // ── Audit logging + Recorder setup ────────────────────────────────
+            ConfigureAuditLogging(resolvedAccount, container, "ls");
+            var recorder = AnsiConsole.Console.CreateRecorder();
+            var savedConsole = AnsiConsole.Console;
+            AnsiConsole.Console = recorder;
+
+            try
+            {
+
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
 
@@ -470,6 +521,12 @@ public static class CliBuilder
             AnsiConsole.Write(table);
             AnsiConsole.MarkupLine($"[dim]{result.Entries.Count} file(s)[/]");
             return 0;
+            }
+            finally
+            {
+                AnsiConsole.Console = savedConsole;
+                FlushAuditLog(recorder);
+            }
         });
 
         return cmd;
@@ -657,6 +714,13 @@ public static class CliBuilder
     /// <param name="accountKey">Azure Storage account key used for authentication.</param>
     /// <param name="passphrase">Optional encryption passphrase; pass <c>null</c> to disable encryption-related configuration.</param>
     /// <param name="containerName">Name of the blob container the services will target.</param>
+    /// <summary>
+    /// Create a service provider configured for production use with Azure Blob Storage and Arius services for the specified storage account and container.
+    /// </summary>
+    /// <param name="accountName">Azure Storage account name to connect to.</param>
+    /// <param name="accountKey">Key for the Azure Storage account.</param>
+    /// <param name="passphrase">Optional encryption passphrase; pass <c>null</c> to disable encryption.</param>
+    /// <param name="containerName">Blob container name used by Arius.</param>
     /// <returns>An <see cref="IServiceProvider"/> containing production-ready services wired to the specified storage account and container.</returns>
 
     private static IServiceProvider BuildProductionServices(
@@ -666,7 +730,7 @@ public static class CliBuilder
         string  containerName)
     {
         var services = new ServiceCollection();
-        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddLogging(b => b.AddSerilog(dispose: true));
 
         var credential          = new StorageSharedKeyCredential(accountName, accountKey);
         var serviceUri          = new Uri($"https://{accountName}.blob.core.windows.net");
@@ -682,5 +746,59 @@ public static class CliBuilder
             ChunkIndexService.DefaultCacheBudgetBytes);
 
         return services.BuildServiceProvider();
+    }
+
+    // ── Audit logging setup ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Configures the global Serilog logger for one CLI invocation.
+    /// Console sink: Warning+.  File sink: Information+.
+    /// Must be called before <see cref="BuildProductionServices"/>.
+    /// <summary>
+    /// Initializes per-command audit logging and returns the path to the created log file.
+    /// </summary>
+    /// <remarks>
+    /// Configures the global Serilog logger, creating a timestamped log file under the user's ~/.arius/{repo}/logs directory and restricting console output to warnings and above while recording information-level entries to the file.
+    /// </remarks>
+    /// <param name="accountName">Azure Storage account name used to compute the repository-specific log directory.</param>
+    /// <param name="containerName">Azure Blob container name used to compute the repository-specific log directory.</param>
+    /// <param name="commandName">Label for the command; included in the log file name.</param>
+    /// <returns>The full path to the log file created for this command.</returns>
+    public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
+    {
+        var home    = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var logDir  = Path.Combine(home, ".arius",
+            ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "logs");
+        Directory.CreateDirectory(logDir);
+
+        var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        var logFile   = Path.Combine(logDir, $"{timestamp}_{commandName}.txt");
+
+        const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}";
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .Enrich.WithThreadId()
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning)
+            .WriteTo.File(logFile, outputTemplate: outputTemplate, restrictedToMinimumLevel: LogEventLevel.Information)
+            .CreateLogger();
+
+        return logFile;
+    }
+
+    /// <summary>
+    /// Logs the captured console output (from a Spectre.Console <see cref="Recorder"/>)
+    /// to the current Serilog logger, then closes and flushes the logger.
+    /// <summary>
+    /// Flushes captured console output from the provided Spectre.Console Recorder into the audit log and then closes the global logger.
+    /// </summary>
+    /// <param name="recorder">The Spectre.Console <see cref="Recorder"/> that contains captured console output to be exported and logged.</param>
+    public static void FlushAuditLog(Recorder recorder)
+    {
+        var consoleText = recorder.ExportText();
+        if (!string.IsNullOrWhiteSpace(consoleText))
+            Log.Information("--- Console Output ---\n{Output}", consoleText);
+
+        Log.CloseAndFlush();
     }
 }

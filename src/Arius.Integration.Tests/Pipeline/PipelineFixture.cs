@@ -153,20 +153,18 @@ public sealed class PipelineFixture : IAsyncDisposable
     public bool RestoredExists(string relativePath) =>
         File.Exists(Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
+    /// <summary>
+    /// Releases resources used by the fixture by removing the fixture's temporary directory and any repository-specific chunk-index cache directory under the current user's profile, if they exist.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Clean up disk cache created by index/tree services
-        var cacheBase = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".arius", "cache");
-
         // Clean up unique temp dir
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
         // Clean up any cache dirs created by this test's container (unique name)
-        var repoId = ChunkIndexService.ComputeRepoId(Account, Container.Name);
-        var cacheDir = Path.Combine(cacheBase, repoId);
+        var home     = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var cacheDir = Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(Account, Container.Name));
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

@@ -146,22 +146,26 @@ public class ShardSerializerTests
 
 public class ChunkIndexServiceTests
 {
-    // ── 4.4 LRU eviction ────────────────────────────────────────────────────
-
     [Test]
-    public void RepoId_DerivedDeterministically()
+    public void RepoDirectoryName_Format_IsAccountHyphenContainer()
     {
-        var id1 = ChunkIndexService.ComputeRepoId("account", "container");
-        var id2 = ChunkIndexService.ComputeRepoId("account", "container");
-        id1.ShouldBe(id2);
-        id1.Length.ShouldBe(12);
+        var name = ChunkIndexService.GetRepoDirectoryName("mystorageacct", "photos");
+        name.ShouldBe("mystorageacct-photos");
     }
 
     [Test]
-    public void RepoId_DifferentInputs_ProduceDifferentIds()
+    public void RepoDirectoryName_DifferentContainers_ProduceDifferentNames()
     {
-        var id1 = ChunkIndexService.ComputeRepoId("account", "container1");
-        var id2 = ChunkIndexService.ComputeRepoId("account", "container2");
-        id1.ShouldNotBe(id2);
+        var n1 = ChunkIndexService.GetRepoDirectoryName("account", "container1");
+        var n2 = ChunkIndexService.GetRepoDirectoryName("account", "container2");
+        n1.ShouldNotBe(n2);
+    }
+
+    [Test]
+    public void RepoDirectoryName_SameInputs_ProduceSameResult()
+    {
+        var n1 = ChunkIndexService.GetRepoDirectoryName("account", "container");
+        var n2 = ChunkIndexService.GetRepoDirectoryName("account", "container");
+        n1.ShouldBe(n2);
     }
 }
