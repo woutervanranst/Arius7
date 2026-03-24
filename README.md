@@ -88,6 +88,126 @@ arius update
 
 This checks GitHub Releases for a newer version, downloads it, and replaces the binary in-place.
 
+## Blob Storage Structure
+
+A single Azure Blob container holds the entire repository. Blobs are organized into
+virtual directories (prefixes):
+
+```
+<container>
+├── chunks/              Content-addressable chunks (configurable tier)
+├── chunks-rehydrated/   Temporary hot-tier copies during restore (auto-cleaned)
+├── filetrees/           Merkle tree nodes — one JSON blob per directory (Cool tier)
+├── snapshots/           Point-in-time snapshot manifests (Cool tier)
+└── chunk-index/         Deduplication index shards (Cool tier)
+```
+
+### How it fits together
+
+```mermaid
+flowchart TD
+    subgraph snapshots/
+        S["snapshots/2026-03-22T150000.000Z<br/><i>gzip + optional encrypt</i>"]
+    end
+
+    subgraph filetrees/
+        RT["filetrees/&lt;root-hash&gt;<br/><i>JSON tree blob</i>"]
+        CT["filetrees/&lt;child-hash&gt;<br/><i>JSON tree blob</i>"]
+    end
+
+    subgraph chunks/
+        L["chunks/&lt;content-hash&gt;<br/><b>large</b> — gzip + optional encrypt"]
+        TAR["chunks/&lt;tar-hash&gt;<br/><b>tar</b> — tar + gzip + optional encrypt"]
+        TH["chunks/&lt;content-hash&gt;<br/><b>thin</b> — UTF-8 pointer to tar-hash"]
+    end
+
+    subgraph chunk-index/
+        CI["chunk-index/&lt;4-hex-prefix&gt;<br/><i>gzip + optional encrypt</i>"]
+    end
+
+    S -- "rootHash" --> RT
+    RT -- "child dir hash" --> CT
+    RT -. "file content-hash" .-> L
+    CT -. "file content-hash" .-> TH
+    TH -- "tar-hash reference" --> TAR
+    CI -. "content-hash → chunk-hash" .-> L
+    CI -. "content-hash → chunk-hash" .-> TH
+```
+
+### snapshots/
+
+Each blob is a small JSON manifest (gzip-compressed, optionally AES-256-CBC encrypted)
+that captures a point-in-time state of the repository:
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | UTC time of snapshot creation |
+| `rootHash` | SHA-256 hash of the root Merkle tree node |
+| `fileCount` | Total number of files |
+| `totalSize` | Sum of original file sizes in bytes |
+| `ariusVersion` | Tool version that created the snapshot |
+
+Snapshots are immutable and never deleted. To browse the repository at a given point in
+time, resolve the snapshot, then walk the tree from `rootHash`.
+
+### filetrees/
+
+Merkle tree nodes. Each blob is a JSON document named by its tree-hash (SHA-256 of the
+canonical JSON, optionally passphrase-seeded). A tree blob lists the entries in one
+directory:
+
+```json
+{
+  "entries": [
+    { "name": "photo.jpg", "type": "file", "hash": "abc123...", "created": "...", "modified": "..." },
+    { "name": "subdir/",   "type": "dir",  "hash": "def456..." }
+  ]
+}
+```
+
+- **File entries** point to a content-hash in `chunks/`.
+- **Directory entries** point to another tree blob in `filetrees/`.
+- Walking from the root hash recursively reconstructs the full directory tree.
+
+### chunks/
+
+Content-addressable storage for file data. Three blob types coexist under this prefix,
+distinguishable by their HTTP `Content-Type` header and `arius_type` metadata:
+
+| Type | Blob name | Content-Type | Body | Tier |
+|------|-----------|-------------|------|------|
+| **large** | `chunks/<content-hash>` | `application/aes256cbc+gzip` or `application/gzip` | Single file: gzip + optional encrypt | Configurable (`-t`) |
+| **tar** | `chunks/<tar-hash>` | `application/aes256cbc+tar+gzip` or `application/tar+gzip` | Bundle of small files: tar + gzip + optional encrypt | Configurable (`-t`) |
+| **thin** | `chunks/<content-hash>` | `text/plain; charset=utf-8` | UTF-8 string of the tar-hash (pointer, ~64 bytes) | Always Cool |
+
+**Routing rule:** files >= 1 MB are uploaded individually as **large** chunks. Files
+< 1 MB are accumulated into **tar** bundles (target size 64 MB). For each file in a tar
+bundle, a **thin** pointer blob is created so that every content-hash has a
+corresponding blob in `chunks/`.
+
+Thin pointers are kept on Cool tier (cheap to read) so that restore can resolve
+tar-hash references without rehydrating archive-tier blobs.
+
+### chunks-rehydrated/
+
+Temporary prefix used only during restore. When chunks are stored on Archive tier, Arius
+initiates a server-side copy from `chunks/<hash>` to `chunks-rehydrated/<hash>` at Hot
+tier. Once rehydration completes and files are restored, these blobs are cleaned up.
+
+### chunk-index/
+
+Deduplication index split into 65,536 shards (keyed by the first 4 hex chars of the
+content-hash). Each shard is a text file (gzip-compressed, optionally encrypted) where
+each line maps a content-hash to its chunk-hash:
+
+```
+<content-hash> <chunk-hash> <original-size> <compressed-size>
+```
+
+For large files, content-hash equals chunk-hash. For tar-bundled files, chunk-hash is
+the tar-hash. A 3-tier cache (in-memory LRU, local disk at
+`~/.arius/cache/<repo-id>/chunk-index/`, remote blob) makes lookups fast.
+
 ## License
 
 [MIT](LICENSE)

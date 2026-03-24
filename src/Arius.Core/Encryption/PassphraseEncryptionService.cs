@@ -13,6 +13,9 @@ namespace Arius.Core.Encryption;
 /// </summary>
 public sealed class PassphraseEncryptionService : IEncryptionService
 {
+    /// <inheritdoc/>
+    public bool IsEncrypted => true;
+
     private const int SaltSize       = 8;
     private const int KeySize        = 32; // AES-256
     private const int IvSize         = 16; // AES block size

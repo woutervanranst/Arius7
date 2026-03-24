@@ -10,6 +10,9 @@ namespace Arius.Core.Encryption;
 public sealed class PlaintextPassthroughService : IEncryptionService
 {
     /// <inheritdoc/>
+    public bool IsEncrypted => false;
+
+    /// <inheritdoc/>
     /// Returns <paramref name="inner"/> unchanged — no encryption applied.
     public Stream WrapForEncryption(Stream inner)
     {

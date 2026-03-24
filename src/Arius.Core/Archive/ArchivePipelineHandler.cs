@@ -284,7 +284,9 @@ public sealed class ArchivePipelineHandler
                         };
 
                         await _blobs.UploadAsync(blobName, uploadMs, uploadMeta,
-                            opts.UploadTier, overwrite: meta.Exists, cancellationToken: cancellationToken);
+                            opts.UploadTier,
+                            _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext,
+                            overwrite: meta.Exists, cancellationToken: cancellationToken);
                         compressedSize = uploadMs.Length;
                     }
 
@@ -427,7 +429,9 @@ public sealed class ArchivePipelineHandler
                             };
 
                             await _blobs.UploadAsync(blobName, uploadMs, uploadMeta,
-                                opts.UploadTier, overwrite: meta.Exists, cancellationToken: cancellationToken);
+                                opts.UploadTier,
+                                _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext,
+                                overwrite: meta.Exists, cancellationToken: cancellationToken);
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
@@ -455,6 +459,7 @@ public sealed class ArchivePipelineHandler
                                     new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sealed_.TarHash)),
                                     thinMeta,
                                     BlobTier.Cool,
+                                    ContentTypes.Thin,
                                     overwrite: thinMeta2.Exists,
                                     cancellationToken: cancellationToken);
                             }

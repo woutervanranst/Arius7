@@ -28,6 +28,7 @@ public sealed class AzureBlobStorageService : IBlobStorageService
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
         BlobTier                            tier,
+        string?                             contentType       = null,
         bool                                overwrite         = false,
         CancellationToken                   cancellationToken = default)
     {
@@ -39,6 +40,14 @@ public sealed class AzureBlobStorageService : IBlobStorageService
             AccessTier  = ToAzureTier(tier),
             Conditions  = overwrite ? null : new BlobRequestConditions { IfNoneMatch = ETag.All }
         };
+
+        if (contentType is not null)
+        {
+            uploadOptions.HttpHeaders = new BlobHttpHeaders
+            {
+                ContentType = contentType
+            };
+        }
 
         await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
     }

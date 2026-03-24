@@ -25,13 +25,13 @@ internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAf
     public async Task UploadAsync(
         string blobName, Stream content,
         IReadOnlyDictionary<string, string> metadata,
-        BlobTier tier, bool overwrite = false,
+        BlobTier tier, string? contentType = null, bool overwrite = false,
         CancellationToken cancellationToken = default)
     {
         var count = Interlocked.Increment(ref _uploadCount);
         if (count > throwAfterN)
             throw new IOException($"Fault-injected failure on upload #{count}");
-        await inner.UploadAsync(blobName, content, metadata, tier, overwrite, cancellationToken);
+        await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
     }
 
     public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)

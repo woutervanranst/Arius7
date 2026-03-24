@@ -54,6 +54,7 @@ public interface IBlobStorageService
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
         BlobTier                            tier,
+        string?                             contentType        = null,
         bool                                overwrite          = false,
         CancellationToken                   cancellationToken  = default);
 
