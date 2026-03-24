@@ -133,7 +133,7 @@ public class GoldenFileDecryptionTests
         await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
 
         var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        var tarReader = new TarReader(gzipStream, leaveOpen: false);
+        await using var tarReader = new TarReader(gzipStream, leaveOpen: false);
 
         System.Formats.Tar.TarEntry? entry;
         while ((entry = await tarReader.GetNextEntryAsync(copyData: true)) is not null)
