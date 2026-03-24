@@ -16,7 +16,7 @@ Download the binary for your platform from the
 # Download arius-win-x64.exe and add its directory to your PATH
 ```
 
-### Linux
+### Linux (& Synology NAS)
 
 ```bash
 curl -Lo arius https://github.com/woutervanranst/Arius7/releases/latest/download/arius-linux-x64
