@@ -55,6 +55,17 @@ public sealed class RestorePipelineHandler
         _containerName = containerName;
     }
 
+    /// <summary>
+    /// Executes the end-to-end restore pipeline for the provided RestoreCommand.
+    /// </summary>
+    /// <remarks>
+    /// Orchestrates snapshot resolution, tree traversal, local conflict handling, chunk index lookup and grouping, downloading or extracting chunk data, optional archive rehydration requests and cleanup, pointer-file creation, and publishes progress/reconciliation events.
+    /// </remarks>
+    /// <param name="command">The restore command containing options such as RootDirectory, Version, TargetPath, Overwrite, and confirmation callbacks.</param>
+    /// <param name="cancellationToken">Token to observe while performing asynchronous operations.</param>
+    /// <returns>
+    /// A RestoreResult indicating whether the operation succeeded, how many files were restored, how many were skipped, the number of chunks pending rehydration, and an error message when unsuccessful.
+    /// </returns>
     public async ValueTask<RestoreResult> Handle(
         RestoreCommand    command,
         CancellationToken cancellationToken)

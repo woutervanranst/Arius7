@@ -153,6 +153,9 @@ public sealed class PipelineFixture : IAsyncDisposable
     public bool RestoredExists(string relativePath) =>
         File.Exists(Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
+    /// <summary>
+    /// Releases resources used by the fixture by removing the fixture's temporary directory and any repository-specific chunk-index cache directory under the current user's profile, if they exist.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         // Clean up unique temp dir

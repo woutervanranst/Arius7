@@ -50,6 +50,15 @@ public sealed class ChunkIndexService : IDisposable
 
     private readonly ConcurrentBag<ShardEntry> _pendingEntries = new();
 
+    /// <summary>
+    /// Initializes a ChunkIndexService and prepares the tiered chunk index cache state.
+    /// </summary>
+    /// <param name="accountName">Account name used to derive the on-disk L2 cache directory under the user's profile.</param>
+    /// <param name="containerName">Container name used to derive the on-disk L2 cache directory under the user's profile.</param>
+    /// <param name="cacheBudgetBytes">Approximate byte budget for the in-memory L1 cache.</param>
+    /// <remarks>
+    /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
+    /// </remarks>
     public ChunkIndexService(
         IBlobStorageService blobs,
         IEncryptionService  encryption,
@@ -71,11 +80,21 @@ public sealed class ChunkIndexService : IDisposable
     /// <c>{accountName}-{containerName}</c>.
     /// Azure account names are <c>[a-z0-9]</c> only (no hyphens), so the first
     /// hyphen unambiguously separates account from container.
-    /// </summary>
+    /// <summary>
+        /// Constructs the repository directory name for the L2 cache by joining the account and container with a hyphen.
+        /// </summary>
+        /// <param name="accountName">The account name component.</param>
+        /// <param name="containerName">The container name component.</param>
+        /// <returns>The directory name in the format "{accountName}-{containerName}".</returns>
     public static string GetRepoDirectoryName(string accountName, string containerName)
         => $"{accountName}-{containerName}";
 
-    /// <summary>Returns the L2 disk cache directory for a given account+container.</summary>
+    /// <summary>
+    /// Get the L2 disk cache directory path for the specified account and container.
+    /// </summary>
+    /// <param name="accountName">Storage account name used in the repository directory name.</param>
+    /// <param name="containerName">Container name used in the repository directory name.</param>
+    /// <returns>The full path under the user's home directory: ~/.arius/{accountName}-{containerName}/chunk-index</returns>
     public static string GetL2Directory(string accountName, string containerName)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

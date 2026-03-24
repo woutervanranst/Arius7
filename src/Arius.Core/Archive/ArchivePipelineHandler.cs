@@ -64,7 +64,21 @@ public sealed class ArchivePipelineHandler
         _containerName = containerName;
     }
 
-    // ── ICommandHandler ───────────────────────────────────────────────────────
+    /// <summary>
+    /// Executes the end-to-end archive pipeline for the provided command.
+    /// </summary>
+    /// <remarks>
+    /// The pipeline enumerates files under the command's root directory, computes content hashes (or reuses pointer hashes),
+    /// deduplicates against the persistent index and in-run uploads, uploads new chunks (large files directly, small files in tar bundles),
+    /// writes a manifest, builds a tree and creates a snapshot, and optionally writes pointer files and removes local binaries.
+    /// Progress and events are published via the mediator and operational details are recorded in the index and manifest.
+    /// </remarks>
+    /// <param name="command">The archive command containing options (root directory, thresholds, flags) and parameters for the run.</param>
+    /// <param name="cancellationToken">Cancellation token to observe while performing pipeline operations.</param>
+    /// <returns>
+    /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
+    /// snapshot root hash and timestamp when created, and an error message when the operation failed.
+    /// </returns>
 
     public async ValueTask<ArchiveResult> Handle(
         ArchiveCommand    command,

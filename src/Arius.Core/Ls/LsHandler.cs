@@ -44,6 +44,13 @@ public sealed class LsHandler
         _containerName = containerName;
     }
 
+    /// <summary>
+    /// Lists files from a resolved snapshot according to the provided command options.
+    /// </summary>
+    /// <param name="command">The <see cref="LsCommand"/> containing Options that specify snapshot version, optional path prefix, and optional filename substring filter.</param>
+    /// <returns>
+    /// An <see cref="LsResult"/> describing the operation outcome. On success, <see cref="LsResult.Entries"/> contains matching files (each entry includes path, hash, size when available, created and modified timestamps) and <see cref="LsResult.Success"/> is true. On failure, <see cref="LsResult.Success"/> is false and <see cref="LsResult.ErrorMessage"/> contains an explanatory message (for example, when no snapshot is found or an error occurs).
+    /// </returns>
     public async ValueTask<LsResult> Handle(
         LsCommand         command,
         CancellationToken cancellationToken)
