@@ -1,26 +1,26 @@
 ## 1. Core DI Infrastructure
 
-- [ ] 1.1 Create `src/Arius.Core/ServiceCollectionExtensions.cs` with `AddArius(this IServiceCollection, string account, string key, string? passphrase, string container, long? cacheBudget)` that registers `IBlobStorageService`, `IEncryptionService`, `ChunkIndexService`, calls `AddMediator()`, and re-registers all three handlers by `ICommandHandler<,>` interface with factory delegates
-- [ ] 1.2 Verify `AddArius()` compiles and the handler interface registrations come after `AddMediator()` (build check)
+- [x] 1.1 Create `src/Arius.Core/ServiceCollectionExtensions.cs` with `AddArius(this IServiceCollection, string account, string key, string? passphrase, string container, long? cacheBudget)` that registers `IBlobStorageService`, `IEncryptionService`, `ChunkIndexService`, calls `AddMediator()`, and re-registers all three handlers by `ICommandHandler<,>` interface with factory delegates
+- [x] 1.2 Verify `AddArius()` compiles and the handler interface registrations come after `AddMediator()` (build check)
 
 ## 2. CLI Option Refactoring
 
-- [ ] 2.1 Add short aliases to common options: `--account`/`-a`, `--key`/`-k`, `--passphrase`/`-p`, `--container`/`-c`
-- [ ] 2.2 Add short aliases to verb-specific options: `--tier`/`-t`, `--filter`/`-f`, `-v`/`--version` (add `--version` long form)
-- [ ] 2.3 Remove `--small-file-threshold`, `--tar-target-size`, `--dedup-cache-mb` from the CLI surface; hardcode defaults (1 MB, 64 MB, 512 MB) where they are consumed
-- [ ] 2.4 Remove "(or omit to use user secrets)" from `--key` description
-- [ ] 2.5 Make `--account` non-required in System.CommandLine (validation moves to action handler)
+- [x] 2.1 Add short aliases to common options: `--account`/`-a`, `--key`/`-k`, `--passphrase`/`-p`, `--container`/`-c`
+- [x] 2.2 Add short aliases to verb-specific options: `--tier`/`-t`, `--filter`/`-f`, `-v`/`--version` (add `--version` long form)
+- [x] 2.3 Remove `--small-file-threshold`, `--tar-target-size`, `--dedup-cache-mb` from the CLI surface; hardcode defaults (1 MB, 64 MB, 512 MB) where they are consumed
+- [x] 2.4 Remove "(or omit to use user secrets)" from `--key` description
+- [x] 2.5 Make `--account` non-required in System.CommandLine (validation moves to action handler)
 
 ## 3. Environment Variable Support
 
-- [ ] 3.1 Implement account name resolution: CLI flag > `ARIUS_ACCOUNT` env var > error; with clear error message when missing
-- [ ] 3.2 Implement key resolution: CLI flag > `ARIUS_KEY` env var > user secrets > error; with clear error message when missing
-- [ ] 3.3 Update `--key` to be non-required in System.CommandLine (validated in action handler like account)
+- [x] 3.1 Implement account name resolution: CLI flag > `ARIUS_ACCOUNT` env var > error; with clear error message when missing
+- [x] 3.2 Implement key resolution: CLI flag > `ARIUS_KEY` env var > user secrets > error; with clear error message when missing
+- [x] 3.3 Update `--key` to be non-required in System.CommandLine (validated in action handler like account)
 
 ## 4. Program.cs DI Wiring Fix
 
-- [ ] 4.1 Replace `BuildServices` body with call to `AddArius()` extension method, passing resolved account, key, passphrase, container, and hardcoded cache budget
-- [ ] 4.2 Refactor `Program.cs` so command setup and service building are accessible from tests (e.g., extract `BuildRootCommand` to a public static method or separate class)
+- [x] 4.1 Replace `BuildServices` body with call to `AddArius()` extension method, passing resolved account, key, passphrase, container, and hardcoded cache budget
+- [x] 4.2 Refactor `Program.cs` so command setup and service building are accessible from tests (e.g., extract `BuildRootCommand` to a public static method or separate class)
 
 ## 5. Test Project Setup
 
