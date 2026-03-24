@@ -1,5 +1,8 @@
 # Arius
 
+[![CI](https://github.com/woutervanranst/Arius7/actions/workflows/ci.yml/badge.svg)](https://github.com/woutervanranst/Arius7/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/woutervanranst/Arius7/graph/badge.svg)](https://codecov.io/gh/woutervanranst/Arius7)
+
 Content-addressable archival to Azure Blob Storage. Deduplicated, optionally encrypted, with Archive-tier support.
 
 ## Installation

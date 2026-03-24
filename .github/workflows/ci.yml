@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore src/Arius.slnx
+
+      - name: Build
+        run: dotnet build src/Arius.slnx --no-restore -c Release
+
+      - name: Test
+        run: >
+          dotnet test src/Arius.slnx
+          --no-build
+          -c Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+        env:
+          ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
+          ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          directory: ./coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
