@@ -263,22 +263,16 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     await _mediator.Publish(new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), ct);
 
                     var blobName = BlobPaths.Chunk(upload.HashedPair.ContentHash);
-                    var meta     = await _blobs.GetMetadataAsync(blobName, ct);
 
                     long compressedSize;
 
-                    if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                    {
-                        // Crash recovery: already uploaded and metadata written (task 9.1 / 9.3)
-                        compressedSize = meta.ContentLength ?? 0;
-                    }
-                    else
+                    retry:
+                    try
                     {
                         var fullPath    = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
                         var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
 
                         // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                        // Always overwrite: guard against double-upload is the meta.Exists check above; crash recovery needs overwrite.
                         await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, ct))
                         {
                             var             countingStream = new CountingStream(writeStream);
@@ -305,6 +299,22 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         };
                         await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
                         await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
+                    }
+                    catch (BlobAlreadyExistsException)
+                    {
+                        // Crash recovery: blob exists from a prior interrupted run.
+                        var meta = await _blobs.GetMetadataAsync(blobName, ct);
+                        if (meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                        {
+                            // Upload + metadata both complete — recover compressed size and continue.
+                            compressedSize = meta.ContentLength ?? 0;
+                        }
+                        else
+                        {
+                            // Upload committed but metadata not yet written — partial state, wipe and retry.
+                            await _blobs.DeleteAsync(blobName, ct);
+                            goto retry;
+                        }
                     }
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
@@ -416,14 +426,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
                         var  blobName = BlobPaths.Chunk(sealed_.TarHash);
-                        var  meta     = await _blobs.GetMetadataAsync(blobName, ct);
                         long compressedSize;
 
-                        if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                        {
-                            compressedSize = meta.ContentLength ?? 0;
-                        }
-                        else
+                        retry:
+                        try
                         {
                             // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
                             var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
@@ -449,6 +455,22 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
                             await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
                         }
+                        catch (BlobAlreadyExistsException)
+                        {
+                            // Crash recovery: blob exists from a prior interrupted run.
+                            var meta = await _blobs.GetMetadataAsync(blobName, ct);
+                            if (meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                            {
+                                // Upload + metadata both complete — recover compressed size and continue.
+                                compressedSize = meta.ContentLength ?? 0;
+                            }
+                            else
+                            {
+                                // Upload committed but metadata not yet written — partial state, wipe and retry.
+                                await _blobs.DeleteAsync(blobName, ct);
+                                goto retry;
+                            }
+                        }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
                             ? (double)compressedSize / sealed_.UncompressedSize
@@ -466,8 +488,8 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 [BlobMetadataKeys.CompressedSize] = proportional.ToString(),
                             };
 
-                            var thinMeta2 = await _blobs.GetMetadataAsync(thinBlobName, ct);
-                            if (!thinMeta2.Exists || !thinMeta2.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                            retryThin:
+                            try
                             {
                                 await _blobs.UploadAsync(
                                     blobName: thinBlobName,
@@ -475,9 +497,21 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                     metadata: new Dictionary<string, string>(),
                                     tier: BlobTier.Cool,
                                     contentType: ContentTypes.Thin,
-                                    overwrite: thinMeta2.Exists,
+                                    overwrite: false,
                                     cancellationToken: ct);
                                 await _blobs.SetMetadataAsync(thinBlobName, thinMeta, ct);
+                            }
+                            catch (BlobAlreadyExistsException)
+                            {
+                                // Crash recovery: thin chunk exists from a prior interrupted run.
+                                var existingMeta = await _blobs.GetMetadataAsync(thinBlobName, ct);
+                                if (!existingMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                                {
+                                    // Upload committed but metadata not yet written — partial state, wipe and retry.
+                                    await _blobs.DeleteAsync(thinBlobName, ct);
+                                    goto retryThin;
+                                }
+                                // else: fully uploaded — nothing to do.
                             }
 
                             _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));

@@ -151,19 +151,17 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     }
 
     [Test]
-    public async Task OpenWrite_SecondWrite_ReplacesExistingBlob()
+    public async Task OpenWrite_SecondWrite_ThrowsBlobAlreadyExistsException()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
 
         await using (var ws1 = await svc.OpenWriteAsync("chunks/ow-replace"))
             await new MemoryStream([1, 2]).CopyToAsync(ws1);
 
-        await using (var ws2 = await svc.OpenWriteAsync("chunks/ow-replace"))
+        await Should.ThrowAsync<BlobAlreadyExistsException>(async () =>
+        {
+            await using var ws2 = await svc.OpenWriteAsync("chunks/ow-replace");
             await new MemoryStream([3, 4, 5]).CopyToAsync(ws2);
-
-        await using var rs = await svc.DownloadAsync("chunks/ow-replace");
-        var ms = new MemoryStream();
-        await rs.CopyToAsync(ms);
-        ms.ToArray().ShouldBe(new byte[] { 3, 4, 5 });
+        });
     }
 }

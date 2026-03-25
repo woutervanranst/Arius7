@@ -1,6 +1,21 @@
 namespace Arius.Core.Storage;
 
 /// <summary>
+/// Thrown when an upload is attempted against a blob that already exists,
+/// and the caller used create-if-not-exists semantics (optimistic concurrency).
+/// </summary>
+public sealed class BlobAlreadyExistsException : IOException
+{
+    public string BlobName { get; }
+
+    public BlobAlreadyExistsException(string blobName)
+        : base($"Blob already exists: {blobName}")
+    {
+        BlobName = blobName;
+    }
+}
+
+/// <summary>
 /// Blob tier for uploaded content.
 /// Maps to Azure access tiers; other backends may map these to equivalent concepts.
 /// </summary>
@@ -55,6 +70,8 @@ public interface IBlobStorageService
     /// <para>
     /// The caller is responsible for closing/disposing <paramref name="content"/> after the call.
     /// Set <paramref name="overwrite"/> to <c>true</c> to replace an existing blob.
+    /// When <paramref name="overwrite"/> is <c>false</c> and the blob already exists,
+    /// throws <see cref="BlobAlreadyExistsException"/>.
     /// </para>
     /// </summary>
     Task UploadAsync(
@@ -71,10 +88,9 @@ public interface IBlobStorageService
     /// Data written to the returned stream is uploaded directly to the backing store.
     /// The caller must dispose the stream to complete the upload.
     /// <para>
-    /// Any existing blob at <paramref name="blobName"/> is unconditionally replaced.
-    /// The Azure Block Blob API does not support a non-overwriting open-write path;
-    /// callers that need create-if-not-exists semantics must guard with
-    /// <see cref="GetMetadataAsync"/> before calling this method.
+    /// Uses optimistic concurrency: if the blob already exists the stream open will throw
+    /// <see cref="BlobAlreadyExistsException"/>. The caller is responsible for handling the
+    /// conflict (recover if complete, delete and retry if partial).
     /// </para>
     /// </summary>
     Task<Stream> OpenWriteAsync(

@@ -57,7 +57,14 @@ public sealed class AzureBlobStorageService : IBlobStorageService
             };
         }
 
-        await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+        try
+        {
+            await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
+        {
+            throw new BlobAlreadyExistsException(blobName);
+        }
     }
 
     public async Task<Stream> OpenWriteAsync(
@@ -69,15 +76,24 @@ public sealed class AzureBlobStorageService : IBlobStorageService
 
         var openWriteOptions = new BlockBlobOpenWriteOptions
         {
-            HttpHeaders = contentType is not null
+            HttpHeaders      = contentType is not null
                 ? new BlobHttpHeaders { ContentType = contentType }
                 : null,
+            // Optimistic concurrency: fail if blob already exists.
+            // BlockBlobClient.OpenWriteAsync only supports overwrite:true; passing false throws
+            // ArgumentException immediately. Use IfNoneMatch=* on the open-write condition instead —
+            // Azure enforces this on the initial PutBlob and throws 412 ConditionNotMet if the blob exists.
+            OpenConditions   = new BlobRequestConditions { IfNoneMatch = ETag.All },
         };
 
-        // BlockBlobClient.OpenWriteAsync only supports overwrite:true; passing false throws
-        // ArgumentException. The non-overwriting guard is the GetMetadataAsync pre-check
-        // that all callers perform before calling this method.
-        return await blobClient.OpenWriteAsync(overwrite: true, openWriteOptions, cancellationToken);
+        try
+        {
+            return await blobClient.OpenWriteAsync(overwrite: true, openWriteOptions, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
+        {
+            throw new BlobAlreadyExistsException(blobName);
+        }
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
@@ -215,4 +231,16 @@ public sealed class AzureBlobStorageService : IBlobStorageService
         CoreRehydratePriority.High     => AzureRehydratePriority.High,
         _                              => throw new ArgumentOutOfRangeException(nameof(p), p, null)
     };
+
+    /// <summary>
+    /// Returns true for any RequestFailedException that means "the blob already exists".
+    /// <para>
+    /// Azure Storage returns 412 ConditionNotMet when <c>IfNoneMatch=*</c> is set and the blob exists.
+    /// Azurite (the local emulator) returns 409 BlobAlreadyExists for the same condition on
+    /// <see cref="BlockBlobClient.OpenWriteAsync"/>. Both are treated identically.
+    /// </para>
+    /// </summary>
+    private static bool IsAlreadyExistsError(RequestFailedException ex) =>
+        (ex.Status == 412 && ex.ErrorCode == "ConditionNotMet") ||
+        (ex.Status == 409 && ex.ErrorCode == "BlobAlreadyExists");
 }
