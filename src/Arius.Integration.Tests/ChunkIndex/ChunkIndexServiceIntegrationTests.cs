@@ -83,4 +83,39 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         result.ContainsKey(contentHash).ShouldBeTrue();
         result[contentHash].ChunkHash.ShouldBe("some-chunk");
     }
+
+    // ── Stale L2 file (old encrypted bytes) → cache miss → L3 fallthrough ───────
+
+    [Test]
+    public async Task StaleL2File_IsTreatedAsCacheMiss_AndRefetchedFromL3()
+    {
+        var (container, blobs) = await azurite.CreateTestServiceAsync();
+        var encryption    = new PassphraseEncryptionService(Passphrase);
+        var containerName = container.Name;
+
+        // Step 1: record + flush a real entry so the shard exists in L3
+        var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
+        var contentHash = "ddee1122" + new string('3', 56);
+        var entry       = new ShardEntry(contentHash, "stale-test-chunk", 800, 400);
+        svc1.RecordEntry(entry);
+        await svc1.FlushAsync();
+
+        // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
+        var prefix = Shard.PrefixOf(contentHash);
+        var l2Path = Path.Combine(ChunkIndexService.GetL2Directory(Account, containerName), prefix);
+        await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
+
+        // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
+        var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
+        var result = await svc2.LookupAsync([contentHash]);
+
+        // The entry must still be found (came from L3)
+        result.ContainsKey(contentHash).ShouldBeTrue();
+        result[contentHash].ChunkHash.ShouldBe("stale-test-chunk");
+
+        // And L2 must now be in plaintext format (re-cached by the service)
+        File.Exists(l2Path).ShouldBeTrue();
+        var text = await File.ReadAllTextAsync(l2Path);
+        text.ShouldContain(contentHash);
+    }
 }
