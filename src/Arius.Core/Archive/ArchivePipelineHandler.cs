@@ -279,7 +279,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                         // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
                         // Always overwrite: guard against double-upload is the meta.Exists check above; crash recovery needs overwrite.
-                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
+                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, ct))
                         {
                             var             countingStream = new CountingStream(writeStream);
                             await using var encStream      = _encryption.WrapForEncryption(countingStream);
@@ -427,7 +427,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         {
                             // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
                             var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
-                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
+                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, ct))
                             {
                                 var             countingStream = new CountingStream(writeStream);
                                 await using var encStream      = _encryption.WrapForEncryption(countingStream);

@@ -132,4 +132,38 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await stream.CopyToAsync(ms);
         ms.ToArray().ShouldBe(new byte[] { 3, 4, 5 });
     }
+
+    // ── OpenWriteAsync behaviour ──────────────────────────────────────────────
+
+    [Test]
+    public async Task OpenWrite_ThenDownload_ProducesByteIdenticalContent()
+    {
+        var (_, svc) = await azurite.CreateTestServiceAsync();
+        var payload  = Encoding.UTF8.GetBytes("streaming upload roundtrip");
+
+        await using (var ws = await svc.OpenWriteAsync("chunks/ow-roundtrip"))
+            await new MemoryStream(payload).CopyToAsync(ws);
+
+        await using var rs = await svc.DownloadAsync("chunks/ow-roundtrip");
+        var ms = new MemoryStream();
+        await rs.CopyToAsync(ms);
+        ms.ToArray().ShouldBe(payload);
+    }
+
+    [Test]
+    public async Task OpenWrite_SecondWrite_ReplacesExistingBlob()
+    {
+        var (_, svc) = await azurite.CreateTestServiceAsync();
+
+        await using (var ws1 = await svc.OpenWriteAsync("chunks/ow-replace"))
+            await new MemoryStream([1, 2]).CopyToAsync(ws1);
+
+        await using (var ws2 = await svc.OpenWriteAsync("chunks/ow-replace"))
+            await new MemoryStream([3, 4, 5]).CopyToAsync(ws2);
+
+        await using var rs = await svc.DownloadAsync("chunks/ow-replace");
+        var ms = new MemoryStream();
+        await rs.CopyToAsync(ms);
+        ms.ToArray().ShouldBe(new byte[] { 3, 4, 5 });
+    }
 }

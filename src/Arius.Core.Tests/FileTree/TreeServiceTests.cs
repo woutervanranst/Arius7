@@ -321,7 +321,7 @@ public class TreeBuilderTests
             Task.CompletedTask;
 
         public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
-            bool overwrite = false, CancellationToken ct = default) =>
+            CancellationToken ct = default) =>
             Task.FromResult<Stream>(new MemoryStream());
     }
 

@@ -63,7 +63,6 @@ public sealed class AzureBlobStorageService : IBlobStorageService
     public async Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        bool              overwrite         = false,
         CancellationToken cancellationToken = default)
     {
         var blobClient = _container.GetBlockBlobClient(blobName);
@@ -75,7 +74,10 @@ public sealed class AzureBlobStorageService : IBlobStorageService
                 : null,
         };
 
-        return await blobClient.OpenWriteAsync(overwrite, openWriteOptions, cancellationToken);
+        // BlockBlobClient.OpenWriteAsync only supports overwrite:true; passing false throws
+        // ArgumentException. The non-overwriting guard is the GetMetadataAsync pre-check
+        // that all callers perform before calling this method.
+        return await blobClient.OpenWriteAsync(overwrite: true, openWriteOptions, cancellationToken);
     }
 
     // ── Download ──────────────────────────────────────────────────────────────

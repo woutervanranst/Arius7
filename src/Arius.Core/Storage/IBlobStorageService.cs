@@ -70,11 +70,16 @@ public interface IBlobStorageService
     /// Opens a writable <see cref="Stream"/> for the blob at <paramref name="blobName"/>.
     /// Data written to the returned stream is uploaded directly to the backing store.
     /// The caller must dispose the stream to complete the upload.
+    /// <para>
+    /// Any existing blob at <paramref name="blobName"/> is unconditionally replaced.
+    /// The Azure Block Blob API does not support a non-overwriting open-write path;
+    /// callers that need create-if-not-exists semantics must guard with
+    /// <see cref="GetMetadataAsync"/> before calling this method.
+    /// </para>
     /// </summary>
     Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        bool              overwrite         = false,
         CancellationToken cancellationToken = default);
 
     // ── Download ──────────────────────────────────────────────────────────────

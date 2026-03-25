@@ -45,8 +45,8 @@ internal sealed class RehydrationSimulatingBlobService(IBlobStorageService inner
         => inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, ct);
 
     public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
-        bool overwrite = false, CancellationToken ct = default)
-        => inner.OpenWriteAsync(blobName, contentType, overwrite, ct);
+        CancellationToken ct = default)
+        => inner.OpenWriteAsync(blobName, contentType, ct);
 
     public Task<Stream> DownloadAsync(string blobName, CancellationToken ct = default)
         => inner.DownloadAsync(blobName, ct);
