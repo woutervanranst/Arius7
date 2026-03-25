@@ -31,7 +31,7 @@ public static class RestoreCostCalculator
 
         var numberOfBlobs = chunksNeedingRehydration + chunksPendingRehydration;
         var totalGB       = rehydrationBytes / (1024.0 * 1024.0 * 1024.0);
-        var opsBatches    = numberOfBlobs == 0 ? 0 : (int)Math.Ceiling(numberOfBlobs / 10_000.0);
+        var opsUnits      = numberOfBlobs / 10_000.0;
 
         return new RestoreCostEstimate
         {
@@ -46,12 +46,12 @@ public static class RestoreCostCalculator
             RetrievalCostStandard = totalGB * pricing.Archive.RetrievalPerGB,
             RetrievalCostHigh     = totalGB * pricing.Archive.RetrievalHighPerGB,
 
-            // Read ops: ceil(N/10000) batches on archive blobs
-            ReadOpsCostStandard   = opsBatches * pricing.Archive.ReadOpsPer10000,
-            ReadOpsCostHigh       = opsBatches * pricing.Archive.ReadOpsHighPer10000,
+            // Read ops: (N/10000) * rate — Azure charges per operation, not per batch
+            ReadOpsCostStandard   = opsUnits * pricing.Archive.ReadOpsPer10000,
+            ReadOpsCostHigh       = opsUnits * pricing.Archive.ReadOpsHighPer10000,
 
-            // Write ops: ceil(N/10000) batches to Hot tier
-            WriteOpsCost          = opsBatches * pricing.Hot.WriteOpsPer10000,
+            // Write ops: (N/10000) * rate to Hot tier
+            WriteOpsCost          = opsUnits * pricing.Hot.WriteOpsPer10000,
 
             // Storage: N months in Hot tier (rehydrated copies in chunks-rehydrated/)
             StorageCost           = totalGB * pricing.Hot.StoragePerGBPerMonth * monthsStored,
