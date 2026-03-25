@@ -66,9 +66,8 @@ public static class TreeBlobSerializer
         IEncryptionService encryption,
         CancellationToken  cancellationToken = default)
     {
-        var decStream  = encryption.WrapForDecryption(source);
-        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        await using var _ = gzipStream.ConfigureAwait(false);
+        await using var decStream  = encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
         using var reader  = new StreamReader(gzipStream, s_utf8, leaveOpen: true);
         var content = await reader.ReadToEndAsync(cancellationToken);
         return ParseLines(content.Split('\n'));
