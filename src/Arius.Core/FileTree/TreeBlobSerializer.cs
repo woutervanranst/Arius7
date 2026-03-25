@@ -1,4 +1,5 @@
 using Arius.Core.Encryption;
+using System.IO.Compression;
 using System.Text;
 
 namespace Arius.Core.FileTree;
@@ -26,6 +27,52 @@ namespace Arius.Core.FileTree;
 public static class TreeBlobSerializer
 {
     private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    // ── Storage serialization (gzip + optional encryption) ────────────────────
+
+    /// <summary>
+    /// Serializes a <see cref="TreeBlob"/> to a gzip-compressed (and optionally encrypted) byte array
+    /// for upload to blob storage. Mirrors <c>ShardSerializer.SerializeAsync</c>.
+    /// </summary>
+    public static async Task<byte[]> SerializeForStorageAsync(
+        TreeBlob           tree,
+        IEncryptionService encryption,
+        CancellationToken  cancellationToken = default)
+    {
+        var ms = new MemoryStream();
+
+        await using (var encStream  = encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var writer     = new StreamWriter(gzipStream, s_utf8, leaveOpen: true))
+        {
+            foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+            {
+                if (entry.Type == TreeEntryType.File)
+                    await writer.WriteLineAsync($"{entry.Hash} F {entry.Created!.Value:O} {entry.Modified!.Value:O} {entry.Name}");
+                else
+                    await writer.WriteLineAsync($"{entry.Hash} D {entry.Name}");
+            }
+        }
+
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Deserializes a <see cref="TreeBlob"/> from a gzip-compressed (and optionally encrypted) stream
+    /// downloaded from blob storage. Mirrors <c>ShardSerializer.DeserializeFromStream</c>.
+    /// </summary>
+    public static async Task<TreeBlob> DeserializeFromStorageAsync(
+        Stream             source,
+        IEncryptionService encryption,
+        CancellationToken  cancellationToken = default)
+    {
+        var decStream  = encryption.WrapForDecryption(source);
+        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        await using var _ = gzipStream.ConfigureAwait(false);
+        using var reader  = new StreamReader(gzipStream, s_utf8, leaveOpen: true);
+        var content = await reader.ReadToEndAsync(cancellationToken);
+        return ParseLines(content.Split('\n'));
+    }
 
     // ── Serialize ─────────────────────────────────────────────────────────────
 

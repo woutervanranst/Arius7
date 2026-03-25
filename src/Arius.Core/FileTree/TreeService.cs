@@ -355,17 +355,23 @@ public sealed class TreeBuilder
             return;
         }
 
+        // Serialize for storage: gzip + optional encryption
+        var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
+        var contentType  = _encryption.IsEncrypted
+            ? ContentTypes.FileTreeEncrypted
+            : ContentTypes.FileTreePlaintext;
+
         // Upload new blob
         await _blobs.UploadAsync(
             blobName,
-            new MemoryStream(json),
+            new MemoryStream(storageBytes),
             new Dictionary<string, string>(),
             BlobTier.Cool,
-            ContentTypes.FileTree,
+            contentType,
             overwrite: false,
             cancellationToken: cancellationToken);
 
-        // Save to disk cache
+        // Save to disk cache (plaintext, no compression or encryption)
         File.WriteAllBytes(diskPath, json);
     }
 

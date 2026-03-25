@@ -188,6 +188,78 @@ public class TreeBlobSerializerTests
     }
 }
 
+// ── 5.1 / 5.2 / 5.3  Storage serialization (gzip + optional encryption) ─────────
+
+public class TreeBlobSerializerStorageTests
+{
+    private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+
+    private static TreeBlob MakeBlob() => new()
+    {
+        Entries =
+        [
+            new TreeEntry { Name = "photo.jpg", Type = TreeEntryType.File, Hash = "a1b2c3d4", Created = s_created, Modified = s_modified },
+            new TreeEntry { Name = "subdir/",   Type = TreeEntryType.Dir,  Hash = "e5f6a7b8" }
+        ]
+    };
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_ThenDeserialize_RoundTrips()
+    {
+        var enc  = new PassphraseEncryptionService("test-passphrase");
+        var blob = MakeBlob();
+
+        var bytes  = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back   = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+
+        back.Entries.Count.ShouldBe(2);
+        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPlaintext_ThenDeserialize_RoundTrips()
+    {
+        var enc  = new PlaintextPassthroughService();
+        var blob = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+
+        back.Entries.Count.ShouldBe(2);
+        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_StartsWithSaltedPrefix()
+    {
+        var enc   = new PassphraseEncryptionService("test-passphrase");
+        var blob  = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+
+        // AES-256-CBC openssl-compatible format: first 8 bytes are "Salted__"
+        var prefix = System.Text.Encoding.ASCII.GetString(bytes[..8]);
+        prefix.ShouldBe("Salted__");
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_OutputIsNotPlaintext()
+    {
+        var enc  = new PassphraseEncryptionService("test-passphrase");
+        var blob = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var text  = System.Text.Encoding.UTF8.GetString(bytes);
+
+        // Encrypted output should not contain file names in plaintext
+        text.ShouldNotContain("photo.jpg");
+        text.ShouldNotContain("subdir/");
+    }
+}
+
 // ── 5.4 Manifest writer ────────────────────────────────────────────────────────
 
 public class ManifestWriterTests
