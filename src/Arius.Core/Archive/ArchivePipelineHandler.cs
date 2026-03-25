@@ -26,25 +26,24 @@ namespace Arius.Core.Archive;
 /// End-of-pipeline: Index Flush → External Sort → Tree Build → Snapshot → Pointer Write → Remove Local
 /// </code>
 /// </summary>
-public sealed class ArchivePipelineHandler
-    : ICommandHandler<ArchiveCommand, ArchiveResult>
+public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
     // ── Concurrency knobs ─────────────────────────────────────────────────────
 
-    private const int HashWorkers      = 4;
-    private const int UploadWorkers    = 4;
-    private const int ChannelCapacity  = 64;
-    private const int DedupBatchSize   = 512;
+    private const int HashWorkers     = 4;
+    private const int UploadWorkers   = 4;
+    private const int ChannelCapacity = 64;
+    private const int DedupBatchSize  = 512;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobStorageService              _blobs;
-    private readonly IEncryptionService               _encryption;
-    private readonly ChunkIndexService                _index;
-    private readonly IMediator                        _mediator;
-    private readonly ILogger<ArchivePipelineHandler>  _logger;
-    private readonly string                           _accountName;
-    private readonly string                           _containerName;
+    private readonly IBlobStorageService             _blobs;
+    private readonly IEncryptionService              _encryption;
+    private readonly ChunkIndexService               _index;
+    private readonly IMediator                       _mediator;
+    private readonly ILogger<ArchivePipelineHandler> _logger;
+    private readonly string                          _accountName;
+    private readonly string                          _containerName;
 
     public ArchivePipelineHandler(
         IBlobStorageService             blobs,
@@ -79,10 +78,7 @@ public sealed class ArchivePipelineHandler
     /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
     /// snapshot root hash and timestamp when created, and an error message when the operation failed.
     /// </returns>
-
-    public async ValueTask<ArchiveResult> Handle(
-        ArchiveCommand    command,
-        CancellationToken cancellationToken)
+    public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
         var opts = command.Options;
 
@@ -169,8 +165,8 @@ public sealed class ArchivePipelineHandler
                     {
                         var fullPath = Path.Combine(opts.RootDirectory,
                             pair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-                        await using var fs = File.OpenRead(fullPath);
-                        var hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
+                        await using var fs        = File.OpenRead(fullPath);
+                        var             hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
                         contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                     }
                     else
@@ -195,7 +191,8 @@ public sealed class ArchivePipelineHandler
                 }
             }, cancellationToken)).ToArray();
 
-            var hashCompletion = Task.WhenAll(hashTasks).ContinueWith(t => hashedChannel.Writer.Complete(), CancellationToken.None);
+            var hashCompletion = Task.WhenAll(hashTasks)
+                .ContinueWith(t => hashedChannel.Writer.Complete(), CancellationToken.None);
 
             // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
             var dedupTask = Task.Run(async () =>
@@ -208,8 +205,8 @@ public sealed class ArchivePipelineHandler
                     {
                         if (batch.Count == 0) return;
 
-                        var hashes  = batch.Select(p => p.ContentHash).Distinct().ToList();
-                        var known   = await _index.LookupAsync(hashes, cancellationToken);
+                        var hashes = batch.Select(p => p.ContentHash).Distinct().ToList();
+                        var known  = await _index.LookupAsync(hashes, cancellationToken);
 
                         int batchHits = 0;
                         int batchNew  = 0;
@@ -227,8 +224,10 @@ public sealed class ArchivePipelineHandler
                                         hashed.FilePair.RelativePath);
                                     continue;
                                 }
+
                                 // Known dedup: add to manifest only
-                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
+                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)",
+                                    hashed.FilePair.RelativePath);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 batchHits++;
@@ -239,7 +238,8 @@ public sealed class ArchivePipelineHandler
                                 inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
                                 // Already in index OR already queued in this run → dedup hit
-                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
+                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath,
+                                    hashed.ContentHash[..8]);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 batchHits++;
@@ -258,7 +258,8 @@ public sealed class ArchivePipelineHandler
                                 var upload = new FileToUpload(hashed, fileSize);
                                 var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
                                 _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                                    hashed.FilePair.RelativePath, route, hashed.ContentHash[..8], fileSize.Bytes().Humanize());
+                                    hashed.FilePair.RelativePath, route, hashed.ContentHash[..8],
+                                    fileSize.Bytes().Humanize());
                                 batchNew++;
 
                                 if (fileSize >= opts.SmallFileThreshold)
@@ -307,7 +308,8 @@ public sealed class ArchivePipelineHandler
 
                     long compressedSize;
 
-                    if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) && c == "true")
+                    if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) &&
+                        c == "true")
                     {
                         // Crash recovery: already uploaded (task 9.1 / 9.3)
                         compressedSize = meta.ContentLength ?? 0;
@@ -325,9 +327,9 @@ public sealed class ArchivePipelineHandler
                         var uploadMeta = new Dictionary<string, string>
                         {
                             [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeLarge,
-                            [BlobMetadataKeys.AriusComplete]  = "true",
-                            [BlobMetadataKeys.OriginalSize]   = upload.FileSize.ToString(),
-                            [BlobMetadataKeys.ChunkSize]      = uploadMs.Length.ToString(),
+                            [BlobMetadataKeys.AriusComplete] = "true",
+                            [BlobMetadataKeys.OriginalSize]  = upload.FileSize.ToString(),
+                            [BlobMetadataKeys.ChunkSize]     = uploadMs.Length.ToString(),
                         };
 
                         await _blobs.UploadAsync(blobName, uploadMs, uploadMeta,
@@ -375,11 +377,11 @@ public sealed class ArchivePipelineHandler
             {
                 try
                 {
-                    var tarEntries       = new List<TarEntry>();
-                    string? currentTarPath = null;
-                    TarWriter? tarWriter   = null;
-                    FileStream? tarStream  = null;
-                    long currentSize       = 0;
+                    var         tarEntries     = new List<TarEntry>();
+                    string?     currentTarPath = null;
+                    TarWriter?  tarWriter      = null;
+                    FileStream? tarStream      = null;
+                    long        currentSize    = 0;
 
                     async Task SealCurrentTar()
                     {
@@ -402,7 +404,8 @@ public sealed class ArchivePipelineHandler
                             tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)
                             _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})",
-                                te.HashedPair.FilePair.RelativePath, te.ContentHash[..8], te.OriginalSize.Bytes().Humanize());
+                                te.HashedPair.FilePair.RelativePath, te.ContentHash[..8],
+                                te.OriginalSize.Bytes().Humanize());
 
                         await sealedTarChannel.Writer.WriteAsync(
                             new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()),
@@ -421,7 +424,7 @@ public sealed class ArchivePipelineHandler
                         if (tarWriter is null)
                         {
                             currentTarPath = Path.GetTempFileName();
-                            tarStream      = new FileStream(currentTarPath, FileMode.Create,
+                            tarStream = new FileStream(currentTarPath, FileMode.Create,
                                 FileAccess.Write, FileShare.None, 65536, useAsync: true);
                             tarWriter = new TarWriter(tarStream, leaveOpen: false);
                         }
@@ -436,6 +439,7 @@ public sealed class ArchivePipelineHandler
                             tarEntry.DataStream = fs;
                             await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
                         }
+
                         tarEntry.DataStream = null;
 
                         tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
@@ -464,11 +468,12 @@ public sealed class ArchivePipelineHandler
                         await _mediator.Publish(
                             new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), cancellationToken);
 
-                        var blobName = BlobPaths.Chunk(sealed_.TarHash);
-                        var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
+                        var  blobName = BlobPaths.Chunk(sealed_.TarHash);
+                        var  meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
                         long compressedSize;
 
-                        if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) && c == "true")
+                        if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) &&
+                            c == "true")
                         {
                             compressedSize = meta.ContentLength ?? 0;
                         }
@@ -482,7 +487,7 @@ public sealed class ArchivePipelineHandler
 
                             var uploadMeta = new Dictionary<string, string>
                             {
-                                [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeTar,
+                                [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeTar,
                                 [BlobMetadataKeys.AriusComplete] = "true",
                                 [BlobMetadataKeys.ChunkSize]     = compressedSize.ToString(),
                             };
@@ -500,18 +505,19 @@ public sealed class ArchivePipelineHandler
                         // Create thin chunks for each entry
                         foreach (var entry in sealed_.Entries)
                         {
-                            var thinBlobName  = BlobPaths.Chunk(entry.ContentHash);
-                            var proportional  = (long)(entry.OriginalSize * proportionalFactor);
+                            var thinBlobName = BlobPaths.Chunk(entry.ContentHash);
+                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             var thinMeta = new Dictionary<string, string>
                             {
                                 [BlobMetadataKeys.AriusType]      = BlobMetadataKeys.TypeThin,
-                                [BlobMetadataKeys.AriusComplete]   = "true",
-                                [BlobMetadataKeys.OriginalSize]    = entry.OriginalSize.ToString(),
-                                [BlobMetadataKeys.CompressedSize]  = proportional.ToString(),
+                                [BlobMetadataKeys.AriusComplete]  = "true",
+                                [BlobMetadataKeys.OriginalSize]   = entry.OriginalSize.ToString(),
+                                [BlobMetadataKeys.CompressedSize] = proportional.ToString(),
                             };
 
                             var thinMeta2 = await _blobs.GetMetadataAsync(thinBlobName, cancellationToken);
-                            if (!thinMeta2.Exists || !thinMeta2.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out string? _))
+                            if (!thinMeta2.Exists ||
+                                !thinMeta2.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out string? _))
                             {
                                 await _blobs.UploadAsync(
                                     thinBlobName,
@@ -530,18 +536,21 @@ public sealed class ArchivePipelineHandler
                                 cancellationToken);
 
                             // Write manifest entry so the tree builder includes this file
-                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, cancellationToken);
+                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter,
+                                cancellationToken);
 
                             if (!opts.NoPointers)
                                 pendingPointers.Add((
                                     Path.Combine(opts.RootDirectory,
-                                        entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+                                        entry.HashedPair.FilePair.RelativePath.Replace('/',
+                                            Path.DirectorySeparatorChar)),
                                     entry.ContentHash));
 
                             if (opts.RemoveLocal)
                                 pendingDeletes.Add(
                                     Path.Combine(opts.RootDirectory,
-                                        entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+                                        entry.HashedPair.FilePair.RelativePath.Replace('/',
+                                            Path.DirectorySeparatorChar)));
                         }
 
                         await _mediator.Publish(
@@ -554,7 +563,14 @@ public sealed class ArchivePipelineHandler
                     finally
                     {
                         // Clean up tar temp file
-                        try { File.Delete(sealed_.TarFilePath); } catch { /* ignore */ }
+                        try
+                        {
+                            File.Delete(sealed_.TarFilePath);
+                        }
+                        catch
+                        {
+                            /* ignore */
+                        }
                     }
                 }
             }, cancellationToken)).ToArray();
@@ -582,13 +598,13 @@ public sealed class ArchivePipelineHandler
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}",
                 rootHash is not null ? rootHash[..8] : "(none)");
 
-            string? snapshotRootHash = null;
-            DateTimeOffset snapshotTime = DateTimeOffset.UtcNow;
+            string?        snapshotRootHash = null;
+            DateTimeOffset snapshotTime     = DateTimeOffset.UtcNow;
 
             if (rootHash is not null)
             {
                 var snapshotSvc = new SnapshotService(_blobs, _encryption);
-                var snapshot    = await snapshotSvc.CreateAsync(
+                var snapshot = await snapshotSvc.CreateAsync(
                     rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
@@ -616,8 +632,14 @@ public sealed class ArchivePipelineHandler
             {
                 foreach (var path in pendingDeletes)
                 {
-                    try { File.Delete(path); }
-                    catch (Exception ex) { _logger.LogWarning(ex, "Failed to delete local file: {Path}", path); }
+                    try
+                    {
+                        File.Delete(path);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete local file: {Path}", path);
+                    }
                 }
             }
 
@@ -655,7 +677,14 @@ public sealed class ArchivePipelineHandler
         }
         finally
         {
-            try { File.Delete(manifestPath); } catch { /* ignore */ }
+            try
+            {
+                File.Delete(manifestPath);
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
     }
 
@@ -669,12 +698,12 @@ public sealed class ArchivePipelineHandler
     /// instance (which must not be disposed prematurely).
     /// </summary>
     private static async Task<MemoryStream> GzipEncryptToMemoryAsync(
-        Stream            source,
+        Stream source,
         IEncryptionService encryption,
         CancellationToken ct)
     {
-        var ms         = new MemoryStream();
-        var encWrapper = encryption.WrapForEncryption(ms);
+        var ms           = new MemoryStream();
+        var encWrapper   = encryption.WrapForEncryption(ms);
         var isSameStream = ReferenceEquals(encWrapper, ms);
 
         await using (var gzip = new GZipStream(encWrapper, CompressionLevel.Optimal, leaveOpen: true))
@@ -693,9 +722,9 @@ public sealed class ArchivePipelineHandler
     }
 
     private static async Task WriteManifestEntry(
-        HashedFilePair    hashed,
-        string            rootDir,
-        ManifestWriter    writer,
+        HashedFilePair hashed,
+        string rootDir,
+        ManifestWriter writer,
         CancellationToken ct)
     {
         var pair = hashed.FilePair;
@@ -705,7 +734,7 @@ public sealed class ArchivePipelineHandler
         if (pair.BinaryExists)
         {
             var fullPath = Path.Combine(rootDir, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-            var fi = new FileInfo(fullPath);
+            var fi       = new FileInfo(fullPath);
             created  = new DateTimeOffset(fi.CreationTimeUtc,  TimeSpan.Zero);
             modified = new DateTimeOffset(fi.LastWriteTimeUtc, TimeSpan.Zero);
         }
@@ -731,13 +760,18 @@ public sealed class ArchivePipelineHandler
 internal sealed class CountingStream : Stream
 {
     private readonly MemoryStream _inner = new();
-    public long BytesWritten { get; private set; }
+    public           long         BytesWritten { get; private set; }
 
     public override bool CanRead  => false;
     public override bool CanSeek  => false;
     public override bool CanWrite => true;
     public override long Length   => _inner.Length;
-    public override long Position { get => _inner.Position; set => _inner.Position = value; }
+
+    public override long Position
+    {
+        get => _inner.Position;
+        set => _inner.Position = value;
+    }
 
     public override void Write(byte[] buffer, int offset, int count)
     {
@@ -757,8 +791,8 @@ internal sealed class CountingStream : Stream
         BytesWritten += buffer.Length;
     }
 
-    public override void Flush() => _inner.Flush();
+    public override void Flush()                                    => _inner.Flush();
     public override int  Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin)        => throw new NotSupportedException();
-    public override void SetLength(long value)                        => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin)       => throw new NotSupportedException();
+    public override void SetLength(long value)                      => throw new NotSupportedException();
 }
