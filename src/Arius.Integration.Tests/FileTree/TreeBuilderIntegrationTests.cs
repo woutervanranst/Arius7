@@ -45,7 +45,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Download and deserialize to verify content
             await using var stream = await blobs.DownloadAsync(blobName);
-            var treeBlob = await TreeBlobSerializer.DeserializeAsync(stream);
+            var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, s_enc);
 
             treeBlob.Entries.Count.ShouldBe(1);
             treeBlob.Entries[0].Name.ShouldBe("readme.txt");
