@@ -199,10 +199,13 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("large.bin", large);
         fix.WriteFile("small.txt", small);
 
-        // Allow many uploads (chunk + thin + tar) but crash when index shards are being uploaded
-        // Large file: 1 upload; small file (tar): 1 tar upload + 1 thin = 2 uploads; then index
-        // throwAfterN=3 → crashes on index shard upload
-        var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 3);
+        // Allow all data uploads but crash when index shards are being uploaded.
+        // UploadAsync calls (OpenWriteAsync calls are NOT counted):
+        //   upload #1 = thin chunk for small.txt
+        //   upload #2 = index shard (FlushAsync)  ← crash here
+        //   upload #3 = snapshot (if reached)
+        // throwAfterN=1 → thin chunk succeeds, crashes on index shard upload
+        var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
         var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 

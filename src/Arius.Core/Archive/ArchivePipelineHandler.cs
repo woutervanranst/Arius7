@@ -278,7 +278,8 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
 
                         // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: ct))
+                        // Always overwrite: guard against double-upload is the meta.Exists check above; crash recovery needs overwrite.
+                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
                         {
                             var             countingStream = new CountingStream(writeStream);
                             await using var encStream      = _encryption.WrapForEncryption(countingStream);
@@ -295,8 +296,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             compressedSize = countingStream.BytesWritten;
                         } // writeStream disposed here → commits the upload
 
-                        await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-
+                        // Set metadata before tier: Archive-tier blobs are offline and reject SetMetadata.
                         var uploadMeta = new Dictionary<string, string>
                         {
                             [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
@@ -304,6 +304,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             [BlobMetadataKeys.ChunkSize]    = compressedSize.ToString(),
                         };
                         await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
+                        await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
                     }
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
@@ -426,7 +427,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         {
                             // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
                             var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
-                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: ct))
+                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
                             {
                                 var             countingStream = new CountingStream(writeStream);
                                 await using var encStream      = _encryption.WrapForEncryption(countingStream);
@@ -439,14 +440,14 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 compressedSize = countingStream.BytesWritten;
                             } // writeStream disposed here → commits the upload
 
-                            await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-
+                            // Set metadata before tier: Archive-tier blobs are offline and reject SetMetadata.
                             var uploadMeta = new Dictionary<string, string>
                             {
                                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
                                 [BlobMetadataKeys.ChunkSize] = compressedSize.ToString(),
                             };
                             await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
+                            await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
