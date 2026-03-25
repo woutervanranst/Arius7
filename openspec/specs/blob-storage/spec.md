@@ -99,7 +99,7 @@ Each chunk blob SHALL carry metadata distinguishing its type. The `arius-type` m
 ### Requirement: Container layout
 The blob storage SHALL organize blobs into the following virtual directories: `chunks/` (configurable tier), `chunks-rehydrated/` (Hot tier, temporary), `filetrees/` (Cool tier), `snapshots/` (Cool tier), `chunk-index/` (Cool tier).
 
-Filetree blobs SHALL use content type `text/plain; charset=utf-8`.
+Filetree blobs SHALL use content type `application/aes256cbc+gzip` when encrypted or `application/gzip` when not encrypted, matching the chunk index and snapshot content type convention.
 
 #### Scenario: Chunk stored in correct path
 - **WHEN** a large file with hash `abc123` is uploaded
@@ -109,9 +109,13 @@ Filetree blobs SHALL use content type `text/plain; charset=utf-8`.
 - **WHEN** a chunk is rehydrated for restore
 - **THEN** the rehydrated copy SHALL be at `chunks-rehydrated/<chunk-hash>`
 
-#### Scenario: Tree blob path and content type
-- **WHEN** a tree blob with hash `def456` is uploaded
-- **THEN** the blob SHALL be at `filetrees/def456` with content type `text/plain; charset=utf-8`
+#### Scenario: Encrypted tree blob content type
+- **WHEN** a tree blob is uploaded with a passphrase
+- **THEN** the blob SHALL be at `filetrees/<hash>` with content type `application/aes256cbc+gzip`
+
+#### Scenario: Plaintext tree blob content type
+- **WHEN** a tree blob is uploaded without a passphrase
+- **THEN** the blob SHALL be at `filetrees/<hash>` with content type `application/gzip`
 
 ### Requirement: Per-repository cache identification
 The local cache SHALL be organized by repository using a human-readable directory name: `{accountName}-{containerName}`. The cache path SHALL be `~/.arius/{accountName}-{containerName}/`. Azure account names (`[a-z0-9]{3,24}`) do not contain hyphens, so the first hyphen in the directory name unambiguously separates account from container. The `ComputeRepoId` hash function SHALL be removed.
