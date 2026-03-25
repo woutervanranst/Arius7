@@ -83,12 +83,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
         var opts = command.Options;
 
         // ── Operation start marker (task 3.10) ───────────────────────────────
-        _logger.LogInformation(
-            "[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}",
-            opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
+        _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
 
         // Validate options (task 8.13)
-        if (opts.RemoveLocal && opts.NoPointers)
+        if (opts is { RemoveLocal: true, NoPointers: true })
             return new ArchiveResult
             {
                 Success       = false,
@@ -156,15 +154,14 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     await _mediator.Publish(new FileHashingEvent(pair.RelativePath), cancellationToken);
 
                     string contentHash;
-                    if (!pair.BinaryExists && pair.PointerHash is not null)
+                    if (pair is { BinaryExists: false, PointerHash: not null })
                     {
                         // Pointer-only: use pointer hash directly (no re-hash)
                         contentHash = pair.PointerHash;
                     }
                     else if (pair.BinaryExists)
                     {
-                        var fullPath = Path.Combine(opts.RootDirectory,
-                            pair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                        var fullPath = Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
                         await using var fs        = File.OpenRead(fullPath);
                         var             hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
                         contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
@@ -172,22 +169,18 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     else
                     {
                         // No binary and no pointer hash → skip
-                        _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}",
-                            pair.RelativePath);
+                        _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
                         continue;
                     }
 
                     await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), cancellationToken);
 
                     var fileSize = pair.BinaryExists
-                        ? new FileInfo(Path.Combine(opts.RootDirectory,
-                            pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))).Length
+                        ? new FileInfo(Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))).Length
                         : 0;
-                    _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})",
-                        pair.RelativePath, contentHash[..8], fileSize.Bytes().Humanize());
+                    _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash[..8], fileSize.Bytes().Humanize());
 
-                    await hashedChannel.Writer.WriteAsync(
-                        new HashedFilePair(pair, contentHash, opts.RootDirectory), cancellationToken);
+                    await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, opts.RootDirectory), cancellationToken);
                 }
             }, cancellationToken)).ToArray();
 
@@ -203,7 +196,8 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                     async Task FlushBatch()
                     {
-                        if (batch.Count == 0) return;
+                        if (batch.Count == 0) 
+                            return;
 
                         var hashes = batch.Select(p => p.ContentHash).Distinct().ToList();
                         var known  = await _index.LookupAsync(hashes, cancellationToken);
@@ -216,38 +210,29 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             // Check for pointer-only with missing chunk (task 8.5)
                             if (!hashed.FilePair.BinaryExists)
                             {
-                                if (!known.ContainsKey(hashed.ContentHash) &&
-                                    !inFlightHashes.ContainsKey(hashed.ContentHash))
+                                if (!known.ContainsKey(hashed.ContentHash) && !inFlightHashes.ContainsKey(hashed.ContentHash))
                                 {
-                                    _logger.LogWarning(
-                                        "Pointer-only file references missing chunk, skipping: {Path}",
-                                        hashed.FilePair.RelativePath);
+                                    _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
                                     continue;
                                 }
 
                                 // Known dedup: add to manifest only
-                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)",
-                                    hashed.FilePair.RelativePath);
+                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 batchHits++;
                                 continue;
                             }
 
-                            if (known.TryGetValue(hashed.ContentHash, out _) ||
-                                inFlightHashes.ContainsKey(hashed.ContentHash))
+                            if (known.TryGetValue(hashed.ContentHash, out _) || inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
                                 // Already in index OR already queued in this run → dedup hit
-                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath,
-                                    hashed.ContentHash[..8]);
+                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
                                 await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 batchHits++;
                                 if (!opts.NoPointers)
-                                    pendingPointers.Add((
-                                        Path.Combine(opts.RootDirectory,
-                                            hashed.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
-                                        hashed.ContentHash));
+                                    pendingPointers.Add((Path.Combine(opts.RootDirectory, hashed.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), hashed.ContentHash));
                             }
                             else
                             {
@@ -269,8 +254,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             }
                         }
 
-                        _logger.LogInformation("[dedup] Batch flush: {BatchSize} file(s), hits={Hits}, new={New}",
-                            batch.Count, batchHits, batchNew);
+                        _logger.LogInformation("[dedup] Batch flush: {BatchSize} file(s), hits={Hits}, new={New}", batch.Count, batchHits, batchNew);
                         batch.Clear();
                     }
 
@@ -295,29 +279,23 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
             {
                 await foreach (var upload in largeChannel.Reader.ReadAllAsync(cancellationToken))
                 {
-                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})",
-                        upload.HashedPair.FilePair.RelativePath,
-                        upload.HashedPair.ContentHash[..8],
-                        upload.FileSize.Bytes().Humanize());
+                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash[..8], upload.FileSize.Bytes().Humanize());
 
-                    await _mediator.Publish(
-                        new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), cancellationToken);
+                    await _mediator.Publish(new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), cancellationToken);
 
                     var blobName = BlobPaths.Chunk(upload.HashedPair.ContentHash);
                     var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
 
                     long compressedSize;
 
-                    if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) &&
-                        c == "true")
+                    if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) && c == "true")
                     {
                         // Crash recovery: already uploaded (task 9.1 / 9.3)
                         compressedSize = meta.ContentLength ?? 0;
                     }
                     else
                     {
-                        var fullPath = Path.Combine(opts.RootDirectory,
-                            upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                        var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                         // Gzip + encrypt to memory in a single pass
                         MemoryStream uploadMs;
@@ -332,44 +310,34 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             [BlobMetadataKeys.ChunkSize]     = uploadMs.Length.ToString(),
                         };
 
-                        await _blobs.UploadAsync(blobName, uploadMs, uploadMeta,
-                            opts.UploadTier,
-                            _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext,
-                            overwrite: meta.Exists, cancellationToken: cancellationToken);
+                        await _blobs.UploadAsync(
+                            blobName: blobName, 
+                            content: uploadMs, 
+                            metadata: uploadMeta,
+                            tier: opts.UploadTier,
+                            contentType: _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext,
+                            overwrite: meta.Exists, 
+                            cancellationToken: cancellationToken);
                         compressedSize = uploadMs.Length;
                     }
 
-                    var entry = new IndexEntry(
-                        upload.HashedPair.ContentHash, upload.HashedPair.ContentHash,
-                        upload.FileSize, compressedSize);
+                    var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
 
-                    _index.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash,
-                        entry.OriginalSize, entry.CompressedSize));
+                    _index.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, cancellationToken);
 
                     await WriteManifestEntry(upload.HashedPair, opts.RootDirectory, manifestWriter, cancellationToken);
                     Interlocked.Increment(ref filesUploaded);
 
                     if (!opts.NoPointers)
-                        pendingPointers.Add((
-                            Path.Combine(opts.RootDirectory,
-                                upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
-                            upload.HashedPair.ContentHash));
+                        pendingPointers.Add((Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), upload.HashedPair.ContentHash));
 
                     if (opts.RemoveLocal)
-                        pendingDeletes.Add(
-                            Path.Combine(opts.RootDirectory,
-                                upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+                        pendingDeletes.Add(Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
 
-                    await _mediator.Publish(
-                        new ChunkUploadedEvent(upload.HashedPair.ContentHash, compressedSize), cancellationToken);
+                    await _mediator.Publish(new ChunkUploadedEvent(upload.HashedPair.ContentHash, compressedSize), cancellationToken);
 
-                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})",
-                        upload.HashedPair.FilePair.RelativePath,
-                        upload.HashedPair.ContentHash[..8],
-                        upload.FileSize.Bytes().Humanize(),
-                        compressedSize.Bytes().Humanize());
-                }
+                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash[..8], upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize()); }
             }, cancellationToken)).ToArray();
 
             // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
@@ -395,23 +363,17 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         string tarHash;
                         await using (var fs = File.OpenRead(currentTarPath!))
                         {
-                            var hashBytes = SHA256.HashData(fs);
+                            var hashBytes = await SHA256.HashDataAsync(fs, cancellationToken);
                             tarHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                         }
 
-                        await _mediator.Publish(
-                            new TarBundleSealingEvent(tarEntries.Count, currentSize), cancellationToken);
+                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize), cancellationToken);
 
-                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}",
-                            tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
+                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)
-                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})",
-                                te.HashedPair.FilePair.RelativePath, te.ContentHash[..8],
-                                te.OriginalSize.Bytes().Humanize());
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash[..8], te.OriginalSize.Bytes().Humanize());
 
-                        await sealedTarChannel.Writer.WriteAsync(
-                            new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()),
-                            cancellationToken);
+                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                         tarEntries.Clear();
                         currentTarPath = null;
@@ -426,13 +388,11 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         if (tarWriter is null)
                         {
                             currentTarPath = Path.GetTempFileName();
-                            tarStream = new FileStream(currentTarPath, FileMode.Create,
-                                FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                            tarStream = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
                             tarWriter = new TarWriter(tarStream, leaveOpen: false);
                         }
 
-                        var fullPath = Path.Combine(opts.RootDirectory,
-                            upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                        var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                         // Write entry named by content-hash (not original path)
                         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash);
@@ -467,8 +427,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                 {
                     try
                     {
-                        await _mediator.Publish(
-                            new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), cancellationToken);
+                        await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), cancellationToken);
 
                         var  blobName = BlobPaths.Chunk(sealed_.TarHash);
                         var  meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
@@ -494,10 +453,14 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 [BlobMetadataKeys.ChunkSize]     = compressedSize.ToString(),
                             };
 
-                            await _blobs.UploadAsync(blobName, uploadMs, uploadMeta,
-                                opts.UploadTier,
-                                _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext,
-                                overwrite: meta.Exists, cancellationToken: cancellationToken);
+                            await _blobs.UploadAsync(
+                                blobName: blobName, 
+                                content: uploadMs, 
+                                metadata: uploadMeta,
+                                tier: opts.UploadTier,
+                                contentType: _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext,
+                                overwrite: meta.Exists, 
+                                cancellationToken: cancellationToken);
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
@@ -518,48 +481,33 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             };
 
                             var thinMeta2 = await _blobs.GetMetadataAsync(thinBlobName, cancellationToken);
-                            if (!thinMeta2.Exists ||
-                                !thinMeta2.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out string? _))
+                            if (!thinMeta2.Exists || !thinMeta2.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out string? _))
                             {
                                 await _blobs.UploadAsync(
-                                    thinBlobName,
-                                    new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sealed_.TarHash)),
-                                    thinMeta,
-                                    BlobTier.Cool,
-                                    ContentTypes.Thin,
+                                    blobName: thinBlobName,
+                                    content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sealed_.TarHash)),
+                                    metadata: thinMeta,
+                                    tier: BlobTier.Cool,
+                                    contentType: ContentTypes.Thin,
                                     overwrite: thinMeta2.Exists,
                                     cancellationToken: cancellationToken);
                             }
 
-                            _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash,
-                                entry.OriginalSize, proportional));
-                            await indexEntryChannel.Writer.WriteAsync(
-                                new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional),
-                                cancellationToken);
+                            _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
+                            await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), cancellationToken);
 
                             // Write manifest entry so the tree builder includes this file
-                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter,
-                                cancellationToken);
+                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, cancellationToken);
 
                             if (!opts.NoPointers)
-                                pendingPointers.Add((
-                                    Path.Combine(opts.RootDirectory,
-                                        entry.HashedPair.FilePair.RelativePath.Replace('/',
-                                            Path.DirectorySeparatorChar)),
-                                    entry.ContentHash));
+                                pendingPointers.Add((Path.Combine(opts.RootDirectory, entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), entry.ContentHash));
 
                             if (opts.RemoveLocal)
-                                pendingDeletes.Add(
-                                    Path.Combine(opts.RootDirectory,
-                                        entry.HashedPair.FilePair.RelativePath.Replace('/',
-                                            Path.DirectorySeparatorChar)));
+                                pendingDeletes.Add(Path.Combine(opts.RootDirectory, entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
                         }
 
-                        await _mediator.Publish(
-                            new TarBundleUploadedEvent(sealed_.TarHash, compressedSize, sealed_.Entries.Count),
-                            cancellationToken);
-                        _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}",
-                            sealed_.TarHash[..8], sealed_.Entries.Count, compressedSize.Bytes().Humanize());
+                        await _mediator.Publish(new TarBundleUploadedEvent(sealed_.TarHash, compressedSize, sealed_.Entries.Count), cancellationToken);
+                        _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealed_.TarHash[..8], sealed_.Entries.Count, compressedSize.Bytes().Humanize());
                         Interlocked.Add(ref filesUploaded, sealed_.Entries.Count);
                     }
                     finally
@@ -597,8 +545,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
             var treeBuilder = new TreeBuilder(_blobs, _encryption, _accountName, _containerName);
             var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
-            _logger.LogInformation("[tree] Build complete: rootHash={RootHash}",
-                rootHash is not null ? rootHash[..8] : "(none)");
+            _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
 
             string?        snapshotRootHash = null;
             DateTimeOffset snapshotTime     = DateTimeOffset.UtcNow;
@@ -606,16 +553,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
             if (rootHash is not null)
             {
                 var snapshotSvc = new SnapshotService(_blobs, _encryption);
-                var snapshot = await snapshotSvc.CreateAsync(
-                    rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
+                var snapshot = await snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
-                _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}",
-                    snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+                _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
 
-                await _mediator.Publish(
-                    new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount),
-                    cancellationToken);
+                await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
             }
 
             // Task 8.12: Write pointer files ×N in parallel
@@ -645,11 +588,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                 }
             }
 
-            _logger.LogInformation(
-                "[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}",
-                filesScanned, filesUploaded, filesDeduped,
-                totalSize.Bytes().Humanize(),
-                snapshotTime.ToString("o"));
+            _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
             return new ArchiveResult
             {
@@ -699,10 +638,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     /// Handles the plaintext case where <c>WrapForEncryption</c> returns the same stream
     /// instance (which must not be disposed prematurely).
     /// </summary>
-    private static async Task<MemoryStream> GzipEncryptToMemoryAsync(
-        Stream source,
-        IEncryptionService encryption,
-        CancellationToken ct)
+    private static async Task<MemoryStream> GzipEncryptToMemoryAsync(Stream source, IEncryptionService encryption, CancellationToken ct)
     {
         var ms           = new MemoryStream();
         var encWrapper   = encryption.WrapForEncryption(ms);

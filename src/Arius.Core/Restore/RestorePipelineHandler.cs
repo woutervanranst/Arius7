@@ -66,16 +66,12 @@ public sealed class RestorePipelineHandler
     /// <returns>
     /// A RestoreResult indicating whether the operation succeeded, how many files were restored, how many were skipped, the number of chunks pending rehydration, and an error message when unsuccessful.
     /// </returns>
-    public async ValueTask<RestoreResult> Handle(
-        RestoreCommand    command,
-        CancellationToken cancellationToken)
+    public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
         var opts = command.Options;
 
         // ── Operation start marker (task 4.7) ────────────────────────────────
-        _logger.LogInformation(
-            "[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}",
-            opts.RootDirectory, _accountName, _containerName, opts.Version ?? "latest", opts.Overwrite);
+        _logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}", opts.RootDirectory, _accountName, _containerName, opts.Version ?? "latest", opts.Overwrite);
 
         try
         {
@@ -98,8 +94,7 @@ public sealed class RestorePipelineHandler
                 };
             }
 
-            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}",
-                snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
 
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
@@ -117,8 +112,7 @@ public sealed class RestorePipelineHandler
 
             foreach (var file in files)
             {
-                var localPath = Path.Combine(opts.RootDirectory,
-                    file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                 if (File.Exists(localPath))
                 {
@@ -174,8 +168,7 @@ public sealed class RestorePipelineHandler
             {
                 if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
                 {
-                    _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})",
-                        file.ContentHash, file.RelativePath);
+                    _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
                     unresolved.Add(file);
                     continue;
                 }
@@ -186,8 +179,7 @@ public sealed class RestorePipelineHandler
             }
 
             int largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
-            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}",
-                filesByChunkHash.Count, largeChunks, filesByChunkHash.Count - largeChunks);
+            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", filesByChunkHash.Count, largeChunks, filesByChunkHash.Count - largeChunks);
 
             // ── Step 5: Rehydration status check ──────────────────────────────
 
@@ -229,9 +221,7 @@ public sealed class RestorePipelineHandler
                 }
             }
 
-            _logger.LogInformation(
-                "[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}",
-                available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count);
+            _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count);
 
             // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
 
@@ -260,7 +250,7 @@ public sealed class RestorePipelineHandler
             };
 
             // If there are archive-tier chunks, invoke confirmation callback (task 10.6)
-            RehydratePriority rehydratePriority = RehydratePriority.Standard;
+            var rehydratePriority = RehydratePriority.Standard;
 
             if (needsRehydration.Count > 0 || rehydrationPending.Count > 0)
             {
@@ -305,11 +295,7 @@ public sealed class RestorePipelineHandler
 
                 bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
 
-                _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})",
-                    chunkHash[..8],
-                    isLargeChunk ? "large" : "tar",
-                    filesForChunk.Count,
-                    indexEntry.CompressedSize.Bytes().Humanize());
+                _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize.Bytes().Humanize());
 
                 if (isLargeChunk)
                 {
@@ -347,8 +333,7 @@ public sealed class RestorePipelineHandler
                     var dst       = BlobPaths.ChunkRehydrated(chunkHash);
                     try
                     {
-                        await _blobs.CopyAsync(chunkName, dst, BlobTier.Hot,
-                            rehydratePriority, cancellationToken);
+                        await _blobs.CopyAsync(chunkName, dst, BlobTier.Cold, rehydratePriority, cancellationToken);
 
                         if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
                             totalRehydrateBytes += ie.CompressedSize;
@@ -359,9 +344,7 @@ public sealed class RestorePipelineHandler
                     }
                 }
 
-                await _mediator.Publish(
-                    new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes),
-                    cancellationToken);
+                await _mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
             }
 
             int totalPending = chunksToRehydrate;
@@ -378,8 +361,7 @@ public sealed class RestorePipelineHandler
                         totalRehydratedBytes += ie.CompressedSize;
                 }
 
-                if (opts.ConfirmCleanup is not null &&
-                    await opts.ConfirmCleanup(rehydrated.Count, totalRehydratedBytes, cancellationToken))
+                if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(rehydrated.Count, totalRehydratedBytes, cancellationToken))
                 {
                     foreach (var chunkHash in rehydrated)
                     {
@@ -396,9 +378,7 @@ public sealed class RestorePipelineHandler
                 }
             }
 
-            _logger.LogInformation(
-                "[restore] Done: restored={Restored} skipped={Skipped} pendingRehydration={Pending}",
-                filesRestored, skipped, totalPending);
+            _logger.LogInformation("[restore] Done: restored={Restored} skipped={Skipped} pendingRehydration={Pending}", filesRestored, skipped, totalPending);
 
             return new RestoreResult
             {
@@ -428,14 +408,10 @@ public sealed class RestorePipelineHandler
     /// Walks the Merkle tree from <paramref name="rootHash"/> and collects all file entries
     /// that match <paramref name="targetPath"/> (or all files if <c>null</c>).
     /// </summary>
-    private async Task<List<FileToRestore>> CollectFilesAsync(
-        string      rootHash,
-        string?     targetPath,
-        TreeBuilder treeCache,
-        CancellationToken cancellationToken)
+    private async Task<List<FileToRestore>> CollectFilesAsync(string rootHash, string? targetPath, TreeBuilder treeCache, CancellationToken cancellationToken)
     {
-        var result   = new List<FileToRestore>();
-        var prefix   = NormalizePath(targetPath);
+        var result = new List<FileToRestore>();
+        var prefix = NormalizePath(targetPath);
 
         await WalkTreeAsync(rootHash, string.Empty, prefix, result, cancellationToken);
         return result;
@@ -518,8 +494,7 @@ public sealed class RestorePipelineHandler
         await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
         await using var decryptStream  = _encryption.WrapForDecryption(downloadStream);
         await using var gzipStream     = new GZipStream(decryptStream, CompressionMode.Decompress);
-        await using var outputStream   = new FileStream(
-            localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+        await using var outputStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
         await gzipStream.CopyToAsync(outputStream, cancellationToken);
 
@@ -570,8 +545,7 @@ public sealed class RestorePipelineHandler
 
             foreach (var file in filesForHash)
             {
-                var localPath = Path.Combine(opts.RootDirectory,
-                    file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                 Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
