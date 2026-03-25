@@ -1,87 +1,165 @@
 using Arius.Core.Encryption;
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text;
 
 namespace Arius.Core.FileTree;
 
 /// <summary>
-/// Serializes and deserializes <see cref="TreeBlob"/> instances to/from JSON.
+/// Serializes and deserializes <see cref="TreeBlob"/> instances to/from a compact text format.
 ///
-/// Deterministic JSON rules:
-/// - Entries are sorted by <see cref="TreeEntry.Name"/> (ordinal, case-sensitive).
-/// - Timestamp fields use ISO-8601 / round-trip format ("O"), UTC only.
-/// - No extra whitespace (compact output).
-/// - <c>null</c> timestamp fields are omitted from the JSON output.
+/// Line format:
+/// <list type="bullet">
+///   <item>File entry: <c>&lt;hash&gt; F &lt;created&gt; &lt;modified&gt; &lt;name&gt;</c></item>
+///   <item>Directory entry: <c>&lt;hash&gt; D &lt;name&gt;</c></item>
+/// </list>
 ///
-/// Tree hash = SHA256 of the canonical UTF-8 JSON bytes, optionally passphrase-seeded
+/// Rules:
+/// <list type="bullet">
+///   <item>Entries are sorted by <see cref="TreeEntry.Name"/> (ordinal, case-sensitive).</item>
+///   <item>Timestamps use ISO-8601 round-trip format ("O"), UTC only — no spaces, unambiguous as a field.</item>
+///   <item>Name is always the last field; it may contain spaces (no quoting or escaping needed).</item>
+///   <item>Lines terminated by <c>\n</c>. No header, no blank lines.</item>
+/// </list>
+///
+/// Tree hash = SHA256 of the canonical UTF-8 text bytes, optionally passphrase-seeded
 /// via <see cref="IEncryptionService.ComputeHash(byte[])"/>.
 /// </summary>
 public static class TreeBlobSerializer
 {
-    // ── JSON options ──────────────────────────────────────────────────────────
-
-    private static readonly JsonSerializerOptions s_writeOptions = new()
-    {
-        WriteIndented            = false,
-        DefaultIgnoreCondition   = JsonIgnoreCondition.WhenWritingNull,
-        Encoder                  = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        PropertyNamingPolicy     = JsonNamingPolicy.CamelCase,
-        Converters               = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
-
-    private static readonly JsonSerializerOptions s_readOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters                  = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
+    private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     // ── Serialize ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Serializes a <see cref="TreeBlob"/> to canonical UTF-8 JSON bytes.
-    /// Entries are sorted by name before serialization.
+    /// Serializes a <see cref="TreeBlob"/> to canonical UTF-8 text bytes.
+    /// Entries are sorted by name (ordinal) before serialization.
     /// </summary>
     public static byte[] Serialize(TreeBlob tree)
     {
-        // Ensure deterministic order — sort entries by name (ordinal)
-        var sorted = new TreeBlob
-        {
-            Entries = tree.Entries
-                .OrderBy(e => e.Name, StringComparer.Ordinal)
-                .ToList()
-        };
+        var sb = new StringBuilder();
 
-        return JsonSerializer.SerializeToUtf8Bytes(sorted, s_writeOptions);
+        foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+        {
+            if (entry.Type == TreeEntryType.File)
+            {
+                // <hash> F <created> <modified> <name>
+                sb.Append(entry.Hash);
+                sb.Append(" F ");
+                sb.Append(entry.Created!.Value.ToString("O"));
+                sb.Append(' ');
+                sb.Append(entry.Modified!.Value.ToString("O"));
+                sb.Append(' ');
+                sb.AppendLine(entry.Name);
+            }
+            else
+            {
+                // <hash> D <name>
+                sb.Append(entry.Hash);
+                sb.Append(" D ");
+                sb.AppendLine(entry.Name);
+            }
+        }
+
+        return s_utf8.GetBytes(sb.ToString());
     }
 
     // ── Deserialize ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Deserializes a <see cref="TreeBlob"/> from UTF-8 JSON bytes.
+    /// Deserializes a <see cref="TreeBlob"/> from UTF-8 text bytes.
     /// </summary>
-    public static TreeBlob Deserialize(byte[] json) =>
-        JsonSerializer.Deserialize<TreeBlob>(json, s_readOptions)
-            ?? throw new InvalidDataException("Failed to deserialize tree blob: null result.");
+    public static TreeBlob Deserialize(byte[] text) =>
+        ParseLines(s_utf8.GetString(text).Split('\n'));
 
     /// <summary>Deserializes a <see cref="TreeBlob"/> from a readable stream.</summary>
     public static async Task<TreeBlob> DeserializeAsync(
         Stream            stream,
-        CancellationToken cancellationToken = default) =>
-        await JsonSerializer.DeserializeAsync<TreeBlob>(stream, s_readOptions, cancellationToken)
-            ?? throw new InvalidDataException("Failed to deserialize tree blob: null result.");
+        CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(stream, s_utf8, leaveOpen: true);
+        var content = await reader.ReadToEndAsync(cancellationToken);
+        return ParseLines(content.Split('\n'));
+    }
 
-    // ── Hash computation (task 5.3) ────────────────────────────────────────────
+    private static TreeBlob ParseLines(string[] lines)
+    {
+        var entries = new List<TreeEntry>(lines.Length);
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (string.IsNullOrEmpty(line))
+                continue;
+
+            // All lines: first field = hash, second field = type marker (F or D)
+            // F line: <hash> F <created> <modified> <name...>
+            //         split on first 4 spaces → [hash, F, created, modified, name...]
+            // D line: <hash> D <name...>
+            //         split on first 2 spaces → [hash, D, name...]
+
+            var firstSpace = line.IndexOf(' ');
+            if (firstSpace < 0) throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
+
+            var hash       = line[..firstSpace];
+            var afterHash  = line[(firstSpace + 1)..];
+
+            if (afterHash.Length < 2 || afterHash[1] != ' ')
+                throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
+
+            var typeMarker = afterHash[0];
+            var afterType  = afterHash[2..];
+
+            if (typeMarker == 'F')
+            {
+                // <created> <modified> <name...>
+                var s1 = afterType.IndexOf(' ');
+                if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
+                var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
+
+                var afterCreated = afterType[(s1 + 1)..];
+                var s2           = afterCreated.IndexOf(' ');
+                if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
+                var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
+
+                var name = afterCreated[(s2 + 1)..];
+
+                entries.Add(new TreeEntry
+                {
+                    Hash     = hash,
+                    Type     = TreeEntryType.File,
+                    Created  = created,
+                    Modified = modified,
+                    Name     = name
+                });
+            }
+            else if (typeMarker == 'D')
+            {
+                entries.Add(new TreeEntry
+                {
+                    Hash = hash,
+                    Type = TreeEntryType.Dir,
+                    Name = afterType
+                });
+            }
+            else
+            {
+                throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
+            }
+        }
+
+        return new TreeBlob { Entries = entries };
+    }
+
+    // ── Hash computation ──────────────────────────────────────────────────────
 
     /// <summary>
     /// Computes the tree hash: <see cref="IEncryptionService.ComputeHash(byte[])"/> applied to
-    /// the canonical JSON bytes. With passphrase: SHA256(passphrase + json); without: SHA256(json).
+    /// the canonical text bytes. With passphrase: SHA256(passphrase + text); without: SHA256(text).
     /// Returns lowercase hex.
     /// </summary>
     public static string ComputeHash(TreeBlob tree, IEncryptionService encryption)
     {
-        var json = Serialize(tree);
-        var hash = encryption.ComputeHash(json);
+        var text = Serialize(tree);
+        var hash = encryption.ComputeHash(text);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

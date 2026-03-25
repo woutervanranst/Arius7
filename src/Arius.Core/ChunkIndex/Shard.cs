@@ -2,32 +2,50 @@ namespace Arius.Core.ChunkIndex;
 
 /// <summary>
 /// One line in a chunk index shard file.
-/// Format: <c>&lt;content-hash&gt; &lt;chunk-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt;\n</c>
+/// Large-file format (content-hash == chunk-hash): <c>&lt;content-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt;\n</c>
+/// Small-file format (content-hash != chunk-hash): <c>&lt;content-hash&gt; &lt;chunk-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt;\n</c>
 /// All hashes are lowercase hex strings (SHA256 = 64 chars).
+/// Field count is the discriminator: 3 fields = large file, 4 fields = small file.
 /// </summary>
 public sealed record ShardEntry(string ContentHash, string ChunkHash, long OriginalSize, long CompressedSize)
 {
     // ── Serialization ──────────────────────────────────────────────────────────
 
-    /// <summary>Serializes this entry to the shard line format (no trailing newline).</summary>
+    /// <summary>
+    /// Serializes this entry to the shard line format (no trailing newline).
+    /// Emits 3 fields when <see cref="ContentHash"/> == <see cref="ChunkHash"/> (large file),
+    /// 4 fields otherwise (small/tar-bundled file).
+    /// </summary>
     public string Serialize() =>
-        $"{ContentHash} {ChunkHash} {OriginalSize} {CompressedSize}";
+        ContentHash == ChunkHash
+            ? $"{ContentHash} {OriginalSize} {CompressedSize}"
+            : $"{ContentHash} {ChunkHash} {OriginalSize} {CompressedSize}";
 
-    /// <summary>Parses a single shard line. Returns <c>null</c> on blank or comment lines.</summary>
+    /// <summary>
+    /// Parses a single shard line. Returns <c>null</c> on blank or comment lines.
+    /// 3 fields = large file (chunk-hash reconstructed as content-hash).
+    /// 4 fields = small file (explicit chunk-hash).
+    /// </summary>
     public static ShardEntry? TryParse(string line)
     {
         if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
             return null;
 
         var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 4)
-            throw new FormatException($"Invalid shard entry (expected 4 fields): '{line}'");
-
-        return new ShardEntry(
-            ContentHash: parts[0],
-            ChunkHash: parts[1],
-            OriginalSize: long.Parse(parts[2]),
-            CompressedSize: long.Parse(parts[3]));
+        return parts.Length switch
+        {
+            3 => new ShardEntry(
+                ContentHash:    parts[0],
+                ChunkHash:      parts[0],              // large file: chunk-hash == content-hash
+                OriginalSize:   long.Parse(parts[1]),
+                CompressedSize: long.Parse(parts[2])),
+            4 => new ShardEntry(
+                ContentHash:    parts[0],
+                ChunkHash:      parts[1],
+                OriginalSize:   long.Parse(parts[2]),
+                CompressedSize: long.Parse(parts[3])),
+            _ => throw new FormatException($"Invalid shard entry (expected 3 or 4 fields): '{line}'")
+        };
     }
 }
 

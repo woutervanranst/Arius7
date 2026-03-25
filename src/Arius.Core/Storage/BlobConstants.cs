@@ -46,7 +46,7 @@ public static class ContentTypes
     public const string Thin           = "text/plain; charset=utf-8";
 
     // ── File tree ──────────────────────────────────────────────────────────────
-    public const string FileTree       = "application/json";
+    public const string FileTree       = "text/plain; charset=utf-8";
 
     // ── Snapshot manifest ──────────────────────────────────────────────────────
     public const string SnapshotEncrypted = "application/aes256cbc+gzip";

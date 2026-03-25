@@ -37,7 +37,7 @@ public sealed record TreeEntry
 
 /// <summary>
 /// A Merkle tree node representing a single directory.
-/// Serialized as JSON and uploaded to <c>filetrees/&lt;tree-hash&gt;</c>.
+/// Serialized as text (one entry per line) and uploaded to <c>filetrees/&lt;tree-hash&gt;</c>.
 /// Entries are sorted by <see cref="TreeEntry.Name"/> in the serialized form.
 /// </summary>
 public sealed record TreeBlob

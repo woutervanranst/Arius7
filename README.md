@@ -97,7 +97,7 @@ virtual directories (prefixes):
 <container>
 ├── chunks/              Content-addressable chunks (configurable tier)
 ├── chunks-rehydrated/   Temporary hot-tier copies during restore (auto-cleaned)
-├── filetrees/           Merkle tree nodes — one JSON blob per directory (Cool tier)
+├── filetrees/           Merkle tree nodes — one text blob per directory (Cool tier)
 ├── snapshots/           Point-in-time snapshot manifests (Cool tier)
 └── chunk-index/         Deduplication index shards (Cool tier)
 ```
@@ -111,8 +111,8 @@ flowchart TD
     end
 
     subgraph filetrees/
-        RT["filetrees/&lt;root-hash&gt;<br/><i>JSON tree blob</i>"]
-        CT["filetrees/&lt;child-hash&gt;<br/><i>JSON tree blob</i>"]
+        RT["filetrees/&lt;root-hash&gt;<br/><i>text tree blob</i>"]
+        CT["filetrees/&lt;child-hash&gt;<br/><i>text tree blob</i>"]
     end
 
     subgraph chunks/
@@ -152,21 +152,20 @@ time, resolve the snapshot, then walk the tree from `rootHash`.
 
 ### filetrees/
 
-Merkle tree nodes. Each blob is a JSON document named by its tree-hash (SHA-256 of the
-canonical JSON, optionally passphrase-seeded). A tree blob lists the entries in one
-directory:
+Merkle tree nodes. Each blob is a UTF-8 text file named by its tree-hash (SHA-256 of the
+canonical text, optionally passphrase-seeded). A tree blob lists the entries in one
+directory — one line per entry, sorted by name:
 
-```json
-{
-  "entries": [
-    { "name": "photo.jpg", "type": "file", "hash": "abc123...", "created": "...", "modified": "..." },
-    { "name": "subdir/",   "type": "dir",  "hash": "def456..." }
-  ]
-}
+```
+abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 photo.jpg
+def456... D subdir/
 ```
 
-- **File entries** point to a content-hash in `chunks/`.
-- **Directory entries** point to another tree blob in `filetrees/`.
+- **File entries** (`F`): `<content-hash> F <created> <modified> <name>`
+- **Directory entries** (`D`): `<tree-hash> D <name>`
+- Names are always the last field and may contain spaces (no quoting needed).
+- File entries point to a content-hash in `chunks/`.
+- Directory entries point to another tree blob in `filetrees/`.
 - Walking from the root hash recursively reconstructs the full directory tree.
 
 ### chunks/

@@ -9,8 +9,9 @@ public class ShardTests
     // ── 4.1 Shard entry parse/serialize roundtrip ─────────────────────────────
 
     [Test]
-    public void ShardEntry_Serialize_ThenParse_RoundTrips()
+    public void ShardEntry_Serialize_ThenParse_RoundTrips_SmallFile()
     {
+        // Small file: content-hash != chunk-hash → 4 fields
         var entry = new ShardEntry("aabbcc00", "ddeeff11", 1024, 512);
         var line  = entry.Serialize();
         var back  = ShardEntry.TryParse(line)!;
@@ -19,6 +20,47 @@ public class ShardTests
         back.ChunkHash.ShouldBe(entry.ChunkHash);
         back.OriginalSize.ShouldBe(entry.OriginalSize);
         back.CompressedSize.ShouldBe(entry.CompressedSize);
+    }
+
+    [Test]
+    public void ShardEntry_Serialize_ThenParse_RoundTrips_LargeFile()
+    {
+        // Large file: content-hash == chunk-hash → 3 fields
+        var entry = new ShardEntry("aabbcc00", "aabbcc00", 4200000, 1870432);
+        var line  = entry.Serialize();
+        var back  = ShardEntry.TryParse(line)!;
+
+        back.ContentHash.ShouldBe(entry.ContentHash);
+        back.ChunkHash.ShouldBe(entry.ChunkHash);
+        back.OriginalSize.ShouldBe(entry.OriginalSize);
+        back.CompressedSize.ShouldBe(entry.CompressedSize);
+    }
+
+    [Test]
+    public void ShardEntry_Serialize_LargeFile_Emits3Fields()
+    {
+        // content-hash == chunk-hash → only 3 fields emitted (no redundant chunk-hash)
+        var entry = new ShardEntry("aabbcc00", "aabbcc00", 4200000, 1870432);
+        var line  = entry.Serialize();
+        var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        fields.Length.ShouldBe(3);
+        fields[0].ShouldBe("aabbcc00");
+        fields[1].ShouldBe("4200000");
+        fields[2].ShouldBe("1870432");
+    }
+
+    [Test]
+    public void ShardEntry_TryParse_3Fields_ReconstructsChunkHash()
+    {
+        // 3-field line → large file, chunk-hash reconstructed as content-hash
+        var line = "aabbcc00 4200000 1870432";
+        var entry = ShardEntry.TryParse(line)!;
+
+        entry.ContentHash.ShouldBe("aabbcc00");
+        entry.ChunkHash.ShouldBe("aabbcc00");   // reconstructed
+        entry.OriginalSize.ShouldBe(4200000L);
+        entry.CompressedSize.ShouldBe(1870432L);
     }
 
     [Test]
@@ -33,6 +75,8 @@ public class ShardTests
     public void ShardEntry_TryParse_InvalidLine_Throws()
     {
         Should.Throw<FormatException>(() => ShardEntry.TryParse("only-one-field"));
+        Should.Throw<FormatException>(() => ShardEntry.TryParse("field1 field2"));
+        Should.Throw<FormatException>(() => ShardEntry.TryParse("a b c d e"));
     }
 
     // ── 4.1 Shard serialization roundtrip ────────────────────────────────────

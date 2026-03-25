@@ -8,6 +8,9 @@ namespace Arius.Core.Tests.FileTree;
 
 public class TreeBlobSerializerTests
 {
+    private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+
     private static TreeBlob MakeBlob(params (string name, TreeEntryType type, string hash)[] items) =>
         new()
         {
@@ -16,8 +19,8 @@ public class TreeBlobSerializerTests
                 Name     = i.name,
                 Type     = i.type,
                 Hash     = i.hash,
-                Created  = i.type == TreeEntryType.File ? new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero) : null,
-                Modified = i.type == TreeEntryType.File ? new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero) : null
+                Created  = i.type == TreeEntryType.File ? s_created  : null,
+                Modified = i.type == TreeEntryType.File ? s_modified : null
             }).ToList()
         };
 
@@ -28,17 +31,22 @@ public class TreeBlobSerializerTests
             ("photo.jpg", TreeEntryType.File, "a1b2c3d4"),
             ("subdir/",   TreeEntryType.Dir,  "e5f6a7b8"));
 
-        var json  = TreeBlobSerializer.Serialize(blob);
-        var back  = TreeBlobSerializer.Deserialize(json);
+        var bytes = TreeBlobSerializer.Serialize(blob);
+        var back  = TreeBlobSerializer.Deserialize(bytes);
 
         back.Entries.Count.ShouldBe(2);
-        back.Entries[0].Name.ShouldBe("photo.jpg");
-        back.Entries[0].Type.ShouldBe(TreeEntryType.File);
-        back.Entries[0].Hash.ShouldBe("a1b2c3d4");
-        back.Entries[0].Created.ShouldNotBeNull();
-        back.Entries[1].Name.ShouldBe("subdir/");
-        back.Entries[1].Type.ShouldBe(TreeEntryType.Dir);
-        back.Entries[1].Created.ShouldBeNull();
+
+        var file = back.Entries.Single(e => e.Name == "photo.jpg");
+        file.Type.ShouldBe(TreeEntryType.File);
+        file.Hash.ShouldBe("a1b2c3d4");
+        file.Created.ShouldNotBeNull();
+        file.Modified.ShouldNotBeNull();
+
+        var dir = back.Entries.Single(e => e.Name == "subdir/");
+        dir.Type.ShouldBe(TreeEntryType.Dir);
+        dir.Hash.ShouldBe("e5f6a7b8");
+        dir.Created.ShouldBeNull();
+        dir.Modified.ShouldBeNull();
     }
 
     [Test]
@@ -50,8 +58,8 @@ public class TreeBlobSerializerTests
             ("a_first.txt", TreeEntryType.File, "hash1"),
             ("m_mid.txt",   TreeEntryType.File, "hash2"));
 
-        var json = TreeBlobSerializer.Serialize(blob);
-        var back = TreeBlobSerializer.Deserialize(json);
+        var bytes = TreeBlobSerializer.Serialize(blob);
+        var back  = TreeBlobSerializer.Deserialize(bytes);
 
         back.Entries[0].Name.ShouldBe("a_first.txt");
         back.Entries[1].Name.ShouldBe("m_mid.txt");
@@ -64,27 +72,56 @@ public class TreeBlobSerializerTests
         var blob1 = MakeBlob(("b.jpg", TreeEntryType.File, "hash2"), ("a.jpg", TreeEntryType.File, "hash1"));
         var blob2 = MakeBlob(("a.jpg", TreeEntryType.File, "hash1"), ("b.jpg", TreeEntryType.File, "hash2"));
 
-        var json1 = TreeBlobSerializer.Serialize(blob1);
-        var json2 = TreeBlobSerializer.Serialize(blob2);
+        var bytes1 = TreeBlobSerializer.Serialize(blob1);
+        var bytes2 = TreeBlobSerializer.Serialize(blob2);
 
-        json1.ShouldBe(json2);
+        bytes1.ShouldBe(bytes2);
     }
 
     [Test]
-    public void Serialize_NullTimestamps_OmittedFromJson()
+    public void Serialize_DirEntry_HasNoTimestamps_FileEntry_HasTimestamps()
     {
         var blob = new TreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "sub/", Type = TreeEntryType.Dir, Hash = "abc", Created = null, Modified = null }
+                new TreeEntry { Name = "sub/", Type = TreeEntryType.Dir,  Hash = "abc", Created = null, Modified = null },
+                new TreeEntry { Name = "f.txt", Type = TreeEntryType.File, Hash = "def", Created = s_created, Modified = s_modified }
             ]
         };
-        var json   = TreeBlobSerializer.Serialize(blob);
-        var jsonStr = System.Text.Encoding.UTF8.GetString(json);
 
-        jsonStr.ShouldNotContain("created");
-        jsonStr.ShouldNotContain("modified");
+        var text = System.Text.Encoding.UTF8.GetString(TreeBlobSerializer.Serialize(blob));
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        // Dir line: <hash> D <name>  — 3 space-separated tokens
+        var dirLine = lines.Single(l => l.Contains(" D "));
+        dirLine.Split(' ').Length.ShouldBe(3);
+
+        // File line: <hash> F <created> <modified> <name>  — 5 space-separated tokens
+        var fileLine = lines.Single(l => l.Contains(" F "));
+        fileLine.Split(' ').Length.ShouldBe(5);
+    }
+
+    [Test]
+    public void Serialize_FileEntryWithSpacesInName_RoundTrips()
+    {
+        var blob = MakeBlob(("my vacation photo.jpg", TreeEntryType.File, "abc123"));
+
+        var bytes = TreeBlobSerializer.Serialize(blob);
+        var back  = TreeBlobSerializer.Deserialize(bytes);
+
+        back.Entries.Single().Name.ShouldBe("my vacation photo.jpg");
+    }
+
+    [Test]
+    public void Serialize_DirEntryWithSpacesInName_RoundTrips()
+    {
+        var blob = MakeBlob(("2024 trip/", TreeEntryType.Dir, "def456"));
+
+        var bytes = TreeBlobSerializer.Serialize(blob);
+        var back  = TreeBlobSerializer.Deserialize(bytes);
+
+        back.Entries.Single().Name.ShouldBe("2024 trip/");
     }
 
     // ── 5.3 Tree hash computation ─────────────────────────────────────────────
