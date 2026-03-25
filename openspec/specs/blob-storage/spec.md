@@ -7,7 +7,7 @@ Defines the blob storage abstraction layer, container layout, tiered caching, an
 ## Requirements
 
 ### Requirement: Blob storage abstraction
-The system SHALL define an `IBlobStorageService` interface in Arius.Core that abstracts all blob storage operations. Arius.Core SHALL NOT reference Azure.Storage.Blobs or any Azure-specific types. The Azure implementation (`Arius.AzureBlob`) SHALL implement this interface.
+The system SHALL define an `IBlobStorageService` interface in Arius.Core that abstracts all blob storage operations, including container creation. Arius.Core SHALL NOT reference Azure.Storage.Blobs or any Azure-specific types. The Azure implementation (`Arius.AzureBlob`) SHALL implement this interface. The interface SHALL include a `CreateContainerIfNotExistsAsync` method that ensures the blob container exists before any blob operations are performed.
 
 #### Scenario: Core has no Azure dependency
 - **WHEN** Arius.Core is built
@@ -17,8 +17,41 @@ The system SHALL define an `IBlobStorageService` interface in Arius.Core that ab
 - **WHEN** a new storage backend (e.g., S3) is needed in the future
 - **THEN** it SHALL be implementable by providing a new `IBlobStorageService` implementation without modifying Core
 
+#### Scenario: Container creation at startup
+- **WHEN** the archive or restore pipeline handler starts
+- **THEN** it SHALL call `CreateContainerIfNotExistsAsync` before performing any blob operations
+
+#### Scenario: Container already exists
+- **WHEN** `CreateContainerIfNotExistsAsync` is called and the container already exists
+- **THEN** the call SHALL succeed as a no-op (idempotent)
+
+#### Scenario: Container does not exist
+- **WHEN** `CreateContainerIfNotExistsAsync` is called and the container does not exist
+- **THEN** the system SHALL create the container and proceed normally
+
+#### Scenario: First-time user with new container
+- **WHEN** a user runs `arius archive` against a container that does not exist
+- **THEN** the container SHALL be automatically created instead of crashing with an unhandled exception
+
+### Requirement: BlobAlreadyExistsException
+The system SHALL define `BlobAlreadyExistsException : IOException` (sealed) with a `BlobName : string` property. This exception is thrown by `OpenWriteAsync` and `UploadAsync(overwrite:false)` when a blob already exists at the target name, providing a stable contract for callers to handle concurrency conflicts without catching raw `RequestFailedException`.
+
+The Azure implementation SHALL map both HTTP 412 ConditionNotMet (real Azure, `IfNoneMatch=*` condition) and HTTP 409 BlobAlreadyExists (Azurite emulator behaviour for `OpenWriteAsync`) to `BlobAlreadyExistsException`.
+
+#### Scenario: OpenWriteAsync throws BlobAlreadyExistsException on existing blob
+- **WHEN** `OpenWriteAsync(blobName, …)` is called and a blob already exists at that path
+- **THEN** the service SHALL throw `BlobAlreadyExistsException` immediately (before any data is written)
+
+#### Scenario: UploadAsync overwrite:false throws BlobAlreadyExistsException
+- **WHEN** `UploadAsync(blobName, …, overwrite: false)` is called and the blob already exists
+- **THEN** the service SHALL throw `BlobAlreadyExistsException`
+
+#### Scenario: UploadAsync overwrite:true succeeds unconditionally
+- **WHEN** `UploadAsync(blobName, …, overwrite: true)` is called
+- **THEN** the service SHALL overwrite unconditionally and SHALL NOT throw `BlobAlreadyExistsException`
+
 ### Requirement: Chunk blob operations
-The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type.
+The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
 
 #### Scenario: Upload large chunk
 - **WHEN** uploading a gzip+encrypted stream to `chunks/<hash>`
@@ -39,6 +72,10 @@ The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata a
 #### Scenario: OpenWriteAsync with access tier
 - **WHEN** `OpenWriteAsync` is called with tier Archive
 - **THEN** the blob SHALL be created in Archive tier
+
+#### Scenario: OpenWriteAsync throws BlobAlreadyExistsException
+- **WHEN** `OpenWriteAsync(blobName, …)` is called and a blob already exists at that path
+- **THEN** the service SHALL throw `BlobAlreadyExistsException` immediately (before any data is written)
 
 ### Requirement: Chunk types with blob metadata
 Each chunk blob SHALL carry metadata distinguishing its type. The `arius-type` metadata field SHALL be one of: `large`, `tar`, `thin`. Additional metadata: `original-size` (for large and thin), `chunk-size` (compressed blob size for large and tar), `compressed-size` (for thin: proportional estimate within tar). Metadata SHALL be written via `SetMetadataAsync` after the upload stream is closed (not during upload). The `arius-complete` metadata key SHALL NOT be used. The presence of `arius-type` SHALL serve as the sole signal that an upload completed successfully.

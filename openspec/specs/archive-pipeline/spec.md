@@ -265,23 +265,35 @@ The system SHALL delete local binary files after successful archive when `--remo
 - **THEN** the system SHALL reject the combination (cannot remove binaries without pointers to track them)
 
 ### Requirement: Crash-recoverable archive
-Archive runs SHALL be idempotent on re-run after a crash. Each uploaded chunk blob SHALL carry `arius-type` metadata set via `SetMetadataAsync` after the body upload completes. On re-run, the system SHALL HEAD-check each content-hash before uploading: 200 + `arius-type` present -> skip and recover index entry; 200 without `arius-type` -> overwrite (incomplete upload); 404 -> upload fresh. The `arius-complete` metadata key SHALL NOT be used. The presence of `arius-type` is the sole crash-recovery signal.
+The archive pipeline SHALL use optimistic concurrency for all chunk uploads: uploads are attempted unconditionally without a pre-flight HEAD check.
 
-#### Scenario: Re-run after crash during uploads
-- **WHEN** archive crashes after uploading 50 of 100 chunks and is re-run
-- **THEN** the system SHALL detect the 50 completed chunks via HEAD + `arius-type` presence, skip their upload, recover their index entries, and upload only the remaining 50
+`OpenWriteAsync` and `UploadAsync(overwrite:false)` use create-if-not-exists semantics (IfNoneMatch=*). If the blob already exists, `BlobAlreadyExistsException` is raised.
 
-#### Scenario: Re-run after crash during thin chunk creation
-- **WHEN** archive crashes after uploading a tar but before creating all thin chunks
-- **THEN** files with existing thin chunks SHALL be recovered; files without thin chunks SHALL be re-bundled into a new tar
+On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD check (GetMetadataAsync) to determine blob completeness using the `arius-type` metadata sentinel:
+- `arius-type` present → blob is fully committed (body + metadata); recover ContentLength as compressedSize and continue without re-uploading
+- `arius-type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
 
-#### Scenario: Incomplete upload detected
-- **WHEN** a blob exists at `chunks/<hash>` with no metadata (upload completed but metadata not yet written)
-- **THEN** the system SHALL overwrite the blob with a fresh upload
+This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin).
 
-#### Scenario: Clean re-run (no crash)
-- **WHEN** archive is re-run on unchanged files with no prior crash
-- **THEN** the HEAD checks SHALL return 404 (files not yet in this run) or dedup check SHALL find them in the index; no performance regression from crash recovery logic
+#### Scenario: Re-run after crash - fully committed blob
+- **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + arius-type present)
+- **THEN** the pipeline SHALL recover compressedSize from ContentLength and continue without re-uploading
+
+#### Scenario: Re-run after crash - partially committed blob
+- **WHEN** a crash-recovery re-run encounters a partially committed blob (BlobAlreadyExistsException + arius-type absent)
+- **THEN** the pipeline SHALL delete the blob and retry the upload
+
+#### Scenario: Thin chunk already complete
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is present
+- **THEN** the pipeline SHALL skip silently (fully complete)
+
+#### Scenario: Thin chunk partially committed
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is absent
+- **THEN** the pipeline SHALL delete the thin blob and retry
+
+#### Scenario: Clean run (no crash)
+- **WHEN** no crash occurred (normal run)
+- **THEN** dedup (Stage 2) filters known hashes so Stage 4 never encounters existing blobs; the BlobAlreadyExistsException path is never exercised
 
 ### Requirement: Configurable storage tier
 The system SHALL upload chunks to the tier specified by `--tier` (default: Archive). Supported tiers: Hot, Cool, Cold, Archive.

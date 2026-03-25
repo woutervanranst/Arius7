@@ -119,11 +119,19 @@ The CLI SHALL display live progress during archive using Spectre.Console. The di
 - **THEN** the display SHALL list each in-flight item with its name and progress percentage
 
 ### Requirement: Restore cost confirmation display
-The CLI SHALL display a cost estimate before restoring and require interactive confirmation. The display SHALL include: files to restore, chunks categorized by availability (cached, Hot/Cool, needs rehydration), estimated costs (rehydration Standard vs. High, download egress), and a prompt for rehydration priority and proceed/cancel.
+The CLI SHALL display a per-component cost estimate table before restoring and require interactive confirmation. The table SHALL show cost components as rows (Data retrieval, Read operations, Write operations, Storage) with columns for Standard and High Priority. A total row SHALL summarize each column. The storage row SHALL indicate the assumed duration (e.g., "Storage (1 month)"). The display SHALL also include: files to restore, chunks categorized by availability (cached, Hot/Cool, already rehydrated, needs rehydration, pending rehydration), total compressed size.
 
-#### Scenario: Cost confirmation flow
-- **WHEN** a restore requires 62 archive-tier chunks
-- **THEN** the CLI SHALL display rehydration cost estimates for both Standard and High Priority, prompt for priority selection, then prompt for proceed/cancel
+#### Scenario: Cost confirmation table display
+- **WHEN** a restore requires 200 archive-tier chunks totaling 20 GB
+- **THEN** the CLI SHALL display a Spectre.Console table with 4 cost component rows, Standard and High Priority columns, and a total row
+
+#### Scenario: Currency displayed from config
+- **WHEN** the pricing config uses EUR rates
+- **THEN** the cost values in the table SHALL be formatted with the EUR currency symbol
+
+#### Scenario: Storage assumption visible
+- **WHEN** the cost table is displayed
+- **THEN** the storage row SHALL be labeled "Storage (1 month)" to indicate the assumed duration
 
 ### Requirement: Restore progress display
 The CLI SHALL display progress during the restore download phase. The display SHALL show: files restored from available chunks, bytes downloaded, and a summary on exit indicating how many files remain pending rehydration.

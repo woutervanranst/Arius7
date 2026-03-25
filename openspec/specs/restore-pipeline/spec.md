@@ -90,11 +90,20 @@ The system SHALL check the availability of each needed chunk before downloading.
 - **THEN** the system SHALL mark it as needing rehydration
 
 ### Requirement: Cost estimation and user confirmation
-The system SHALL display a cost breakdown before restoring and require user confirmation. The breakdown SHALL include: files to restore, chunks needed (categorized by availability), estimated rehydration cost (Standard and High Priority), and estimated download/egress cost. The chunk index entry's `compressed-size` field SHALL be used for cost calculations.
+The system SHALL display a detailed cost breakdown before restoring and require user confirmation. The cost model SHALL include four components: data retrieval cost, read operation cost, write operation cost, and storage cost for rehydrated copies. Rates SHALL be loaded from a pricing configuration file (JSON) with override capability. The breakdown SHALL show both Standard and High Priority costs per component. The chunk index entry's `compressed-size` field SHALL be used for size calculations. The default assumption for storage duration SHALL be 1 month.
 
-#### Scenario: Cost estimation display
-- **WHEN** a restore is requested
-- **THEN** the system SHALL display chunk counts, sizes, and estimated costs before prompting for confirmation
+The cost algorithm SHALL be:
+- `retrievalCost = totalGB * archive.retrievalPerGB` (or `retrievalHighPerGB` for High Priority)
+- `readOpsCost = ceil(numberOfBlobs / 10000) * archive.readOpsPer10000` (or `readOpsHighPer10000`)
+- `writeOpsCost = ceil(numberOfBlobs / 10000) * targetTier.writeOpsPer10000`
+- `storageCost = totalGB * targetTier.storagePerGBPerMonth * monthsStored`
+- `totalCost = retrievalCost + readOpsCost + writeOpsCost + storageCost`
+
+Where `targetTier` is Hot (matching `chunks-rehydrated/` convention) and `monthsStored` defaults to 1.
+
+#### Scenario: Cost estimation with full breakdown
+- **WHEN** a restore requires 200 archive-tier chunks totaling 20 GB compressed
+- **THEN** the system SHALL compute retrieval cost, read ops cost, write ops cost, and storage cost using config-driven rates and display all four components
 
 #### Scenario: User declines
 - **WHEN** the user responds "N" to the confirmation prompt
@@ -102,7 +111,41 @@ The system SHALL display a cost breakdown before restoring and require user conf
 
 #### Scenario: Rehydration priority selection
 - **WHEN** archive-tier chunks need rehydration
-- **THEN** the system SHALL prompt the user to choose Standard or High Priority and display the cost difference
+- **THEN** the system SHALL prompt the user to choose Standard or High Priority and display the cost difference per component
+
+#### Scenario: Pricing config loaded from file
+- **WHEN** a `pricing.json` exists in the working directory or `~/.arius/`
+- **THEN** the system SHALL load rates from that file instead of the embedded defaults
+
+#### Scenario: Default pricing used when no override
+- **WHEN** no `pricing.json` override file exists
+- **THEN** the system SHALL use the embedded EUR West Europe rates
+
+### Requirement: Restore cost estimate model
+The system SHALL use a `RestoreCostEstimate` record (renamed from `RehydrationCostEstimate`) with per-component cost fields: `RetrievalCostStandard`, `RetrievalCostHigh`, `ReadOpsCostStandard`, `ReadOpsCostHigh`, `WriteOpsCost`, `StorageCost`, plus computed `TotalStandard` and `TotalHigh` properties. The model SHALL also include chunk availability counts: `ChunksAvailable`, `ChunksAlreadyRehydrated`, `ChunksNeedingRehydration`, `ChunksPendingRehydration`, `RehydrationBytes`, and `DownloadBytes`.
+
+#### Scenario: RestoreCostEstimate computed properties
+- **WHEN** a `RestoreCostEstimate` is constructed with per-component costs
+- **THEN** `TotalStandard` SHALL equal `RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost` and `TotalHigh` SHALL equal `RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost`
+
+#### Scenario: Zero chunks needing rehydration
+- **WHEN** all chunks are already available (Hot/Cool tier or already rehydrated)
+- **THEN** `RestoreCostEstimate` SHALL have zero costs for all rehydration components and the system SHALL skip the rehydration confirmation prompt
+
+### Requirement: Pricing configuration
+The system SHALL load Azure pricing rates from a JSON configuration file. The file SHALL contain rate structures for: `archive` (retrievalPerGB, retrievalHighPerGB, readOpsPer10000, readOpsHighPer10000), `hot` (writeOpsPer10000, storagePerGBPerMonth), `cool` (writeOpsPer10000, storagePerGBPerMonth), `cold` (writeOpsPer10000, storagePerGBPerMonth). The embedded default SHALL use EUR West Europe rates. The pricing file SHALL be overridable by placing a file in the working directory or `~/.arius/` config path.
+
+#### Scenario: Pricing file structure
+- **WHEN** the pricing configuration is loaded
+- **THEN** it SHALL contain archive retrieval rates, archive read operation rates, and target tier write/storage rates
+
+#### Scenario: Override pricing file
+- **WHEN** a `pricing.json` file is placed in the working directory
+- **THEN** the system SHALL use those rates instead of the embedded defaults
+
+#### Scenario: Malformed pricing file
+- **WHEN** a pricing override file cannot be parsed as valid JSON
+- **THEN** the system SHALL report an error and exit
 
 ### Requirement: Streaming restore (no local cache)
 The system SHALL restore files by streaming chunks directly to their final path without intermediate local caching. For large files: download → decrypt → gunzip → write to final path. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final paths. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
@@ -162,3 +205,41 @@ The system SHALL create `.pointer.arius` files alongside each restored file (unl
 #### Scenario: Restored file gets pointer
 - **WHEN** `photos/vacation.jpg` is restored from a snapshot
 - **THEN** `photos/vacation.jpg.pointer.arius` SHALL be created with the content hash, and the file's modified date SHALL be set from the snapshot metadata
+
+### Requirement: Rehydration state machine test coverage
+The system SHALL have test coverage for all three rehydration states in the restore pipeline: (1) chunk needs rehydration (initiates copy-to-rehydrate), (2) chunk rehydration is pending (recognizes pending state, no duplicate request), (3) chunk is already rehydrated (downloads from `chunks-rehydrated/`). Both mock-based unit tests and real Azure E2E tests SHALL exercise these states.
+
+#### Scenario: Mock test - initiate rehydration
+- **WHEN** a unit test runs with a mock `IBlobStorageService` returning `Tier: Archive` and no rehydrated copy exists
+- **THEN** the restore pipeline SHALL call the copy-to-rehydrate method for the chunk
+
+#### Scenario: Mock test - pending rehydration detected
+- **WHEN** a unit test runs with a mock returning pending rehydration state for a chunk
+- **THEN** the restore pipeline SHALL NOT issue a duplicate rehydration request
+
+#### Scenario: Mock test - already rehydrated
+- **WHEN** a unit test runs with a mock where `chunks-rehydrated/<hash>` exists
+- **THEN** the restore pipeline SHALL download from the rehydrated path
+
+### Requirement: E2E rehydration test with sideload
+The system SHALL have an E2E test against real Azure Blob Storage that: archives small files (<1 KB) to Archive tier, verifies blobs land in Archive tier, attempts restore (expects rehydration initiation), verifies re-run detects pending rehydration, then sideloads rehydrated content to `chunks-rehydrated/{hash}` in Hot tier and verifies full restore with byte-identical content. The test SHALL be gated by `ARIUS_E2E_ACCOUNT` / `ARIUS_E2E_KEY` environment variables.
+
+#### Scenario: Archive to Archive tier
+- **WHEN** the E2E test archives 2-3 files of ~100-500 bytes with `--tier Archive`
+- **THEN** the blobs SHALL be verified as Archive tier via `GetProperties`
+
+#### Scenario: Restore initiates rehydration
+- **WHEN** restore is run against Archive-tier blobs
+- **THEN** the system SHALL initiate rehydration and report chunks pending
+
+#### Scenario: Re-run detects pending rehydration
+- **WHEN** restore is re-run while rehydration is pending
+- **THEN** the system SHALL recognize the pending state and not duplicate rehydration requests
+
+#### Scenario: Sideloaded rehydration enables full restore
+- **WHEN** chunk content is manually uploaded to `chunks-rehydrated/{hash}` in Hot tier
+- **THEN** re-running restore SHALL detect the sideloaded blob, download from it, and restore files with byte-identical content
+
+#### Scenario: Test cost documentation
+- **WHEN** the E2E test completes and the container is deleted
+- **THEN** the Azure cost SHALL be negligible (prorated early deletion for tiny files = fractions of a cent), documented in test comments
