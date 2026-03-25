@@ -309,8 +309,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             compressedSize = countingStream.BytesWritten;
                         } // writeStream disposed here → commits the upload
 
-                        await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-
                         var uploadMeta = new Dictionary<string, string>
                         {
                             [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
@@ -318,6 +316,8 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             [BlobMetadataKeys.ChunkSize]    = compressedSize.ToString(),
                         };
                         await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
+
+                        await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
                     }
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
@@ -472,14 +472,14 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 compressedSize = countingStream.BytesWritten;
                             } // writeStream disposed here → commits the upload
 
-                            await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-
                             var uploadMeta = new Dictionary<string, string>
                             {
                                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
                                 [BlobMetadataKeys.ChunkSize] = compressedSize.ToString(),
                             };
                             await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
+
+                            await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
