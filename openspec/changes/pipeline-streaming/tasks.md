@@ -32,9 +32,9 @@
 
 ## 6. Parallel.ForEachAsync Migration
 
-- [ ] 6.1 Replace `Enumerable.Range` + `Task.Run` worker pattern with `Parallel.ForEachAsync(channel.Reader.ReadAllAsync(), ...)` for hash workers
-- [ ] 6.2 Replace worker pattern with `Parallel.ForEachAsync` for large upload workers
-- [ ] 6.3 Replace worker pattern with `Parallel.ForEachAsync` for tar upload workers
+- [x] 6.1 Replace `Enumerable.Range` + `Task.Run` worker pattern with `Parallel.ForEachAsync(channel.Reader.ReadAllAsync(), ...)` for hash workers
+- [x] 6.2 Replace worker pattern with `Parallel.ForEachAsync` for large upload workers
+- [x] 6.3 Replace worker pattern with `Parallel.ForEachAsync` for tar upload workers
 
 ## 7. Integration Tests
 
