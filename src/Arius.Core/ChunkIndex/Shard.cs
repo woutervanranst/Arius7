@@ -5,11 +5,7 @@ namespace Arius.Core.ChunkIndex;
 /// Format: <c>&lt;content-hash&gt; &lt;chunk-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt;\n</c>
 /// All hashes are lowercase hex strings (SHA256 = 64 chars).
 /// </summary>
-public sealed record ShardEntry(
-    string ContentHash,
-    string ChunkHash,
-    long   OriginalSize,
-    long   CompressedSize)
+public sealed record ShardEntry(string ContentHash, string ChunkHash, long OriginalSize, long CompressedSize)
 {
     // ── Serialization ──────────────────────────────────────────────────────────
 
@@ -28,10 +24,10 @@ public sealed record ShardEntry(
             throw new FormatException($"Invalid shard entry (expected 4 fields): '{line}'");
 
         return new ShardEntry(
-            ContentHash    : parts[0],
-            ChunkHash      : parts[1],
-            OriginalSize   : long.Parse(parts[2]),
-            CompressedSize : long.Parse(parts[3]));
+            ContentHash: parts[0],
+            ChunkHash: parts[1],
+            OriginalSize: long.Parse(parts[2]),
+            CompressedSize: long.Parse(parts[3]));
     }
 }
 
@@ -50,8 +46,7 @@ public sealed class Shard
 
     // ── Lookup ─────────────────────────────────────────────────────────────────
 
-    public bool TryLookup(string contentHash, out ShardEntry? entry) =>
-        _entries.TryGetValue(contentHash, out entry);
+    public bool TryLookup(string contentHash, out ShardEntry? entry) => _entries.TryGetValue(contentHash, out entry);
 
     // ── Merge ──────────────────────────────────────────────────────────────────
 
@@ -63,8 +58,10 @@ public sealed class Shard
     public Shard Merge(IEnumerable<ShardEntry> newEntries)
     {
         var combined = new Dictionary<string, ShardEntry>(_entries, StringComparer.Ordinal);
+
         foreach (var e in newEntries)
             combined[e.ContentHash] = e;
+        
         return new Shard(combined);
     }
 
@@ -82,14 +79,14 @@ public sealed class Shard
     /// <summary>Parses a shard from a text reader.</summary>
     public static Shard ReadFrom(TextReader reader)
     {
-        var entries = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
+        var     entries = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
+        while (reader.ReadLine() is { } line)
         {
             var entry = ShardEntry.TryParse(line);
             if (entry is not null)
                 entries[entry.ContentHash] = entry;
         }
+
         return new Shard(entries);
     }
 
@@ -99,8 +96,7 @@ public sealed class Shard
     /// Returns the 2-character (1-byte / 4-bit + 4-bit) shard prefix for a content-hash.
     /// With 65,536 shards this is the first 4 hex chars (2 bytes) of the hash.
     /// </summary>
-    public static string PrefixOf(string contentHash) =>
-        contentHash.Length >= 4
-            ? contentHash[..4]
-            : throw new ArgumentException($"Hash too short to derive prefix: '{contentHash}'");
+    public static string PrefixOf(string contentHash) => contentHash.Length >= 4
+        ? contentHash[..4]
+        : throw new ArgumentException($"Hash too short to derive prefix: '{contentHash}'");
 }

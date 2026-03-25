@@ -63,16 +63,12 @@ public sealed class ChunkIndexService : IDisposable
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
         _l2Dir         = GetL2Directory(accountName, containerName);
+
         Directory.CreateDirectory(_l2Dir);
     }
 
     // ── Repo directory naming ──────────────────────────────────────────────────
 
-    /// <summary>
-    /// Returns the human-readable directory name for a given account+container:
-    /// <c>{accountName}-{containerName}</c>.
-    /// Azure account names are <c>[a-z0-9]</c> only (no hyphens), so the first
-    /// hyphen unambiguously separates account from container.
     /// <summary>
     /// Constructs the repository directory name for the L2 cache by joining the account and container with a hyphen.
     /// </summary>
@@ -114,7 +110,8 @@ public sealed class ChunkIndexService : IDisposable
                 remaining.Add(hash);
         }
 
-        if (remaining.Count == 0) return result;
+        if (remaining.Count == 0) 
+            return result;
 
         // Group remaining by shard prefix and resolve each prefix through tiers
         var byPrefix = remaining.GroupBy(Shard.PrefixOf);
@@ -151,7 +148,8 @@ public sealed class ChunkIndexService : IDisposable
     /// </summary>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
-        if (_pendingEntries.IsEmpty) return;
+        if (_pendingEntries.IsEmpty) 
+            return;
 
         // Group pending entries by shard prefix
         var byPrefix = _pendingEntries.GroupBy(e => Shard.PrefixOf(e.ContentHash));
@@ -167,11 +165,13 @@ public sealed class ChunkIndexService : IDisposable
             var blobName = BlobPaths.ChunkIndexShard(prefix);
 
             await _blobs.UploadAsync(
-                blobName,
-                new MemoryStream(bytes),
-                new Dictionary<string, string>(),
-                BlobTier.Cool,
-                _encryption.IsEncrypted ? ContentTypes.ChunkIndexEncrypted : ContentTypes.ChunkIndexPlaintext,
+                blobName: blobName,
+                content: new MemoryStream(bytes),
+                metadata: new Dictionary<string, string>(),
+                tier: BlobTier.Cool,
+                contentType: _encryption.IsEncrypted
+                    ? ContentTypes.ChunkIndexEncrypted
+                    : ContentTypes.ChunkIndexPlaintext,
                 overwrite: true,
                 cancellationToken: cancellationToken);
 
