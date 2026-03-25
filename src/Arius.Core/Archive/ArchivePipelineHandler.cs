@@ -4,6 +4,7 @@ using Arius.Core.FileTree;
 using Arius.Core.LocalFile;
 using Arius.Core.Snapshot;
 using Arius.Core.Storage;
+using Arius.Core.Streaming;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -298,32 +299,41 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         // Crash recovery: already uploaded and metadata written (task 9.1 / 9.3)
                         compressedSize = meta.ContentLength ?? 0;
                     }
-                    else
-                    {
-                        var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-                        // Gzip + encrypt to memory in a single pass
-                        MemoryStream uploadMs;
-                        await using (var fs = File.OpenRead(fullPath))
-                            uploadMs = await GzipEncryptToMemoryAsync(fs, _encryption, cancellationToken);
-
-                        var uploadMeta = new Dictionary<string, string>
+                        else
                         {
-                            [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeLarge,
-                            [BlobMetadataKeys.OriginalSize]  = upload.FileSize.ToString(),
-                            [BlobMetadataKeys.ChunkSize]     = uploadMs.Length.ToString(),
-                        };
+                            var fullPath    = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                            var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
 
-                        await _blobs.UploadAsync(
-                            blobName: blobName, 
-                            content: uploadMs, 
-                            metadata: uploadMeta,
-                            tier: opts.UploadTier,
-                            contentType: _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext,
-                            overwrite: meta.Exists, 
-                            cancellationToken: cancellationToken);
-                        compressedSize = uploadMs.Length;
-                    }
+                            // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
+                            await using (var writeStream    = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: cancellationToken))
+                            {
+                                var             countingStream = new CountingStream(writeStream);
+                                await using var encStream      = _encryption.WrapForEncryption(countingStream);
+                                await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
+                                await using (var fs            = File.OpenRead(fullPath))
+                                {
+                                    // ProgressStream reports source bytes read (for future console-progress integration)
+                                    IProgress<long> noOpProgress = new Progress<long>();
+                                    await using var ps = new ProgressStream(fs, noOpProgress);
+                                    await ps.CopyToAsync(gzipStream, cancellationToken);
+                                }
+
+                                // Flush gzip + encryption layers before closing write stream
+                                await gzipStream.DisposeAsync();
+                                await encStream.DisposeAsync();
+                                compressedSize = countingStream.BytesWritten;
+                            } // writeStream disposed here → commits the upload
+
+                            await _blobs.SetTierAsync(blobName, opts.UploadTier, cancellationToken);
+
+                            var uploadMeta = new Dictionary<string, string>
+                            {
+                                [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
+                                [BlobMetadataKeys.OriginalSize] = upload.FileSize.ToString(),
+                                [BlobMetadataKeys.ChunkSize]    = compressedSize.ToString(),
+                            };
+                            await _blobs.SetMetadataAsync(blobName, uploadMeta, cancellationToken);
+                        }
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
 
@@ -443,26 +453,30 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         }
                         else
                         {
-                            // Upload: tar → gzip → encrypt
-                            MemoryStream uploadMs;
-                            await using (var fs = File.OpenRead(sealed_.TarFilePath))
-                                uploadMs = await GzipEncryptToMemoryAsync(fs, _encryption, cancellationToken);
-                            compressedSize = uploadMs.Length;
+                            // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
+                            var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
+                            await using (var writeStream    = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: cancellationToken))
+                            {
+                                var             countingStream = new CountingStream(writeStream);
+                                await using var encStream      = _encryption.WrapForEncryption(countingStream);
+                                await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
+                                await using (var fs            = File.OpenRead(sealed_.TarFilePath))
+                                    await fs.CopyToAsync(gzipStream, cancellationToken);
+
+                                // Flush gzip + encryption layers before closing write stream
+                                await gzipStream.DisposeAsync();
+                                await encStream.DisposeAsync();
+                                compressedSize = countingStream.BytesWritten;
+                            } // writeStream disposed here → commits the upload
+
+                            await _blobs.SetTierAsync(blobName, opts.UploadTier, cancellationToken);
 
                             var uploadMeta = new Dictionary<string, string>
                             {
-                                [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeTar,
-                                [BlobMetadataKeys.ChunkSize]     = compressedSize.ToString(),
+                                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
+                                [BlobMetadataKeys.ChunkSize] = compressedSize.ToString(),
                             };
-
-                            await _blobs.UploadAsync(
-                                blobName: blobName, 
-                                content: uploadMs, 
-                                metadata: uploadMeta,
-                                tier: opts.UploadTier,
-                                contentType: _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext,
-                                overwrite: meta.Exists, 
-                                cancellationToken: cancellationToken);
+                            await _blobs.SetMetadataAsync(blobName, uploadMeta, cancellationToken);
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
@@ -487,11 +501,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 await _blobs.UploadAsync(
                                     blobName: thinBlobName,
                                     content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sealed_.TarHash)),
-                                    metadata: thinMeta,
+                                    metadata: new Dictionary<string, string>(),
                                     tier: BlobTier.Cool,
                                     contentType: ContentTypes.Thin,
                                     overwrite: thinMeta2.Exists,
                                     cancellationToken: cancellationToken);
+                                await _blobs.SetMetadataAsync(thinBlobName, thinMeta, cancellationToken);
                             }
 
                             _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));

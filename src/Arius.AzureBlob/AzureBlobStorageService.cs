@@ -56,7 +56,6 @@ public sealed class AzureBlobStorageService : IBlobStorageService
     public async Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        BlobTier          tier              = BlobTier.Hot,
         bool              overwrite         = false,
         CancellationToken cancellationToken = default)
     {
@@ -69,12 +68,7 @@ public sealed class AzureBlobStorageService : IBlobStorageService
                 : null,
         };
 
-        var writeStream = await blobClient.OpenWriteAsync(overwrite, openWriteOptions, cancellationToken);
-
-        // BlockBlobOpenWriteOptions does not support AccessTier; wrap to set tier on close.
-        return tier == BlobTier.Hot
-            ? writeStream
-            : new TierSettingStream(writeStream, blobClient, ToAzureTier(tier));
+        return await blobClient.OpenWriteAsync(overwrite, openWriteOptions, cancellationToken);
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
@@ -143,6 +137,15 @@ public sealed class AzureBlobStorageService : IBlobStorageService
             cancellationToken: cancellationToken);
     }
 
+    public async Task SetTierAsync(
+        string            blobName,
+        BlobTier          tier,
+        CancellationToken cancellationToken = default)
+    {
+        var blobClient = _container.GetBlobClient(blobName);
+        await blobClient.SetAccessTierAsync(ToAzureTier(tier), cancellationToken: cancellationToken);
+    }
+
     // ── Copy (rehydration) ────────────────────────────────────────────────────
 
     public async Task CopyAsync(
@@ -203,61 +206,4 @@ public sealed class AzureBlobStorageService : IBlobStorageService
         CoreRehydratePriority.High     => AzureRehydratePriority.High,
         _                              => throw new ArgumentOutOfRangeException(nameof(p), p, null)
     };
-}
-
-// ── Tier-setting stream wrapper ────────────────────────────────────────────────
-
-/// <summary>
-/// Wraps an Azure write stream and calls <c>SetAccessTierAsync</c> on the blob
-/// after the stream is disposed (i.e., after the upload block list is committed).
-/// This is needed because <see cref="BlockBlobOpenWriteOptions"/> does not expose
-/// an AccessTier property.
-/// </summary>
-file sealed class TierSettingStream(Stream inner, BlockBlobClient blobClient, AccessTier tier)
-    : Stream
-{
-    private bool _disposed;
-
-    public override bool CanWrite => inner.CanWrite;
-    public override bool CanRead  => false;
-    public override bool CanSeek  => false;
-
-    public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
-    public override void Write(ReadOnlySpan<byte> buffer)            => inner.Write(buffer);
-    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
-        => inner.WriteAsync(buffer, offset, count, ct);
-    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
-        => inner.WriteAsync(buffer, ct);
-    public override void Flush()                      => inner.Flush();
-    public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
-
-    protected override void Dispose(bool disposing)
-    {
-        if (!_disposed && disposing)
-        {
-            // Commit the block list by disposing the inner stream
-            inner.Dispose();
-            // Set the tier synchronously (best-effort; callers in async context should use DisposeAsync)
-            blobClient.SetAccessTier(tier);
-            _disposed = true;
-        }
-        base.Dispose(disposing);
-    }
-
-    public override async ValueTask DisposeAsync()
-    {
-        if (!_disposed)
-        {
-            await inner.DisposeAsync();
-            await blobClient.SetAccessTierAsync(tier);
-            _disposed = true;
-        }
-        await base.DisposeAsync();
-    }
-
-    public override long Length   => throw new NotSupportedException();
-    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-    public override int  Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin)       => throw new NotSupportedException();
-    public override void SetLength(long value)                      => throw new NotSupportedException();
 }

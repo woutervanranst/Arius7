@@ -1,27 +1,27 @@
 ## 1. Stream Wrappers
 
-- [ ] 1.1 Create `ProgressStream` class: read-mode wrapper reporting `IProgress<long>` on cumulative bytes read
-- [ ] 1.2 Create `CountingStream` class: write-mode wrapper tracking `BytesWritten` property
-- [ ] 1.3 Unit test `ProgressStream` (progress callbacks, zero-length file, total matches file length)
-- [ ] 1.4 Unit test `CountingStream` (BytesWritten accuracy, readable after dispose)
+- [x] 1.1 Create `ProgressStream` class: read-mode wrapper reporting `IProgress<long>` on cumulative bytes read
+- [x] 1.2 Create `CountingStream` class: write-mode wrapper tracking `BytesWritten` property
+- [x] 1.3 Unit test `ProgressStream` (progress callbacks, zero-length file, total matches file length)
+- [x] 1.4 Unit test `CountingStream` (BytesWritten accuracy, readable after dispose)
 
 ## 2. Blob Storage Abstraction
 
-- [ ] 2.1 Add `OpenWriteAsync(string path, string contentType, AccessTier tier)` returning `Stream` to `IBlobStorageService`
-- [ ] 2.2 Implement `OpenWriteAsync` in `AzureBlobStorageService` using `BlockBlobClient.OpenWriteAsync()`
-- [ ] 2.3 Remove `AriusComplete` from `BlobConstants` metadata keys
-- [ ] 2.4 Update HEAD check logic: use `arius-type` presence as sole crash-recovery signal (remove `arius-complete` check)
+- [x] 2.1 Add `OpenWriteAsync(string path, string contentType, AccessTier tier)` returning `Stream` to `IBlobStorageService`
+- [x] 2.2 Implement `OpenWriteAsync` in `AzureBlobStorageService` using `BlockBlobClient.OpenWriteAsync()`
+- [x] 2.3 Remove `AriusComplete` from `BlobConstants` metadata keys
+- [x] 2.4 Update HEAD check logic: use `arius-type` presence as sole crash-recovery signal (remove `arius-complete` check)
 
 ## 3. Streaming Enumeration
 
-- [ ] 3.1 Rewrite `LocalFileEnumerator.Enumerate()` to single-pass streaming with `File.Exists()` pairing (no dictionaries, no state)
-- [ ] 3.2 Remove `.ToList()` call on enumeration result in `ArchivePipelineHandler`
-- [ ] 3.3 Unit test single-pass enumeration: binary+pointer, binary-only, pointer-only, pointer-with-binary-skipped
+- [x] 3.1 Rewrite `LocalFileEnumerator.Enumerate()` to single-pass streaming with `File.Exists()` pairing (no dictionaries, no state)
+- [x] 3.2 Remove `.ToList()` call on enumeration result in `ArchivePipelineHandler`
+- [x] 3.3 Unit test single-pass enumeration: binary+pointer, binary-only, pointer-only, pointer-with-binary-skipped
 
 ## 4. Streaming Upload Chain
 
-- [ ] 4.1 Replace `GzipEncryptToMemoryAsync` with streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
-- [ ] 4.2 Add `SetMetadataAsync` call after stream close for large file metadata (`arius-type`, `original-size`, `chunk-size` from `CountingStream.BytesWritten`)
+- [x] 4.1 Replace `GzipEncryptToMemoryAsync` with streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
+- [x] 4.2 Add `SetMetadataAsync` call after stream close for large file metadata (`arius-type`, `original-size`, `chunk-size` from `CountingStream.BytesWritten`)
 - [ ] 4.3 Update tar upload to use the same streaming chain: `FileStream(tarTempFile) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
 - [ ] 4.4 Update thin chunk creation to write metadata via `SetMetadataAsync` (remove `arius-complete`)
 

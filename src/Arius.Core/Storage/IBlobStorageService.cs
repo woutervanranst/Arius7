@@ -66,7 +66,6 @@ public interface IBlobStorageService
     Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        BlobTier          tier              = BlobTier.Hot,
         bool              overwrite         = false,
         CancellationToken cancellationToken = default);
 
@@ -108,6 +107,14 @@ public interface IBlobStorageService
         string                              blobName,
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken                   cancellationToken = default);
+
+    /// <summary>
+    /// Sets the access tier of an existing blob.
+    /// </summary>
+    Task SetTierAsync(
+        string            blobName,
+        BlobTier          tier,
+        CancellationToken cancellationToken = default);
 
     // ── Copy (rehydration) ────────────────────────────────────────────────────
 

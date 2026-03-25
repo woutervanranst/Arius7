@@ -37,9 +37,8 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var meta = new Dictionary<string, string>
         {
-            [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeLarge,
-            [BlobMetadataKeys.AriusComplete] = "true",
-            [BlobMetadataKeys.OriginalSize]  = "1234"
+            [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
+            [BlobMetadataKeys.OriginalSize] = "1234"
         };
 
         await svc.UploadAsync(BlobPaths.Chunk("meta-test"), new MemoryStream([1, 2, 3]), meta, BlobTier.Hot);
@@ -49,7 +48,6 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         result.Exists.ShouldBeTrue();
         result.ContentLength.ShouldBe(3);
         result.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
-        result.Metadata[BlobMetadataKeys.AriusComplete].ShouldBe("true");
         result.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("1234");
     }
 
@@ -110,10 +108,10 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
             new Dictionary<string, string> { ["initial"] = "value" }, BlobTier.Hot);
 
         await svc.SetMetadataAsync("chunks/setmeta",
-            new Dictionary<string, string> { [BlobMetadataKeys.AriusComplete] = "true" });
+            new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge });
 
         var meta = await svc.GetMetadataAsync("chunks/setmeta");
-        meta.Metadata[BlobMetadataKeys.AriusComplete].ShouldBe("true");
+        meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
         meta.Metadata.ContainsKey("initial").ShouldBeFalse(); // replaced, not merged
         meta.ContentLength.ShouldBe(3);
     }

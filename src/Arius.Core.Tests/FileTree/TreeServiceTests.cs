@@ -308,13 +308,16 @@ public class TreeBuilderTests
         public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken ct = default) =>
             Task.CompletedTask;
 
+        public Task SetTierAsync(string blobName, Storage.BlobTier tier, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
         public Task CopyAsync(string src, string dst, Storage.BlobTier tier, Storage.RehydratePriority? priority = null, CancellationToken ct = default) =>
             Task.CompletedTask;
 
         public Task DeleteAsync(string blobName, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, Storage.BlobTier tier = Storage.BlobTier.Hot,
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
             bool overwrite = false, CancellationToken ct = default) =>
             Task.FromResult<Stream>(new MemoryStream());
     }
