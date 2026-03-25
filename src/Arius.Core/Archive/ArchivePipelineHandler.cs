@@ -647,34 +647,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Reads <paramref name="source"/>, gzips it, encrypts it via <paramref name="encryption"/>,
-    /// and returns the result as a rewound <see cref="MemoryStream"/>.
-    ///
-    /// Handles the plaintext case where <c>WrapForEncryption</c> returns the same stream
-    /// instance (which must not be disposed prematurely).
-    /// </summary>
-    private static async Task<MemoryStream> GzipEncryptToMemoryAsync(Stream source, IEncryptionService encryption, CancellationToken ct)
-    {
-        var ms           = new MemoryStream();
-        var encWrapper   = encryption.WrapForEncryption(ms);
-        var isSameStream = ReferenceEquals(encWrapper, ms);
-
-        await using (var gzip = new GZipStream(encWrapper, CompressionLevel.Optimal, leaveOpen: true))
-            await source.CopyToAsync(gzip, ct);
-
-        // Flush the encryption layer (if distinct) before rewinding
-        if (!isSameStream)
-            await encWrapper.FlushAsync(ct);
-
-        // Only dispose the wrapper if it's a distinct stream (not ms itself)
-        if (!isSameStream)
-            await encWrapper.DisposeAsync();
-
-        ms.Position = 0;
-        return ms;
-    }
-
     private static async Task WriteManifestEntry(HashedFilePair hashed, string rootDir, ManifestWriter writer, CancellationToken ct)
     {
         var pair = hashed.FilePair;

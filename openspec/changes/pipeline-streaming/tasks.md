@@ -22,8 +22,8 @@
 
 - [x] 4.1 Replace `GzipEncryptToMemoryAsync` with streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
 - [x] 4.2 Add `SetMetadataAsync` call after stream close for large file metadata (`arius-type`, `original-size`, `chunk-size` from `CountingStream.BytesWritten`)
-- [ ] 4.3 Update tar upload to use the same streaming chain: `FileStream(tarTempFile) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
-- [ ] 4.4 Update thin chunk creation to write metadata via `SetMetadataAsync` (remove `arius-complete`)
+- [x] 4.3 Update tar upload to use the same streaming chain: `FileStream(tarTempFile) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync`
+- [x] 4.4 Update thin chunk creation to write metadata via `SetMetadataAsync` (remove `arius-complete`)
 
 ## 5. Dedup and Tar Hash
 
