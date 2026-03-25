@@ -56,4 +56,29 @@ public static class ShardSerializer
         using var reader = new StreamReader(gzipStream);
         return Shard.ReadFrom(reader);
     }
+
+    /// <summary>
+    /// Serializes a <see cref="Shard"/> to a plaintext byte array for local L2 disk cache.
+    /// No compression, no encryption — the file is human-readable.
+    /// </summary>
+    public static byte[] SerializeLocal(Shard shard)
+    {
+        var ms = new MemoryStream();
+        using (var writer = new StreamWriter(ms, leaveOpen: true))
+        {
+            shard.WriteTo(writer);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Deserializes a <see cref="Shard"/> from a plaintext byte array (local L2 disk cache format).
+    /// No decryption, no decompression.
+    /// </summary>
+    public static Shard DeserializeLocal(byte[] data)
+    {
+        var ms = new MemoryStream(data);
+        using var reader = new StreamReader(ms);
+        return Shard.ReadFrom(reader);
+    }
 }

@@ -185,8 +185,8 @@ public sealed class ChunkIndexService : IDisposable
                 overwrite: true,
                 cancellationToken: cancellationToken);
 
-            // Save to L2 disk cache
-            SaveToL2(prefix, bytes);
+            // Save to L2 disk cache (plaintext, no gzip/encryption)
+            SaveToL2(prefix, merged);
 
             // Promote merged shard to L1
             PromoteToL1(prefix, merged, bytes.Length);
@@ -216,10 +216,18 @@ public sealed class ChunkIndexService : IDisposable
         var l2Path = Path.Combine(_l2Dir, prefix);
         if (File.Exists(l2Path))
         {
-            var bytes = await File.ReadAllBytesAsync(l2Path, cancellationToken);
-            var shard = ShardSerializer.Deserialize(bytes, _encryption);
-            PromoteToL1(prefix, shard, bytes.Length);
-            return shard;
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(l2Path, cancellationToken);
+                var shard = ShardSerializer.DeserializeLocal(bytes);
+                PromoteToL1(prefix, shard, bytes.Length);
+                return shard;
+            }
+            catch
+            {
+                // Stale or corrupt L2 file (e.g. old encrypted format) — treat as cache miss and fall through to L3.
+                File.Delete(l2Path);
+            }
         }
 
         // L3 (Azure)
@@ -239,7 +247,7 @@ public sealed class ChunkIndexService : IDisposable
         var downloaded = ms.ToArray();
 
         var loadedShard = ShardSerializer.Deserialize(downloaded, _encryption);
-        SaveToL2(prefix, downloaded);
+        SaveToL2(prefix, loadedShard);
         PromoteToL1(prefix, loadedShard, downloaded.Length);
         return loadedShard;
     }
@@ -276,10 +284,11 @@ public sealed class ChunkIndexService : IDisposable
 
     // ── L2 disk write (task 4.5) ──────────────────────────────────────────────
 
-    private void SaveToL2(string prefix, byte[] data)
+    private void SaveToL2(string prefix, Shard shard)
     {
-        var path = Path.Combine(_l2Dir, prefix);
-        File.WriteAllBytes(path, data);
+        var path  = Path.Combine(_l2Dir, prefix);
+        var bytes = ShardSerializer.SerializeLocal(shard);
+        File.WriteAllBytes(path, bytes);
     }
 
     public void Dispose() { /* future: flush in-progress state */ }
