@@ -385,7 +385,9 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                     async Task SealCurrentTar()
                     {
-                        if (tarWriter is null) return;
+                        if (tarWriter is null) 
+                            return;
+
                         await tarWriter.DisposeAsync();
                         tarStream!.Dispose();
 
@@ -721,11 +723,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
         return ms;
     }
 
-    private static async Task WriteManifestEntry(
-        HashedFilePair hashed,
-        string rootDir,
-        ManifestWriter writer,
-        CancellationToken ct)
+    private static async Task WriteManifestEntry(HashedFilePair hashed, string rootDir, ManifestWriter writer, CancellationToken ct)
     {
         var pair = hashed.FilePair;
 
@@ -751,48 +749,4 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
         await writer.AppendAsync(new ManifestEntry(manifestPath, hashed.ContentHash, created, modified), ct);
     }
-}
-
-/// <summary>
-/// A write-through stream wrapper that counts bytes written.
-/// Used to measure compressed size without a double-pass.
-/// </summary>
-internal sealed class CountingStream : Stream
-{
-    private readonly MemoryStream _inner = new();
-    public           long         BytesWritten { get; private set; }
-
-    public override bool CanRead  => false;
-    public override bool CanSeek  => false;
-    public override bool CanWrite => true;
-    public override long Length   => _inner.Length;
-
-    public override long Position
-    {
-        get => _inner.Position;
-        set => _inner.Position = value;
-    }
-
-    public override void Write(byte[] buffer, int offset, int count)
-    {
-        _inner.Write(buffer, offset, count);
-        BytesWritten += count;
-    }
-
-    public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
-    {
-        await _inner.WriteAsync(buffer.AsMemory(offset, count), ct);
-        BytesWritten += count;
-    }
-
-    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
-    {
-        await _inner.WriteAsync(buffer, ct);
-        BytesWritten += buffer.Length;
-    }
-
-    public override void Flush()                                    => _inner.Flush();
-    public override int  Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin)       => throw new NotSupportedException();
-    public override void SetLength(long value)                      => throw new NotSupportedException();
 }
