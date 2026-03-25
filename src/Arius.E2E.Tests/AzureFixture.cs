@@ -1,24 +1,34 @@
 using Arius.AzureBlob;
 using Azure.Storage;
 using Azure.Storage.Blobs;
+using Microsoft.Extensions.Configuration;
 using TUnit.Core.Interfaces;
 
 namespace Arius.E2E.Tests;
 
 /// <summary>
 /// Connects to a real Azure Storage account for E2E testing.
-/// Tests are skipped unless both environment variables are set:
+/// Credentials are read (in order) from environment variables or dotnet user-secrets:
 ///   ARIUS_E2E_ACCOUNT  — storage account name
 ///   ARIUS_E2E_KEY      — storage account key
+///
+/// To set via user-secrets:
+///   dotnet user-secrets set "ARIUS_E2E_ACCOUNT" "..." --project src/Arius.E2E.Tests
+///   dotnet user-secrets set "ARIUS_E2E_KEY"     "..." --project src/Arius.E2E.Tests
 ///
 /// Each test run gets a unique container that is deleted on teardown.
 /// </summary>
 public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
 {
-    public static readonly string? AccountName = Environment.GetEnvironmentVariable("ARIUS_E2E_ACCOUNT");
-    public static readonly string? AccountKey  = Environment.GetEnvironmentVariable("ARIUS_E2E_KEY");
+    private static readonly Microsoft.Extensions.Configuration.IConfiguration _config = new ConfigurationBuilder()
+        .AddEnvironmentVariables()
+        .AddUserSecrets<AzureFixture>()
+        .Build();
 
-    /// <summary>True when both env vars are set and E2E tests should run.</summary>
+    public static readonly string? AccountName = _config["ARIUS_E2E_ACCOUNT"];
+    public static readonly string? AccountKey  = _config["ARIUS_E2E_KEY"];
+
+    /// <summary>True when both credentials are available and E2E tests should run.</summary>
     public static bool IsAvailable => !string.IsNullOrWhiteSpace(AccountName)
                                    && !string.IsNullOrWhiteSpace(AccountKey);
 
