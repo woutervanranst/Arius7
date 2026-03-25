@@ -99,6 +99,11 @@ internal sealed class CliHarness
 
 // ── 6.1 Archive command tests ─────────────────────────────────────────────────
 
+// AnsiConsole.Console is a static property; parallel tests that both set up a
+// Recorder would race on that shared state, causing "Collection was modified"
+// during Recorder.ExportText().  Serialise all three command-test classes under
+// one key so they never overlap.
+[NotInParallel("AnsiConsoleRecorder")]
 public class ArchiveCommandTests
 {
     [Test]
@@ -158,6 +163,7 @@ public class ArchiveCommandTests
 
 // ── 6.2 Restore command tests ─────────────────────────────────────────────────
 
+[NotInParallel("AnsiConsoleRecorder")]
 public class RestoreCommandTests
 {
     [Test]
@@ -218,6 +224,7 @@ public class RestoreCommandTests
 
 // ── 6.3 Ls command tests ──────────────────────────────────────────────────────
 
+[NotInParallel("AnsiConsoleRecorder")]
 public class LsCommandTests
 {
     [Test]
