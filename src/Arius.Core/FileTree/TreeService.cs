@@ -190,7 +190,7 @@ public sealed class TreeBuilder
         {
             var filePath = manifestEntry.Path;  // e.g., "photos/2024/june/a.jpg"
             var dirPath  = GetDirectoryPath(filePath);  // e.g., "photos/2024/june"
-            var name     = System.IO.Path.GetFileName(filePath);
+            var name     = Path.GetFileName(filePath);
 
             if (!dirEntries.TryGetValue(dirPath, out var list))
                 dirEntries[dirPath] = list = new List<TreeEntry>();

@@ -100,7 +100,7 @@ public sealed class LsHandler
                 rawEntries = rawEntries
                     .Where(e =>
                     {
-                        var name = System.IO.Path.GetFileName(e.Path);
+                        var name = Path.GetFileName(e.Path);
                         return name.Contains(filter, StringComparison.OrdinalIgnoreCase);
                     })
                     .ToList();

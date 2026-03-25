@@ -69,7 +69,7 @@ internal sealed class CliHarness
             .Returns(new LsResult
             {
                 Success = true,
-                Entries = Array.Empty<Arius.Core.Ls.LsEntry>(),
+                Entries = Array.Empty<LsEntry>(),
             });
 
         ArchiveHandler = archiveHandler;
@@ -113,7 +113,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Arius.Core.Storage.BlobTier.Hot);
+        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Hot);
         cmd.Options.RemoveLocal.ShouldBeTrue();
         cmd.Options.NoPointers.ShouldBeFalse();
     }
@@ -128,7 +128,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Arius.Core.Storage.BlobTier.Archive);
+        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Archive);
         cmd.Options.RemoveLocal.ShouldBeFalse();
         cmd.Options.NoPointers.ShouldBeFalse();
     }

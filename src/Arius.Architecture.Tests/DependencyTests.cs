@@ -15,9 +15,9 @@ public class DependencyTests
 {
     private static readonly ArchUnitNET.Domain.Architecture Architecture = new ArchLoader()
         .LoadAssemblies(
-            typeof(Arius.Core.AssemblyMarker).Assembly,
-            typeof(Arius.AzureBlob.AssemblyMarker).Assembly,
-            typeof(Arius.Cli.AssemblyMarker).Assembly
+            typeof(Core.AssemblyMarker).Assembly,
+            typeof(AzureBlob.AssemblyMarker).Assembly,
+            typeof(Cli.AssemblyMarker).Assembly
         )
         .Build();
 

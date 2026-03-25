@@ -216,7 +216,7 @@ public class PassphraseEncryptionServiceTests
         var combined  = new byte[passBytes.Length + data.Length];
         passBytes.CopyTo(combined, 0);
         data.CopyTo(combined, passBytes.Length);
-        var expected = System.Security.Cryptography.SHA256.HashData(combined);
+        var expected = SHA256.HashData(combined);
 
         svc.ComputeHash(data).ShouldBe(expected);
     }

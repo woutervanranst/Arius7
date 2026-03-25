@@ -135,7 +135,7 @@ public class GoldenFileDecryptionTests
         var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         await using var tarReader = new TarReader(gzipStream, leaveOpen: false);
 
-        System.Formats.Tar.TarEntry? entry;
+        TarEntry? entry;
         while ((entry = await tarReader.GetNextEntryAsync(copyData: true)) is not null)
         {
             entry.DataStream.ShouldNotBeNull();

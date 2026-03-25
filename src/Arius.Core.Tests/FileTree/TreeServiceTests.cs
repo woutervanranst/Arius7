@@ -244,7 +244,7 @@ public class TreeBuilderTests
     private static readonly PlaintextPassthroughService s_enc = new();
 
     // Minimal stub IBlobStorageService that records uploads
-    private sealed class FakeBlobService : Arius.Core.Storage.IBlobStorageService
+    private sealed class FakeBlobService : Storage.IBlobStorageService
     {
         public readonly HashSet<string> Uploaded = new();
         public readonly HashSet<string> HeadChecked = new();
