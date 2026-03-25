@@ -94,8 +94,7 @@ internal sealed class CliHarness
     /// <summary>
     /// Invokes the CLI with the given arguments and returns the exit code.
     /// </summary>
-    public async Task<int> InvokeAsync(string args) =>
-        await _rootCommand.Parse(args).InvokeAsync();
+    public async Task<int> InvokeAsync(string args) => await _rootCommand.Parse(args).InvokeAsync();
 }
 
 // ── 6.1 Archive command tests ─────────────────────────────────────────────────
@@ -106,8 +105,7 @@ public class ArchiveCommandTests
     public async Task Archive_AllOptions_ParsedCorrectly()
     {
         var harness = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "archive /data -a acct -k key -c ctr -t Hot --remove-local");
+        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr -t Hot --remove-local");
 
         exitCode.ShouldBe(0);
 
@@ -137,8 +135,7 @@ public class ArchiveCommandTests
     public async Task Archive_RemoveLocalPlusNoPointers_ReturnsExitCode1()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "archive /data -a acct -k key -c ctr --remove-local --no-pointers");
+        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr --remove-local --no-pointers");
 
         exitCode.ShouldBe(1);
         // Handler must NOT have been called
@@ -167,8 +164,7 @@ public class RestoreCommandTests
     public async Task Restore_WithVersion_ParsedCorrectly()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "restore /data -a acct -k key -c ctr -v 2026-03-21T140000.000Z");
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr -v 2026-03-21T140000.000Z");
 
         exitCode.ShouldBe(0);
 
@@ -196,8 +192,7 @@ public class RestoreCommandTests
     public async Task Restore_LongVersionAlias_ParsedCorrectly()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "restore /data -a acct -k key -c ctr --version 2026-01-01");
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr --version 2026-01-01");
 
         exitCode.ShouldBe(0);
 
@@ -210,8 +205,7 @@ public class RestoreCommandTests
     public async Task Restore_OverwriteAndNoPointers_ParsedCorrectly()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "restore /data -a acct -k key -c ctr --overwrite --no-pointers");
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr --overwrite --no-pointers");
 
         exitCode.ShouldBe(0);
 
@@ -230,8 +224,7 @@ public class LsCommandTests
     public async Task Ls_AllFilters_ParsedCorrectly()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "ls -a acct -k key -c ctr -v 2026-01-01 --prefix docs/ -f .pdf");
+        var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr -v 2026-01-01 --prefix docs/ -f .pdf");
 
         exitCode.ShouldBe(0);
 
@@ -261,8 +254,7 @@ public class LsCommandTests
     public async Task Ls_MockHandlerCaptures_PrefixAndFilter()
     {
         var harness  = new CliHarness();
-        var exitCode = await harness.InvokeAsync(
-            "ls -a acct -k key -c ctr --prefix photos/ -f .jpg");
+        var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr --prefix photos/ -f .jpg");
 
         exitCode.ShouldBe(0);
 
