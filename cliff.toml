@@ -1,0 +1,38 @@
+[changelog]
+header = ""
+body = """
+{% if version %}\
+## What's Changed in {{ version | trim_start_matches(pat="v") }}
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}\
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_preprocessors = [
+  { pattern = "Merge pull request.*", replace = "" },
+]
+commit_parsers = [
+  { message = "^feat", group = "🚀 Features" },
+  { message = "^fix", group = "🐛 Bug Fixes" },
+  { message = "^perf", group = "⚡ Performance" },
+  { message = "^refactor", group = "🔨 Refactoring" },
+  { message = "^test", group = "🧪 Tests" },
+  { message = "^style", group = "🎨 Styling" },
+  { message = "^revert", group = "⏪ Reverts" },
+  { message = "^docs|^doc", skip = true },
+  { message = "^chore|^ci|^build", skip = true },
+]
+filter_commits = true
+tag_pattern = "v[0-9].*"
+topo_order = false
+sort_commits = "oldest"
