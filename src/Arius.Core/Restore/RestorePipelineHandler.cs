@@ -196,9 +196,20 @@ public sealed class RestorePipelineHandler
                 // Check chunks-rehydrated/ first
                 var rehydratedName = BlobPaths.ChunkRehydrated(chunkHash);
                 var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedName, cancellationToken);
+
                 if (rehydratedMeta.Exists)
                 {
-                    rehydrated.Add(chunkHash);
+                    if (rehydratedMeta.Tier != BlobTier.Archive)
+                    {
+                        // Copy completed — blob is ready to download (Hot/Cool/Cold).
+                        rehydrated.Add(chunkHash);
+                    }
+                    else
+                    {
+                        // Copy is still in progress: Azure creates the destination in Archive
+                        // tier while the copy is pending. The blob is not yet downloadable.
+                        rehydrationPending.Add(chunkHash);
+                    }
                     continue;
                 }
 
@@ -320,11 +331,14 @@ public sealed class RestorePipelineHandler
                 }
             }
 
-            // ── Step 8: Phase 2 — kick off rehydration (tasks 10.8, 10.9) ────────
+            // ── Step 8: Phase 2 — kick off rehydration (task 10.8) ───────────────
 
-            // Task 10.9: also re-request chunks that are still pending from a previous run.
-            var chunksToRequest = needsRehydration.Concat(rehydrationPending).ToList();
-            int chunksToRehydrate = chunksToRequest.Count;
+            // Only request rehydration for chunks that have NOT yet been requested.
+            // Chunks in rehydrationPending already have a copy in progress; re-requesting
+            // would throw BlobArchived 409 from Azure because StartCopyFromUri is not
+            // permitted on an archived blob that already has a pending copy.
+            var chunksToRequest = needsRehydration.ToList();
+            int chunksToRehydrate = chunksToRequest.Count + rehydrationPending.Count;
 
             if (chunksToRehydrate > 0)
             {

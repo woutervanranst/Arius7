@@ -106,7 +106,7 @@ public sealed class AzureBlobStorageService : IBlobStorageService
                 Exists        = true,
                 Tier          = FromAzureTier(p.AccessTier),
                 ContentLength = p.ContentLength,
-                IsRehydrating = p.ArchiveStatus is "rehydrate-pending-to-hot" or "rehydrate-pending-to-cool",
+                IsRehydrating = p.ArchiveStatus is "rehydrate-pending-to-hot" or "rehydrate-pending-to-cool" or "rehydrate-pending-to-cold",
                 Metadata      = (IReadOnlyDictionary<string, string>)p.Metadata
             };
         }
