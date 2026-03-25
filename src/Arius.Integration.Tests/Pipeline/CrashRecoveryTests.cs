@@ -49,9 +49,14 @@ internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAf
     public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default)
         => inner.SetTierAsync(blobName, tier, cancellationToken);
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
-        bool overwrite = false, CancellationToken cancellationToken = default)
-        => inner.OpenWriteAsync(blobName, contentType, overwrite, cancellationToken);
+    public async Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
+        bool throwOnExists = false, CancellationToken cancellationToken = default)
+    {
+        var count = Interlocked.Increment(ref _uploadCount);
+        if (count > throwAfterN)
+            throw new IOException($"Fault-injected failure on open-write #{count}");
+        return await inner.OpenWriteAsync(blobName, contentType, throwOnExists, cancellationToken);
+    }
 
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)

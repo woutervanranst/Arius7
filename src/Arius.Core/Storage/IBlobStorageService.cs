@@ -1,6 +1,13 @@
 namespace Arius.Core.Storage;
 
 /// <summary>
+/// Thrown by <see cref="IBlobStorageService.OpenWriteAsync"/> when
+/// <c>throwOnExists = true</c> and the target blob already exists.
+/// </summary>
+public sealed class BlobAlreadyExistsException(string blobName)
+    : Exception($"Blob '{blobName}' already exists in storage.");
+
+/// <summary>
 /// Blob tier for uploaded content.
 /// Maps to Azure access tiers; other backends may map these to equivalent concepts.
 /// </summary>
@@ -62,11 +69,17 @@ public interface IBlobStorageService
     /// Opens a writable <see cref="Stream"/> for the blob at <paramref name="blobName"/>.
     /// Data written to the returned stream is uploaded directly to the backing store.
     /// The caller must dispose the stream to complete the upload.
+    /// <para>
+    /// When <paramref name="throwOnExists"/> is <c>true</c>, throws
+    /// <see cref="BlobAlreadyExistsException"/> if the blob already exists, allowing the caller
+    /// to inspect the existing blob and decide whether to skip or overwrite (crash recovery).
+    /// When <c>false</c>, any existing blob is overwritten unconditionally.
+    /// </para>
     /// </summary>
     Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        bool              overwrite         = false,
+        bool              throwOnExists     = false,
         CancellationToken cancellationToken = default);
 
     // ── Download ──────────────────────────────────────────────────────────────

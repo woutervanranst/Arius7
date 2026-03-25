@@ -260,22 +260,39 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     await _mediator.Publish(new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), ct);
 
                     var blobName = BlobPaths.Chunk(upload.HashedPair.ContentHash);
-                    var meta     = await _blobs.GetMetadataAsync(blobName, ct);
+                    var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                    var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
 
-                    long compressedSize;
+                    long    compressedSize = 0;
+                    bool    needsUpload    = true;
+                    Stream? writeStream    = null;
 
-                    if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                    // Optimistic write: throw if blob already exists.
+                    // On conflict, inspect the blob and decide whether to skip (fully uploaded)
+                    // or overwrite (partially uploaded crash recovery).
+                    try
                     {
-                        // Crash recovery: already uploaded and metadata written (task 9.1 / 9.3)
-                        compressedSize = meta.ContentLength ?? 0;
+                        writeStream = await _blobs.OpenWriteAsync(blobName, contentType, throwOnExists: true, cancellationToken: ct);
                     }
-                    else
+                    catch (BlobAlreadyExistsException)
                     {
-                        var fullPath    = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-                        var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
+                        var existingMeta = await _blobs.GetMetadataAsync(blobName, ct);
+                        if (existingMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                        {
+                            // Fully uploaded previously (crash after metadata write) — skip
+                            compressedSize = existingMeta.ContentLength ?? 0;
+                            needsUpload    = false;
+                        }
+                        else
+                        {
+                            // Partially uploaded blob (crashed mid-stream) — overwrite
+                            writeStream = await _blobs.OpenWriteAsync(blobName, contentType, throwOnExists: false, cancellationToken: ct);
+                        }
+                    }
 
-                        // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
+                    if (needsUpload)
+                    {
+                        await using (writeStream!)
                         {
                             var             countingStream = new CountingStream(writeStream);
                             await using var encStream      = _encryption.WrapForEncryption(countingStream);
@@ -411,19 +428,38 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     {
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
-                        var  blobName = BlobPaths.Chunk(sealed_.TarHash);
-                        var  meta     = await _blobs.GetMetadataAsync(blobName, ct);
-                        long compressedSize;
+                        var  blobName    = BlobPaths.Chunk(sealed_.TarHash);
+                        var  contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
 
-                        if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                        long    compressedSize = 0;
+                        bool    needsUpload    = true;
+                        Stream? writeStream    = null;
+
+                        // Optimistic write: throw if blob already exists.
+                        try
                         {
-                            compressedSize = meta.ContentLength ?? 0;
+                            writeStream = await _blobs.OpenWriteAsync(blobName, contentType, throwOnExists: true, cancellationToken: ct);
                         }
-                        else
+                        catch (BlobAlreadyExistsException)
+                        {
+                            var existingMeta = await _blobs.GetMetadataAsync(blobName, ct);
+                            if (existingMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                            {
+                                // Fully uploaded previously (crash after metadata write) — skip
+                                compressedSize = existingMeta.ContentLength ?? 0;
+                                needsUpload    = false;
+                            }
+                            else
+                            {
+                                // Partially uploaded blob (crashed mid-stream) — overwrite
+                                writeStream = await _blobs.OpenWriteAsync(blobName, contentType, throwOnExists: false, cancellationToken: ct);
+                            }
+                        }
+
+                        if (needsUpload)
                         {
                             // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                            var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
-                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
+                            await using (writeStream!)
                             {
                                 var             countingStream = new CountingStream(writeStream);
                                 await using var encStream      = _encryption.WrapForEncryption(countingStream);

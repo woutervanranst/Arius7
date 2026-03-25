@@ -56,7 +56,7 @@ public sealed class AzureBlobStorageService : IBlobStorageService
     public async Task<Stream> OpenWriteAsync(
         string            blobName,
         string?           contentType       = null,
-        bool              overwrite         = false,
+        bool              throwOnExists     = false,
         CancellationToken cancellationToken = default)
     {
         var blobClient = _container.GetBlockBlobClient(blobName);
@@ -66,9 +66,24 @@ public sealed class AzureBlobStorageService : IBlobStorageService
             HttpHeaders = contentType is not null
                 ? new BlobHttpHeaders { ContentType = contentType }
                 : null,
+            // NOTE: the Azure SDK only supports OpenWriteAsync with overwrite: true.
+            // To simulate throw-on-exists we set IfNoneMatch = * so the service returns
+            // 409/BlobAlreadyExists when the blob already exists, as per
+            // https://github.com/Azure/azure-sdk-for-net/issues/24831
+            OpenConditions = throwOnExists
+                ? new BlobRequestConditions { IfNoneMatch = ETag.All }
+                : null,
         };
 
-        return await blobClient.OpenWriteAsync(overwrite, openWriteOptions, cancellationToken);
+        try
+        {
+            return await blobClient.OpenWriteAsync(overwrite: true, openWriteOptions, cancellationToken);
+        }
+        catch (RequestFailedException e) when (throwOnExists && e.Status == 409
+            && e.ErrorCode is "BlobAlreadyExists" or "BlobArchived")
+        {
+            throw new BlobAlreadyExistsException(blobName);
+        }
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
