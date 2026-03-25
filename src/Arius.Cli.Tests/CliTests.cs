@@ -83,6 +83,7 @@ internal sealed class CliHarness
 
             var services = new ServiceCollection();
             services.AddMediator();
+            services.AddSingleton<ProgressState>();
             // Override all three handlers with mocks
             services.AddSingleton(archiveHandler);
             services.AddSingleton(restoreHandler);

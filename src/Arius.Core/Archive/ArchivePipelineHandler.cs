@@ -159,7 +159,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                 new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
                 async (pair, ct) =>
                 {
-                    await _mediator.Publish(new FileHashingEvent(pair.RelativePath), ct);
+                    var fullBinaryPath = pair.BinaryExists
+                        ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
+                        : null;
+                    var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
+
+                    await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
                     string contentHash;
                     if (pair is { BinaryExists: false, PointerHash: not null })
@@ -169,8 +174,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     }
                     else if (pair.BinaryExists)
                     {
-                        var fullPath = Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-                        await using var fs        = File.OpenRead(fullPath);
+                        await using var fs        = File.OpenRead(fullBinaryPath!);
                         var             hashBytes = await _encryption.ComputeHashAsync(fs, ct);
                         contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                     }
@@ -183,9 +187,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                     await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
 
-                    var fileSize = pair.BinaryExists
-                        ? new FileInfo(Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))).Length
-                        : 0;
                     _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash[..8], fileSize.Bytes().Humanize());
 
                     await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, opts.RootDirectory), ct);

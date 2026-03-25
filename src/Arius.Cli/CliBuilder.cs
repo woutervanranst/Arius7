@@ -187,19 +187,42 @@ public static class CliBuilder
                 ArchiveResult? result = null;
                 if (AnsiConsole.Console.Profile.Capabilities.Interactive)
                 {
+                    var progress = services.GetRequiredService<ProgressState>();
+
                     await AnsiConsole.Progress()
                         .AutoClear(false)
+                        .HideCompleted(false)
                         .Columns(
                             new TaskDescriptionColumn(),
                             new ProgressBarColumn(),
                             new PercentageColumn(),
+                            new RemainingTimeColumn(),
                             new SpinnerColumn())
                         .StartAsync(async ctx =>
                         {
-                            var overallTask = ctx.AddTask("[green]Archiving[/]");
-                            overallTask.IsIndeterminate = true;
-                            result                      = await mediator.Send(new ArchiveCommand(opts), ct);
-                            overallTask.Value           = overallTask.MaxValue;
+                            var scanTask    = ctx.AddTask("[grey]Scanning [/]");
+                            var hashTask    = ctx.AddTask("[grey]Hashing  [/]");
+                            var uploadTask  = ctx.AddTask("[grey]Uploading[/]");
+
+                            scanTask.IsIndeterminate   = true;
+                            hashTask.IsIndeterminate   = true;
+                            uploadTask.IsIndeterminate = true;
+
+                            // Run the archive pipeline concurrently with the display poll loop
+                            var archiveTask = mediator.Send(new ArchiveCommand(opts), ct)
+                                .AsTask()
+                                .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
+                                    CancellationToken.None);
+
+                            while (!archiveTask.IsCompleted)
+                            {
+                                await Task.Delay(100, ct).ConfigureAwait(false);
+                                UpdateArchiveTasks(progress, scanTask, hashTask, uploadTask);
+                            }
+
+                            await archiveTask;
+                            // Final update
+                            UpdateArchiveTasks(progress, scanTask, hashTask, uploadTask);
                         });
                 }
                 else
@@ -391,11 +414,35 @@ public static class CliBuilder
             RestoreResult? result = null;
             if (AnsiConsole.Console.Profile.Capabilities.Interactive)
             {
-                await AnsiConsole.Status()
-                    .StartAsync("Restoring...", async ctx =>
+                var progress = services.GetRequiredService<ProgressState>();
+
+                await AnsiConsole.Progress()
+                    .AutoClear(false)
+                    .HideCompleted(false)
+                    .Columns(
+                        new TaskDescriptionColumn(),
+                        new ProgressBarColumn(),
+                        new PercentageColumn(),
+                        new RemainingTimeColumn(),
+                        new SpinnerColumn())
+                    .StartAsync(async ctx =>
                     {
-                        ctx.Spinner(Spinner.Known.Dots);
-                        result = await mediator.Send(new RestoreCommand(opts), ct);
+                        var restoreTask = ctx.AddTask("[grey]Restoring[/]");
+                        restoreTask.IsIndeterminate = true;
+
+                        var pipelineTask = mediator.Send(new RestoreCommand(opts), ct)
+                            .AsTask()
+                            .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
+                                CancellationToken.None);
+
+                        while (!pipelineTask.IsCompleted)
+                        {
+                            await Task.Delay(100, ct).ConfigureAwait(false);
+                            UpdateRestoreTask(progress, restoreTask);
+                        }
+
+                        await pipelineTask;
+                        UpdateRestoreTask(progress, restoreTask);
                     });
             }
             else
@@ -410,7 +457,8 @@ public static class CliBuilder
             }
 
             AnsiConsole.MarkupLine($"[green]Restore complete.[/] " +
-                $"Restored: {result.FilesRestored}, Skipped: {result.FilesSkipped}");
+                $"{result.FilesRestored} files restored, {result.FilesSkipped} files skipped, " +
+                $"{result.ChunksPendingRehydration} files pending rehydration");
 
             if (result.ChunksPendingRehydration > 0)
             {
@@ -689,8 +737,111 @@ public static class CliBuilder
         return cmd;
     }
 
-    // ── Resolution helpers ────────────────────────────────────────────────────
+    // ── Progress display helpers ──────────────────────────────────────────────
 
+    /// <summary>
+    /// Polls <see cref="ProgressState"/> and updates the three Spectre.Console progress tasks
+    /// for the archive command (Scanning, Hashing, Uploading).
+    /// </summary>
+    private static void UpdateArchiveTasks(
+        ProgressState    state,
+        ProgressTask     scanTask,
+        ProgressTask     hashTask,
+        ProgressTask     uploadTask)
+    {
+        // ── Scanning task ────────────────────────────────────────────────────
+        var totalFiles = state.TotalFiles;
+        if (totalFiles.HasValue)
+        {
+            if (scanTask.IsIndeterminate)
+            {
+                scanTask.IsIndeterminate = false;
+                scanTask.MaxValue        = totalFiles.Value;
+                scanTask.Description     = "[green]Scanning [/]";
+            }
+            scanTask.Value = totalFiles.Value;
+        }
+
+        // ── Hashing task ─────────────────────────────────────────────────────
+        var filesHashed = state.FilesHashed;
+        if (totalFiles.HasValue && totalFiles.Value > 0)
+        {
+            if (hashTask.IsIndeterminate)
+            {
+                hashTask.IsIndeterminate = false;
+                hashTask.MaxValue        = totalFiles.Value;
+                hashTask.Description     = "[green]Hashing  [/]";
+            }
+            hashTask.Value    = filesHashed;
+            hashTask.MaxValue = totalFiles.Value;
+        }
+        else
+        {
+            hashTask.Value = filesHashed;
+        }
+
+        // Per-file hash sub-line (show current file being hashed)
+        var currentHashFile = state.CurrentHashFile;
+        if (currentHashFile is not null && state.FilesHashing > 0)
+        {
+            var hashFileSize  = state.CurrentHashFileSize;
+            var hashBytesRead = state.CurrentHashBytesRead;
+            var hashPct       = hashFileSize > 0 ? (double)hashBytesRead / hashFileSize * 100.0 : 0;
+            var shortName     = Path.GetFileName(currentHashFile);
+            hashTask.Description = $"[green]Hashing[/] [dim]{Markup.Escape(shortName)} {hashPct:F0}%[/]";
+        }
+
+        // ── Uploading task ───────────────────────────────────────────────────
+        var chunksUploaded = state.ChunksUploaded;
+        if (uploadTask.IsIndeterminate && chunksUploaded > 0)
+        {
+            uploadTask.IsIndeterminate = false;
+            uploadTask.MaxValue        = 100;
+            uploadTask.Description     = "[green]Uploading[/]";
+        }
+
+        // Per-file upload sub-line
+        var currentUploadFile = state.CurrentUploadFile;
+        if (currentUploadFile is not null && state.ChunksUploading > 0)
+        {
+            var uploadSize     = state.CurrentUploadFileSize;
+            var uploadBytes    = state.CurrentUploadBytesRead;
+            var uploadPct      = uploadSize > 0 ? (double)uploadBytes / uploadSize * 100.0 : 0;
+            var shortUpload    = currentUploadFile.Length > 16 ? currentUploadFile[..16] + ".." : currentUploadFile;
+            uploadTask.Description = $"[green]Uploading[/] [dim]{Markup.Escape(shortUpload)} {uploadPct:F0}% ({chunksUploaded} done)[/]";
+        }
+        else if (!uploadTask.IsIndeterminate)
+        {
+            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded} chunk(s)[/]";
+            // Pulse the upload bar proportionally to hashing progress as a proxy
+            if (totalFiles.HasValue && totalFiles.Value > 0)
+                uploadTask.Value = state.FilesHashed * 100.0 / totalFiles.Value;
+        }
+    }
+
+    /// <summary>
+    /// Polls <see cref="ProgressState"/> and updates the Spectre.Console restore progress task.
+    /// </summary>
+    private static void UpdateRestoreTask(ProgressState state, ProgressTask restoreTask)
+    {
+        var total    = state.RestoreTotalFiles;
+        var restored = state.FilesRestored;
+        var skipped  = state.FilesSkipped;
+        var done     = restored + skipped;
+
+        if (total > 0)
+        {
+            if (restoreTask.IsIndeterminate)
+            {
+                restoreTask.IsIndeterminate = false;
+                restoreTask.MaxValue        = total;
+                restoreTask.Description     = "[green]Restoring[/]";
+            }
+            restoreTask.Value = done;
+        }
+    }
+
+    // ── Resolution helpers ────────────────────────────────────────────────────
     /// <summary>
     /// Resolves account name: CLI flag > ARIUS_ACCOUNT env var.
     /// <summary>
@@ -754,6 +905,7 @@ public static class CliBuilder
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddSerilog(dispose: true));
+        services.AddSingleton<ProgressState>();
 
         var credential          = new StorageSharedKeyCredential(accountName, accountKey);
         var serviceUri          = new Uri($"https://{accountName}.blob.core.windows.net");

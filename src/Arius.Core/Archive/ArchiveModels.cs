@@ -114,7 +114,9 @@ public sealed record ArchiveResult
 public sealed record FileScannedEvent(long TotalFiles) : INotification;
 
 /// <summary>A file started hashing.</summary>
-public sealed record FileHashingEvent(string RelativePath) : INotification;
+/// <param name="RelativePath">Relative path of the file being hashed.</param>
+/// <param name="FileSize">File size in bytes; used as the progress bar denominator.</param>
+public sealed record FileHashingEvent(string RelativePath, long FileSize) : INotification;
 
 /// <summary>A file finished hashing.</summary>
 public sealed record FileHashedEvent(string RelativePath, string ContentHash) : INotification;
