@@ -58,6 +58,18 @@ public interface IBlobStorageService
         bool                                overwrite          = false,
         CancellationToken                   cancellationToken  = default);
 
+    /// <summary>
+    /// Opens a writable <see cref="Stream"/> for the blob at <paramref name="blobName"/>.
+    /// Data written to the returned stream is uploaded directly to the backing store.
+    /// The caller must dispose the stream to complete the upload.
+    /// </summary>
+    Task<Stream> OpenWriteAsync(
+        string            blobName,
+        string?           contentType       = null,
+        BlobTier          tier              = BlobTier.Hot,
+        bool              overwrite         = false,
+        CancellationToken cancellationToken = default);
+
     // ── Download ──────────────────────────────────────────────────────────────
 
     /// <summary>

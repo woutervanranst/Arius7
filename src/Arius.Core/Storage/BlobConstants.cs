@@ -9,9 +9,6 @@ public static class BlobMetadataKeys
     /// <summary>Chunk type: "large", "tar", or "thin".</summary>
     public const string AriusType          = "arius_type";
 
-    /// <summary>Set to "true" once an upload completes successfully. Absence means incomplete.</summary>
-    public const string AriusComplete      = "arius_complete";
-
     /// <summary>Original uncompressed file size in bytes (for large and thin chunks).</summary>
     public const string OriginalSize       = "original_size";
 

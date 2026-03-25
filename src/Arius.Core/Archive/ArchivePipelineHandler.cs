@@ -288,9 +288,9 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                     long compressedSize;
 
-                    if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) && c == "true")
+                    if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
                     {
-                        // Crash recovery: already uploaded (task 9.1 / 9.3)
+                        // Crash recovery: already uploaded and metadata written (task 9.1 / 9.3)
                         compressedSize = meta.ContentLength ?? 0;
                     }
                     else
@@ -305,7 +305,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         var uploadMeta = new Dictionary<string, string>
                         {
                             [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeLarge,
-                            [BlobMetadataKeys.AriusComplete] = "true",
                             [BlobMetadataKeys.OriginalSize]  = upload.FileSize.ToString(),
                             [BlobMetadataKeys.ChunkSize]     = uploadMs.Length.ToString(),
                         };
@@ -433,8 +432,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         var  meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
                         long compressedSize;
 
-                        if (meta.Exists && meta.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out var c) &&
-                            c == "true")
+                        if (meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
                         {
                             compressedSize = meta.ContentLength ?? 0;
                         }
@@ -449,7 +447,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             var uploadMeta = new Dictionary<string, string>
                             {
                                 [BlobMetadataKeys.AriusType]     = BlobMetadataKeys.TypeTar,
-                                [BlobMetadataKeys.AriusComplete] = "true",
                                 [BlobMetadataKeys.ChunkSize]     = compressedSize.ToString(),
                             };
 
@@ -475,13 +472,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             var thinMeta = new Dictionary<string, string>
                             {
                                 [BlobMetadataKeys.AriusType]      = BlobMetadataKeys.TypeThin,
-                                [BlobMetadataKeys.AriusComplete]  = "true",
                                 [BlobMetadataKeys.OriginalSize]   = entry.OriginalSize.ToString(),
                                 [BlobMetadataKeys.CompressedSize] = proportional.ToString(),
                             };
 
                             var thinMeta2 = await _blobs.GetMetadataAsync(thinBlobName, cancellationToken);
-                            if (!thinMeta2.Exists || !thinMeta2.Metadata.TryGetValue(BlobMetadataKeys.AriusComplete, out string? _))
+                            if (!thinMeta2.Exists || !thinMeta2.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
                             {
                                 await _blobs.UploadAsync(
                                     blobName: thinBlobName,

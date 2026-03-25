@@ -46,6 +46,10 @@ internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAf
         CancellationToken cancellationToken = default)
         => inner.SetMetadataAsync(blobName, metadata, cancellationToken);
 
+    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, BlobTier tier = BlobTier.Hot,
+        bool overwrite = false, CancellationToken cancellationToken = default)
+        => inner.OpenWriteAsync(blobName, contentType, tier, overwrite, cancellationToken);
+
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
         => inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);

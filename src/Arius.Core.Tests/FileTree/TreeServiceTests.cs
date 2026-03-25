@@ -313,6 +313,10 @@ public class TreeBuilderTests
 
         public Task DeleteAsync(string blobName, CancellationToken ct = default) =>
             Task.CompletedTask;
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, Storage.BlobTier tier = Storage.BlobTier.Hot,
+            bool overwrite = false, CancellationToken ct = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
     }
 
     [Test]
