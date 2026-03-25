@@ -275,7 +275,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         var contentType = _encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ContentTypes.LargePlaintext;
 
                         // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: ct))
+                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
                         {
                             var             countingStream = new CountingStream(writeStream);
                             await using var encStream      = _encryption.WrapForEncryption(countingStream);
@@ -423,7 +423,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         {
                             // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
                             var contentType = _encryption.IsEncrypted ? ContentTypes.TarEncrypted : ContentTypes.TarPlaintext;
-                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: meta.Exists, cancellationToken: ct))
+                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, overwrite: true, cancellationToken: ct))
                             {
                                 var             countingStream = new CountingStream(writeStream);
                                 await using var encStream      = _encryption.WrapForEncryption(countingStream);
