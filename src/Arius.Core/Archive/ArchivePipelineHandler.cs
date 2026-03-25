@@ -132,13 +132,18 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                 try
                 {
                     var enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
-                    var pairs      = enumerator.Enumerate(opts.RootDirectory).ToList();
-                    Interlocked.Add(ref filesScanned, pairs.Count);
-                    await _mediator.Publish(new FileScannedEvent(pairs.Count), cancellationToken);
-                    _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", pairs.Count);
+                    var pairs      = enumerator.Enumerate(opts.RootDirectory);
+                    long count     = 0;
 
                     foreach (var pair in pairs)
+                    {
+                        count++;
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
+                    }
+
+                    Interlocked.Add(ref filesScanned, count);
+                    await _mediator.Publish(new FileScannedEvent(count), cancellationToken);
+                    _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
                 }
                 finally
                 {

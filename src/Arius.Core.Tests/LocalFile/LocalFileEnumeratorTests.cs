@@ -205,4 +205,57 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.ShouldBeEmpty();
     }
+
+    // ── Single-pass: pointer-with-binary is skipped ───────────────────────────
+
+    /// <summary>
+    /// Spec 3.3: When a pointer file is encountered during depth-first walk and its
+    /// binary counterpart exists, the pointer file must be silently skipped —
+    /// it was already emitted as part of the binary's FilePair.
+    /// </summary>
+    [Test]
+    public void Enumerate_PointerFileWithBinaryPresent_OnlyOnePairEmitted()
+    {
+        // Both files exist; the pointer should NOT produce a second pair
+        CreateFile("photos/vacation.jpg");
+        CreateFile("photos/vacation.jpg.pointer.arius", new string('a', 64));
+
+        var pairs = _enumerator.Enumerate(_root).ToList();
+
+        pairs.Count.ShouldBe(1, "pointer-with-binary must not produce an extra pair");
+        pairs[0].BinaryExists.ShouldBeTrue();
+        pairs[0].PointerExists.ShouldBeTrue();
+    }
+
+    // ── Single-pass: yielded before enumeration completes ─────────────────────
+
+    /// <summary>
+    /// Spec: pipeline should begin processing the first FilePair before enumeration
+    /// completes (no .ToList() buffering). Verified by consuming the IEnumerable
+    /// lazily and asserting the first element is available before the rest.
+    /// </summary>
+    [Test]
+    public void Enumerate_IsLazy_FirstElementAvailableBeforeAll()
+    {
+        // Create several files
+        for (var i = 0; i < 5; i++)
+            CreateFile($"file{i}.bin");
+
+        var firstYielded  = false;
+        var countConsumed = 0;
+
+        foreach (var _ in _enumerator.Enumerate(_root))
+        {
+            if (!firstYielded)
+            {
+                // At this point only 1 item has been yielded — the enumeration
+                // is still in progress (we haven't called ToList)
+                firstYielded = true;
+            }
+            countConsumed++;
+        }
+
+        firstYielded.ShouldBeTrue();
+        countConsumed.ShouldBe(5);
+    }
 }

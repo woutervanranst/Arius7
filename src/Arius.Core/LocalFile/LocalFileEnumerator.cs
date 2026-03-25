@@ -71,71 +71,65 @@ public sealed class LocalFileEnumerator
     // ── Task 7.2: Depth-first enumeration ────────────────────────────────────
 
     /// <summary>
-    /// Enumerates all <see cref="FilePair"/> objects under <paramref name="rootDirectory"/>.
-    /// Depth-first: directories are processed before their siblings.
+    /// Enumerates all <see cref="FilePair"/> objects under <paramref name="rootDirectory"/>
+    /// using a single-pass depth-first walk.
+    ///
+    /// When a binary file is encountered, <see cref="File.Exists"/> is used to check for
+    /// its pointer counterpart; the pair is yielded immediately without buffering.
+    /// When a pointer file is encountered, if its binary exists it is skipped (already
+    /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
+    /// No dictionaries or state-tracking collections are used.
     /// </summary>
     public IEnumerable<FilePair> Enumerate(string rootDirectory)
     {
-        // Collect all files with a depth-first walk
-        var allFiles = EnumerateFilesDepthFirst(rootDirectory);
-
-        // Separate binaries and pointers
-        var binaries = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
-        var pointers = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var file in allFiles)
+        foreach (var file in EnumerateFilesDepthFirst(rootDirectory))
         {
             var rel = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
+
             if (rel.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
-                pointers[rel] = file;
+            {
+                // Pointer file: skip if binary exists (already emitted with binary's pair)
+                var binaryRel  = rel[..^PointerSuffix.Length];
+                var binaryPath = Path.Combine(rootDirectory, binaryRel.Replace('/', Path.DirectorySeparatorChar));
+
+                if (File.Exists(binaryPath))
+                    continue; // binary was/will be emitted as part of the binary's FilePair
+
+                // Pointer-only (thin archive)
+                var pointerHash = ReadPointerHash(file.FullName, rel);
+                yield return new FilePair
+                {
+                    RelativePath  = rel,
+                    BinaryExists  = false,
+                    PointerExists = true,
+                    PointerHash   = pointerHash,
+                    FileSize      = null,
+                    Created       = null,
+                    Modified      = null
+                };
+            }
             else
-                binaries[rel] = file;
-        }
-
-        // Task 7.4: Assemble FilePairs
-        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // Binary files (with or without pointer)
-        foreach (var (relPath, binaryInfo) in binaries)
-        {
-            var pointerRel = relPath + PointerSuffix;
-            var hasPointer = pointers.TryGetValue(pointerRel, out var pointerInfo);
-            string? pointerHash = null;
-
-            if (hasPointer)
-                pointerHash = ReadPointerHash(pointerInfo!.FullName, pointerRel);
-
-            emitted.Add(pointerRel); // Mark as paired
-
-            yield return new FilePair
             {
-                RelativePath  = relPath,
-                BinaryExists  = true,
-                PointerExists = hasPointer,
-                PointerHash   = pointerHash,
-                FileSize      = binaryInfo.Length,
-                Created       = new DateTimeOffset(binaryInfo.CreationTimeUtc,  TimeSpan.Zero),
-                Modified      = new DateTimeOffset(binaryInfo.LastWriteTimeUtc, TimeSpan.Zero)
-            };
-        }
+                // Binary file: check for pointer via File.Exists
+                var pointerRel  = rel + PointerSuffix;
+                var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
+                var hasPointer  = File.Exists(pointerPath);
+                string? pointerHash = null;
 
-        // Orphan pointer files (pointer-only / thin archive)
-        foreach (var (pointerRel, pointerInfo) in pointers)
-        {
-            if (emitted.Contains(pointerRel)) continue; // already paired
+                if (hasPointer)
+                    pointerHash = ReadPointerHash(pointerPath, pointerRel);
 
-            var pointerHash = ReadPointerHash(pointerInfo.FullName, pointerRel);
-
-            yield return new FilePair
-            {
-                RelativePath  = pointerRel, // pointer path itself
-                BinaryExists  = false,
-                PointerExists = true,
-                PointerHash   = pointerHash,
-                FileSize      = null,
-                Created       = null,
-                Modified      = null
-            };
+                yield return new FilePair
+                {
+                    RelativePath  = rel,
+                    BinaryExists  = true,
+                    PointerExists = hasPointer,
+                    PointerHash   = pointerHash,
+                    FileSize      = file.Length,
+                    Created       = new DateTimeOffset(file.CreationTimeUtc,  TimeSpan.Zero),
+                    Modified      = new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)
+                };
+            }
         }
     }
 
