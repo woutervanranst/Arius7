@@ -38,6 +38,6 @@
 
 ## 7. Integration Tests
 
-- [ ] 7.1 Update crash-recovery tests: assert `arius-type` presence (not `arius-complete`) for recovery detection
-- [ ] 7.2 Integration test for streaming upload chain: verify large file roundtrip (archive + restore) with streaming
-- [ ] 7.3 Integration test for streaming enumeration: verify pipeline processes files before enumeration completes
+- [x] 7.1 Update crash-recovery tests: assert `arius-type` presence (not `arius-complete`) for recovery detection
+- [x] 7.2 Integration test for streaming upload chain: verify large file roundtrip (archive + restore) with streaming
+- [x] 7.3 Integration test for streaming enumeration: verify pipeline processes files before enumeration completes

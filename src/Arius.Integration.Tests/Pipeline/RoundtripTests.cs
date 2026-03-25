@@ -577,4 +577,68 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeFalse();
         archiveResult.ErrorMessage.ShouldNotBeNullOrEmpty();
     }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // Section 16 — Streaming pipeline tests (pipeline-streaming change)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    // ── 16.1: Streaming upload chain produces correct chunk-size metadata ─────
+
+    [Test]
+    public async Task Archive_LargeFile_StreamingChain_ChunkSizeMetadataIsSet()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        // 2 MB > default 1 MB threshold → large pipeline (streaming chain)
+        var original = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(original);
+        fix.WriteFile("large.bin", original);
+
+        var archiveResult = await fix.ArchiveAsync();
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+        archiveResult.FilesUploaded.ShouldBe(1);
+
+        // Find the chunk blob and verify chunk-size metadata was set by the streaming chain
+        var blobs = new List<string>();
+        await foreach (var name in fix.BlobStorage.ListAsync("chunks/"))
+            blobs.Add(name);
+        blobs.Count.ShouldBe(1);
+
+        var meta = await fix.BlobStorage.GetMetadataAsync(blobs[0]);
+        meta.Exists.ShouldBeTrue();
+        meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType).ShouldBeTrue();
+        meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+        meta.Metadata.ContainsKey(BlobMetadataKeys.ChunkSize).ShouldBeTrue();
+        long.Parse(meta.Metadata[BlobMetadataKeys.ChunkSize]).ShouldBeGreaterThan(0);
+
+        // Verify roundtrip integrity
+        var restoreResult = await fix.RestoreAsync();
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        fix.ReadRestored("large.bin").ShouldBe(original);
+    }
+
+    // ── 16.2: Streaming enumeration — pipeline processes all files ────────────
+
+    [Test]
+    public async Task Archive_StreamingEnumeration_AllFilesProcessed()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        // Write several small files to exercise the streaming enumeration path
+        for (var i = 0; i < 10; i++)
+            fix.WriteRandomFile($"file{i:D2}.bin", sizeBytes: 512);
+
+        var archiveResult = await fix.ArchiveAsync();
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+        // All 10 files must have been enumerated and uploaded (none skipped due to eager materialisation)
+        archiveResult.FilesScanned.ShouldBe(10);
+        archiveResult.FilesUploaded.ShouldBe(10);
+
+        // Restore and verify all files present
+        var restoreResult = await fix.RestoreAsync();
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(10);
+        for (var i = 0; i < 10; i++)
+            fix.RestoredExists($"file{i:D2}.bin").ShouldBeTrue();
+    }
 }

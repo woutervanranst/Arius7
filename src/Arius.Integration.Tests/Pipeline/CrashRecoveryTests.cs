@@ -118,6 +118,15 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var r1 = await handler1.Handle(new ArchiveCommand(opts), default);
         r1.Success.ShouldBeFalse(); // pipeline should surface the fault
 
+        // After the crash, the first blob should be present with arius-type set (crash-recovery signal)
+        var blobs = new List<string>();
+        await foreach (var name in fix.BlobStorage.ListAsync("chunks/"))
+            blobs.Add(name);
+        blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
+        var firstMeta = await fix.BlobStorage.GetMetadataAsync(blobs[0]);
+        firstMeta.Exists.ShouldBeTrue();
+        firstMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType).ShouldBeTrue("arius-type is the crash-recovery signal");
+
         // ── Run 2: use real service → should complete, deduplicate already-uploaded chunk
         var r2 = await fix.ArchiveAsync(opts);
         r2.Success.ShouldBeTrue(r2.ErrorMessage);
