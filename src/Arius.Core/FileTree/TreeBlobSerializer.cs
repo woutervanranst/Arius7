@@ -1,4 +1,5 @@
 using Arius.Core.Encryption;
+using System.IO.Compression;
 using System.Text;
 
 namespace Arius.Core.FileTree;
@@ -26,6 +27,51 @@ namespace Arius.Core.FileTree;
 public static class TreeBlobSerializer
 {
     private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    // ── Storage serialization (gzip + optional encryption) ────────────────────
+
+    /// <summary>
+    /// Serializes a <see cref="TreeBlob"/> to a gzip-compressed (and optionally encrypted) byte array
+    /// for upload to blob storage. Mirrors <c>ShardSerializer.SerializeAsync</c>.
+    /// </summary>
+    public static async Task<byte[]> SerializeForStorageAsync(
+        TreeBlob           tree,
+        IEncryptionService encryption,
+        CancellationToken  cancellationToken = default)
+    {
+        var ms = new MemoryStream();
+
+        await using (var encStream  = encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var writer     = new StreamWriter(gzipStream, s_utf8, leaveOpen: true))
+        {
+            foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+            {
+                if (entry.Type == TreeEntryType.File)
+                    await writer.WriteLineAsync($"{entry.Hash} F {entry.Created!.Value:O} {entry.Modified!.Value:O} {entry.Name}");
+                else
+                    await writer.WriteLineAsync($"{entry.Hash} D {entry.Name}");
+            }
+        }
+
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Deserializes a <see cref="TreeBlob"/> from a gzip-compressed (and optionally encrypted) stream
+    /// downloaded from blob storage. Mirrors <c>ShardSerializer.DeserializeFromStream</c>.
+    /// </summary>
+    public static async Task<TreeBlob> DeserializeFromStorageAsync(
+        Stream             source,
+        IEncryptionService encryption,
+        CancellationToken  cancellationToken = default)
+    {
+        await using var decStream  = encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var reader  = new StreamReader(gzipStream, s_utf8, leaveOpen: true);
+        var content = await reader.ReadToEndAsync(cancellationToken);
+        return ParseLines(content.Split('\n'));
+    }
 
     // ── Serialize ─────────────────────────────────────────────────────────────
 
@@ -60,24 +106,6 @@ public static class TreeBlobSerializer
         }
 
         return s_utf8.GetBytes(sb.ToString());
-    }
-
-    // ── Deserialize ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Deserializes a <see cref="TreeBlob"/> from UTF-8 text bytes.
-    /// </summary>
-    public static TreeBlob Deserialize(byte[] text) =>
-        ParseLines(s_utf8.GetString(text).Split('\n'));
-
-    /// <summary>Deserializes a <see cref="TreeBlob"/> from a readable stream.</summary>
-    public static async Task<TreeBlob> DeserializeAsync(
-        Stream            stream,
-        CancellationToken cancellationToken = default)
-    {
-        using var reader = new StreamReader(stream, s_utf8, leaveOpen: true);
-        var content = await reader.ReadToEndAsync(cancellationToken);
-        return ParseLines(content.Split('\n'));
     }
 
     private static TreeBlob ParseLines(string[] lines)

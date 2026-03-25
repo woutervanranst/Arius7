@@ -10,6 +10,7 @@ public class TreeBlobSerializerTests
 {
     private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+    private static readonly PlaintextPassthroughService s_enc = new();
 
     private static TreeBlob MakeBlob(params (string name, TreeEntryType type, string hash)[] items) =>
         new()
@@ -25,14 +26,14 @@ public class TreeBlobSerializerTests
         };
 
     [Test]
-    public void Serialize_ThenDeserialize_RoundTrips()
+    public async Task Serialize_ThenDeserialize_RoundTrips()
     {
         var blob = MakeBlob(
             ("photo.jpg", TreeEntryType.File, "a1b2c3d4"),
             ("subdir/",   TreeEntryType.Dir,  "e5f6a7b8"));
 
-        var bytes = TreeBlobSerializer.Serialize(blob);
-        var back  = TreeBlobSerializer.Deserialize(bytes);
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Count.ShouldBe(2);
 
@@ -50,7 +51,7 @@ public class TreeBlobSerializerTests
     }
 
     [Test]
-    public void Serialize_SortsEntriesByName()
+    public async Task Serialize_SortsEntriesByName()
     {
         // Insert entries in reverse order
         var blob = MakeBlob(
@@ -58,8 +59,8 @@ public class TreeBlobSerializerTests
             ("a_first.txt", TreeEntryType.File, "hash1"),
             ("m_mid.txt",   TreeEntryType.File, "hash2"));
 
-        var bytes = TreeBlobSerializer.Serialize(blob);
-        var back  = TreeBlobSerializer.Deserialize(bytes);
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries[0].Name.ShouldBe("a_first.txt");
         back.Entries[1].Name.ShouldBe("m_mid.txt");
@@ -103,23 +104,23 @@ public class TreeBlobSerializerTests
     }
 
     [Test]
-    public void Serialize_FileEntryWithSpacesInName_RoundTrips()
+    public async Task Serialize_FileEntryWithSpacesInName_RoundTrips()
     {
         var blob = MakeBlob(("my vacation photo.jpg", TreeEntryType.File, "abc123"));
 
-        var bytes = TreeBlobSerializer.Serialize(blob);
-        var back  = TreeBlobSerializer.Deserialize(bytes);
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Single().Name.ShouldBe("my vacation photo.jpg");
     }
 
     [Test]
-    public void Serialize_DirEntryWithSpacesInName_RoundTrips()
+    public async Task Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
         var blob = MakeBlob(("2024 trip/", TreeEntryType.Dir, "def456"));
 
-        var bytes = TreeBlobSerializer.Serialize(blob);
-        var back  = TreeBlobSerializer.Deserialize(bytes);
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Single().Name.ShouldBe("2024 trip/");
     }
@@ -185,6 +186,78 @@ public class TreeBlobSerializerTests
         var h2 = TreeBlobSerializer.ComputeHash(blobPlain, withPass);
 
         h1.ShouldNotBe(h2);
+    }
+}
+
+// ── 5.1 / 5.2 / 5.3  Storage serialization (gzip + optional encryption) ─────────
+
+public class TreeBlobSerializerStorageTests
+{
+    private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+
+    private static TreeBlob MakeBlob() => new()
+    {
+        Entries =
+        [
+            new TreeEntry { Name = "photo.jpg", Type = TreeEntryType.File, Hash = "a1b2c3d4", Created = s_created, Modified = s_modified },
+            new TreeEntry { Name = "subdir/",   Type = TreeEntryType.Dir,  Hash = "e5f6a7b8" }
+        ]
+    };
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_ThenDeserialize_RoundTrips()
+    {
+        var enc  = new PassphraseEncryptionService("test-passphrase");
+        var blob = MakeBlob();
+
+        var bytes  = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back   = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+
+        back.Entries.Count.ShouldBe(2);
+        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPlaintext_ThenDeserialize_RoundTrips()
+    {
+        var enc  = new PlaintextPassthroughService();
+        var blob = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+
+        back.Entries.Count.ShouldBe(2);
+        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_StartsWithSaltedPrefix()
+    {
+        var enc   = new PassphraseEncryptionService("test-passphrase");
+        var blob  = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+
+        // AES-256-CBC openssl-compatible format: first 8 bytes are "Salted__"
+        var prefix = System.Text.Encoding.ASCII.GetString(bytes[..8]);
+        prefix.ShouldBe("Salted__");
+    }
+
+    [Test]
+    public async Task SerializeForStorage_WithPassphrase_OutputIsNotPlaintext()
+    {
+        var enc  = new PassphraseEncryptionService("test-passphrase");
+        var blob = MakeBlob();
+
+        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var text  = System.Text.Encoding.UTF8.GetString(bytes);
+
+        // Encrypted output should not contain file names in plaintext
+        text.ShouldNotContain("photo.jpg");
+        text.ShouldNotContain("subdir/");
     }
 }
 

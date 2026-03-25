@@ -157,7 +157,7 @@ public sealed class LsHandler
 
         var blobName = BlobPaths.FileTree(treeHash);
         await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var treeBlob = await TreeBlobSerializer.DeserializeAsync(stream, cancellationToken);
+        var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
 
         foreach (var entry in treeBlob.Entries)
         {
