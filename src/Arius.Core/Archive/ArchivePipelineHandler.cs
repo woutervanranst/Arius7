@@ -1,8 +1,3 @@
-using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Formats.Tar;
-using System.Security.Cryptography;
-using System.Threading.Channels;
 using Arius.Core.ChunkIndex;
 using Arius.Core.Encryption;
 using Arius.Core.FileTree;
@@ -12,6 +7,11 @@ using Arius.Core.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Threading.Channels;
 
 namespace Arius.Core.Archive;
 

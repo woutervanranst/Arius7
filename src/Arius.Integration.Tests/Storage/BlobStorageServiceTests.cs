@@ -1,6 +1,6 @@
-using System.Text;
 using Arius.Core.Storage;
 using Shouldly;
+using System.Text;
 
 namespace Arius.Integration.Tests.Storage;
 

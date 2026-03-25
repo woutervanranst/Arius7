@@ -1,10 +1,10 @@
-using System.Diagnostics;
-using System.IO.Compression;
-using System.Formats.Tar;
 using Arius.Core.Encryption;
 using Arius.Core.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
+using System.Diagnostics;
+using System.Formats.Tar;
+using System.IO.Compression;
 
 namespace Arius.Integration.Tests.Pipeline;
 

@@ -1,8 +1,8 @@
+using Arius.Core.Encryption;
+using Shouldly;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using Arius.Core.Encryption;
-using Shouldly;
 
 namespace Arius.Core.Tests.Encryption;
 

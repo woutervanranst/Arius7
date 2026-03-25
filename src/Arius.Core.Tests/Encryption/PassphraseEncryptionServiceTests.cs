@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
-using System.Text;
 using Arius.Core.Encryption;
 using Shouldly;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Arius.Core.Tests.Encryption;
 

@@ -1,5 +1,3 @@
-using System.Formats.Tar;
-using System.IO.Compression;
 using Arius.Core.ChunkIndex;
 using Arius.Core.Encryption;
 using Arius.Core.FileTree;
@@ -8,6 +6,8 @@ using Arius.Core.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
+using System.Formats.Tar;
+using System.IO.Compression;
 
 namespace Arius.Core.Restore;
 

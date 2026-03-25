@@ -1,4 +1,3 @@
-using Arius.Core.FileTree;
 using Arius.Core.Storage;
 using Mediator;
 

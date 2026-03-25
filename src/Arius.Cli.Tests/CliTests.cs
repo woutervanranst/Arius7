@@ -1,4 +1,3 @@
-using Arius.Cli;
 using Arius.Core.Archive;
 using Arius.Core.Ls;
 using Arius.Core.Restore;
