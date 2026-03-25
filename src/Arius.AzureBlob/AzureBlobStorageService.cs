@@ -22,6 +22,13 @@ public sealed class AzureBlobStorageService : IBlobStorageService
         _container = container;
     }
 
+    // ── Container ─────────────────────────────────────────────────────────────
+
+    public async Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
+    {
+        await _container.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+    }
+
     // ── Upload ────────────────────────────────────────────────────────────────
 
     public async Task UploadAsync(

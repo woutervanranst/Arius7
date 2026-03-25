@@ -40,6 +40,14 @@ public sealed class BlobMetadata
 /// </summary>
 public interface IBlobStorageService
 {
+    // ── Container ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Ensures the blob container exists, creating it if it does not.
+    /// Safe to call on every run — no-op if the container already exists.
+    /// </summary>
+    Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default);
+
     // ── Upload ────────────────────────────────────────────────────────────────
 
     /// <summary>

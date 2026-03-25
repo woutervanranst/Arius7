@@ -84,6 +84,9 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
         // ── Operation start marker (task 3.10) ───────────────────────────────
         _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
 
+        // ── Ensure container exists ───────────────────────────────────────────
+        await _blobs.CreateContainerIfNotExistsAsync(cancellationToken);
+
         // Validate options (task 8.13)
         if (opts is { RemoveLocal: true, NoPointers: true })
             return new ArchiveResult

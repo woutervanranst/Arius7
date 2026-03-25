@@ -286,6 +286,9 @@ public class TreeBuilderTests
         public readonly HashSet<string> Uploaded = new();
         public readonly HashSet<string> HeadChecked = new();
 
+        public Task CreateContainerIfNotExistsAsync(CancellationToken ct = default) =>
+            Task.CompletedTask;
+
         public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata,
             Storage.BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         {

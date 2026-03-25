@@ -73,6 +73,9 @@ public sealed class RestorePipelineHandler
         // ── Operation start marker (task 4.7) ────────────────────────────────
         _logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}", opts.RootDirectory, _accountName, _containerName, opts.Version ?? "latest", opts.Overwrite);
 
+        // ── Ensure container exists ───────────────────────────────────────────
+        await _blobs.CreateContainerIfNotExistsAsync(cancellationToken);
+
         try
         {
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
