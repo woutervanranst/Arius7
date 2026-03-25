@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Formats.Tar;
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Threading.Channels;
 
 namespace Arius.Core.Archive;
@@ -34,7 +33,6 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     private const int HashWorkers     = 4;
     private const int UploadWorkers   = 4;
     private const int ChannelCapacity = 64;
-    private const int DedupBatchSize  = 512;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -198,80 +196,53 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
             {
                 try
                 {
-                    var batch = new List<HashedFilePair>();
-
-                    async Task FlushBatch()
+                    await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        if (batch.Count == 0) 
-                            return;
+                        var known = await _index.LookupAsync([hashed.ContentHash], cancellationToken);
 
-                        var hashes = batch.Select(p => p.ContentHash).Distinct().ToList();
-                        var known  = await _index.LookupAsync(hashes, cancellationToken);
-
-                        int batchHits = 0;
-                        int batchNew  = 0;
-
-                        foreach (var hashed in batch)
+                        // Check for pointer-only with missing chunk (task 8.5)
+                        if (!hashed.FilePair.BinaryExists)
                         {
-                            // Check for pointer-only with missing chunk (task 8.5)
-                            if (!hashed.FilePair.BinaryExists)
+                            if (!known.ContainsKey(hashed.ContentHash) && !inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
-                                if (!known.ContainsKey(hashed.ContentHash) && !inFlightHashes.ContainsKey(hashed.ContentHash))
-                                {
-                                    _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
-                                    continue;
-                                }
-
-                                // Known dedup: add to manifest only
-                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                                await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
-                                Interlocked.Increment(ref filesDeduped);
-                                batchHits++;
+                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
                                 continue;
                             }
 
-                            if (known.TryGetValue(hashed.ContentHash, out _) || inFlightHashes.ContainsKey(hashed.ContentHash))
-                            {
-                                // Already in index OR already queued in this run → dedup hit
-                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
-                                await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
-                                Interlocked.Increment(ref filesDeduped);
-                                batchHits++;
-                                if (!opts.NoPointers)
-                                    pendingPointers.Add((Path.Combine(opts.RootDirectory, hashed.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), hashed.ContentHash));
-                            }
-                            else
-                            {
-                                // Needs upload → mark in-flight, route by size
-                                inFlightHashes.TryAdd(hashed.ContentHash, hashed.ContentHash);
-                                var fileSize = hashed.FilePair.FileSize ?? 0;
-                                Interlocked.Add(ref totalSize, fileSize);
-                                var upload = new FileToUpload(hashed, fileSize);
-                                var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
-                                _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                                    hashed.FilePair.RelativePath, route, hashed.ContentHash[..8],
-                                    fileSize.Bytes().Humanize());
-                                batchNew++;
-
-                                if (fileSize >= opts.SmallFileThreshold)
-                                    await largeChannel.Writer.WriteAsync(upload, cancellationToken);
-                                else
-                                    await smallChannel.Writer.WriteAsync(upload, cancellationToken);
-                            }
+                            // Known dedup: add to manifest only
+                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
+                            await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
+                            Interlocked.Increment(ref filesDeduped);
+                            continue;
                         }
 
-                        _logger.LogInformation("[dedup] Batch flush: {BatchSize} file(s), hits={Hits}, new={New}", batch.Count, batchHits, batchNew);
-                        batch.Clear();
-                    }
+                        if (known.ContainsKey(hashed.ContentHash) || inFlightHashes.ContainsKey(hashed.ContentHash))
+                        {
+                            // Already in index OR already queued in this run → dedup hit
+                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
+                            await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
+                            Interlocked.Increment(ref filesDeduped);
+                            if (!opts.NoPointers)
+                                pendingPointers.Add((Path.Combine(opts.RootDirectory, hashed.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), hashed.ContentHash));
+                        }
+                        else
+                        {
+                            // Needs upload → mark in-flight, route by size
+                            inFlightHashes.TryAdd(hashed.ContentHash, hashed.ContentHash);
+                            var fileSize = hashed.FilePair.FileSize ?? 0;
+                            Interlocked.Add(ref totalSize, fileSize);
+                            var upload = new FileToUpload(hashed, fileSize);
+                            var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
+                            _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
+                                hashed.FilePair.RelativePath, route, hashed.ContentHash[..8],
+                                fileSize.Bytes().Humanize());
 
-                    await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
-                    {
-                        batch.Add(hashed);
-                        if (batch.Count >= DedupBatchSize)
-                            await FlushBatch();
+                            if (fileSize >= opts.SmallFileThreshold)
+                                await largeChannel.Writer.WriteAsync(upload, cancellationToken);
+                            else
+                                await smallChannel.Writer.WriteAsync(upload, cancellationToken);
+                        }
                     }
-
-                    await FlushBatch(); // remaining
                 }
                 finally
                 {
@@ -377,7 +348,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                         string tarHash;
                         await using (var fs = File.OpenRead(currentTarPath!))
                         {
-                            var hashBytes = await SHA256.HashDataAsync(fs, cancellationToken);
+                            var hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
                             tarHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                         }
 

@@ -27,8 +27,8 @@
 
 ## 5. Dedup and Tar Hash
 
-- [ ] 5.1 Remove `DedupBatchSize` constant and batch/flush pattern; call `_index.LookupAsync([hash])` immediately per file
-- [ ] 5.2 Replace `SHA256.HashDataAsync(fs)` with `_encryption.ComputeHashAsync(fs)` for tar hash computation
+- [x] 5.1 Remove `DedupBatchSize` constant and batch/flush pattern; call `_index.LookupAsync([hash])` immediately per file
+- [x] 5.2 Replace `SHA256.HashDataAsync(fs)` with `_encryption.ComputeHashAsync(fs)` for tar hash computation
 
 ## 6. Parallel.ForEachAsync Migration
 
