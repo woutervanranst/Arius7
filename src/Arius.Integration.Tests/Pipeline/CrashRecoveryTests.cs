@@ -51,12 +51,7 @@ internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAf
 
     public async Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
         bool throwOnExists = false, CancellationToken cancellationToken = default)
-    {
-        var count = Interlocked.Increment(ref _uploadCount);
-        if (count > throwAfterN)
-            throw new IOException($"Fault-injected failure on open-write #{count}");
-        return await inner.OpenWriteAsync(blobName, contentType, throwOnExists, cancellationToken);
-    }
+        => await inner.OpenWriteAsync(blobName, contentType, throwOnExists, cancellationToken);
 
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
@@ -108,7 +103,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("file1.bin", content1);
         fix.WriteFile("file2.bin", content2);
 
-        // ── Run 1: crash after 1 upload (partial — uploads only one chunk)
+        // ── Run 1: crash during UploadAsync #2 (index/snapshot upload)
+        // Both large-file chunks complete via OpenWriteAsync (not fault-counted) and
+        // receive their AriusType metadata before UploadAsync #2 fires.
         var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
         var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
@@ -160,8 +157,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("small2.txt", c2);
         fix.WriteFile("small3.txt", c3);
 
-        // Crash after the tar blob upload (upload #1) but before thin chunks (uploads #2, #3, #4)
-        // throwAfterN=1 means: first upload (tar blob) succeeds, then crash
+        // FaultingBlobService counts only UploadAsync calls (not OpenWriteAsync).
+        // The tar blob is uploaded via OpenWriteAsync (not counted) and completes with AriusType.
+        // throwAfterN=1: thin chunk #1 (UploadAsync #1) succeeds, thin chunk #2 throws.
         var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
         var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
