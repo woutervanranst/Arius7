@@ -109,24 +109,6 @@ public static class TreeBlobSerializer
         return s_utf8.GetBytes(sb.ToString());
     }
 
-    // ── Deserialize ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Deserializes a <see cref="TreeBlob"/> from UTF-8 text bytes.
-    /// </summary>
-    public static TreeBlob Deserialize(byte[] text) =>
-        ParseLines(s_utf8.GetString(text).Split('\n'));
-
-    /// <summary>Deserializes a <see cref="TreeBlob"/> from a readable stream.</summary>
-    public static async Task<TreeBlob> DeserializeAsync(
-        Stream            stream,
-        CancellationToken cancellationToken = default)
-    {
-        using var reader = new StreamReader(stream, s_utf8, leaveOpen: true);
-        var content = await reader.ReadToEndAsync(cancellationToken);
-        return ParseLines(content.Split('\n'));
-    }
-
     private static TreeBlob ParseLines(string[] lines)
     {
         var entries = new List<TreeEntry>(lines.Length);
