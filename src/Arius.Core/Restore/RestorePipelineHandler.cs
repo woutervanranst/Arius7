@@ -242,15 +242,14 @@ public sealed class RestorePipelineHandler
                     rehydrationBytes += ie.CompressedSize;
             }
 
-            var costEstimate = new RehydrationCostEstimate
-            {
-                ChunksAvailable          = available.Count,
-                ChunksAlreadyRehydrated  = rehydrated.Count,
-                ChunksNeedingRehydration = needsRehydration.Count,
-                ChunksPendingRehydration = rehydrationPending.Count,
-                RehydrationBytes         = rehydrationBytes,
-                DownloadBytes            = downloadBytes,
-            };
+            // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
+            var costEstimate = RestoreCostCalculator.Compute(
+                chunksAvailable:          available.Count,
+                chunksAlreadyRehydrated:  rehydrated.Count,
+                chunksNeedingRehydration: needsRehydration.Count,
+                chunksPendingRehydration: rehydrationPending.Count,
+                rehydrationBytes:         rehydrationBytes,
+                downloadBytes:            downloadBytes);
 
             // If there are archive-tier chunks, invoke confirmation callback (task 10.6)
             var rehydratePriority = RehydratePriority.Standard;

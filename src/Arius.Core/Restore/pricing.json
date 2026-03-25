@@ -1,0 +1,21 @@
+{
+  "_comment": "Azure Blob Storage pricing — EUR, West Europe region. Last updated: 2026-03. Source: https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+  "archive": {
+    "retrievalPerGB":           0.0204,
+    "retrievalHighPerGB":       0.1102,
+    "readOpsPer10000":          6.6094,
+    "readOpsHighPer10000":     71.6011
+  },
+  "hot": {
+    "writeOpsPer10000":         0.05,
+    "storagePerGBPerMonth":     0.018
+  },
+  "cool": {
+    "writeOpsPer10000":         0.10,
+    "storagePerGBPerMonth":     0.01
+  },
+  "cold": {
+    "writeOpsPer10000":         0.18,
+    "storagePerGBPerMonth":     0.0045
+  }
+}

@@ -321,31 +321,52 @@ public static class CliBuilder
 
                 ConfirmRehydration = async (estimate, ct) =>
                 {
-                    var table = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
-                    table.AddColumn("Category");
-                    table.AddColumn(new TableColumn("Chunks").RightAligned());
-                    table.AddColumn(new TableColumn("Size").RightAligned());
+                    // ── Chunk availability summary table ─────────────────────────────────
+                    var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
+                    summaryTable.AddColumn("Category");
+                    summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
+                    summaryTable.AddColumn(new TableColumn("Size").RightAligned());
 
-                    table.AddRow("Available (Hot/Cool)",
+                    summaryTable.AddRow("Available (Hot/Cool)",
                         estimate.ChunksAvailable.ToString(),
                         estimate.DownloadBytes.Bytes().Humanize());
-                    table.AddRow("Already rehydrated",
+                    summaryTable.AddRow("Already rehydrated",
                         estimate.ChunksAlreadyRehydrated.ToString(),
                         "-");
-                    table.AddRow("[yellow]Needs rehydration[/]",
+                    summaryTable.AddRow("[yellow]Needs rehydration[/]",
                         estimate.ChunksNeedingRehydration.ToString(),
                         estimate.RehydrationBytes.Bytes().Humanize());
-                    table.AddRow("[dim]Rehydration pending[/]",
+                    summaryTable.AddRow("[dim]Rehydration pending[/]",
                         estimate.ChunksPendingRehydration.ToString(),
                         "-");
-                    AnsiConsole.Write(table);
+                    AnsiConsole.Write(summaryTable);
 
                     if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
                         return RehydratePriority.Standard;
 
-                    AnsiConsole.MarkupLine($"Estimated rehydration cost: " +
-                        $"[cyan]Standard ${estimate.EstimatedCostStandardUsd:F4}[/] / " +
-                        $"[yellow]High ${estimate.EstimatedCostHighUsd:F4}[/]");
+                    // ── Per-component cost breakdown table ───────────────────────────────
+                    var costTable = new Table();
+                    costTable.AddColumn("Cost Component");
+                    costTable.AddColumn(new TableColumn("Standard").RightAligned());
+                    costTable.AddColumn(new TableColumn("High Priority").RightAligned());
+
+                    costTable.AddRow("Data retrieval",
+                        $"\u20ac {estimate.RetrievalCostStandard:F4}",
+                        $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                    costTable.AddRow("Read operations",
+                        $"\u20ac {estimate.ReadOpsCostStandard:F4}",
+                        $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                    costTable.AddRow("Write operations",
+                        $"\u20ac {estimate.WriteOpsCost:F4}",
+                        $"\u20ac {estimate.WriteOpsCost:F4}");
+                    costTable.AddRow("Storage (1 month)",
+                        $"\u20ac {estimate.StorageCost:F4}",
+                        $"\u20ac {estimate.StorageCost:F4}");
+                    costTable.AddEmptyRow();
+                    costTable.AddRow("[bold]Total[/]",
+                        $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
+                        $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                    AnsiConsole.Write(costTable);
 
                     var choice = AnsiConsole.Prompt(
                         new SelectionPrompt<string>()
