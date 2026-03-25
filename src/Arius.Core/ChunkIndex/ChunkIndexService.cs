@@ -1,7 +1,6 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using Arius.Core.Encryption;
 using Arius.Core.Storage;
+using System.Collections.Concurrent;
 
 namespace Arius.Core.ChunkIndex;
 
@@ -31,11 +30,11 @@ public sealed class ChunkIndexService : IDisposable
 
     private sealed record L1Entry(string Prefix, Shard Shard, long Size);
 
-    private readonly long                              _l1BudgetBytes;
-    private readonly LinkedList<L1Entry>               _l1Lru  = new();
+    private readonly long                                        _l1BudgetBytes;
+    private readonly LinkedList<L1Entry>                         _l1Lru = [];
     private readonly Dictionary<string, LinkedListNode<L1Entry>> _l1Map = new(StringComparer.Ordinal);
-    private          long                              _l1UsedBytes;
-    private readonly object                            _l1Lock = new();
+    private          long                                        _l1UsedBytes;
+    private readonly Lock                                        _l1Lock = new();
 
     // ── In-flight set (task 4.8) ──────────────────────────────────────────────
 
@@ -43,12 +42,11 @@ public sealed class ChunkIndexService : IDisposable
     /// Content hashes that have been successfully determined as "already uploaded" or
     /// "just queued for upload" during this run, to prevent redundant uploads.
     /// </summary>
-    private readonly ConcurrentDictionary<string, ShardEntry> _inFlight
-        = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ShardEntry> _inFlight = new(StringComparer.Ordinal);
 
     // ── Pending new entries (collected during run, flushed at end) ────────────
 
-    private readonly ConcurrentBag<ShardEntry> _pendingEntries = new();
+    private readonly ConcurrentBag<ShardEntry> _pendingEntries = [];
 
     /// <summary>
     /// Initializes a ChunkIndexService and prepares the tiered chunk index cache state.
@@ -59,12 +57,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <remarks>
     /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
     /// </remarks>
-    public ChunkIndexService(
-        IBlobStorageService blobs,
-        IEncryptionService  encryption,
-        string              accountName,
-        string              containerName,
-        long                cacheBudgetBytes = DefaultCacheBudgetBytes)
+    public ChunkIndexService(IBlobStorageService blobs, IEncryptionService encryption, string accountName, string containerName, long cacheBudgetBytes = DefaultCacheBudgetBytes)
     {
         _blobs         = blobs;
         _encryption    = encryption;
@@ -81,13 +74,12 @@ public sealed class ChunkIndexService : IDisposable
     /// Azure account names are <c>[a-z0-9]</c> only (no hyphens), so the first
     /// hyphen unambiguously separates account from container.
     /// <summary>
-        /// Constructs the repository directory name for the L2 cache by joining the account and container with a hyphen.
-        /// </summary>
-        /// <param name="accountName">The account name component.</param>
-        /// <param name="containerName">The container name component.</param>
-        /// <returns>The directory name in the format "{accountName}-{containerName}".</returns>
-    public static string GetRepoDirectoryName(string accountName, string containerName)
-        => $"{accountName}-{containerName}";
+    /// Constructs the repository directory name for the L2 cache by joining the account and container with a hyphen.
+    /// </summary>
+    /// <param name="accountName">The account name component.</param>
+    /// <param name="containerName">The container name component.</param>
+    /// <returns>The directory name in the format "{accountName}-{containerName}".</returns>
+    public static string GetRepoDirectoryName(string accountName, string containerName) => $"{accountName}-{containerName}";
 
     /// <summary>
     /// Get the L2 disk cache directory path for the specified account and container.
@@ -108,9 +100,7 @@ public sealed class ChunkIndexService : IDisposable
     /// that are already known (either from the tiered cache or the in-flight set).
     /// Hashes are grouped by shard prefix to amortize shard downloads.
     /// </summary>
-    public async Task<IReadOnlyDictionary<string, ShardEntry>> LookupAsync(
-        IEnumerable<string> contentHashes,
-        CancellationToken   cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, ShardEntry>> LookupAsync(IEnumerable<string> contentHashes, CancellationToken cancellationToken = default)
     {
         var result = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
 
@@ -168,13 +158,13 @@ public sealed class ChunkIndexService : IDisposable
 
         foreach (var group in byPrefix)
         {
-            var prefix      = group.Key;
-            var existing    = await LoadShardAsync(prefix, cancellationToken);
-            var merged      = existing.Merge(group);
+            var prefix   = group.Key;
+            var existing = await LoadShardAsync(prefix, cancellationToken);
+            var merged   = existing.Merge(group);
 
             // Serialize and upload
-            var bytes     = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
-            var blobName  = BlobPaths.ChunkIndexShard(prefix);
+            var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
+            var blobName = BlobPaths.ChunkIndexShard(prefix);
 
             await _blobs.UploadAsync(
                 blobName,
@@ -193,7 +183,9 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         // Clear pending
-        while (_pendingEntries.TryTake(out _)) { }
+        while (_pendingEntries.TryTake(out _))
+        {
+        }
     }
 
     // ── Tier resolution ───────────────────────────────────────────────────────
@@ -242,7 +234,7 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var ms = new MemoryStream();
+        var             ms     = new MemoryStream();
         await stream.CopyToAsync(ms, cancellationToken);
         var downloaded = ms.ToArray();
 
@@ -277,8 +269,8 @@ public sealed class ChunkIndexService : IDisposable
 
             // Add to front
             var node = _l1Lru.AddFirst(new L1Entry(prefix, shard, approximateSizeBytes));
-            _l1Map[prefix] = node;
-            _l1UsedBytes  += approximateSizeBytes;
+            _l1Map[prefix] =  node;
+            _l1UsedBytes   += approximateSizeBytes;
         }
     }
 
@@ -291,5 +283,8 @@ public sealed class ChunkIndexService : IDisposable
         File.WriteAllBytes(path, bytes);
     }
 
-    public void Dispose() { /* future: flush in-progress state */ }
+    public void Dispose()
+    {
+        /* future: flush in-progress state */
+    }
 }
