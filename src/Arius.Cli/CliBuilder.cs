@@ -133,12 +133,12 @@ public static class CliBuilder
 
         cmd.SetAction(async (parseResult, ct) =>
         {
-            var account    = parseResult.GetValue(accountOption);
-            var key        = parseResult.GetValue(keyOption);
-            var passphrase = parseResult.GetValue(passphraseOption);
-            var container  = parseResult.GetValue(containerOption)!;
-            var path       = parseResult.GetValue(pathArgument)!;
-            var tier       = parseResult.GetValue(tierOption);
+            var account     = parseResult.GetValue(accountOption);
+            var key         = parseResult.GetValue(keyOption);
+            var passphrase  = parseResult.GetValue(passphraseOption);
+            var container   = parseResult.GetValue(containerOption)!;
+            var path        = parseResult.GetValue(pathArgument)!;
+            var tier        = parseResult.GetValue(tierOption);
             var removeLocal = parseResult.GetValue(removeLocalOption);
             var noPointers  = parseResult.GetValue(noPointersOption);
 
@@ -171,55 +171,55 @@ public static class CliBuilder
 
             try
             {
-            var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
-            var mediator = services.GetRequiredService<IMediator>();
+                var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
+                var mediator = services.GetRequiredService<IMediator>();
 
-            var opts = new ArchiveOptions
-            {
-                RootDirectory      = Path.GetFullPath(path),
-                UploadTier         = tier,
-                RemoveLocal        = removeLocal,
-                NoPointers         = noPointers,
-                SmallFileThreshold = 1024 * 1024L,
-                TarTargetSize      = 64L * 1024 * 1024,
-            };
+                var opts = new ArchiveOptions
+                {
+                    RootDirectory      = Path.GetFullPath(path),
+                    UploadTier         = tier,
+                    RemoveLocal        = removeLocal,
+                    NoPointers         = noPointers,
+                    SmallFileThreshold = 1024 * 1024L,
+                    TarTargetSize      = 64L * 1024 * 1024,
+                };
 
-            ArchiveResult? result = null;
-            if (AnsiConsole.Console.Profile.Capabilities.Interactive)
-            {
-                await AnsiConsole.Progress()
-                    .AutoClear(false)
-                    .Columns(
-                        new TaskDescriptionColumn(),
-                        new ProgressBarColumn(),
-                        new PercentageColumn(),
-                        new SpinnerColumn())
-                    .StartAsync(async ctx =>
-                    {
-                        var overallTask = ctx.AddTask("[green]Archiving[/]");
-                        overallTask.IsIndeterminate = true;
-                        result = await mediator.Send(new ArchiveCommand(opts), ct);
-                        overallTask.Value = overallTask.MaxValue;
-                    });
-            }
-            else
-            {
-                result = await mediator.Send(new ArchiveCommand(opts), ct);
-            }
+                ArchiveResult? result = null;
+                if (AnsiConsole.Console.Profile.Capabilities.Interactive)
+                {
+                    await AnsiConsole.Progress()
+                        .AutoClear(false)
+                        .Columns(
+                            new TaskDescriptionColumn(),
+                            new ProgressBarColumn(),
+                            new PercentageColumn(),
+                            new SpinnerColumn())
+                        .StartAsync(async ctx =>
+                        {
+                            var overallTask = ctx.AddTask("[green]Archiving[/]");
+                            overallTask.IsIndeterminate = true;
+                            result                      = await mediator.Send(new ArchiveCommand(opts), ct);
+                            overallTask.Value           = overallTask.MaxValue;
+                        });
+                }
+                else
+                {
+                    result = await mediator.Send(new ArchiveCommand(opts), ct);
+                }
 
-            if (result is null || !result.Success)
-            {
-                AnsiConsole.MarkupLine($"[red]Archive failed:[/] {result?.ErrorMessage}");
-                return 1;
-            }
+                if (result is null || !result.Success)
+                {
+                    AnsiConsole.MarkupLine($"[red]Archive failed:[/] {result?.ErrorMessage}");
+                    return 1;
+                }
 
-            AnsiConsole.MarkupLine($"[green]Archive complete.[/] " +
-                $"Scanned: {result.FilesScanned}, " +
-                $"Uploaded: {result.FilesUploaded}, " +
-                $"Deduped: {result.FilesDeduped}, " +
-                $"Size: {result.TotalSize.Bytes().Humanize()}, " +
-                $"Snapshot: {result.SnapshotTime:yyyy-MM-ddTHHmmss.fffZ}");
-            return 0;
+                AnsiConsole.MarkupLine($"[green]Archive complete.[/] " +
+                                       $"Scanned: {result.FilesScanned}, " +
+                                       $"Uploaded: {result.FilesUploaded}, " +
+                                       $"Deduped: {result.FilesDeduped}, " +
+                                       $"Size: {result.TotalSize.Bytes().Humanize()}, " +
+                                       $"Snapshot: {result.SnapshotTime:yyyy-MM-ddTHHmmss.fffZ}");
+                return 0;
             }
             finally
             {
@@ -679,7 +679,9 @@ public static class CliBuilder
     /// <returns>`cliAccount` if not null or whitespace; otherwise the value of the `ARIUS_ACCOUNT` environment variable, or `null` if neither is present.</returns>
     public static string? ResolveAccount(string? cliAccount)
     {
-        if (!string.IsNullOrWhiteSpace(cliAccount)) return cliAccount;
+        if (!string.IsNullOrWhiteSpace(cliAccount)) 
+            return cliAccount;
+
         var env = Environment.GetEnvironmentVariable("ARIUS_ACCOUNT");
         return string.IsNullOrWhiteSpace(env) ? null : env;
     }
@@ -694,7 +696,8 @@ public static class CliBuilder
     /// <returns>`cliKey` if non-empty; otherwise the `ARIUS_KEY` environment variable; otherwise the user secret `arius:{accountName}:key` or `arius:key`; or `null` if no key is found.</returns>
     public static string? ResolveKey(string? cliKey, string accountName)
     {
-        if (!string.IsNullOrWhiteSpace(cliKey)) return cliKey;
+        if (!string.IsNullOrWhiteSpace(cliKey))
+            return cliKey;
 
         var env = Environment.GetEnvironmentVariable("ARIUS_KEY");
         if (!string.IsNullOrWhiteSpace(env)) return env;
