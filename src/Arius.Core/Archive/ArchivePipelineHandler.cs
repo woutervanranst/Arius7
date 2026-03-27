@@ -76,7 +76,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     /// <returns>
     /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
     /// snapshot root hash and timestamp when created, and an error message when the operation failed.
-    /// </returns>
+    /// <summary>
+    /// Runs the archive pipeline for the given command, processing files under the command's root directory into blob storage and producing an archive snapshot.
+    /// </summary>
+    /// <param name="command">The archive command containing options that control enumeration, hashing, deduplication, upload behavior, pointer writing, and local deletion.</param>
+    /// <param name="cancellationToken">Token to observe while waiting for pipeline operations to complete.</param>
+    /// <returns>An <see cref="ArchiveResult"/> with operation outcome and metrics: on success contains scanned/uploaded/deduped counts, total size, optional snapshot root hash and snapshot time; on failure contains collected counters so far and an error message.</returns>
     public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
         var opts = command.Options;
@@ -174,8 +179,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     }
                     else if (pair.BinaryExists)
                     {
-                        await using var fs        = File.OpenRead(fullBinaryPath!);
-                        var             hashBytes = await _encryption.ComputeHashAsync(fs, ct);
+                        await using var fs           = File.OpenRead(fullBinaryPath!);
+                        var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                        await using var ps           = new ProgressStream(fs, hashProgress);
+                        var             hashBytes    = await _encryption.ComputeHashAsync(ps, ct);
                         contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                     }
                     else
@@ -281,8 +288,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
                             await using (var fs = File.OpenRead(fullPath))
                             {
-                                IProgress<long> noOpProgress = new Progress<long>();
-                                await using var ps = new ProgressStream(fs, noOpProgress);
+                                IProgress<long> uploadProgress = opts.CreateUploadProgress is not null
+                                    ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
+                                    : new Progress<long>();
+                                await using var ps = new ProgressStream(fs, uploadProgress);
                                 await ps.CopyToAsync(gzipStream, ct);
                             }
 
@@ -363,7 +372,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             tarHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                         }
 
-                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize), cancellationToken);
+                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
 
                         _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)
@@ -402,6 +411,9 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                         tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
                         currentSize += upload.FileSize;
+
+                        await _mediator.Publish(new TarEntryAddedEvent(upload.HashedPair.ContentHash, tarEntries.Count, currentSize), cancellationToken);
+                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", upload.HashedPair.ContentHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
 
                         if (currentSize >= opts.TarTargetSize)
                             await SealCurrentTar();

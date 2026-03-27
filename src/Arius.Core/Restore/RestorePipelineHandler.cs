@@ -65,6 +65,13 @@ public sealed class RestorePipelineHandler
     /// <param name="cancellationToken">Token to observe while performing asynchronous operations.</param>
     /// <returns>
     /// A RestoreResult indicating whether the operation succeeded, how many files were restored, how many were skipped, the number of chunks pending rehydration, and an error message when unsuccessful.
+    /// <summary>
+    /// Orchestrates the complete restore pipeline for the provided <see cref="RestoreCommand"/>, including snapshot resolution, file selection and conflict handling, chunk lookup and grouping, downloading and extracting chunks, optional archive rehydration requests, and progress/event publishing.
+    /// </summary>
+    /// <param name="command">The command containing <see cref="RestoreOptions"/> that control root directory, target path, overwrite behavior, and optional confirmation callbacks for rehydration and cleanup.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    /// <returns>
+    /// A <see cref="RestoreResult"/> describing whether the restore succeeded, how many files were restored or skipped, how many chunks remain pending rehydration, and an error message when the operation fails.
     /// </returns>
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
@@ -130,7 +137,7 @@ public sealed class RestorePipelineHandler
                         {
                             _logger.LogInformation("[conflict] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
                             continue;
                         }
                     }
@@ -316,7 +323,7 @@ public sealed class RestorePipelineHandler
                     var file = filesForChunk[0]; // only one file per large chunk
                     await RestoreLargeFileAsync(blobName, file, opts, cancellationToken);
                     filesRestored++;
-                    await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                    await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), cancellationToken);
                 }
                 else
                 {
@@ -528,7 +535,14 @@ public sealed class RestorePipelineHandler
     /// <summary>
     /// Downloads a tar bundle and extracts only the files whose content-hash matches
     /// an entry in <paramref name="filesNeeded"/>.
+    /// <summary>
+    /// Extracts files from a gzip-compressed tar bundle blob and restores only entries whose tar entry names (content hashes) are present in <paramref name="filesNeeded"/>.
     /// </summary>
+    /// <param name="blobName">The blob path of the tar.gz bundle to download and extract.</param>
+    /// <param name="filesNeeded">Mapping from content-hash (tar entry name) to the list of files that should be restored from that content.</param>
+    /// <param name="opts">Restore options that provide the target root directory and pointer-file behavior.</param>
+    /// <param name="cancellationToken">Token to observe for cancellation.</param>
+    /// <returns>The number of files written to disk.</returns>
     private async Task<int> RestoreTarBundleAsync(
         string                                    blobName,
         Dictionary<string, List<FileToRestore>>   filesNeeded,
@@ -583,7 +597,7 @@ public sealed class RestorePipelineHandler
                 if (!opts.NoPointers)
                     await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, dataBuffer?.Length ?? 0), cancellationToken);
                 restored++;
             }
         }

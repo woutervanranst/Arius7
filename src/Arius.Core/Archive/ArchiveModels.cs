@@ -85,6 +85,22 @@ public sealed record ArchiveOptions
 
     /// <summary>If <c>true</c>, do not create or update <c>.pointer.arius</c> files.</summary>
     public bool NoPointers { get; init; } = false;
+
+    /// <summary>
+    /// Optional factory invoked when a file begins hashing.
+    /// Parameters: relative path, file size in bytes.
+    /// Returns an <see cref="IProgress{T}"/> that receives cumulative bytes hashed.
+    /// When <c>null</c>, no byte-level progress is reported for hashing.
+    /// </summary>
+    public Func<string, long, IProgress<long>>? CreateHashProgress { get; init; }
+
+    /// <summary>
+    /// Optional factory invoked when a chunk begins uploading.
+    /// Parameters: content hash, uncompressed size in bytes.
+    /// Returns an <see cref="IProgress{T}"/> that receives cumulative bytes read from the source stream.
+    /// When <c>null</c>, no byte-level progress is reported for uploads.
+    /// </summary>
+    public Func<string, long, IProgress<long>>? CreateUploadProgress { get; init; }
 }
 
 /// <summary>
@@ -128,10 +144,20 @@ public sealed record ChunkUploadingEvent(string ContentHash, long Size) : INotif
 public sealed record ChunkUploadedEvent(string ContentHash, long CompressedSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
-public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize) : INotification;
+/// <param name="EntryCount">Number of entries in the sealed tar.</param>
+/// <param name="UncompressedSize">Total uncompressed size of all entries in bytes.</param>
+/// <param name="TarHash">Content hash of the sealed tar archive file (used as the bundle identifier).</param>
+/// <param name="ContentHashes">Content hash of every file entry in the tar, in insertion order.</param>
+public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, string TarHash, IReadOnlyList<string> ContentHashes) : INotification;
 
 /// <summary>A tar bundle was uploaded.</summary>
 public sealed record TarBundleUploadedEvent(string TarHash, long CompressedSize, int EntryCount) : INotification;
 
 /// <summary>Snapshot creation complete.</summary>
 public sealed record SnapshotCreatedEvent(string RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
+
+/// <summary>A file was written to the current tar bundle.</summary>
+/// <param name="ContentHash">Content hash of the file added.</param>
+/// <param name="CurrentEntryCount">Number of entries in the current tar bundle so far.</param>
+/// <param name="CurrentTarSize">Cumulative uncompressed size of the current tar bundle in bytes.</param>
+public sealed record TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize) : INotification;
