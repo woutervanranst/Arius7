@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Events;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 using System.CommandLine;
 
 namespace Arius.Cli;
@@ -184,22 +185,26 @@ public static class CliBuilder
                     SmallFileThreshold = 1024 * 1024L,
                     TarTargetSize      = 64L * 1024 * 1024,
 
-                    // Wire byte-level progress callbacks into ProgressState.
-                    // FileHashingHandler (via Mediator) already added the entry to InFlightHashes
-                    // before CreateHashProgress is called; just look up the entry.
+                    // Wire byte-level progress callbacks into ProgressState (task 5.1 / 5.2).
+                    // FileHashingHandler (via Mediator) has already added the TrackedFile entry
+                    // to TrackedFiles before CreateHashProgress is called; just look it up.
                     CreateHashProgress = (relativePath, fileSize) =>
                     {
-                        // Entry was added by FileHashingHandler; retrieve it for progress updates.
-                        if (progressState.InFlightHashes.TryGetValue(relativePath, out var entry))
-                            return new Progress<long>(bytes => entry.SetBytesProcessed(bytes));
+                        if (progressState.TrackedFiles.TryGetValue(relativePath, out var file))
+                            return new Progress<long>(bytes => file.SetBytesProcessed(bytes));
                         return new Progress<long>();
                     },
 
+                    // ChunkUploadingHandler has already transitioned the file to Uploading state.
+                    // Reset BytesProcessed so the upload bar starts from 0, then stream updates.
                     CreateUploadProgress = (contentHash, size) =>
                     {
-                        // Entry added by ChunkUploadingHandler via Mediator event before this is called.
-                        if (progressState.InFlightUploads.TryGetValue(contentHash, out var entry))
-                            return new Progress<long>(bytes => entry.SetBytesProcessed(bytes));
+                        if (progressState.ContentHashToPath.TryGetValue(contentHash, out var relPath) &&
+                            progressState.TrackedFiles.TryGetValue(relPath, out var file))
+                        {
+                            file.SetBytesProcessed(0);
+                            return new Progress<long>(bytes => file.SetBytesProcessed(bytes));
+                        }
                         return new Progress<long>();
                     },
                 };
@@ -207,49 +212,29 @@ public static class CliBuilder
                 ArchiveResult? result = null;
                 if (AnsiConsole.Console.Profile.Capabilities.Interactive)
                 {
-                    await AnsiConsole.Progress()
-                        .AutoRefresh(true)
+                    // ── 4.1-4.2: Live display with overflow handling ──────────────────────
+                    await AnsiConsole.Live(BuildArchiveDisplay(progressState))
+                        .Overflow(VerticalOverflow.Crop)
+                        .Cropping(VerticalOverflowCropping.Bottom)
                         .AutoClear(false)
-                        .HideCompleted(false)
-                        .Columns(
-                            new TaskDescriptionColumn(),
-                            new ProgressBarColumn(),
-                            new PercentageColumn(),
-                            new RemainingTimeColumn(),
-                            new SpinnerColumn())
                         .StartAsync(async ctx =>
                         {
-                            var scanTask    = ctx.AddTask("[grey]Scanning [/]");
-                            var hashTask    = ctx.AddTask("[grey]Hashing  [/]");
-                            var bundleTask  = ctx.AddTask("[grey]Bundling [/]");
-                            var uploadTask  = ctx.AddTask("[grey]Uploading[/]");
-
-                            scanTask.IsIndeterminate   = true;
-                            hashTask.IsIndeterminate   = true;
-                            bundleTask.IsIndeterminate = true;
-                            uploadTask.IsIndeterminate = true;
-
-                            // Track dynamic per-file sub-tasks
-                            var hashSubTasks   = new Dictionary<string, ProgressTask>();
-                            var uploadSubTasks = new Dictionary<string, ProgressTask>();
-
                             // Run the archive pipeline concurrently with the display poll loop
                             var archiveTask = mediator.Send(new ArchiveCommand(opts), ct)
                                 .AsTask()
                                 .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
                                     CancellationToken.None);
 
+                            // ── 4.8: Responsive poll loop ─────────────────────────────────
                             while (!archiveTask.IsCompleted)
                             {
+                                ctx.UpdateTarget(BuildArchiveDisplay(progressState));
                                 await Task.WhenAny(archiveTask, Task.Delay(100, ct)).ConfigureAwait(false);
-                                UpdateArchiveTasks(progressState, ctx, scanTask, hashTask, bundleTask, uploadTask,
-                                    hashSubTasks, uploadSubTasks);
                             }
 
                             await archiveTask;
-                            // Final update
-                            UpdateArchiveTasks(progressState, ctx, scanTask, hashTask, bundleTask, uploadTask,
-                                hashSubTasks, uploadSubTasks);
+                            // ── 4.9: Final update after loop exits ────────────────────────
+                            ctx.UpdateTarget(BuildArchiveDisplay(progressState));
                         });
                 }
                 else
@@ -863,122 +848,104 @@ public static class CliBuilder
     // ── Progress display helpers ──────────────────────────────────────────────
 
     /// <summary>
-    /// Polls <see cref="ProgressState"/> and updates the four Spectre.Console progress tasks
-    /// for the archive command (Scanning, Hashing, Bundling, Uploading) including dynamic
-    /// per-file sub-tasks for concurrent hash and upload operations.
+    /// Builds the archive display renderable as a pure function of <see cref="ProgressState"/>.
+    /// Returns a <see cref="Rows"/> containing stage header lines followed by per-file lines.
+    /// Called on every 100ms poll tick by the Live display loop.
     /// </summary>
-    private static void UpdateArchiveTasks(
-        ProgressState                       state,
-        ProgressContext                     ctx,
-        ProgressTask                        scanTask,
-        ProgressTask                        hashTask,
-        ProgressTask                        bundleTask,
-        ProgressTask                        uploadTask,
-        Dictionary<string, ProgressTask>    hashSubTasks,
-        Dictionary<string, ProgressTask>    uploadSubTasks)
+    internal static IRenderable BuildArchiveDisplay(ProgressState state)
     {
-        // ── Scanning task ────────────────────────────────────────────────────
-        var totalFiles = state.TotalFiles;
-        if (totalFiles.HasValue)
-        {
-            if (scanTask.IsIndeterminate)
-            {
-                scanTask.IsIndeterminate = false;
-                scanTask.MaxValue        = totalFiles.Value;
-                scanTask.Description     = "[green]Scanning [/]";
-            }
-            scanTask.Value = totalFiles.Value;
-        }
+        var lines = new List<IRenderable>();
 
-        // ── Hashing task ─────────────────────────────────────────────────────
+        // ── Stage headers ─────────────────────────────────────────────────────
+
+        var totalFiles  = state.TotalFiles;
         var filesHashed = state.FilesHashed;
-        if (totalFiles.HasValue && totalFiles.Value > 0)
-        {
-            if (hashTask.IsIndeterminate)
-            {
-                hashTask.IsIndeterminate = false;
-                hashTask.MaxValue        = totalFiles.Value;
-            }
-            hashTask.Value    = filesHashed;
-            hashTask.MaxValue = totalFiles.Value;
-            hashTask.Description = $"[green]Hashing  [/] [dim]{filesHashed}/{totalFiles.Value}[/]";
-        }
+
+        // Scanning
+        if (totalFiles.HasValue)
+            lines.Add(new Markup($"  [green]✓ Scanning [/]  [dim]{totalFiles.Value} files[/]"));
         else
-        {
-            hashTask.Value = filesHashed;
-        }
+            lines.Add(new Markup("  [yellow]◐ Scanning [/]  [dim]...[/]"));
 
-        // Dynamic per-file hashing sub-tasks
-        var currentHashes = state.InFlightHashes;
-        // Remove completed
-        foreach (var key in hashSubTasks.Keys.Where(k => !currentHashes.ContainsKey(k)).ToList())
-        {
-            hashSubTasks[key].StopTask();
-            hashSubTasks.Remove(key);
-        }
-        // Add/update in-flight
-        foreach (var (path, fp) in currentHashes)
-        {
-            var pct = fp.TotalBytes > 0 ? fp.BytesProcessed * 100.0 / fp.TotalBytes : 0;
-            var shortName = Path.GetFileName(path);
-            if (!hashSubTasks.TryGetValue(path, out var subTask))
-            {
-                subTask = ctx.AddTask($"  [dim]{Markup.Escape(shortName)}[/]", maxValue: 100);
-                hashSubTasks[path] = subTask;
-            }
-            subTask.Value       = pct;
-            subTask.Description = $"  [dim]{Markup.Escape(shortName)} {pct:F0}%[/]";
-        }
+        // Hashing
+        if (totalFiles.HasValue && filesHashed >= totalFiles.Value)
+            lines.Add(new Markup($"  [green]✓ Hashing  [/]  [dim]{filesHashed}/{totalFiles.Value}[/]"));
+        else if (totalFiles.HasValue)
+            lines.Add(new Markup($"  [yellow]◐ Hashing  [/]  [dim]{filesHashed}/{totalFiles.Value}[/]"));
+        else
+            lines.Add(new Markup($"  [yellow]◐ Hashing  [/]  [dim]{filesHashed}...[/]"));
 
-        // ── Bundling task ─────────────────────────────────────────────────────
-        var tarEntryCount = state.CurrentTarEntryCount;
-        var tarSize       = state.CurrentTarSize;
-        if (tarEntryCount > 0 || state.TarsBundled > 0)
-        {
-            bundleTask.Description = tarEntryCount > 0
-                ? $"[green]Bundling [/] [dim]{tarEntryCount} entries, {tarSize.Bytes().Humanize()}[/]"
-                : $"[green]Bundling [/] [dim]{state.TarsBundled} bundle(s)[/]";
-        }
-
-        // ── Uploading task ───────────────────────────────────────────────────
+        // Uploading
         var chunksUploaded = state.ChunksUploaded;
         var totalChunks    = state.TotalChunks;
-        if (totalChunks.HasValue && uploadTask.IsIndeterminate)
+        var tarsUploaded   = state.TarsUploaded;
+        if (totalChunks.HasValue && chunksUploaded >= totalChunks.Value && chunksUploaded > 0)
+            lines.Add(new Markup($"  [green]✓ Uploading[/]  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
+        else if (totalChunks.HasValue)
+            lines.Add(new Markup($"  [yellow]◐ Uploading[/]  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
+        else if (chunksUploaded > 0 || tarsUploaded > 0)
+            lines.Add(new Markup($"  [yellow]◐ Uploading[/]  [dim]{chunksUploaded} chunks...[/]"));
+        else
+            lines.Add(new Markup("  [grey]  Uploading[/]"));
+
+        // ── Per-file lines (blank separator + one line per active TrackedFile) ─
+
+        var trackedFiles = state.TrackedFiles.Values.ToList();
+        if (trackedFiles.Count > 0)
         {
-            uploadTask.IsIndeterminate = false;
-            uploadTask.MaxValue        = totalChunks.Value;
-        }
-        if (!uploadTask.IsIndeterminate)
-        {
-            uploadTask.Value       = chunksUploaded;
-            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded}/{(totalChunks?.ToString() ?? "?")} chunk(s)[/]";
-        }
-        else if (chunksUploaded > 0)
-        {
-            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded} chunk(s)...[/]";
+            lines.Add(new Markup(""));  // blank separator
+            foreach (var file in trackedFiles)
+            {
+                var shortName = Path.GetFileName(file.RelativePath);
+                if (shortName.Length > 30)
+                    shortName = shortName[..27] + "...";
+                shortName = shortName.PadRight(30);
+
+                var stateStr = file.State switch
+                {
+                    FileState.Hashing      => "Hashing      ",
+                    FileState.QueuedInTar  => "Queued in TAR",
+                    FileState.UploadingTar => "Uploading TAR",
+                    FileState.Uploading    => "Uploading    ",
+                    FileState.Done         => "Done         ",
+                    _                      => "             ",
+                };
+
+                string line;
+                if (file.State is FileState.Hashing or FileState.Uploading or FileState.UploadingTar)
+                {
+                    var pct = file.TotalBytes > 0
+                        ? (double)file.BytesProcessed / file.TotalBytes
+                        : 0.0;
+                    var bar = RenderProgressBar(pct, 12);
+                    var pctStr = $"{pct * 100:F0}%".PadLeft(4);
+                    line = $"  [dim]{Markup.Escape(shortName)}[/]  {bar}  [dim]{stateStr} {pctStr}[/]";
+                }
+                else
+                {
+                    // QueuedInTar: no progress bar
+                    line = $"  [dim]{Markup.Escape(shortName)}[/]  {"".PadRight(12)}  [dim]{stateStr}[/]";
+                }
+                lines.Add(new Markup(line));
+            }
         }
 
-        // Dynamic per-chunk upload sub-tasks
-        var currentUploads = state.InFlightUploads;
-        // Remove completed
-        foreach (var key in uploadSubTasks.Keys.Where(k => !currentUploads.ContainsKey(k)).ToList())
-        {
-            uploadSubTasks[key].StopTask();
-            uploadSubTasks.Remove(key);
-        }
-        // Add/update in-flight
-        foreach (var (hash, fp) in currentUploads)
-        {
-            var pct      = fp.TotalBytes > 0 ? fp.BytesProcessed * 100.0 / fp.TotalBytes : 0;
-            var shortKey = hash.Length > 16 ? hash[..16] + ".." : hash;
-            if (!uploadSubTasks.TryGetValue(hash, out var subTask))
-            {
-                subTask = ctx.AddTask($"  [dim]{Markup.Escape(shortKey)}[/]", maxValue: 100);
-                uploadSubTasks[hash] = subTask;
-            }
-            subTask.Value       = pct;
-            subTask.Description = $"  [dim]{Markup.Escape(shortKey)} {pct:F0}%[/]";
-        }
+        return new Rows(lines);
+    }
+
+    /// <summary>
+    /// Renders a progress bar as a Markup string with the given fill ratio and character width.
+    /// Filled characters use [green]█[/] and empty characters use [dim]░[/].
+    /// </summary>
+    /// <param name="fraction">Fill ratio in [0.0, 1.0].</param>
+    /// <param name="width">Total bar width in characters.</param>
+    internal static string RenderProgressBar(double fraction, int width)
+    {
+        fraction = Math.Clamp(fraction, 0.0, 1.0);
+        var filled = (int)Math.Round(fraction * width);
+        filled = Math.Clamp(filled, 0, width);
+        var empty  = width - filled;
+        return $"[green]{new string('█', filled)}[/][dim]{new string('░', empty)}[/]";
     }
 
     /// <summary>
