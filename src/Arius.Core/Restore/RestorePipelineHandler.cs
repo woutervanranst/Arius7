@@ -65,6 +65,13 @@ public sealed class RestorePipelineHandler
     /// <param name="cancellationToken">Token to observe while performing asynchronous operations.</param>
     /// <returns>
     /// A RestoreResult indicating whether the operation succeeded, how many files were restored, how many were skipped, the number of chunks pending rehydration, and an error message when unsuccessful.
+    /// <summary>
+    /// Execute the complete restore pipeline for a repository snapshot using the provided command options.
+    /// </summary>
+    /// <param name="command">The restore command containing <see cref="RestoreOptions"/> that control target directory, overwrite behavior, rehydration/cleanup confirmations, and other restore settings.</param>
+    /// <param name="cancellationToken">Token to observe while waiting for the operation to complete.</param>
+    /// <returns>
+    /// A <see cref="RestoreResult"/> describing the operation outcome: when <see cref="RestoreResult.Success"/> is `true` the result includes counts for <see cref="RestoreResult.FilesRestored"/>, <see cref="RestoreResult.FilesSkipped"/>, and <see cref="RestoreResult.ChunksPendingRehydration"/>; when `false` <see cref="RestoreResult.ErrorMessage"/> contains a brief error description (for example when no snapshot is found or an internal exception occurred).
     /// </returns>
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
@@ -528,7 +535,14 @@ public sealed class RestorePipelineHandler
     /// <summary>
     /// Downloads a tar bundle and extracts only the files whose content-hash matches
     /// an entry in <paramref name="filesNeeded"/>.
+    /// <summary>
+    /// Extracts a gzipped tar blob whose entries are named by content hash and writes each matching entry to its corresponding local file paths.
     /// </summary>
+    /// <param name="blobName">The name of the blob containing the gzipped tar archive.</param>
+    /// <param name="filesNeeded">Mapping from content-hash to the list of files that should be restored from that content.</param>
+    /// <param name="opts">Restore options that control output directory and pointer-file behavior.</param>
+    /// <param name="cancellationToken">Cancellation token to observe while performing I/O.</param>
+    /// <returns>The total number of files written to disk.</returns>
     private async Task<int> RestoreTarBundleAsync(
         string                                    blobName,
         Dictionary<string, List<FileToRestore>>   filesNeeded,
