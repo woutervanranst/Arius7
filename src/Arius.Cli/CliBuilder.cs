@@ -395,39 +395,21 @@ public static class CliBuilder
                     .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
                         CancellationToken.None);
 
-                await AnsiConsole.Progress()
-                    .AutoRefresh(true)
+                await AnsiConsole.Live(new Markup(""))
+                    .Overflow(VerticalOverflow.Crop)
+                    .Cropping(VerticalOverflowCropping.Bottom)
                     .AutoClear(false)
-                    .HideCompleted(false)
-                    .Columns(
-                        new TaskDescriptionColumn(),
-                        new ProgressBarColumn(),
-                        new PercentageColumn(),
-                        new RemainingTimeColumn(),
-                        new SpinnerColumn())
                     .StartAsync(async ctx =>
                     {
-                        var restoreTask = ctx.AddTask("[grey]Restoring[/]");
-                        restoreTask.IsIndeterminate = true;
-
                         // Poll until either pipeline completes or a rehydration question arrives.
                         while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted)
                         {
+                            ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
                             await Task.WhenAny(pipelineTask, questionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
-                            UpdateRestoreTask(restoreProgress, restoreTask);
                         }
 
-                        if (!pipelineTask.IsCompleted)
-                        {
-                            // Question arrived — exit progress display so prompt can render cleanly.
-                            // Mark indeterminate to indicate pause; Spectre will clear when StartAsync returns.
-                            restoreTask.IsIndeterminate = true;
-                        }
-                        else
-                        {
-                            // Pipeline completed without rehydration question — final update.
-                            UpdateRestoreTask(restoreProgress, restoreTask);
-                        }
+                        // Final update before exiting.
+                        ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
                     });
 
                 if (!pipelineTask.IsCompleted)
@@ -510,29 +492,20 @@ public static class CliBuilder
                     else
                     {
                         // ── Phase 3: Download — show progress display ─────────
-                        await AnsiConsole.Progress()
-                            .AutoRefresh(true)
+                        await AnsiConsole.Live(new Markup(""))
+                            .Overflow(VerticalOverflow.Crop)
+                            .Cropping(VerticalOverflowCropping.Bottom)
                             .AutoClear(false)
-                            .HideCompleted(false)
-                            .Columns(
-                                new TaskDescriptionColumn(),
-                                new ProgressBarColumn(),
-                                new PercentageColumn(),
-                                new RemainingTimeColumn(),
-                                new SpinnerColumn())
                             .StartAsync(async ctx =>
                             {
-                                var restoreTask = ctx.AddTask("[grey]Restoring[/]");
-                                restoreTask.IsIndeterminate = true;
-
                                 while (!pipelineTask.IsCompleted)
                                 {
+                                    ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
                                     await Task.WhenAny(pipelineTask, Task.Delay(100, ct)).ConfigureAwait(false);
-                                    UpdateRestoreTask(restoreProgress, restoreTask);
                                 }
 
                                 await pipelineTask;
-                                UpdateRestoreTask(restoreProgress, restoreTask);
+                                ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
                             });
 
                         // ── Phase 4: Cleanup question — after progress clears ─
@@ -863,28 +836,28 @@ public static class CliBuilder
 
         // Scanning
         if (totalFiles.HasValue)
-            lines.Add(new Markup($"  [green]✓ Scanning [/]  [dim]{totalFiles.Value} files[/]"));
+            lines.Add(new Markup($"  [green]●[/] Scanning   [dim]{totalFiles.Value} files[/]"));
         else
-            lines.Add(new Markup("  [yellow]◐ Scanning [/]  [dim]...[/]"));
+            lines.Add(new Markup("  [yellow]○[/] Scanning   [dim]...[/]"));
 
         // Hashing
         if (totalFiles.HasValue && filesHashed >= totalFiles.Value)
-            lines.Add(new Markup($"  [green]✓ Hashing  [/]  [dim]{filesHashed}/{totalFiles.Value}[/]"));
+            lines.Add(new Markup($"  [green]●[/] Hashing    [dim]{filesHashed}/{totalFiles.Value}[/]"));
         else if (totalFiles.HasValue)
-            lines.Add(new Markup($"  [yellow]◐ Hashing  [/]  [dim]{filesHashed}/{totalFiles.Value}[/]"));
+            lines.Add(new Markup($"  [yellow]○[/] Hashing    [dim]{filesHashed}/{totalFiles.Value}[/]"));
         else
-            lines.Add(new Markup($"  [yellow]◐ Hashing  [/]  [dim]{filesHashed}...[/]"));
+            lines.Add(new Markup($"  [yellow]○[/] Hashing    [dim]{filesHashed}...[/]"));
 
         // Uploading
         var chunksUploaded = state.ChunksUploaded;
         var totalChunks    = state.TotalChunks;
         var tarsUploaded   = state.TarsUploaded;
         if (totalChunks.HasValue && chunksUploaded >= totalChunks.Value && chunksUploaded > 0)
-            lines.Add(new Markup($"  [green]✓ Uploading[/]  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
+            lines.Add(new Markup($"  [green]●[/] Uploading  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
         else if (totalChunks.HasValue)
-            lines.Add(new Markup($"  [yellow]◐ Uploading[/]  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
+            lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
         else if (chunksUploaded > 0 || tarsUploaded > 0)
-            lines.Add(new Markup($"  [yellow]◐ Uploading[/]  [dim]{chunksUploaded} chunks...[/]"));
+            lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded} chunks...[/]"));
         else
             lines.Add(new Markup("  [grey]  Uploading[/]"));
 
@@ -896,10 +869,7 @@ public static class CliBuilder
             lines.Add(new Markup(""));  // blank separator
             foreach (var file in trackedFiles)
             {
-                var shortName = Path.GetFileName(file.RelativePath);
-                if (shortName.Length > 30)
-                    shortName = shortName[..27] + "...";
-                shortName = shortName.PadRight(30);
+                var displayName = Markup.Escape(TruncateAndLeftJustify(file.RelativePath, 30));
 
                 var stateStr = file.State switch
                 {
@@ -912,19 +882,21 @@ public static class CliBuilder
                 };
 
                 string line;
-                if (file.State is FileState.Hashing or FileState.Uploading or FileState.UploadingTar)
+                if (file.State is FileState.Hashing or FileState.Uploading)
                 {
                     var pct = file.TotalBytes > 0
                         ? (double)file.BytesProcessed / file.TotalBytes
                         : 0.0;
-                    var bar = RenderProgressBar(pct, 12);
+                    var bar    = RenderProgressBar(pct, 12);
                     var pctStr = $"{pct * 100:F0}%".PadLeft(4);
-                    line = $"  [dim]{Markup.Escape(shortName)}[/]  {bar}  [dim]{stateStr} {pctStr}[/]";
+                    var sizeStr = $"{file.BytesProcessed.Bytes().Humanize()} / {file.TotalBytes.Bytes().Humanize()}";
+                    line = $"  [dim]{displayName}[/]  {bar}  [dim]{stateStr} {pctStr}  {Markup.Escape(sizeStr)}[/]";
                 }
                 else
                 {
-                    // QueuedInTar: no progress bar
-                    line = $"  [dim]{Markup.Escape(shortName)}[/]  {"".PadRight(12)}  [dim]{stateStr}[/]";
+                    // QueuedInTar / UploadingTar: no progress bar, show total size only
+                    var sizeStr = file.TotalBytes.Bytes().Humanize();
+                    line = $"  [dim]{displayName}[/]  {"".PadRight(12)}  [dim]{stateStr}  {Markup.Escape(sizeStr)}[/]";
                 }
                 lines.Add(new Markup(line));
             }
@@ -949,25 +921,65 @@ public static class CliBuilder
     }
 
     /// <summary>
-    /// Polls <see cref="ProgressState"/> and updates the Spectre.Console restore progress task.
+    /// Truncates <paramref name="input"/> to <paramref name="width"/> characters and left-justifies it.
+    /// If the input is longer than <paramref name="width"/>, the result is
+    /// <c>"..." + input[last (width-3) chars]</c> — preserving the deepest part of the path.
+    /// The result is always exactly <paramref name="width"/> characters wide.
+    /// The caller is responsible for applying <see cref="Markup.Escape"/> before embedding in Markup.
     /// </summary>
-    private static void UpdateRestoreTask(ProgressState state, ProgressTask restoreTask)
+    internal static string TruncateAndLeftJustify(string input, int width)
     {
+        if (input.Length <= width)
+            return input.PadRight(width);
+        return ("..." + input[^(width - 3)..]).PadRight(width);
+    }
+
+    /// <summary>
+    /// Builds the restore display renderable as a pure function of <see cref="ProgressState"/>.
+    /// Returns a <see cref="Rows"/> containing a stage header (4 lines) followed by a tail of
+    /// up to 10 recent file events. When all files are done the tail is omitted.
+    /// </summary>
+    internal static IRenderable BuildRestoreDisplay(ProgressState state)
+    {
+        var lines = new List<IRenderable>();
+
         var total    = state.RestoreTotalFiles;
         var restored = state.FilesRestored;
         var skipped  = state.FilesSkipped;
         var done     = restored + skipped;
+        var complete = total > 0 && done >= total;
 
-        if (total > 0)
+        // ── Stage header ──────────────────────────────────────────────────────
+
+        var symbol = complete ? "[green]●[/]" : "[yellow]○[/]";
+        var countStr = total > 0 ? $"{done}/{total}" : $"{done}...";
+        lines.Add(new Markup($"  {symbol} Restoring  {countStr} files"));
+
+        lines.Add(new Markup($"    Restored:    {restored}  ({state.BytesRestored.Bytes().Humanize()})"));
+        lines.Add(new Markup($"    Skipped:     {skipped}  ({state.BytesSkipped.Bytes().Humanize()})"));
+
+        if (state.RehydrationChunkCount > 0)
+            lines.Add(new Markup($"    Rehydrating: {state.RehydrationChunkCount} chunks ({state.RehydrationTotalBytes.Bytes().Humanize()})"));
+
+        // ── Per-file tail (omitted on completion) ─────────────────────────────
+
+        if (!complete)
         {
-            if (restoreTask.IsIndeterminate)
+            var recent = state.RecentRestoreEvents.ToArray();
+            if (recent.Length > 0)
             {
-                restoreTask.IsIndeterminate = false;
-                restoreTask.MaxValue        = total;
-                restoreTask.Description     = "[green]Restoring[/]";
+                lines.Add(new Markup(""));  // blank separator
+                foreach (var ev in recent)
+                {
+                    var sym      = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
+                    var path     = Markup.Escape(TruncateAndLeftJustify(ev.RelativePath, 40));
+                    var sizeStr  = Markup.Escape(ev.FileSize.Bytes().Humanize());
+                    lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
+                }
             }
-            restoreTask.Value = done;
         }
+
+        return new Rows(lines);
     }
 
     // ── Resolution helpers ────────────────────────────────────────────────────
