@@ -1,8 +1,37 @@
+using System.Collections.Concurrent;
+
 namespace Arius.Cli;
 
 /// <summary>
+/// Per-file progress for an in-flight hash or upload operation.
+/// <see cref="BytesProcessed"/> is updated via <see cref="Interlocked.Exchange(ref long, long)"/>
+/// for lock-free thread safety.
+/// </summary>
+public sealed class FileProgress
+{
+    public FileProgress(string fileName, long totalBytes)
+    {
+        FileName   = fileName;
+        TotalBytes = totalBytes;
+    }
+
+    public string FileName   { get; }
+    public long   TotalBytes { get; }
+
+    private long _bytesProcessed;
+
+    /// <summary>Cumulative bytes processed so far.</summary>
+    public long BytesProcessed => Interlocked.Read(ref _bytesProcessed);
+
+    /// <summary>Updates <see cref="BytesProcessed"/> to <paramref name="value"/>.</summary>
+    public void SetBytesProcessed(long value) =>
+        Interlocked.Exchange(ref _bytesProcessed, value);
+}
+
+/// <summary>
 /// Shared progress state for archive and restore operations.
-/// All counter updates use <see cref="Interlocked"/> operations for thread safety.
+/// All counter updates use <see cref="Interlocked"/> operations or concurrent collections
+/// for thread safety.
 /// Registered as a singleton in DI so notification handlers and the display component
 /// share the same instance.
 /// </summary>
@@ -19,47 +48,32 @@ public sealed class ProgressState
 
     // ── Archive: hashing ──────────────────────────────────────────────────────
 
+    /// <summary>Files currently being hashed, keyed by relative path.</summary>
+    public ConcurrentDictionary<string, FileProgress> InFlightHashes { get; } = new();
+
     /// <summary>Number of files currently being hashed (in-flight).</summary>
-    public int FilesHashing => (int)Interlocked.Read(ref _filesHashing);
-    private long _filesHashing;
+    public int FilesHashing => InFlightHashes.Count;
 
     /// <summary>Number of files for which hashing has completed.</summary>
     public long FilesHashed => Interlocked.Read(ref _filesHashed);
     private long _filesHashed;
 
-    /// <summary>Name of the file currently being hashed (last set wins under concurrency).</summary>
-    public volatile string? CurrentHashFile;
+    public void IncrementFilesHashing(string relativePath, long fileSize) =>
+        InFlightHashes.TryAdd(relativePath, new FileProgress(relativePath, fileSize));
 
-    /// <summary>File size of <see cref="CurrentHashFile"/> in bytes (for progress denominator).</summary>
-    public long CurrentHashFileSize => Interlocked.Read(ref _currentHashFileSize);
-    private long _currentHashFileSize;
-
-    /// <summary>Bytes read so far for <see cref="CurrentHashFile"/>.</summary>
-    public long CurrentHashBytesRead => Interlocked.Read(ref _currentHashBytesRead);
-    private long _currentHashBytesRead;
-
-    public void IncrementFilesHashing(string relativePath, long fileSize)
+    public void IncrementFilesHashed(string relativePath)
     {
-        Interlocked.Increment(ref _filesHashing);
-        CurrentHashFile = relativePath;
-        Interlocked.Exchange(ref _currentHashFileSize, fileSize);
-        Interlocked.Exchange(ref _currentHashBytesRead, 0);
-    }
-
-    public void IncrementFilesHashed()
-    {
+        InFlightHashes.TryRemove(relativePath, out _);
         Interlocked.Increment(ref _filesHashed);
-        Interlocked.Decrement(ref _filesHashing);
     }
-
-    public void SetHashProgress(long bytesRead) =>
-        Interlocked.Exchange(ref _currentHashBytesRead, bytesRead);
 
     // ── Archive: uploading ────────────────────────────────────────────────────
 
+    /// <summary>Chunks currently being uploaded, keyed by content hash.</summary>
+    public ConcurrentDictionary<string, FileProgress> InFlightUploads { get; } = new();
+
     /// <summary>Number of chunks currently being uploaded (in-flight).</summary>
-    public int ChunksUploading => (int)Interlocked.Read(ref _chunksUploading);
-    private long _chunksUploading;
+    public int ChunksUploading => InFlightUploads.Count;
 
     /// <summary>Total chunks successfully uploaded.</summary>
     public long ChunksUploaded => Interlocked.Read(ref _chunksUploaded);
@@ -69,36 +83,34 @@ public sealed class ProgressState
     public long BytesUploaded => Interlocked.Read(ref _bytesUploaded);
     private long _bytesUploaded;
 
-    /// <summary>Current upload info (content hash or file name) for the in-flight upload.</summary>
-    public volatile string? CurrentUploadFile;
+    /// <summary>
+    /// Total number of chunks to upload (known after dedup completes).
+    /// <c>null</c> while dedup is still in progress — used for indeterminate→determinate transition.
+    /// </summary>
+    public long? TotalChunks => _totalChunks < 0 ? null : _totalChunks;
+    private long _totalChunks = -1;
 
-    /// <summary>Total size of the currently uploading chunk.</summary>
-    public long CurrentUploadFileSize => Interlocked.Read(ref _currentUploadFileSize);
-    private long _currentUploadFileSize;
+    public void IncrementChunksUploading(string contentHash, long size) =>
+        InFlightUploads.TryAdd(contentHash, new FileProgress(contentHash, size));
 
-    /// <summary>Bytes uploaded so far for the current in-flight chunk.</summary>
-    public long CurrentUploadBytesRead => Interlocked.Read(ref _currentUploadBytesRead);
-    private long _currentUploadBytesRead;
-
-    public void IncrementChunksUploading(string contentHash, long size)
+    public void IncrementChunksUploaded(string contentHash, long compressedSize)
     {
-        Interlocked.Increment(ref _chunksUploading);
-        CurrentUploadFile = contentHash;
-        Interlocked.Exchange(ref _currentUploadFileSize, size);
-        Interlocked.Exchange(ref _currentUploadBytesRead, 0);
-    }
-
-    public void IncrementChunksUploaded(long compressedSize)
-    {
+        InFlightUploads.TryRemove(contentHash, out _);
         Interlocked.Increment(ref _chunksUploaded);
-        Interlocked.Decrement(ref _chunksUploading);
         Interlocked.Add(ref _bytesUploaded, compressedSize);
     }
 
-    public void SetUploadProgress(long bytesRead) =>
-        Interlocked.Exchange(ref _currentUploadBytesRead, bytesRead);
+    public void SetTotalChunks(long count) => Interlocked.Exchange(ref _totalChunks, count);
 
     // ── Archive: tar bundles ──────────────────────────────────────────────────
+
+    /// <summary>Number of entries in the current (unsealed) tar bundle.</summary>
+    public int CurrentTarEntryCount => (int)Interlocked.Read(ref _currentTarEntryCount);
+    private long _currentTarEntryCount;
+
+    /// <summary>Cumulative uncompressed size of the current tar bundle in bytes.</summary>
+    public long CurrentTarSize => Interlocked.Read(ref _currentTarSize);
+    private long _currentTarSize;
 
     /// <summary>Number of tar bundles sealed and ready for upload.</summary>
     public int TarsBundled => (int)Interlocked.Read(ref _tarsBundled);
@@ -108,7 +120,19 @@ public sealed class ProgressState
     public int TarsUploaded => (int)Interlocked.Read(ref _tarsUploaded);
     private long _tarsUploaded;
 
-    public void IncrementTarsBundled() => Interlocked.Increment(ref _tarsBundled);
+    public void UpdateTarEntry(int currentEntryCount, long currentTarSize)
+    {
+        Interlocked.Exchange(ref _currentTarEntryCount, currentEntryCount);
+        Interlocked.Exchange(ref _currentTarSize,       currentTarSize);
+    }
+
+    public void SealTar()
+    {
+        Interlocked.Exchange(ref _currentTarEntryCount, 0);
+        Interlocked.Exchange(ref _currentTarSize,       0);
+        Interlocked.Increment(ref _tarsBundled);
+    }
+
     public void IncrementTarsUploaded() => Interlocked.Increment(ref _tarsUploaded);
 
     // ── Archive: snapshot ─────────────────────────────────────────────────────

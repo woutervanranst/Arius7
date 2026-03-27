@@ -18,7 +18,7 @@ public sealed class FileScannedHandler(ProgressState state) : INotificationHandl
 
 // ── 2.2 FileHashingEvent ─────────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.FilesHashing"/> and records the current file name.</summary>
+/// <summary>Adds an entry to <see cref="ProgressState.InFlightHashes"/> for the file starting to hash.</summary>
 public sealed class FileHashingHandler(ProgressState state) : INotificationHandler<FileHashingEvent>
 {
     public ValueTask Handle(FileHashingEvent notification, CancellationToken cancellationToken)
@@ -30,19 +30,19 @@ public sealed class FileHashingHandler(ProgressState state) : INotificationHandl
 
 // ── 2.3 FileHashedEvent ──────────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.FilesHashed"/> and decrements <see cref="ProgressState.FilesHashing"/>.</summary>
+/// <summary>Removes the entry from <see cref="ProgressState.InFlightHashes"/> and increments <see cref="ProgressState.FilesHashed"/>.</summary>
 public sealed class FileHashedHandler(ProgressState state) : INotificationHandler<FileHashedEvent>
 {
     public ValueTask Handle(FileHashedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementFilesHashed();
+        state.IncrementFilesHashed(notification.RelativePath);
         return ValueTask.CompletedTask;
     }
 }
 
 // ── 2.4 ChunkUploadingEvent ──────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.ChunksUploading"/> and records the current upload info.</summary>
+/// <summary>Adds an entry to <see cref="ProgressState.InFlightUploads"/> for the chunk starting to upload.</summary>
 public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHandler<ChunkUploadingEvent>
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
@@ -54,29 +54,41 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 
 // ── 2.5 ChunkUploadedEvent ───────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.ChunksUploaded"/>, decrements <see cref="ProgressState.ChunksUploading"/>, and adds bytes.</summary>
+/// <summary>Removes the entry from <see cref="ProgressState.InFlightUploads"/>, increments <see cref="ProgressState.ChunksUploaded"/>, and adds bytes.</summary>
 public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHandler<ChunkUploadedEvent>
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementChunksUploaded(notification.CompressedSize);
+        state.IncrementChunksUploaded(notification.ContentHash, notification.CompressedSize);
         return ValueTask.CompletedTask;
     }
 }
 
-// ── 2.6 TarBundleSealingEvent ────────────────────────────────────────────────
+// ── 2.6 TarEntryAddedEvent ───────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.TarsBundled"/> when a tar bundle is sealed.</summary>
+/// <summary>Updates <see cref="ProgressState.CurrentTarEntryCount"/> and <see cref="ProgressState.CurrentTarSize"/>.</summary>
+public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHandler<TarEntryAddedEvent>
+{
+    public ValueTask Handle(TarEntryAddedEvent notification, CancellationToken cancellationToken)
+    {
+        state.UpdateTarEntry(notification.CurrentEntryCount, notification.CurrentTarSize);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 2.7 TarBundleSealingEvent ────────────────────────────────────────────────
+
+/// <summary>Resets current tar counters and increments <see cref="ProgressState.TarsBundled"/>.</summary>
 public sealed class TarBundleSealingHandler(ProgressState state) : INotificationHandler<TarBundleSealingEvent>
 {
     public ValueTask Handle(TarBundleSealingEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementTarsBundled();
+        state.SealTar();
         return ValueTask.CompletedTask;
     }
 }
 
-// ── 2.7 TarBundleUploadedEvent ───────────────────────────────────────────────
+// ── 2.8 TarBundleUploadedEvent ───────────────────────────────────────────────
 
 /// <summary>Increments <see cref="ProgressState.TarsUploaded"/> when a tar bundle upload completes.</summary>
 public sealed class TarBundleUploadedHandler(ProgressState state) : INotificationHandler<TarBundleUploadedEvent>
@@ -88,7 +100,7 @@ public sealed class TarBundleUploadedHandler(ProgressState state) : INotificatio
     }
 }
 
-// ── 2.8 SnapshotCreatedEvent ─────────────────────────────────────────────────
+// ── 2.9 SnapshotCreatedEvent ─────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.SnapshotComplete"/> when the snapshot is created.</summary>
 public sealed class SnapshotCreatedHandler(ProgressState state) : INotificationHandler<SnapshotCreatedEvent>

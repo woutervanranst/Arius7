@@ -57,8 +57,10 @@ public static class ServiceCollectionExtensions
                 containerName,
                 cacheBudgetBytes));
 
-        // Mediator infrastructure (source-generated; also auto-registers handlers by concrete type)
-        services.AddMediator();
+        // NOTE: AddMediator() is intentionally NOT called here.
+        // The source generator must run in the outermost assembly (Arius.Cli or test project)
+        // so it can discover INotificationHandler<T> implementations in both Core and CLI.
+        // The caller (CLI startup or test harness) is responsible for calling AddMediator().
 
         // Re-register handlers by ICommandHandler<,> interface with factory delegates.
         // MS DI "last registration wins" — these override Mediator's concrete-type registrations

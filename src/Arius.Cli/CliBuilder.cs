@@ -173,6 +173,7 @@ public static class CliBuilder
             {
                 var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
                 var mediator = services.GetRequiredService<IMediator>();
+                var progressState = services.GetRequiredService<ProgressState>();
 
                 var opts = new ArchiveOptions
                 {
@@ -182,14 +183,32 @@ public static class CliBuilder
                     NoPointers         = noPointers,
                     SmallFileThreshold = 1024 * 1024L,
                     TarTargetSize      = 64L * 1024 * 1024,
+
+                    // Wire byte-level progress callbacks into ProgressState.
+                    // FileHashingHandler (via Mediator) already added the entry to InFlightHashes
+                    // before CreateHashProgress is called; just look up the entry.
+                    CreateHashProgress = (relativePath, fileSize) =>
+                    {
+                        // Entry was added by FileHashingHandler; retrieve it for progress updates.
+                        if (progressState.InFlightHashes.TryGetValue(relativePath, out var entry))
+                            return new Progress<long>(bytes => entry.SetBytesProcessed(bytes));
+                        return new Progress<long>();
+                    },
+
+                    CreateUploadProgress = (contentHash, size) =>
+                    {
+                        // Entry added by ChunkUploadingHandler via Mediator event before this is called.
+                        if (progressState.InFlightUploads.TryGetValue(contentHash, out var entry))
+                            return new Progress<long>(bytes => entry.SetBytesProcessed(bytes));
+                        return new Progress<long>();
+                    },
                 };
 
                 ArchiveResult? result = null;
                 if (AnsiConsole.Console.Profile.Capabilities.Interactive)
                 {
-                    var progress = services.GetRequiredService<ProgressState>();
-
                     await AnsiConsole.Progress()
+                        .AutoRefresh(true)
                         .AutoClear(false)
                         .HideCompleted(false)
                         .Columns(
@@ -202,11 +221,17 @@ public static class CliBuilder
                         {
                             var scanTask    = ctx.AddTask("[grey]Scanning [/]");
                             var hashTask    = ctx.AddTask("[grey]Hashing  [/]");
+                            var bundleTask  = ctx.AddTask("[grey]Bundling [/]");
                             var uploadTask  = ctx.AddTask("[grey]Uploading[/]");
 
                             scanTask.IsIndeterminate   = true;
                             hashTask.IsIndeterminate   = true;
+                            bundleTask.IsIndeterminate = true;
                             uploadTask.IsIndeterminate = true;
+
+                            // Track dynamic per-file sub-tasks
+                            var hashSubTasks   = new Dictionary<string, ProgressTask>();
+                            var uploadSubTasks = new Dictionary<string, ProgressTask>();
 
                             // Run the archive pipeline concurrently with the display poll loop
                             var archiveTask = mediator.Send(new ArchiveCommand(opts), ct)
@@ -216,13 +241,15 @@ public static class CliBuilder
 
                             while (!archiveTask.IsCompleted)
                             {
-                                await Task.Delay(100, ct).ConfigureAwait(false);
-                                UpdateArchiveTasks(progress, scanTask, hashTask, uploadTask);
+                                await Task.WhenAny(archiveTask, Task.Delay(100, ct)).ConfigureAwait(false);
+                                UpdateArchiveTasks(progressState, ctx, scanTask, hashTask, bundleTask, uploadTask,
+                                    hashSubTasks, uploadSubTasks);
                             }
 
                             await archiveTask;
                             // Final update
-                            UpdateArchiveTasks(progress, scanTask, hashTask, uploadTask);
+                            UpdateArchiveTasks(progressState, ctx, scanTask, hashTask, bundleTask, uploadTask,
+                                hashSubTasks, uploadSubTasks);
                         });
                 }
                 else
@@ -335,6 +362,15 @@ public static class CliBuilder
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
 
+            // ── TCS pairs for thread-safe phase coordination ──────────────────
+            // The pipeline runs on a background task; its callbacks signal these TCS pairs.
+            // The CLI event loop awaits them without any live Spectre component active,
+            // ensuring only one thread touches the console at a time.
+            var questionTcs      = new TaskCompletionSource<RestoreCostEstimate>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var answerTcs        = new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
             var opts = new RestoreOptions
             {
                 RootDirectory = Path.GetFullPath(path),
@@ -342,9 +378,79 @@ public static class CliBuilder
                 NoPointers    = noPointers,
                 Overwrite     = overwrite,
 
-                ConfirmRehydration = async (estimate, ct) =>
+                // Callback runs on pipeline thread. Signal questionTcs and await answerTcs
+                // so the CLI event loop can render prompt on clean console.
+                ConfirmRehydration = async (estimate, cancellationToken) =>
                 {
-                    // ── Chunk availability summary table ─────────────────────────────────
+                    questionTcs.TrySetResult(estimate);
+                    return await answerTcs.Task.ConfigureAwait(false);
+                },
+
+                // Callback runs on pipeline thread. Signal cleanupQuestionTcs and await cleanupAnswerTcs.
+                ConfirmCleanup = async (count, bytes, cancellationToken) =>
+                {
+                    cleanupQuestionTcs.TrySetResult((count, bytes));
+                    return await cleanupAnswerTcs.Task.ConfigureAwait(false);
+                },
+            };
+
+            RestoreResult? result = null;
+            if (AnsiConsole.Console.Profile.Capabilities.Interactive)
+            {
+                var restoreProgress = services.GetRequiredService<ProgressState>();
+
+                // ── Phase 1 + 3: Download progress display ────────────────────
+                // Wrap the entire download flow in a Progress display so files being
+                // restored are shown in both the "no rehydration needed" and the
+                // "post-confirmation download" paths.
+                // When a rehydration question arrives (questionTcs fires), the display
+                // loop exits cleanly so the prompt can render on a clean console.
+                var pipelineTask = mediator.Send(new RestoreCommand(opts), ct)
+                    .AsTask()
+                    .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
+                        CancellationToken.None);
+
+                await AnsiConsole.Progress()
+                    .AutoRefresh(true)
+                    .AutoClear(false)
+                    .HideCompleted(false)
+                    .Columns(
+                        new TaskDescriptionColumn(),
+                        new ProgressBarColumn(),
+                        new PercentageColumn(),
+                        new RemainingTimeColumn(),
+                        new SpinnerColumn())
+                    .StartAsync(async ctx =>
+                    {
+                        var restoreTask = ctx.AddTask("[grey]Restoring[/]");
+                        restoreTask.IsIndeterminate = true;
+
+                        // Poll until either pipeline completes or a rehydration question arrives.
+                        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted)
+                        {
+                            await Task.WhenAny(pipelineTask, questionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
+                            UpdateRestoreTask(restoreProgress, restoreTask);
+                        }
+
+                        if (!pipelineTask.IsCompleted)
+                        {
+                            // Question arrived — exit progress display so prompt can render cleanly.
+                            // Mark indeterminate to indicate pause; Spectre will clear when StartAsync returns.
+                            restoreTask.IsIndeterminate = true;
+                        }
+                        else
+                        {
+                            // Pipeline completed without rehydration question — final update.
+                            UpdateRestoreTask(restoreProgress, restoreTask);
+                        }
+                    });
+
+                if (!pipelineTask.IsCompleted)
+                {
+                    // ── Phase 2: Rehydration question — render prompt on clean console ─
+                    var estimate = await questionTcs.Task.ConfigureAwait(false);
+
+                    // ── Chunk availability summary table ──────────────────────
                     var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
                     summaryTable.AddColumn("Category");
                     summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
@@ -364,86 +470,103 @@ public static class CliBuilder
                         "-");
                     AnsiConsole.Write(summaryTable);
 
+                    RehydratePriority? priority;
                     if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
-                        return RehydratePriority.Standard;
-
-                    // ── Per-component cost breakdown table ───────────────────────────────
-                    var costTable = new Table();
-                    costTable.AddColumn("Cost Component");
-                    costTable.AddColumn(new TableColumn("Standard").RightAligned());
-                    costTable.AddColumn(new TableColumn("High Priority").RightAligned());
-
-                    costTable.AddRow("Data retrieval",
-                        $"\u20ac {estimate.RetrievalCostStandard:F4}",
-                        $"\u20ac {estimate.RetrievalCostHigh:F4}");
-                    costTable.AddRow("Read operations",
-                        $"\u20ac {estimate.ReadOpsCostStandard:F4}",
-                        $"\u20ac {estimate.ReadOpsCostHigh:F4}");
-                    costTable.AddRow("Write operations",
-                        $"\u20ac {estimate.WriteOpsCost:F4}",
-                        $"\u20ac {estimate.WriteOpsCost:F4}");
-                    costTable.AddRow("Storage (1 month)",
-                        $"\u20ac {estimate.StorageCost:F4}",
-                        $"\u20ac {estimate.StorageCost:F4}");
-                    costTable.AddEmptyRow();
-                    costTable.AddRow("[bold]Total[/]",
-                        $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
-                        $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
-                    AnsiConsole.Write(costTable);
-
-                    var choice = AnsiConsole.Prompt(
-                        new SelectionPrompt<string>()
-                            .Title("Select rehydration priority (or cancel):")
-                            .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
-
-                    return choice switch
                     {
-                        "Standard (~15h)" => RehydratePriority.Standard,
-                        "High (~1h)"      => RehydratePriority.High,
-                        _                 => (RehydratePriority?)null,
-                    };
-                },
-
-                ConfirmCleanup = async (count, bytes, ct) =>
-                {
-                    return AnsiConsole.Confirm(
-                        $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
-                },
-            };
-
-            RestoreResult? result = null;
-            if (AnsiConsole.Console.Profile.Capabilities.Interactive)
-            {
-                var progress = services.GetRequiredService<ProgressState>();
-
-                await AnsiConsole.Progress()
-                    .AutoClear(false)
-                    .HideCompleted(false)
-                    .Columns(
-                        new TaskDescriptionColumn(),
-                        new ProgressBarColumn(),
-                        new PercentageColumn(),
-                        new RemainingTimeColumn(),
-                        new SpinnerColumn())
-                    .StartAsync(async ctx =>
+                        priority = RehydratePriority.Standard;
+                    }
+                    else
                     {
-                        var restoreTask = ctx.AddTask("[grey]Restoring[/]");
-                        restoreTask.IsIndeterminate = true;
+                        // ── Per-component cost breakdown table ────────────────
+                        var costTable = new Table();
+                        costTable.AddColumn("Cost Component");
+                        costTable.AddColumn(new TableColumn("Standard").RightAligned());
+                        costTable.AddColumn(new TableColumn("High Priority").RightAligned());
 
-                        var pipelineTask = mediator.Send(new RestoreCommand(opts), ct)
-                            .AsTask()
-                            .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
-                                CancellationToken.None);
+                        costTable.AddRow("Data retrieval",
+                            $"\u20ac {estimate.RetrievalCostStandard:F4}",
+                            $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                        costTable.AddRow("Read operations",
+                            $"\u20ac {estimate.ReadOpsCostStandard:F4}",
+                            $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                        costTable.AddRow("Write operations",
+                            $"\u20ac {estimate.WriteOpsCost:F4}",
+                            $"\u20ac {estimate.WriteOpsCost:F4}");
+                        costTable.AddRow("Storage (1 month)",
+                            $"\u20ac {estimate.StorageCost:F4}",
+                            $"\u20ac {estimate.StorageCost:F4}");
+                        costTable.AddEmptyRow();
+                        costTable.AddRow("[bold]Total[/]",
+                            $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
+                            $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                        AnsiConsole.Write(costTable);
 
-                        while (!pipelineTask.IsCompleted)
+                        var choice = AnsiConsole.Prompt(
+                            new SelectionPrompt<string>()
+                                .Title("Select rehydration priority (or cancel):")
+                                .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
+
+                        priority = choice switch
                         {
-                            await Task.Delay(100, ct).ConfigureAwait(false);
-                            UpdateRestoreTask(progress, restoreTask);
-                        }
+                            "Standard (~15h)" => RehydratePriority.Standard,
+                            "High (~1h)"      => RehydratePriority.High,
+                            _                 => (RehydratePriority?)null,
+                        };
+                    }
 
-                        await pipelineTask;
-                        UpdateRestoreTask(progress, restoreTask);
-                    });
+                    // Unblock the pipeline callback with the user's answer
+                    answerTcs.TrySetResult(priority);
+
+                    if (priority is null)
+                    {
+                        // User cancelled; wait for pipeline to finish without showing progress
+                        await pipelineTask.ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // ── Phase 3: Download — show progress display ─────────
+                        await AnsiConsole.Progress()
+                            .AutoRefresh(true)
+                            .AutoClear(false)
+                            .HideCompleted(false)
+                            .Columns(
+                                new TaskDescriptionColumn(),
+                                new ProgressBarColumn(),
+                                new PercentageColumn(),
+                                new RemainingTimeColumn(),
+                                new SpinnerColumn())
+                            .StartAsync(async ctx =>
+                            {
+                                var restoreTask = ctx.AddTask("[grey]Restoring[/]");
+                                restoreTask.IsIndeterminate = true;
+
+                                while (!pipelineTask.IsCompleted)
+                                {
+                                    await Task.WhenAny(pipelineTask, Task.Delay(100, ct)).ConfigureAwait(false);
+                                    UpdateRestoreTask(restoreProgress, restoreTask);
+                                }
+
+                                await pipelineTask;
+                                UpdateRestoreTask(restoreProgress, restoreTask);
+                            });
+
+                        // ── Phase 4: Cleanup question — after progress clears ─
+                        // pipelineTask is done at this point. If ConfirmCleanup was called,
+                        // cleanupQuestionTcs is already set. If not, it was never set — skip.
+                        if (cleanupQuestionTcs.Task.IsCompleted)
+                        {
+                            var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                            var doCleanup = AnsiConsole.Confirm(
+                                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                            cleanupAnswerTcs.TrySetResult(doCleanup);
+                        }
+                    }
+                }
+                else
+                {
+                    // Pipeline completed without rehydration question (phase 1 progress already shown).
+                    await pipelineTask.ConfigureAwait(false);
+                }
             }
             else
             {
@@ -740,14 +863,19 @@ public static class CliBuilder
     // ── Progress display helpers ──────────────────────────────────────────────
 
     /// <summary>
-    /// Polls <see cref="ProgressState"/> and updates the three Spectre.Console progress tasks
-    /// for the archive command (Scanning, Hashing, Uploading).
+    /// Polls <see cref="ProgressState"/> and updates the four Spectre.Console progress tasks
+    /// for the archive command (Scanning, Hashing, Bundling, Uploading) including dynamic
+    /// per-file sub-tasks for concurrent hash and upload operations.
     /// </summary>
     private static void UpdateArchiveTasks(
-        ProgressState    state,
-        ProgressTask     scanTask,
-        ProgressTask     hashTask,
-        ProgressTask     uploadTask)
+        ProgressState                       state,
+        ProgressContext                     ctx,
+        ProgressTask                        scanTask,
+        ProgressTask                        hashTask,
+        ProgressTask                        bundleTask,
+        ProgressTask                        uploadTask,
+        Dictionary<string, ProgressTask>    hashSubTasks,
+        Dictionary<string, ProgressTask>    uploadSubTasks)
     {
         // ── Scanning task ────────────────────────────────────────────────────
         var totalFiles = state.TotalFiles;
@@ -770,52 +898,86 @@ public static class CliBuilder
             {
                 hashTask.IsIndeterminate = false;
                 hashTask.MaxValue        = totalFiles.Value;
-                hashTask.Description     = "[green]Hashing  [/]";
             }
             hashTask.Value    = filesHashed;
             hashTask.MaxValue = totalFiles.Value;
+            hashTask.Description = $"[green]Hashing  [/] [dim]{filesHashed}/{totalFiles.Value}[/]";
         }
         else
         {
             hashTask.Value = filesHashed;
         }
 
-        // Per-file hash sub-line (show current file being hashed)
-        var currentHashFile = state.CurrentHashFile;
-        if (currentHashFile is not null && state.FilesHashing > 0)
+        // Dynamic per-file hashing sub-tasks
+        var currentHashes = state.InFlightHashes;
+        // Remove completed
+        foreach (var key in hashSubTasks.Keys.Where(k => !currentHashes.ContainsKey(k)).ToList())
         {
-            var hashFileSize  = state.CurrentHashFileSize;
-            var hashBytesRead = state.CurrentHashBytesRead;
-            var hashPct       = hashFileSize > 0 ? (double)hashBytesRead / hashFileSize * 100.0 : 0;
-            var shortName     = Path.GetFileName(currentHashFile);
-            hashTask.Description = $"[green]Hashing[/] [dim]{Markup.Escape(shortName)} {hashPct:F0}%[/]";
+            hashSubTasks[key].StopTask();
+            hashSubTasks.Remove(key);
+        }
+        // Add/update in-flight
+        foreach (var (path, fp) in currentHashes)
+        {
+            var pct = fp.TotalBytes > 0 ? fp.BytesProcessed * 100.0 / fp.TotalBytes : 0;
+            var shortName = Path.GetFileName(path);
+            if (!hashSubTasks.TryGetValue(path, out var subTask))
+            {
+                subTask = ctx.AddTask($"  [dim]{Markup.Escape(shortName)}[/]", maxValue: 100);
+                hashSubTasks[path] = subTask;
+            }
+            subTask.Value       = pct;
+            subTask.Description = $"  [dim]{Markup.Escape(shortName)} {pct:F0}%[/]";
+        }
+
+        // ── Bundling task ─────────────────────────────────────────────────────
+        var tarEntryCount = state.CurrentTarEntryCount;
+        var tarSize       = state.CurrentTarSize;
+        if (tarEntryCount > 0 || state.TarsBundled > 0)
+        {
+            bundleTask.Description = tarEntryCount > 0
+                ? $"[green]Bundling [/] [dim]{tarEntryCount} entries, {tarSize.Bytes().Humanize()}[/]"
+                : $"[green]Bundling [/] [dim]{state.TarsBundled} bundle(s)[/]";
         }
 
         // ── Uploading task ───────────────────────────────────────────────────
         var chunksUploaded = state.ChunksUploaded;
-        if (uploadTask.IsIndeterminate && chunksUploaded > 0)
+        var totalChunks    = state.TotalChunks;
+        if (totalChunks.HasValue && uploadTask.IsIndeterminate)
         {
             uploadTask.IsIndeterminate = false;
-            uploadTask.MaxValue        = 100;
-            uploadTask.Description     = "[green]Uploading[/]";
+            uploadTask.MaxValue        = totalChunks.Value;
+        }
+        if (!uploadTask.IsIndeterminate)
+        {
+            uploadTask.Value       = chunksUploaded;
+            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded}/{(totalChunks?.ToString() ?? "?")} chunk(s)[/]";
+        }
+        else if (chunksUploaded > 0)
+        {
+            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded} chunk(s)...[/]";
         }
 
-        // Per-file upload sub-line
-        var currentUploadFile = state.CurrentUploadFile;
-        if (currentUploadFile is not null && state.ChunksUploading > 0)
+        // Dynamic per-chunk upload sub-tasks
+        var currentUploads = state.InFlightUploads;
+        // Remove completed
+        foreach (var key in uploadSubTasks.Keys.Where(k => !currentUploads.ContainsKey(k)).ToList())
         {
-            var uploadSize     = state.CurrentUploadFileSize;
-            var uploadBytes    = state.CurrentUploadBytesRead;
-            var uploadPct      = uploadSize > 0 ? (double)uploadBytes / uploadSize * 100.0 : 0;
-            var shortUpload    = currentUploadFile.Length > 16 ? currentUploadFile[..16] + ".." : currentUploadFile;
-            uploadTask.Description = $"[green]Uploading[/] [dim]{Markup.Escape(shortUpload)} {uploadPct:F0}% ({chunksUploaded} done)[/]";
+            uploadSubTasks[key].StopTask();
+            uploadSubTasks.Remove(key);
         }
-        else if (!uploadTask.IsIndeterminate)
+        // Add/update in-flight
+        foreach (var (hash, fp) in currentUploads)
         {
-            uploadTask.Description = $"[green]Uploading[/] [dim]{chunksUploaded} chunk(s)[/]";
-            // Pulse the upload bar proportionally to hashing progress as a proxy
-            if (totalFiles.HasValue && totalFiles.Value > 0)
-                uploadTask.Value = state.FilesHashed * 100.0 / totalFiles.Value;
+            var pct      = fp.TotalBytes > 0 ? fp.BytesProcessed * 100.0 / fp.TotalBytes : 0;
+            var shortKey = hash.Length > 16 ? hash[..16] + ".." : hash;
+            if (!uploadSubTasks.TryGetValue(hash, out var subTask))
+            {
+                subTask = ctx.AddTask($"  [dim]{Markup.Escape(shortKey)}[/]", maxValue: 100);
+                uploadSubTasks[hash] = subTask;
+            }
+            subTask.Value       = pct;
+            subTask.Description = $"  [dim]{Markup.Escape(shortKey)} {pct:F0}%[/]";
         }
     }
 
@@ -906,6 +1068,11 @@ public static class CliBuilder
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddSerilog(dispose: true));
         services.AddSingleton<ProgressState>();
+
+        // AddMediator() is called here (not in AddArius) so the source generator runs
+        // in the CLI assembly and discovers INotificationHandler<T> implementations in
+        // both Arius.Core and Arius.Cli.
+        services.AddMediator();
 
         var credential          = new StorageSharedKeyCredential(accountName, accountKey);
         var serviceUri          = new Uri($"https://{accountName}.blob.core.windows.net");

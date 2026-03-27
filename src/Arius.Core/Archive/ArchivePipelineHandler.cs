@@ -175,8 +175,18 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     else if (pair.BinaryExists)
                     {
                         await using var fs        = File.OpenRead(fullBinaryPath!);
-                        var             hashBytes = await _encryption.ComputeHashAsync(fs, ct);
-                        contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                        if (opts.CreateHashProgress is not null)
+                        {
+                            var hashProgress = opts.CreateHashProgress(pair.RelativePath, fileSize);
+                            await using var ps = new ProgressStream(fs, hashProgress);
+                            var hashBytes = await _encryption.ComputeHashAsync(ps, ct);
+                            contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                        }
+                        else
+                        {
+                            var hashBytes = await _encryption.ComputeHashAsync(fs, ct);
+                            contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                        }
                     }
                     else
                     {
@@ -281,8 +291,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
                             await using (var fs = File.OpenRead(fullPath))
                             {
-                                IProgress<long> noOpProgress = new Progress<long>();
-                                await using var ps = new ProgressStream(fs, noOpProgress);
+                                IProgress<long> uploadProgress = opts.CreateUploadProgress is not null
+                                    ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
+                                    : new Progress<long>();
+                                await using var ps = new ProgressStream(fs, uploadProgress);
                                 await ps.CopyToAsync(gzipStream, ct);
                             }
 
@@ -402,6 +414,9 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
                         tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
                         currentSize += upload.FileSize;
+
+                        await _mediator.Publish(new TarEntryAddedEvent(upload.HashedPair.ContentHash, tarEntries.Count, currentSize), cancellationToken);
+                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", upload.HashedPair.ContentHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
 
                         if (currentSize >= opts.TarTargetSize)
                             await SealCurrentTar();

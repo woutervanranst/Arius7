@@ -32,9 +32,9 @@ public class ProgressStateThreadSafetyTests
         await Parallel.ForEachAsync(
             Enumerable.Range(0, n),
             new ParallelOptions { MaxDegreeOfParallelism = concurrency },
-            (_, _) =>
+            (i, _) =>
             {
-                state.IncrementFilesHashed();
+                state.IncrementFilesHashed($"file{i}");
                 return ValueTask.CompletedTask;
             });
 
@@ -57,9 +57,9 @@ public class ProgressStateThreadSafetyTests
         await Parallel.ForEachAsync(
             Enumerable.Range(0, n),
             new ParallelOptions { MaxDegreeOfParallelism = concurrency },
-            (_, _) =>
+            (i, _) =>
             {
-                state.IncrementChunksUploaded(chunkSize);
+                state.IncrementChunksUploaded($"hash{i}", chunkSize);
                 return ValueTask.CompletedTask;
             });
 
@@ -129,8 +129,8 @@ public class NotificationHandlerTests
         await handler.Handle(new FileHashingEvent("foo/bar.bin", 1024), CancellationToken.None);
 
         state.FilesHashing.ShouldBe(1);
-        state.CurrentHashFile.ShouldBe("foo/bar.bin");
-        state.CurrentHashFileSize.ShouldBe(1024);
+        state.InFlightHashes.ContainsKey("foo/bar.bin").ShouldBeTrue();
+        state.InFlightHashes["foo/bar.bin"].TotalBytes.ShouldBe(1024L);
     }
 
     // ── FileHashedHandler ─────────────────────────────────────────────────────
@@ -160,8 +160,8 @@ public class NotificationHandlerTests
         await handler.Handle(new ChunkUploadingEvent("deadbeef", 5_000_000), CancellationToken.None);
 
         state.ChunksUploading.ShouldBe(1);
-        state.CurrentUploadFile.ShouldBe("deadbeef");
-        state.CurrentUploadFileSize.ShouldBe(5_000_000);
+        state.InFlightUploads.ContainsKey("deadbeef").ShouldBeTrue();
+        state.InFlightUploads["deadbeef"].TotalBytes.ShouldBe(5_000_000L);
     }
 
     // ── ChunkUploadedHandler ──────────────────────────────────────────────────
@@ -274,6 +274,117 @@ public class NotificationHandlerTests
     }
 }
 
+// ── 7.2b FileProgress Interlocked update test ────────────────────────────────
+
+/// <summary>
+/// Verifies that <see cref="FileProgress.SetBytesProcessed"/> correctly reports
+/// the latest value under concurrent updates.
+/// </summary>
+public class FileProgressTests
+{
+    [Test]
+    public async Task BytesProcessed_UpdatesCorrectlyUnderContention()
+    {
+        var fp = new FileProgress("test.bin", 1_000_000L);
+
+        // Simulate concurrent progress reports from a single stream reader.
+        // Each "tick" reports cumulative bytes, so last-writer-wins is the correct behaviour.
+        const int iterations = 10_000;
+        long      finalValue = 0;
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(1, iterations),
+            new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            (i, _) =>
+            {
+                fp.SetBytesProcessed(i);
+                Interlocked.Exchange(ref finalValue, i);
+                return ValueTask.CompletedTask;
+            });
+
+        // After all updates BytesProcessed must be a valid value in [1..iterations]
+        fp.BytesProcessed.ShouldBeInRange(1L, iterations);
+    }
+}
+
+// ── 7.2c Restore TCS coordination tests ──────────────────────────────────────
+
+/// <summary>
+/// Verifies the TCS phase-coordination pattern used in the restore command:
+/// the question TCS signals the CLI, the CLI unblocks the answer TCS, and the
+/// pipeline completes without deadlock.
+/// </summary>
+public class RestoreTcsCoordinationTests
+{
+    [Test]
+    public async Task ConfirmRehydration_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
+    {
+        // Arrange: simulate the ConfirmRehydration callback wiring
+        var questionTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // "Pipeline" fires the question and waits for the answer
+        var pipelineTask = Task.Run(async () =>
+        {
+            questionTcs.TrySetResult(42);         // signal: question ready
+            return await answerTcs.Task;          // block: waiting for answer
+        });
+
+        // "CLI event loop" waits for either pipeline completion or a question
+        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
+
+        firstSignal.ShouldBe(questionTcs.Task, "question should arrive before pipeline completes");
+
+        var questionValue = await questionTcs.Task;
+        questionValue.ShouldBe(42);
+
+        // CLI provides the answer — unblocks the pipeline
+        answerTcs.TrySetResult(true);
+
+        var answer = await pipelineTask;
+        answer.ShouldBeTrue("pipeline should receive the answer we provided");
+    }
+
+    [Test]
+    public async Task ConfirmCleanup_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
+    {
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // "Pipeline" cleanup callback
+        var pipelineTask = Task.Run(async () =>
+        {
+            cleanupQuestionTcs.TrySetResult((3, 1024L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // Await the question
+        var (count, bytes) = await cleanupQuestionTcs.Task;
+        count.ShouldBe(3);
+        bytes.ShouldBe(1024L);
+
+        // Provide answer
+        cleanupAnswerTcs.TrySetResult(false);
+
+        var result = await pipelineTask;
+        result.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task NoRehydrationNeeded_PipelineCompletesFirst_QuestionTcsNeverSet()
+    {
+        var questionTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline completes immediately without setting the question TCS
+        var pipelineTask = Task.FromResult(true);
+
+        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
+        firstSignal.ShouldBe((Task)pipelineTask, "pipeline should complete first");
+
+        questionTcs.Task.IsCompleted.ShouldBeFalse("question TCS should not be set");
+    }
+}
+
 // ── 7.3 Integration: Mediator routes events to ProgressState handlers ─────────
 
 /// <summary>
@@ -293,6 +404,10 @@ public class MediatorEventRoutingIntegrationTests
         services.AddLogging(b => b.AddProvider(Microsoft.Extensions.Logging.Abstractions.NullLoggerProvider.Instance));
         services.AddSingleton<ProgressState>();
 
+        // AddMediator() must be called in the outermost (test) assembly so the source
+        // generator discovers INotificationHandler<T> implementations in both Core and CLI.
+        services.AddMediator();
+
         // Provide stub Core services so the source-generated Mediator can initialize
         // its command handler wrappers (ArchivePipelineHandler etc.) without real Azure deps.
         services.AddArius(
@@ -302,20 +417,8 @@ public class MediatorEventRoutingIntegrationTests
             containerName:    "test",
             cacheBudgetBytes: 0);
 
-        // Register CLI notification handlers explicitly (source generator only discovers them
-        // when AddMediator() is called from the Arius.Cli assembly context).
-        services.AddSingleton<INotificationHandler<FileScannedEvent>,        FileScannedHandler>();
-        services.AddSingleton<INotificationHandler<FileHashingEvent>,        FileHashingHandler>();
-        services.AddSingleton<INotificationHandler<FileHashedEvent>,         FileHashedHandler>();
-        services.AddSingleton<INotificationHandler<ChunkUploadingEvent>,     ChunkUploadingHandler>();
-        services.AddSingleton<INotificationHandler<ChunkUploadedEvent>,      ChunkUploadedHandler>();
-        services.AddSingleton<INotificationHandler<TarBundleSealingEvent>,   TarBundleSealingHandler>();
-        services.AddSingleton<INotificationHandler<TarBundleUploadedEvent>,  TarBundleUploadedHandler>();
-        services.AddSingleton<INotificationHandler<SnapshotCreatedEvent>,    SnapshotCreatedHandler>();
-        services.AddSingleton<INotificationHandler<RestoreStartedEvent>,     RestoreStartedHandler>();
-        services.AddSingleton<INotificationHandler<FileRestoredEvent>,       FileRestoredHandler>();
-        services.AddSingleton<INotificationHandler<FileSkippedEvent>,        FileSkippedHandler>();
-        services.AddSingleton<INotificationHandler<RehydrationStartedEvent>, RehydrationStartedHandler>();
+        // No manual handler registration needed: the source generator in this test assembly
+        // discovers all INotificationHandler<T> implementations in both Arius.Core and Arius.Cli.
         return services.BuildServiceProvider();
     }
 
