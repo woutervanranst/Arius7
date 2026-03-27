@@ -198,11 +198,12 @@ public class ProgressStateThreadSafetyTests
             new ParallelOptions { MaxDegreeOfParallelism = 8 },
             (_, _) =>
             {
-                state.IncrementFilesRestored();
+                state.IncrementFilesRestored(1024L);
                 return ValueTask.CompletedTask;
             });
 
         state.FilesRestored.ShouldBe(n);
+        state.BytesRestored.ShouldBe(n * 1024L);
     }
 
     [Test]
@@ -358,9 +359,10 @@ public class NotificationHandlerTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new FileRestoredEvent("dir/file.txt"), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent("dir/file.txt", 500L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(500L);
     }
 
     // ── FileSkippedHandler ────────────────────────────────────────────────────
@@ -371,9 +373,10 @@ public class NotificationHandlerTests
         var state   = new ProgressState();
         var handler = new FileSkippedHandler(state);
 
-        await handler.Handle(new FileSkippedEvent("dir/existing.txt"), CancellationToken.None);
+        await handler.Handle(new FileSkippedEvent("dir/existing.txt", 300L), CancellationToken.None);
 
         state.FilesSkipped.ShouldBe(1L);
+        state.BytesSkipped.ShouldBe(300L);
     }
 
     // ── RehydrationStartedHandler ─────────────────────────────────────────────
@@ -387,6 +390,7 @@ public class NotificationHandlerTests
         await handler.Handle(new RehydrationStartedEvent(7, 1024 * 1024), CancellationToken.None);
 
         state.RehydrationChunkCount.ShouldBe(7);
+        state.RehydrationTotalBytes.ShouldBe(1024L * 1024L);
     }
 }
 
@@ -704,14 +708,16 @@ public class MediatorEventRoutingIntegrationTests
         var state    = sp.GetRequiredService<ProgressState>();
 
         await mediator.Publish(new RestoreStartedEvent(10));
-        await mediator.Publish(new FileRestoredEvent("a.txt"));
-        await mediator.Publish(new FileRestoredEvent("b.txt"));
-        await mediator.Publish(new FileSkippedEvent("c.txt"));
+        await mediator.Publish(new FileRestoredEvent("a.txt", 1000L));
+        await mediator.Publish(new FileRestoredEvent("b.txt", 2000L));
+        await mediator.Publish(new FileSkippedEvent("c.txt", 500L));
         await mediator.Publish(new RehydrationStartedEvent(4, 2048));
 
         state.RestoreTotalFiles.ShouldBe(10);
         state.FilesRestored.ShouldBe(2L);
+        state.BytesRestored.ShouldBe(3000L);
         state.FilesSkipped.ShouldBe(1L);
+        state.BytesSkipped.ShouldBe(500L);
         state.RehydrationChunkCount.ShouldBe(4);
     }
 }
@@ -865,5 +871,383 @@ public class TrackedFileBytesProcessedTests
             });
 
         file.BytesProcessed.ShouldBeInRange(1L, iterations);
+    }
+}
+
+// ── 12.1–12.3 BuildArchiveDisplay: round-2 refinements ───────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildArchiveDisplay"/> uses ●/○ symbols,
+/// full relative path truncation, and a size column.
+/// </summary>
+public class BuildArchiveDisplayRound2Tests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    // 12.1 ● / ○ symbols
+
+    [Test]
+    public void BuildArchiveDisplay_UsesFilledCircle_WhenScanningComplete()
+    {
+        var state = new ProgressState();
+        state.SetTotalFiles(3);
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        // ● present (ANSI stripped → just the char)
+        output.ShouldContain("●");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_UsesOpenCircle_WhenScanningInProgress()
+    {
+        var state  = new ProgressState();   // TotalFiles not set yet
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        output.ShouldContain("○");
+    }
+
+    // 12.2 Full relative path truncation (not just filename)
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsRelativePath_NotJustFilename()
+    {
+        var state = new ProgressState();
+        state.AddFile("some/deep/path/file.bin", 1024);
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        // The display should show truncated relative path, not just "file.bin"
+        // TruncateAndLeftJustify("some/deep/path/file.bin", 30) = "some/deep/path/file.bin" (23 chars, fits)
+        output.ShouldContain("some/deep/path/file.bin");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_TruncatesLongRelativePath_WithEllipsisPrefix()
+    {
+        // Path longer than 30 chars → should be truncated with "..." prefix
+        var longPath = "a/very/long/directory/structure/with/file.bin"; // > 30 chars
+        var state = new ProgressState();
+        state.AddFile(longPath, 2048);
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        output.ShouldContain("...");
+        // The full original path should NOT appear verbatim
+        output.ShouldNotContain(longPath);
+    }
+
+    // 12.3 Size column present for various states
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsSize_ForHashingState()
+    {
+        var state = new ProgressState();
+        state.AddFile("doc.pdf", 5_000_000);
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        // Humanizer renders 5_000_000 bytes as e.g. "4.77 MB" or "5 MB" — either way "MB" present
+        output.ShouldContain("MB");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsSize_ForQueuedInTarState()
+    {
+        var state = new ProgressState();
+        state.AddFile("notes.txt", 1024);
+        state.SetFileHashed("notes.txt", "hq1");
+        state.SetFileQueuedInTar("hq1");
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+
+        output.ShouldContain("1");  // at least the number is shown (1 KB or 1024 B)
+    }
+}
+
+// ── 12.4 TruncateAndLeftJustify ───────────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.TruncateAndLeftJustify"/> edge cases.
+/// </summary>
+public class TruncateAndLeftJustifyTests
+{
+    [Test]
+    public void ShortPath_PaddedToWidth()
+    {
+        var result = CliBuilder.TruncateAndLeftJustify("hi.txt", 10);
+        result.ShouldBe("hi.txt    ");
+        result.Length.ShouldBe(10);
+    }
+
+    [Test]
+    public void ExactWidthPath_NotPadded()
+    {
+        var result = CliBuilder.TruncateAndLeftJustify("12345", 5);
+        result.ShouldBe("12345");
+        result.Length.ShouldBe(5);
+    }
+
+    [Test]
+    public void LongPath_TruncatedWithEllipsisPrefix()
+    {
+        // "abcdefghij" is 10 chars; width=7 → "..." + last 4 = "...ghij"
+        var result = CliBuilder.TruncateAndLeftJustify("abcdefghij", 7);
+        result.ShouldBe("...ghij");
+        result.Length.ShouldBe(7);
+    }
+
+    [Test]
+    public void Width4_LongPath_EllipsisPlusOneChar()
+    {
+        // width=4 → "..." + last 1 char
+        var result = CliBuilder.TruncateAndLeftJustify("abcde", 4);
+        result.ShouldBe("...e");
+        result.Length.ShouldBe(4);
+    }
+
+    [Test]
+    public void EmptyString_PaddedToWidth()
+    {
+        var result = CliBuilder.TruncateAndLeftJustify("", 5);
+        result.ShouldBe("     ");
+        result.Length.ShouldBe(5);
+    }
+}
+
+// ── 12.5 AddRestoreEvent ring buffer ─────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="ProgressState.AddRestoreEvent"/> caps the queue at 10 entries.
+/// </summary>
+public class AddRestoreEventTests
+{
+    [Test]
+    public void AddRestoreEvent_CapAt10_KeepsMostRecent()
+    {
+        var state = new ProgressState();
+
+        for (int i = 1; i <= 15; i++)
+            state.AddRestoreEvent($"file{i}.txt", i * 100L, skipped: false);
+
+        state.RecentRestoreEvents.Count.ShouldBe(10);
+
+        // Most recent 10 are file6.txt through file15.txt
+        var paths = state.RecentRestoreEvents.Select(e => e.RelativePath).ToList();
+        paths.ShouldContain("file15.txt");
+        paths.ShouldContain("file6.txt");
+        paths.ShouldNotContain("file5.txt");
+        paths.ShouldNotContain("file1.txt");
+    }
+
+    [Test]
+    public void AddRestoreEvent_BelowCap_AllRetained()
+    {
+        var state = new ProgressState();
+
+        for (int i = 1; i <= 5; i++)
+            state.AddRestoreEvent($"file{i}.txt", 100L, skipped: i % 2 == 0);
+
+        state.RecentRestoreEvents.Count.ShouldBe(5);
+    }
+}
+
+// ── 12.6 IncrementFilesRestored / IncrementFilesSkipped byte accumulators ─────
+
+/// <summary>
+/// Verifies byte accumulators are updated alongside counters.
+/// </summary>
+public class RestoreByteAccumulatorTests
+{
+    [Test]
+    public void IncrementFilesRestored_UpdatesCounterAndBytes()
+    {
+        var state = new ProgressState();
+
+        state.IncrementFilesRestored(1000L);
+        state.IncrementFilesRestored(2000L);
+
+        state.FilesRestored.ShouldBe(2L);
+        state.BytesRestored.ShouldBe(3000L);
+    }
+
+    [Test]
+    public void IncrementFilesSkipped_UpdatesCounterAndBytes()
+    {
+        var state = new ProgressState();
+
+        state.IncrementFilesSkipped(512L);
+        state.IncrementFilesSkipped(512L);
+
+        state.FilesSkipped.ShouldBe(2L);
+        state.BytesSkipped.ShouldBe(1024L);
+    }
+}
+
+// ── 12.7 SetRehydration sets both fields ─────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="ProgressState.SetRehydration"/> sets both chunk count and byte total.
+/// </summary>
+public class SetRehydrationTests
+{
+    [Test]
+    public void SetRehydration_SetsBothFields()
+    {
+        var state = new ProgressState();
+
+        state.SetRehydration(5, 10_485_760L);
+
+        state.RehydrationChunkCount.ShouldBe(5);
+        state.RehydrationTotalBytes.ShouldBe(10_485_760L);
+    }
+}
+
+// ── 12.8 Restore handlers with new signatures ────────────────────────────────
+
+/// <summary>
+/// Verifies restore handlers with enriched FileSize parameter update all fields.
+/// </summary>
+public class RestoreHandlerNewSignatureTests
+{
+    [Test]
+    public async Task FileRestoredHandler_UpdatesCounterBytesAndQueue()
+    {
+        var state   = new ProgressState();
+        var handler = new FileRestoredHandler(state);
+
+        await handler.Handle(new FileRestoredEvent("a/b.txt", 4096L), CancellationToken.None);
+
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(4096L);
+        state.RecentRestoreEvents.Count.ShouldBe(1);
+        state.RecentRestoreEvents.First().Skipped.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task FileSkippedHandler_UpdatesCounterBytesAndQueue()
+    {
+        var state   = new ProgressState();
+        var handler = new FileSkippedHandler(state);
+
+        await handler.Handle(new FileSkippedEvent("c/d.txt", 2048L), CancellationToken.None);
+
+        state.FilesSkipped.ShouldBe(1L);
+        state.BytesSkipped.ShouldBe(2048L);
+        state.RecentRestoreEvents.Count.ShouldBe(1);
+        state.RecentRestoreEvents.First().Skipped.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task RehydrationStartedHandler_SetsBothFields()
+    {
+        var state   = new ProgressState();
+        var handler = new RehydrationStartedHandler(state);
+
+        await handler.Handle(new RehydrationStartedEvent(3, 5_242_880L), CancellationToken.None);
+
+        state.RehydrationChunkCount.ShouldBe(3);
+        state.RehydrationTotalBytes.ShouldBe(5_242_880L);
+    }
+}
+
+// ── 12.9–12.11 BuildRestoreDisplay ───────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders correctly in
+/// in-progress, completed, and rehydrating states.
+/// </summary>
+public class BuildRestoreDisplayTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    // 12.9 In-progress state
+
+    [Test]
+    public void BuildRestoreDisplay_InProgress_ShowsOpenCircleAndTailLines()
+    {
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(10);
+        state.IncrementFilesRestored(1024L);
+        state.AddRestoreEvent("foo/bar.txt", 1024L, skipped: false);
+        state.AddRestoreEvent("baz/skip.txt", 512L, skipped: true);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("○");        // in-progress symbol
+        output.ShouldContain("Restoring");
+        output.ShouldContain("Restored");
+        output.ShouldContain("Skipped");
+        output.ShouldContain("foo/bar.txt");
+        output.ShouldContain("baz/skip.txt");
+        output.ShouldContain("●");        // restored file marker
+    }
+
+    // 12.10 Completed state — no tail
+
+    [Test]
+    public void BuildRestoreDisplay_Completed_ShowsFilledCircleNoTail()
+    {
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(2);
+        state.IncrementFilesRestored(500L);
+        state.IncrementFilesRestored(300L);
+        // Add an event to the queue — should NOT appear when complete
+        state.AddRestoreEvent("done.txt", 500L, skipped: false);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("●");
+        output.ShouldContain("Restoring");
+        // Tail is omitted on completion
+        output.ShouldNotContain("done.txt");
+    }
+
+    // 12.11 Rehydrating line shown only when RehydrationChunkCount > 0
+
+    [Test]
+    public void BuildRestoreDisplay_NoRehydration_NoRehydratingLine()
+    {
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(5);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldNotContain("Rehydrating");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_WithRehydration_ShowsRehydratingLine()
+    {
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(5);
+        state.SetRehydration(3, 1_048_576L);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("Rehydrating");
+        output.ShouldContain("3");
     }
 }

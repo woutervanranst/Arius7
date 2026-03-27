@@ -78,6 +78,17 @@ public sealed class TrackedFile
         Interlocked.Exchange(ref _bytesProcessed, value);
 }
 
+// ── RestoreFileEvent ──────────────────────────────────────────────────────────
+
+/// <summary>
+/// Represents one entry in the restore display tail — a single file that was
+/// either restored or skipped during a restore operation.
+/// </summary>
+/// <param name="RelativePath">Forward-slash relative path of the file.</param>
+/// <param name="FileSize">Uncompressed file size in bytes.</param>
+/// <param name="Skipped">True if the file was skipped (already present); false if restored.</param>
+internal sealed record RestoreFileEvent(string RelativePath, long FileSize, bool Skipped);
+
 // ── 2.3-2.6 ProgressState ─────────────────────────────────────────────────────
 
 /// <summary>
@@ -243,12 +254,54 @@ public sealed class ProgressState
     public long FilesSkipped => Interlocked.Read(ref _filesSkipped);
     private long _filesSkipped;
 
+    /// <summary>Total bytes of files written to disk.</summary>
+    public long BytesRestored => Interlocked.Read(ref _bytesRestored);
+    private long _bytesRestored;
+
+    /// <summary>Total bytes of files skipped.</summary>
+    public long BytesSkipped => Interlocked.Read(ref _bytesSkipped);
+    private long _bytesSkipped;
+
     /// <summary>Chunks for which rehydration was kicked off.</summary>
     public int RehydrationChunkCount => (int)Interlocked.Read(ref _rehydrationChunkCount);
     private long _rehydrationChunkCount;
 
+    /// <summary>Total bytes covered by the rehydration request.</summary>
+    public long RehydrationTotalBytes => Interlocked.Read(ref _rehydrationTotalBytes);
+    private long _rehydrationTotalBytes;
+
+    /// <summary>Rolling window of the 10 most recent restore file events, for display tail.</summary>
+    internal ConcurrentQueue<RestoreFileEvent> RecentRestoreEvents { get; } = new();
+
     public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restoreTotalFiles, count);
-    public void IncrementFilesRestored() => Interlocked.Increment(ref _filesRestored);
-    public void IncrementFilesSkipped() => Interlocked.Increment(ref _filesSkipped);
-    public void SetRehydrationChunkCount(int count) => Interlocked.Exchange(ref _rehydrationChunkCount, count);
+
+    public void IncrementFilesRestored(long fileSize)
+    {
+        Interlocked.Increment(ref _filesRestored);
+        Interlocked.Add(ref _bytesRestored, fileSize);
+    }
+
+    public void IncrementFilesSkipped(long fileSize)
+    {
+        Interlocked.Increment(ref _filesSkipped);
+        Interlocked.Add(ref _bytesSkipped, fileSize);
+    }
+
+    public void SetRehydration(int count, long bytes)
+    {
+        Interlocked.Exchange(ref _rehydrationChunkCount, count);
+        Interlocked.Exchange(ref _rehydrationTotalBytes, bytes);
+    }
+
+    /// <summary>
+    /// Enqueues a restore file event into <see cref="RecentRestoreEvents"/>, capped at 10 entries.
+    /// If the queue already has 10 entries the oldest is dequeued first.
+    /// </summary>
+    public void AddRestoreEvent(string path, long size, bool skipped)
+    {
+        // Trim to cap before adding so we never exceed 10.
+        while (RecentRestoreEvents.Count >= 10)
+            RecentRestoreEvents.TryDequeue(out _);
+        RecentRestoreEvents.Enqueue(new RestoreFileEvent(path, size, skipped));
+    }
 }

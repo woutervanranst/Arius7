@@ -129,11 +129,34 @@ Progress bars are rendered as Markup text (e.g., `[green]███████�
 
 **Rationale**: The most important information is the stage headers (overall progress). Individual file lines are transient. If 100 files are being processed simultaneously and the terminal is 30 rows, the user sees the stage headers + the first ~27 file lines, with the rest cropped. As files complete and disappear, more become visible.
 
-### 7. Restore display unchanged
+### 7. Restore display rewritten with Live (round 2)
 
-**Decision**: Keep `Spectre.Console.Progress` for the restore download phase. The restore display uses a fixed set of `ProgressTask` entries (one bar for files restored / total), never does dynamic add/remove. The TCS phase coordination ensures no concurrent rendering. This is well within what `Progress` handles.
+**Decision**: Replace `Spectre.Console.Progress` for both restore download phases (Phase 1 and Phase 3) with `AnsiConsole.Live()` + `BuildRestoreDisplay(ProgressState) → IRenderable`. The `UpdateRestoreTask` helper is deleted. The TCS phase coordination structure is otherwise unchanged.
 
-**Rationale**: The restore display doesn't have the problems that motivated the archive display rewrite. Changing it to `Live` would add complexity for no benefit.
+**Rationale**: Round 1 left the restore display as a single indeterminate-then-determinate progress bar showing only aggregate counts. This gives users no visibility into which files are being restored or skipped. The `Live`-based approach (same pattern as archive) allows showing a stage header with counts and byte totals, plus a rolling tail of the 10 most recent per-file events — all without the dynamic-task-removal limitation that forced the archive rewrite.
+
+**Restore display layout**:
+```
+  ○ Restoring    650/1000 files
+    Restored:    600  (2.3 GB)
+    Skipped:     50   (150.0 MB)
+    Rehydrating: 7 chunks (1.0 MB)
+
+  ● ...tos/2026/march/IMG_1231.jpg  (1.2 MB)
+  ● ...tos/2026/march/IMG_1232.jpg  (3.4 MB)
+  ○ ...tos/2026/march/IMG_1233.jpg  (500 KB)   ← skipped (dim)
+  ● ...tos/2026/march/IMG_1234.jpg  (2.1 MB)
+```
+
+On completion:
+```
+  ● Restoring    1000/1000 files
+    Restored:    600  (2.3 GB)
+    Skipped:     400  (1.1 GB)
+    Rehydrated:  7 chunks (1.0 MB)
+```
+
+Tail lines clear on completion (only stage header shown). The `○` symbol is dim for skipped files; `●` is green for restored. The rehydrating line is shown only when `RehydrationChunkCount > 0`.
 
 ### 8. Bundling stage header
 
@@ -150,6 +173,55 @@ The following decisions from the previous design revision remain unchanged:
 - **Decision 5 (TarEntryAddedEvent)**: Published after each tar entry write.
 - **Decision 6 (TCS approach for restore phase coordination)**: TaskCompletionSource pairs for ConfirmRehydration/ConfirmCleanup.
 - **Decision 8 (Responsive poll loop with Task.WhenAny)**: Replace unconditional delay.
+
+### 10. Safe Unicode symbols — replace ✓/◐ with ●/○
+
+**Decision**: Replace `✓` (U+2713, CHECK MARK) and `◐` (U+25D0, CIRCLE WITH LEFT HALF BLACK) everywhere in both archive and restore displays with:
+- `●` (U+25CF, BLACK CIRCLE) — complete / restored: `[green]●[/]`
+- `○` (U+25CB, WHITE CIRCLE) — in-progress: `[yellow]○[/]`
+- `○` — not started / dim / skipped: `[dim]○[/]`
+
+**Rationale**: `✓` and `◐` are in the Miscellaneous/Geometric symbols ranges and do not render consistently across terminal fonts (e.g., they show as replacement boxes in many Windows terminals and some Linux mono fonts). `●` and `○` are in the Geometric Shapes block (U+25A0–U+25FF), which has near-universal coverage in monospace fonts (Consolas, DejaVu Sans Mono, Menlo, etc.). The visual distinction (solid vs hollow circle) clearly communicates complete vs in-progress without relying on color alone.
+
+### 11. File name truncation — TruncateAndLeftJustify helper
+
+**Decision**: Introduce `internal static string TruncateAndLeftJustify(string input, int width)` in `CliBuilder`. The rules:
+- If `input.Length <= width`: return `input.PadRight(width)`
+- If `input.Length > width`: return `"..." + input[^(width - 3)..].PadRight(width)`  *(never shorter than width)*
+- After truncation/padding, the caller applies `Markup.Escape()` to the result before embedding in a Markup string.
+- Input is the full `RelativePath` (forward-slash, relative to root), **not** `Path.GetFileName`. This preserves path context when file names are similar.
+
+**Rationale**: Using `Path.GetFileName` (round 1 approach) loses directory context. Two files named `photo.jpg` in different subdirectories look identical in the display. Truncating from the left (`"...last-N-chars"`) keeps the most distinctive part of the path (the deepest name) while still fitting the column. The `PadRight` ensures columnar alignment.
+
+### 12. File sizes in archive per-file lines
+
+**Decision**: Each per-file line in `BuildArchiveDisplay` SHALL include a size column formatted with Humanizer (`.Bytes().Humanize()`):
+
+| State | Progress bar | Size column |
+|-------|-------------|-------------|
+| Hashing | yes | `3.1 GB / 5.0 GB` (BytesProcessed / TotalBytes) |
+| Uploading | yes | `1.3 GB / 4.0 GB` |
+| QueuedInTar | no | `1.0 KB` (TotalBytes only) |
+| UploadingTar | no | `850 B` (TotalBytes only) |
+
+For Hashing/Uploading the size column uses `BytesProcessed.Bytes().Humanize() + " / " + TotalBytes.Bytes().Humanize()`. No progress bar is shown for tar-path states because `CreateUploadProgress` only fires for large-file chunk uploads, not tar bundle uploads; `BytesProcessed` is stale from hashing.
+
+**Rationale**: Byte counts give the user a concrete sense of what is happening (e.g. a 5 GB file hashing vs a 500-byte config file queued in a tar). Humanizer's automatic unit selection (B/KB/MB/GB) keeps the strings short.
+
+### 13. Restore per-file tracking in ProgressState
+
+**Decision**: Add the following to `ProgressState` (round 2):
+- `RestoreFileEvent` record: `(string RelativePath, long FileSize, bool Skipped)` — represents one entry in the tail.
+- `RecentRestoreEvents`: `ConcurrentQueue<RestoreFileEvent>` capped at 10 entries (dequeue oldest when at capacity before enqueuing new).
+- `BytesRestored`: `long` (Interlocked), incremented via `IncrementFilesRestored(long fileSize)`.
+- `BytesSkipped`: `long` (Interlocked), incremented via `IncrementFilesSkipped(long fileSize)`.
+- `RehydrationTotalBytes`: `long` (Interlocked), set by `SetRehydration(int count, long bytes)`.
+- Update `IncrementFilesRestored()` → `IncrementFilesRestored(long fileSize)` — increments `FilesRestored` and `BytesRestored`.
+- Update `IncrementFilesSkipped()` → `IncrementFilesSkipped(long fileSize)` — increments `FilesSkipped` and `BytesSkipped`.
+- Update `SetRehydrationChunkCount(int)` → `SetRehydration(int count, long bytes)` — sets both `RehydrationChunkCount` and `RehydrationTotalBytes`.
+- Add `AddRestoreEvent(string path, long size, bool skipped)` — enqueues to `RecentRestoreEvents`, dequeuing the oldest if count would exceed 10.
+
+**Rationale**: The ring buffer feeds the restore display tail. The byte accumulators allow the header to show total data transferred/skipped. Storing `RehydrationTotalBytes` alongside chunk count completes the rehydration summary line.
 
 ## Risks / Trade-offs
 

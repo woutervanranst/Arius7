@@ -164,10 +164,10 @@ public sealed record RestoreCostEstimate
 public sealed record RestoreStartedEvent(int TotalFiles) : INotification;
 
 /// <summary>Emitted when a single file has been restored to disk.</summary>
-public sealed record FileRestoredEvent(string RelativePath) : INotification;
+public sealed record FileRestoredEvent(string RelativePath, long FileSize) : INotification;
 
 /// <summary>Emitted when a file was skipped (already present with matching hash).</summary>
-public sealed record FileSkippedEvent(string RelativePath) : INotification;
+public sealed record FileSkippedEvent(string RelativePath, long FileSize) : INotification;
 
 /// <summary>Emitted when rehydration has been kicked off for some chunks.</summary>
 public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : INotification;

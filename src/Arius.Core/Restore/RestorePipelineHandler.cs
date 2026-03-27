@@ -130,7 +130,7 @@ public sealed class RestorePipelineHandler
                         {
                             _logger.LogInformation("[conflict] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
                             continue;
                         }
                     }
@@ -316,7 +316,7 @@ public sealed class RestorePipelineHandler
                     var file = filesForChunk[0]; // only one file per large chunk
                     await RestoreLargeFileAsync(blobName, file, opts, cancellationToken);
                     filesRestored++;
-                    await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                    await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), cancellationToken);
                 }
                 else
                 {
@@ -583,7 +583,7 @@ public sealed class RestorePipelineHandler
                 if (!opts.NoPointers)
                     await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, dataBuffer?.Length ?? 0), cancellationToken);
                 restored++;
             }
         }

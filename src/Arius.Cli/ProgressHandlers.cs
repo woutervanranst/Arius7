@@ -142,36 +142,38 @@ public sealed class RestoreStartedHandler(ProgressState state) : INotificationHa
 
 // ── 4.2 FileRestoredEvent ─────────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.FilesRestored"/> when a file is written to disk.</summary>
+/// <summary>Increments <see cref="ProgressState.FilesRestored"/> and <see cref="ProgressState.BytesRestored"/> when a file is written to disk.</summary>
 public sealed class FileRestoredHandler(ProgressState state) : INotificationHandler<FileRestoredEvent>
 {
     public ValueTask Handle(FileRestoredEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementFilesRestored();
+        state.IncrementFilesRestored(notification.FileSize);
+        state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: false);
         return ValueTask.CompletedTask;
     }
 }
 
 // ── 4.3 FileSkippedEvent ──────────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.FilesSkipped"/> when a file is skipped.</summary>
+/// <summary>Increments <see cref="ProgressState.FilesSkipped"/> and <see cref="ProgressState.BytesSkipped"/> when a file is skipped.</summary>
 public sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
 {
     public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementFilesSkipped();
+        state.IncrementFilesSkipped(notification.FileSize);
+        state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: true);
         return ValueTask.CompletedTask;
     }
 }
 
 // ── 4.4 RehydrationStartedEvent ───────────────────────────────────────────────
 
-/// <summary>Records the rehydration chunk count when rehydration is kicked off.</summary>
+/// <summary>Records the rehydration chunk count and total bytes when rehydration is kicked off.</summary>
 public sealed class RehydrationStartedHandler(ProgressState state) : INotificationHandler<RehydrationStartedEvent>
 {
     public ValueTask Handle(RehydrationStartedEvent notification, CancellationToken cancellationToken)
     {
-        state.SetRehydrationChunkCount(notification.ChunkCount);
+        state.SetRehydration(notification.ChunkCount, notification.TotalBytes);
         return ValueTask.CompletedTask;
     }
 }
