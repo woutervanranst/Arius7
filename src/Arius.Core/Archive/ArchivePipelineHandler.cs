@@ -174,19 +174,11 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     }
                     else if (pair.BinaryExists)
                     {
-                        await using var fs        = File.OpenRead(fullBinaryPath!);
-                        if (opts.CreateHashProgress is not null)
-                        {
-                            var hashProgress = opts.CreateHashProgress(pair.RelativePath, fileSize);
-                            await using var ps = new ProgressStream(fs, hashProgress);
-                            var hashBytes = await _encryption.ComputeHashAsync(ps, ct);
-                            contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-                        }
-                        else
-                        {
-                            var hashBytes = await _encryption.ComputeHashAsync(fs, ct);
-                            contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-                        }
+                        await using var fs           = File.OpenRead(fullBinaryPath!);
+                        var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                        await using var ps           = new ProgressStream(fs, hashProgress);
+                        var             hashBytes    = await _encryption.ComputeHashAsync(ps, ct);
+                        contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                     }
                     else
                     {
