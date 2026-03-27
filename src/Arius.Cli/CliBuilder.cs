@@ -94,6 +94,9 @@ public static class CliBuilder
     /// Creates the "archive" subcommand that archives a local directory to Azure Blob Storage.
     /// </summary>
     /// <param name="serviceProviderFactory">Factory that produces an <see cref="IServiceProvider"/> for the resolved account name, account key, optional passphrase, and container name.</param>
+    /// <summary>
+    /// Constructs the "archive" CLI command that uploads a local directory to Azure Blob Storage, wiring options, validation, progress rendering, and command execution.
+    /// </summary>
     /// <returns>The configured <see cref="Command"/> for the archive operation.</returns>
 
     private static Command BuildArchiveCommand(
@@ -273,6 +276,13 @@ public static class CliBuilder
     /// <summary>
     /// Creates the "restore" subcommand that restores files from an Arius Azure container into a local directory.
     /// </summary>
+    /// <summary>
+    /// Builds the "restore" subcommand that restores files from Azure Blob Storage into a local directory.
+    /// </summary>
+    /// <param name="serviceProviderFactory">
+    /// Factory that creates an <see cref="IServiceProvider"/> for a given Azure account and container.
+    /// Parameters: (accountName, accountKey, passphrase, containerName) => IServiceProvider.
+    /// </param>
     /// <returns>The configured <see cref="Command"/> for the "restore" subcommand.</returns>
 
     private static Command BuildRestoreCommand(
@@ -824,7 +834,11 @@ public static class CliBuilder
     /// Builds the archive display renderable as a pure function of <see cref="ProgressState"/>.
     /// Returns a <see cref="Rows"/> containing stage header lines followed by per-file lines.
     /// Called on every 100ms poll tick by the Live display loop.
+    /// <summary>
+    /// Builds a Spectre renderable that visualizes archive progress, including stage summaries (scanning, hashing, uploading) and a per-file progress tail.
     /// </summary>
+    /// <param name="state">Current archive progress and tracked file information used to render stage counts and per-file progress bars.</param>
+    /// <returns>An <see cref="IRenderable"/> that renders the archive progress display.</returns>
     internal static IRenderable BuildArchiveDisplay(ProgressState state)
     {
         var lines = new List<IRenderable>();
@@ -910,7 +924,13 @@ public static class CliBuilder
     /// Filled characters use [green]█[/] and empty characters use [dim]░[/].
     /// </summary>
     /// <param name="fraction">Fill ratio in [0.0, 1.0].</param>
+    /// <summary>
+    /// Render a horizontal progress bar as a markup string using filled and empty block characters.
+    /// </summary>
     /// <param name="width">Total bar width in characters.</param>
+    /// <returns>
+    /// A markup string of length `width` composed of green filled block characters for the completed fraction and dim empty block characters for the remainder; `fraction` values outside 0.0–1.0 are clamped to that range.
+    /// </returns>
     internal static string RenderProgressBar(double fraction, int width)
     {
         fraction = Math.Clamp(fraction, 0.0, 1.0);
@@ -926,7 +946,12 @@ public static class CliBuilder
     /// <c>"..." + input[last (width-3) chars]</c> — preserving the deepest part of the path.
     /// The result is always exactly <paramref name="width"/> characters wide.
     /// The caller is responsible for applying <see cref="Markup.Escape"/> before embedding in Markup.
+    /// <summary>
+    /// Truncates the input to a fixed width and left-justifies the result.
     /// </summary>
+    /// <param name="input">The string to truncate and pad.</param>
+    /// <param name="width">The desired output width in characters. Must be at least 3 to allow an ellipsis when truncation occurs.</param>
+    /// <returns>The formatted string exactly <paramref name="width"/> characters long: if <paramref name="input"/> is longer than <paramref name="width"/>, returns "..." followed by the last <c>width - 3</c> characters; otherwise returns <paramref name="input"/> padded on the right.</returns>
     internal static string TruncateAndLeftJustify(string input, int width)
     {
         if (input.Length <= width)
@@ -938,7 +963,11 @@ public static class CliBuilder
     /// Builds the restore display renderable as a pure function of <see cref="ProgressState"/>.
     /// Returns a <see cref="Rows"/> containing a stage header (4 lines) followed by a tail of
     /// up to 10 recent file events. When all files are done the tail is omitted.
+    /// <summary>
+    /// Builds a Spectre.Console renderable that visualizes restore progress and recent restore events.
     /// </summary>
+    /// <param name="state">The current restore progress state containing totals, counts, byte summaries, rehydration info, and recent events.</param>
+    /// <returns>An <see cref="IRenderable"/> that displays stage headers (Restored/Skipped/Rehydrating) and, while not complete, a tail of recent file restore events.</returns>
     internal static IRenderable BuildRestoreDisplay(ProgressState state)
     {
         var lines = new List<IRenderable>();
@@ -1036,6 +1065,13 @@ public static class CliBuilder
     /// <param name="accountKey">Key for the Azure Storage account.</param>
     /// <param name="passphrase">Optional encryption passphrase; pass <c>null</c> to disable encryption.</param>
     /// <param name="containerName">Blob container name used by Arius.</param>
+    /// <summary>
+    /// Builds a production IServiceProvider configured for the specified Azure storage account and container.
+    /// </summary>
+    /// <param name="accountName">The Azure Storage account name to target.</param>
+    /// <param name="accountKey">The account key used to authenticate against the storage account.</param>
+    /// <param name="passphrase">Optional encryption passphrase; provide null to disable encryption-related services.</param>
+    /// <param name="containerName">The blob container name to use for storage operations.</param>
     /// <returns>An <see cref="IServiceProvider"/> containing production-ready services wired to the specified storage account and container.</returns>
 
     private static IServiceProvider BuildProductionServices(

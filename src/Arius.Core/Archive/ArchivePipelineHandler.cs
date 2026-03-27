@@ -76,7 +76,12 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     /// <returns>
     /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
     /// snapshot root hash and timestamp when created, and an error message when the operation failed.
-    /// </returns>
+    /// <summary>
+    /// Runs the archive pipeline for the given command, processing files under the command's root directory into blob storage and producing an archive snapshot.
+    /// </summary>
+    /// <param name="command">The archive command containing options that control enumeration, hashing, deduplication, upload behavior, pointer writing, and local deletion.</param>
+    /// <param name="cancellationToken">Token to observe while waiting for pipeline operations to complete.</param>
+    /// <returns>An <see cref="ArchiveResult"/> with operation outcome and metrics: on success contains scanned/uploaded/deduped counts, total size, optional snapshot root hash and snapshot time; on failure contains collected counters so far and an error message.</returns>
     public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
         var opts = command.Options;

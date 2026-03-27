@@ -178,7 +178,14 @@ The system SHALL start rehydration for all archive-tier chunks that are not yet 
 - **THEN** the system SHALL recognize the pending state and not issue a duplicate request
 
 ### Requirement: Idempotent restore
-Restore SHALL be fully idempotent. Re-running the same restore command SHALL: skip files already restored correctly (hash match), download newly rehydrated chunks, re-request rehydration for still-pending chunks, and report remaining files. Each run is a self-contained scan-and-act cycle with no persistent local state.
+Restore SHALL be fully idempotent. Re-running the same restore command SHALL: skip files already restored correctly (hash match), download newly rehydrated chunks, re-request rehydration for still-pending chunks, and report remaining files. Each run is a self-contained scan-and-act cycle with no persistent local state. The restore pipeline SHALL publish notification events throughout:
+
+- `RestoreStartedEvent(TotalFiles)` before beginning downloads
+- `FileRestoredEvent(RelativePath, FileSize)` after each file is written to disk
+- `FileSkippedEvent(RelativePath, FileSize)` for each file skipped due to hash match
+- `RehydrationStartedEvent(ChunkCount, TotalBytes)` when rehydration is kicked off
+
+`FileRestoredEvent` and `FileSkippedEvent` SHALL carry `long FileSize` (the file's uncompressed size in bytes) so the CLI can accumulate bytes-restored/skipped and show per-file sizes in the restore tail display.
 
 #### Scenario: Partial restore re-run
 - **WHEN** a restore previously restored 500 of 1000 files and rehydration has completed for 300 more chunks
@@ -187,6 +194,33 @@ Restore SHALL be fully idempotent. Re-running the same restore command SHALL: sk
 #### Scenario: Full restore complete
 - **WHEN** all files have been restored across multiple runs
 - **THEN** the system SHALL report all files restored and prompt to clean up `chunks-rehydrated/`
+
+#### Scenario: Progress events emitted during restore
+- **WHEN** a restore operation begins
+- **THEN** the system SHALL publish `RestoreStartedEvent(TotalFiles)` before downloading, and `FileRestoredEvent(path, size)` / `FileSkippedEvent(path, size)` for each file processed
+
+### Requirement: FileSize source at each publish site
+The pipeline SHALL obtain `FileSize` from the most direct available source at each of the three publish sites:
+
+| Site | Event | FileSize source |
+|------|-------|-----------------|
+| Conflict check (step 3) — file skipped | `FileSkippedEvent` | `fs.Length` — the `FileStream` used for hash comparison is still open |
+| Large file restore (step 7, `RestoreLargeFileAsync`) | `FileRestoredEvent` | `indexEntry.OriginalSize` — from the index lookup already in scope |
+| Tar bundle restore (`RestoreTarBundleAsync`) | `FileRestoredEvent` | `dataBuffer?.Length ?? 0` — the buffered decompressed entry data |
+
+No changes to `FileToRestore`, `TreeEntry`, or `IndexEntry` are needed.
+
+#### Scenario: Skip site file size
+- **WHEN** a file is skipped because its local hash matches the archive hash
+- **THEN** `FileSkippedEvent` SHALL carry the size of the existing local file (obtained from the open `FileStream`)
+
+#### Scenario: Large file restore site file size
+- **WHEN** a large file is restored via `RestoreLargeFileAsync`
+- **THEN** `FileRestoredEvent` SHALL carry `indexEntry.OriginalSize`
+
+#### Scenario: Tar entry restore site file size
+- **WHEN** a file is extracted from a tar bundle in `RestoreTarBundleAsync`
+- **THEN** `FileRestoredEvent` SHALL carry `dataBuffer?.Length ?? 0` (0 for empty files)
 
 ### Requirement: Cleanup of rehydrated blobs
 After a full restore is complete, the system SHALL prompt the user to delete blobs in `chunks-rehydrated/`. These are Hot-tier copies that incur ongoing storage costs.
