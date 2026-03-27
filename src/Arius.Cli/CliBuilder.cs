@@ -954,6 +954,10 @@ public static class CliBuilder
     /// <returns>The formatted string exactly <paramref name="width"/> characters long: if <paramref name="input"/> is longer than <paramref name="width"/>, returns "..." followed by the last <c>width - 3</c> characters; otherwise returns <paramref name="input"/> padded on the right.</returns>
     internal static string TruncateAndLeftJustify(string input, int width)
     {
+        if (width <= 0)
+            return string.Empty;
+        if (width <= 3)
+            return input.Length <= width ? input.PadRight(width) : new string('.', width);
         if (input.Length <= width)
             return input.PadRight(width);
         return ("..." + input[^(width - 3)..]).PadRight(width);

@@ -178,7 +178,7 @@ The system SHALL start rehydration for all archive-tier chunks that are not yet 
 - **THEN** the system SHALL recognize the pending state and not issue a duplicate request
 
 ### Requirement: Idempotent restore
-Restore SHALL be fully idempotent. Re-running the same restore command SHALL: skip files already restored correctly (hash match), download newly rehydrated chunks, re-request rehydration for still-pending chunks, and report remaining files. Each run is a self-contained scan-and-act cycle with no persistent local state. The restore pipeline SHALL publish notification events throughout:
+Restore SHALL be fully idempotent. Re-running the same restore command SHALL: skip files already restored correctly (hash match), download newly rehydrated chunks, skip still-pending rehydrations (must not issue duplicate requests), and report remaining files. Each run is a self-contained scan-and-act cycle with no persistent local state. The restore pipeline SHALL publish notification events throughout:
 
 - `RestoreStartedEvent(TotalFiles)` before beginning downloads
 - `FileRestoredEvent(RelativePath, FileSize)` after each file is written to disk

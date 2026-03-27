@@ -40,8 +40,8 @@ The `FileState` enum SHALL have values: `Hashing`, `QueuedInTar`, `UploadingTar`
 - **THEN** `ContentHash` SHALL be set to `"def456"`
 - **WHEN** `TarEntryAddedEvent("def456", 3, 15KB)` is published
 - **THEN** `State` SHALL transition to `QueuedInTar`
-- **WHEN** `TarBundleSealingEvent(5, 100KB, ["def456", ...])` is published
-- **THEN** `State` SHALL transition to `UploadingTar` and `TarId` SHALL be set
+- **WHEN** `TarBundleSealingEvent(5, 100KB, "tarHashValue", ["def456", ...])` is published
+- **THEN** `State` SHALL transition to `UploadingTar` and `TarId` SHALL be set to `"tarHashValue"`
 - **WHEN** `TarBundleUploadedEvent(tarHash, 80KB, 5)` is published
 - **THEN** all entries with matching `TarId` SHALL be removed from the dictionary
 
@@ -58,7 +58,9 @@ The `FileState` enum SHALL have values: `Hashing`, `QueuedInTar`, `UploadingTar`
 - **THEN** no data races SHALL occur and aggregate counters SHALL remain correct
 
 ### Requirement: ContentHash to RelativePath reverse lookup
-`ProgressState` SHALL maintain a `ConcurrentDictionary<string, string>` mapping `ContentHash → RelativePath`. This mapping SHALL be populated when `FileHashedEvent` fires (which provides both `RelativePath` and `ContentHash`). Handlers for events keyed by content hash (e.g., `TarEntryAddedEvent`, `ChunkUploadingEvent`, `ChunkUploadedEvent`) SHALL use this mapping to locate the corresponding `TrackedFile` entry.
+`ProgressState` SHALL maintain a `ConcurrentDictionary<string, ConcurrentBag<string>>` mapping `ContentHash → IReadOnlyList<RelativePath>`. This mapping SHALL be populated when `FileHashedEvent` fires (which provides both `RelativePath` and `ContentHash`). Using a one-to-many structure is required because two different paths can legitimately hash to the same content in one archive run; a one-to-one map would silently overwrite the earlier path and misreport duplicate files in `TarEntryAddedEvent`, `ChunkUploadingEvent`, and `ChunkUploadedEvent` transitions.
+
+Handlers for events keyed by content hash (e.g., `TarEntryAddedEvent`, `ChunkUploadingEvent`, `ChunkUploadedEvent`) SHALL use this mapping to locate the corresponding `TrackedFile` entries.
 
 #### Scenario: Reverse lookup for tar entry
 - **WHEN** `TarEntryAddedEvent("def456", 3, 15KB)` is published
@@ -94,15 +96,16 @@ Handlers SHALL be thin (state transition / counter increment only, no business l
 | `FileHashingEvent` | Add entry, `State = Hashing` | (none) |
 | `FileHashedEvent` | Set `ContentHash`, populate reverse map | Increment `FilesHashed` |
 | `TarEntryAddedEvent` | `State → QueuedInTar` | (none) |
-| `TarBundleSealingEvent` | All matching hashes: `State → UploadingTar`, set `TarId` | (none) |
+| `TarBundleSealingEvent` | All matching hashes: `State → UploadingTar`, set `TarId` from `TarHash` | (none) |
 | `ChunkUploadingEvent` | If not in tar path: `State → Uploading` | (none) |
 | `ChunkUploadedEvent` | Remove entry (large file) | Increment `ChunksUploaded`, add `BytesUploaded` |
 | `TarBundleUploadedEvent` | Remove all entries with matching `TarId` | Increment `TarsUploaded`, increment `ChunksUploaded` |
+| `FileAlreadyArchivedEvent` | Remove entry (already in index / dedup hit) | (none) |
 | `SnapshotCreatedEvent` | (none) | Set `SnapshotComplete` |
 
 #### Scenario: TarBundleSealingEvent transitions multiple files
-- **WHEN** `TarBundleSealingEvent(5, 100KB, ["hash1", "hash2", "hash3", "hash4", "hash5"])` is published
-- **THEN** the handler SHALL look up all 5 content hashes in the reverse map, find their `TrackedFile` entries, and set `State = UploadingTar` and `TarId` on each
+- **WHEN** `TarBundleSealingEvent(5, 100KB, "tarHashValue", ["hash1", "hash2", "hash3", "hash4", "hash5"])` is published
+- **THEN** the handler SHALL look up all 5 content hashes in the reverse map, find their `TrackedFile` entries, and set `State = UploadingTar` and `TarId = "tarHashValue"` on each
 
 #### Scenario: TarBundleUploadedEvent removes multiple files
 - **WHEN** `TarBundleUploadedEvent("tarHash", 80KB, 5)` is published

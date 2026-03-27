@@ -46,9 +46,9 @@ A notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCo
 ### Requirement: TarBundleSealingEvent with content hashes
 The `TarBundleSealingEvent` record SHALL be enriched to include the list of content hashes in the sealed tar bundle:
 
-`TarBundleSealingEvent(int EntryCount, long UncompressedSize, IReadOnlyList<string> ContentHashes)`
+`TarBundleSealingEvent(int EntryCount, long UncompressedSize, string TarHash, IReadOnlyList<string> ContentHashes)`
 
-The `ContentHashes` parameter SHALL contain the content hash of every file entry in the tar, in the order they were added. The publish site in `ArchivePipelineHandler` already has `tarEntries` containing this data — the content hashes SHALL be projected from the existing `tarEntries` list.
+The `TarHash` parameter is the tar bundle's content hash (the bundle-level digest). The `ContentHashes` parameter SHALL contain the content hash of every file entry in the tar, in the order they were added (projected from the existing `tarEntries` list in `ArchivePipelineHandler`).
 
 #### Scenario: Tar sealed with 5 files
 - **WHEN** a tar bundle containing 5 files is sealed

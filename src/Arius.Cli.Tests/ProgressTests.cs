@@ -744,6 +744,7 @@ public class ProgressCallbackIntegrationTests
             hashProgress = new Progress<long>(bytes => file.SetBytesProcessed(bytes));
 
         hashProgress.ShouldNotBeNull();
+        file.ShouldNotBeNull();
 
         // Report progress (Progress<T> dispatches on sync context; invoke directly)
         file.SetBytesProcessed(2_500_000);

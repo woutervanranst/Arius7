@@ -109,4 +109,4 @@
 - [x] 12.9 Unit test `BuildRestoreDisplay`: in-progress state shows `○` header, correct counts/bytes, tail lines with `●`/`○`
 - [x] 12.10 Unit test `BuildRestoreDisplay`: completed state (all files done) shows `●` header, no tail lines
 - [x] 12.11 Unit test `BuildRestoreDisplay`: rehydrating line shown only when `RehydrationChunkCount > 0`
-- [x] 12.12 Run full test suite: `cd src/Arius.Cli.Tests && dotnet run`
+- [x] 12.12 Run full test suite: `cd src/Arius.Cli.Tests && dotnet test`
