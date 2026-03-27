@@ -889,14 +889,14 @@ public static class CliBuilder
                         : 0.0;
                     var bar    = RenderProgressBar(pct, 12);
                     var pctStr = $"{pct * 100:F0}%".PadLeft(4);
-                    var sizeStr = $"{file.BytesProcessed.Bytes().Humanize()} / {file.TotalBytes.Bytes().Humanize()}";
+                    var sizeStr = $"{file.BytesProcessed.Bytes().LargestWholeNumberValue:0.##} / {file.TotalBytes.Bytes().Humanize()}";
                     line = $"  [dim]{displayName}[/]  {bar}  [dim]{stateStr} {pctStr}  {Markup.Escape(sizeStr)}[/]";
                 }
                 else
                 {
                     // QueuedInTar / UploadingTar: no progress bar, show total size only
                     var sizeStr = file.TotalBytes.Bytes().Humanize();
-                    line = $"  [dim]{displayName}[/]  {"".PadRight(12)}  [dim]{stateStr}  {Markup.Escape(sizeStr)}[/]";
+                    line = $"  [dim]{displayName}[/]  {"",-12}  [dim]{stateStr}  {Markup.Escape(sizeStr)}[/]";
                 }
                 lines.Add(new Markup(line));
             }
