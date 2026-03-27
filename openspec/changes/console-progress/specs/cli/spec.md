@@ -1,71 +1,103 @@
-## REVISED Requirements
+## REVISED Requirements (v2 — Live display approach)
 
-### Requirement: Archive progress display with dynamic per-file sub-lines
-The CLI SHALL display a Spectre.Console `Progress` (with `AutoRefresh(true)`) during archive with four aggregate progress tasks: Scanning, Hashing, Bundling, and Uploading. The display loop SHALL use `Task.WhenAny(pipelineTask, Task.Delay(100))` for responsive updates.
+### Requirement: Archive progress display with Spectre.Console Live
+The CLI SHALL use `AnsiConsole.Live(renderable).StartAsync(...)` for the archive progress display when the terminal is interactive. The display SHALL be rebuilt every tick (100ms) by calling a pure function `BuildArchiveDisplay(ProgressState) → IRenderable` and passing the result to `ctx.UpdateTarget(...)`.
 
-The Scanning task SHALL start indeterminate and transition to determinate when `ProgressState.TotalFiles` becomes known. The Hashing task SHALL show `FilesHashed / TotalFiles`. The Bundling task SHALL show the current tar entry count (indeterminate, description-only — resets on each seal). The Uploading task SHALL start indeterminate and transition to determinate when `ProgressState.TotalChunks` becomes known (after dedup completes).
+The Live display SHALL be configured with:
+- `VerticalOverflow.Crop` — crop content that exceeds terminal height
+- `VerticalOverflowCropping.Bottom` — keep stage headers at top visible, crop overflow from bottom
+- `AutoClear(false)` — display persists after completion to show final state
 
-Below the Hashing and Uploading aggregate bars, the display loop SHALL dynamically add and remove `ProgressTask` entries for each in-flight operation by reading `ProgressState.InFlightHashes` and `ProgressState.InFlightUploads` (`ConcurrentDictionary<string, FileProgress>`). Each sub-line SHALL show the file/chunk name, byte-level percentage, and bytes processed vs total. Sub-lines SHALL be added when a new key appears and removed when the key is removed from the dictionary.
+The display SHALL NOT use Spectre.Console `Progress`, `ProgressTask`, or `ProgressContext` for the archive operation.
 
-The CLI SHALL inject `IProgress<long>` callbacks into Core via `ArchiveOptions.CreateHashProgress` and `ArchiveOptions.CreateUploadProgress`. These factory callbacks SHALL create progress reporters that update `FileProgress.BytesProcessed` (via `Interlocked.Exchange`) in the corresponding `ConcurrentDictionary` entry.
-
-#### Scenario: Full archive display
-- **WHEN** 789 of 1523 files are hashed, 4 files are hashing, 7 files in current tar, 3 of 11 chunks uploaded with 2 uploads in-flight
-- **THEN** the display SHALL show:
-  ```
-  [Scanning ]  ████████████████████████  100%   1523 files
-  [Hashing  ]  ████████████░░░░░░░░░░░   52%   789/1523
-    video.mp4      ██████████░░░░░░░  62%  3.1 GB / 5.0 GB
-    backup.tar     ████░░░░░░░░░░░░░  28%  560 MB / 2.0 GB
-    data.db        ██████████████░░░  89%  890 MB / 1.0 GB
-    photo.raw      ██░░░░░░░░░░░░░░░  12%   60 MB / 500 MB
-  [Bundling ]  ░░░░░░░░░░░░░░░░░░░░░░░        7 files in current tar
-  [Uploading]  ██████░░░░░░░░░░░░░░░░░  27%   3/11 chunks
-    a1b2c3d4..     ███████░░░░░░░░░░  45%  450 MB / 1.0 GB
-    e5f6a7b8..     █░░░░░░░░░░░░░░░░   8%   80 MB / 1.0 GB
-  ```
-
-#### Scenario: Dynamic sub-line lifecycle
-- **WHEN** a file starts hashing and appears in `InFlightHashes`
-- **THEN** the display loop SHALL add a new `ProgressTask` sub-line below the Hashing bar
-- **WHEN** the file finishes hashing and is removed from `InFlightHashes`
-- **THEN** the display loop SHALL remove the sub-line
-
-#### Scenario: Upload transitions from indeterminate to determinate
-- **WHEN** dedup completes and `ProgressState.TotalChunks` is set
-- **THEN** the Uploading task SHALL transition from indeterminate to determinate with `MaxValue = TotalChunks`
+#### Scenario: Live display setup
+- **WHEN** the archive command starts on an interactive terminal
+- **THEN** the CLI SHALL create an `AnsiConsole.Live(...)` context and run the pipeline concurrently with the display poll loop
 
 #### Scenario: Non-interactive terminal
 - **WHEN** the terminal does not support interactive output (piped or CI)
-- **THEN** the CLI SHALL fall back to static summary output (no progress bars)
+- **THEN** the CLI SHALL fall back to running the pipeline with no visual progress display
 
-### Requirement: Restore progress display with TCS phase coordination
-The CLI SHALL use `TaskCompletionSource` pairs to coordinate between the restore pipeline's callback invocations and the console display, avoiding concurrent Spectre Console rendering (which is not thread-safe). The restore flow SHALL have distinct phases:
+### Requirement: Archive display layout
+The `BuildArchiveDisplay` function SHALL return a `Rows(...)` renderable with two sections:
 
-1. **Plan phase** (pipeline steps 1-6): No live progress display. The pipeline runs until it invokes `ConfirmRehydration` or completes without needing rehydration.
-2. **Cost confirmation**: The `ConfirmRehydration` callback SHALL signal via a `TaskCompletionSource<RestoreCostEstimate>` that it has a question. The CLI event loop (which is awaiting the pipeline) SHALL detect this, render cost tables and a `SelectionPrompt` on a clean console (no live display active), then set a response `TaskCompletionSource<RehydratePriority?>` to unblock the pipeline.
-3. **Download phase** (step 7+): After confirmation returns, the CLI SHALL start `AnsiConsole.Progress()` with a determinate bar for files restored / total. The display loop SHALL use `Task.WhenAny(pipelineTask, Task.Delay(100))`.
-4. **Cleanup confirmation**: When the pipeline invokes `ConfirmCleanup`, the progress display SHALL have been auto-cleared. The CLI SHALL render the cleanup prompt on a clean console.
+**Stage headers** (persistent summary lines at top):
+```
+  ✓ Scanning                              1523 files
+  ◐ Hashing                               640/1523
+  ◐ Uploading                             3/11 chunks
+```
 
-#### Scenario: Cost tables render cleanly
-- **WHEN** the restore pipeline invokes `ConfirmRehydration`
-- **THEN** the cost summary table, cost breakdown table, and selection prompt SHALL render on a clean console without interference from any live display
+- Scanning: indeterminate spinner until `TotalFiles` is known, then `✓` with count
+- Hashing: spinner with `FilesHashed / TotalFiles`, or `✓` when `FilesHashed == TotalFiles`
+- Uploading: spinner with `ChunksUploaded / TotalChunks` (or `ChunksUploaded chunks...` when `TotalChunks` unknown), or `✓` when complete
 
-#### Scenario: Download progress after confirmation
-- **WHEN** the user selects a rehydration priority
-- **THEN** a Spectre.Console `Progress` SHALL start showing files restored out of total
+**Per-file lines** (below stage headers, appear/disappear based on TrackedFile state):
+```
+  video.mp4      ████████░░░░  Hashing       62%  3.1/5.0 GB
+  data.db        ██████░░░░░░  Hashing       28%  560M/2.0 GB
+  notes.txt                    Queued in TAR
+  config.yml                   Queued in TAR
+  readme.md      ████░░░░░░░░  Uploading TAR 33%
+```
 
-#### Scenario: Cleanup prompt renders cleanly
-- **WHEN** `ConfirmCleanup` is invoked after all downloads complete
-- **THEN** the progress display SHALL have been auto-cleared and the confirm prompt SHALL render without garbled output
+Each line represents one `TrackedFile` entry (excluding `Done` state, which is removed before display). Progress bars are rendered as Markup text (e.g., `[green]████████[/][dim]░░░░░░░░[/]`). Lines for files in `QueuedInTar` state show no progress bar (there is no byte-level progress to show). Lines for files in `UploadingTar` state show the tar upload's byte-level progress (all files in the same tar show the same percentage).
 
-#### Scenario: Pipeline completes without rehydration needed
-- **WHEN** all chunks are available (no rehydration needed) and `ConfirmRehydration` is not invoked
-- **THEN** the CLI SHALL show a progress bar for the download phase directly
+#### Scenario: Full archive display
+- **WHEN** 640 of 1523 files are hashed, 4 files are hashing with byte-level progress, 2 files queued in tar, 3 files in uploading tar, 3 of 11 chunks uploaded
+- **THEN** the display SHALL show stage headers with correct counts and per-file lines for all active TrackedFile entries
+
+#### Scenario: File completes and disappears
+- **WHEN** a large file finishes uploading (`ChunkUploadedEvent`)
+- **THEN** the `TrackedFile` entry SHALL be removed and the file's line SHALL not appear in the next display tick
+
+#### Scenario: Tar batch completes and all files disappear
+- **WHEN** a tar bundle finishes uploading (`TarBundleUploadedEvent`)
+- **THEN** all `TrackedFile` entries in that tar SHALL be removed and their lines SHALL not appear in the next display tick
+
+#### Scenario: Empty display between phases
+- **WHEN** all files have been processed (all `TrackedFile` entries removed)
+- **THEN** only stage headers SHALL be shown (all with `✓`)
+
+### Requirement: Progress bar rendering
+Per-file progress bars SHALL be rendered as Markup strings with a configurable width (default 12 characters). The filled portion SHALL use `[green]█[/]` characters and the empty portion SHALL use `[dim]░[/]` characters. The fill ratio SHALL be `BytesProcessed / TotalBytes`.
+
+#### Scenario: 62% progress
+- **WHEN** a file has `BytesProcessed = 3,100,000,000` and `TotalBytes = 5,000,000,000`
+- **THEN** the progress bar SHALL render as approximately 7-8 filled characters and 4-5 empty characters (at width 12)
+
+### Requirement: Archive progress callback wiring
+The CLI SHALL inject `IProgress<long>` callbacks into Core via `ArchiveOptions.CreateHashProgress` and `ArchiveOptions.CreateUploadProgress`. These factory callbacks SHALL look up the corresponding `TrackedFile` entry in `ProgressState` and return an `IProgress<long>` that updates `TrackedFile.BytesProcessed` via `Interlocked.Exchange`.
+
+#### Scenario: Hash progress callback
+- **WHEN** Core calls `CreateHashProgress("video.mp4", 5GB)`
+- **THEN** the factory SHALL look up the `TrackedFile` for `"video.mp4"` and return an `IProgress<long>` that sets its `BytesProcessed`
+
+#### Scenario: Upload progress callback
+- **WHEN** Core calls `CreateUploadProgress("abc123", 5GB)`
+- **THEN** the factory SHALL use the `ContentHash → RelativePath` reverse map to find the `TrackedFile` and return an `IProgress<long>` that sets its `BytesProcessed`
 
 ### Requirement: Responsive poll loop
-The archive and restore display poll loops SHALL use `Task.WhenAny(pipelineTask, Task.Delay(100))` instead of unconditional `await Task.Delay(100)` to respond immediately when the pipeline completes while still throttling the refresh rate during active operation.
+The archive display poll loop SHALL use `await Task.WhenAny(pipelineTask, Task.Delay(100, ct))` instead of unconditional `await Task.Delay(100)` to respond immediately when the pipeline completes while still throttling the refresh rate during active operation.
 
 #### Scenario: Pipeline finishes mid-delay
 - **WHEN** the pipeline completes 10ms into a 100ms delay cycle
 - **THEN** the display SHALL update and exit the loop immediately rather than waiting the remaining 90ms
+
+### Requirement: Restore progress display with TCS phase coordination
+The CLI SHALL use `TaskCompletionSource` pairs to coordinate between the restore pipeline's callback invocations and the console display. This requirement is UNCHANGED from the previous design — the restore display uses `Spectre.Console.Progress` with a fixed set of tasks (no dynamic add/remove), which works correctly.
+
+The restore flow SHALL have distinct phases:
+
+1. **Plan phase** (pipeline steps 1-6): No live progress display.
+2. **Cost confirmation**: TCS-coordinated rendering of cost tables and selection prompt on clean console.
+3. **Download phase** (step 7+): `AnsiConsole.Progress()` with determinate bar for files restored / total.
+4. **Cleanup confirmation**: Progress auto-clears, cleanup prompt rendered on clean console.
+
+#### Scenario: Cost tables render cleanly
+- **WHEN** the restore pipeline invokes `ConfirmRehydration`
+- **THEN** the cost tables and prompt SHALL render on a clean console without interference from any live display
+
+#### Scenario: Pipeline completes without rehydration needed
+- **WHEN** all chunks are available and `ConfirmRehydration` is not invoked
+- **THEN** the CLI SHALL show a progress bar for the download phase directly

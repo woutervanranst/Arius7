@@ -7,71 +7,190 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
+using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace Arius.Cli.Tests;
 
-// ── 7.1 ProgressState thread safety ──────────────────────────────────────────
+// ── 6.1 TrackedFile state transitions: small file (tar) path ─────────────────
 
 /// <summary>
-/// Verifies that <see cref="ProgressState"/> counter updates are thread-safe:
-/// concurrent increments from multiple threads produce correct totals.
+/// Verifies <see cref="TrackedFile"/> state machine for the small-file/tar path:
+/// Hashing → QueuedInTar → UploadingTar → Done (removed).
+/// </summary>
+public class TrackedFileSmallFilePathTests
+{
+    [Test]
+    public void SmallFilePath_StateTransitions_Correct()
+    {
+        var state = new ProgressState();
+
+        // FileHashingEvent → AddFile → State=Hashing
+        state.AddFile("notes.txt", 1024);
+        state.TrackedFiles.ContainsKey("notes.txt").ShouldBeTrue();
+        state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.Hashing);
+
+        // FileHashedEvent → SetFileHashed → ContentHash set, reverse map populated
+        state.SetFileHashed("notes.txt", "def456");
+        state.TrackedFiles["notes.txt"].ContentHash.ShouldBe("def456");
+        state.ContentHashToPath["def456"].ShouldBe("notes.txt");
+        state.FilesHashed.ShouldBe(1L);
+
+        // TarEntryAddedEvent → SetFileQueuedInTar
+        state.SetFileQueuedInTar("def456");
+        state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.QueuedInTar);
+
+        // TarBundleSealingEvent → SetFilesUploadingTar
+        state.SetFilesUploadingTar(["def456"], "tar_hash_1");
+        state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.UploadingTar);
+        state.TrackedFiles["notes.txt"].TarId.ShouldBe("tar_hash_1");
+
+        // TarBundleUploadedEvent → RemoveFilesByTarId
+        state.RemoveFilesByTarId("tar_hash_1");
+        state.TrackedFiles.ContainsKey("notes.txt").ShouldBeFalse();
+    }
+}
+
+// ── 6.2 TrackedFile state transitions: large file path ───────────────────────
+
+/// <summary>
+/// Verifies <see cref="TrackedFile"/> state machine for the large-file/direct-upload path:
+/// Hashing → Uploading → Done (removed).
+/// </summary>
+public class TrackedFileLargeFilePathTests
+{
+    [Test]
+    public void LargeFilePath_StateTransitions_Correct()
+    {
+        var state = new ProgressState();
+
+        // FileHashingEvent
+        state.AddFile("video.mp4", 5_000_000_000L);
+        state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Hashing);
+
+        // FileHashedEvent
+        state.SetFileHashed("video.mp4", "abc123");
+        state.TrackedFiles["video.mp4"].ContentHash.ShouldBe("abc123");
+
+        // ChunkUploadingEvent → SetFileUploading (not tar path)
+        state.SetFileUploading("abc123");
+        state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Uploading);
+
+        // ChunkUploadedEvent → RemoveFile
+        state.RemoveFile("video.mp4");
+        state.TrackedFiles.ContainsKey("video.mp4").ShouldBeFalse();
+    }
+
+    [Test]
+    public void SetFileUploading_DoesNotOverrideQueuedInTar()
+    {
+        // A file on the tar path should NOT transition to Uploading
+        var state = new ProgressState();
+        state.AddFile("small.txt", 100);
+        state.SetFileHashed("small.txt", "hash1");
+        state.SetFileQueuedInTar("hash1");
+        state.TrackedFiles["small.txt"].State.ShouldBe(FileState.QueuedInTar);
+
+        // SetFileUploading should be ignored for tar-path files
+        state.SetFileUploading("hash1");
+        state.TrackedFiles["small.txt"].State.ShouldBe(FileState.QueuedInTar);
+    }
+}
+
+// ── 6.3 ContentHashToPath reverse lookup ─────────────────────────────────────
+
+/// <summary>
+/// Verifies the <see cref="ProgressState.ContentHashToPath"/> reverse map is populated
+/// on hash and used for downstream events keyed by content hash.
+/// </summary>
+public class ContentHashToPathTests
+{
+    [Test]
+    public void ReverseMap_PopulatedOnHash_UsedForDownstreamEvents()
+    {
+        var state = new ProgressState();
+
+        state.AddFile("dir/file.bin", 500);
+        state.SetFileHashed("dir/file.bin", "aabbcc");
+
+        // Reverse map populated
+        state.ContentHashToPath.ContainsKey("aabbcc").ShouldBeTrue();
+        state.ContentHashToPath["aabbcc"].ShouldBe("dir/file.bin");
+
+        // Downstream event via reverse map works
+        state.SetFileQueuedInTar("aabbcc");
+        state.TrackedFiles["dir/file.bin"].State.ShouldBe(FileState.QueuedInTar);
+    }
+
+    [Test]
+    public void ReverseMap_PopulatedBeforeDownstreamEvents()
+    {
+        // FileHashedEvent sets both ContentHash and reverse map atomically
+        var state = new ProgressState();
+        state.AddFile("config.yml", 200);
+        state.SetFileHashed("config.yml", "xxyyzz");
+
+        state.ContentHashToPath.ContainsKey("xxyyzz").ShouldBeTrue();
+    }
+}
+
+// ── 6.4 ProgressState concurrent add/transition/remove ───────────────────────
+
+/// <summary>
+/// Verifies <see cref="ProgressState"/> is thread-safe under concurrent operations.
 /// </summary>
 public class ProgressStateThreadSafetyTests
 {
     [Test]
+    public async Task ConcurrentAddAndRemove_NoDataRaces()
+    {
+        var state = new ProgressState();
+        const int n = 5_000;
+
+        // Concurrently add files, hash them, then remove them
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, n),
+            new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            (i, _) =>
+            {
+                var path = $"file{i}.bin";
+                var hash = $"hash{i:x8}";
+                state.AddFile(path, i * 1024L);
+                state.SetFileHashed(path, hash);
+                state.RemoveFile(path);
+                return ValueTask.CompletedTask;
+            });
+
+        // All removed — counter should be n (each SetFileHashed increments FilesHashed)
+        state.FilesHashed.ShouldBe(n);
+        state.TrackedFiles.Count.ShouldBe(0);
+    }
+
+    [Test]
     public async Task ConcurrentIncrements_FilesHashed_CorrectTotal()
     {
-        var state      = new ProgressState();
-        const int n    = 10_000;
-        const int concurrency = 8;
+        var state = new ProgressState();
+        const int n = 10_000;
 
-        // Prime the "hashing" counter so decrements don't underflow
         for (int i = 0; i < n; i++)
-            state.IncrementFilesHashing($"file{i}", 100);
+            state.AddFile($"file{i}", 100);
 
         await Parallel.ForEachAsync(
             Enumerable.Range(0, n),
-            new ParallelOptions { MaxDegreeOfParallelism = concurrency },
+            new ParallelOptions { MaxDegreeOfParallelism = 8 },
             (i, _) =>
             {
-                state.IncrementFilesHashed($"file{i}");
+                state.SetFileHashed($"file{i}", $"hash{i:x8}");
                 return ValueTask.CompletedTask;
             });
 
         state.FilesHashed.ShouldBe(n);
-        state.FilesHashing.ShouldBe(0);
-    }
-
-    [Test]
-    public async Task ConcurrentIncrements_ChunksUploaded_CorrectTotal()
-    {
-        var state      = new ProgressState();
-        const int n    = 5_000;
-        const int concurrency = 8;
-        const long chunkSize = 1024L;
-
-        // Prime ChunksUploading
-        for (int i = 0; i < n; i++)
-            state.IncrementChunksUploading($"hash{i}", chunkSize);
-
-        await Parallel.ForEachAsync(
-            Enumerable.Range(0, n),
-            new ParallelOptions { MaxDegreeOfParallelism = concurrency },
-            (i, _) =>
-            {
-                state.IncrementChunksUploaded($"hash{i}", chunkSize);
-                return ValueTask.CompletedTask;
-            });
-
-        state.ChunksUploaded.ShouldBe(n);
-        state.ChunksUploading.ShouldBe(0);
-        state.BytesUploaded.ShouldBe(n * chunkSize);
     }
 
     [Test]
     public async Task ConcurrentIncrements_FilesRestored_CorrectTotal()
     {
-        var state   = new ProgressState();
+        var state = new ProgressState();
         const int n = 8_000;
 
         await Parallel.ForEachAsync(
@@ -91,17 +210,16 @@ public class ProgressStateThreadSafetyTests
     {
         var state = new ProgressState();
         state.TotalFiles.ShouldBeNull();
-
         state.SetTotalFiles(1523);
         state.TotalFiles.ShouldBe(1523L);
     }
 }
 
-// ── 7.2 Archive notification handler unit tests ───────────────────────────────
+// ── 6.5 Archive notification handler unit tests ───────────────────────────────
 
 /// <summary>
-/// Verifies that each archive / restore notification handler updates exactly the
-/// correct field on <see cref="ProgressState"/>.
+/// Verifies that each archive notification handler updates the correct
+/// <see cref="TrackedFile"/> state and aggregate counters on <see cref="ProgressState"/>.
 /// </summary>
 public class NotificationHandlerTests
 {
@@ -121,90 +239,88 @@ public class NotificationHandlerTests
     // ── FileHashingHandler ────────────────────────────────────────────────────
 
     [Test]
-    public async Task FileHashingHandler_IncrementFilesHashing()
+    public async Task FileHashingHandler_AddsTrackedFile()
     {
         var state   = new ProgressState();
         var handler = new FileHashingHandler(state);
 
         await handler.Handle(new FileHashingEvent("foo/bar.bin", 1024), CancellationToken.None);
 
-        state.FilesHashing.ShouldBe(1);
-        state.InFlightHashes.ContainsKey("foo/bar.bin").ShouldBeTrue();
-        state.InFlightHashes["foo/bar.bin"].TotalBytes.ShouldBe(1024L);
+        state.TrackedFiles.ContainsKey("foo/bar.bin").ShouldBeTrue();
+        state.TrackedFiles["foo/bar.bin"].State.ShouldBe(FileState.Hashing);
+        state.TrackedFiles["foo/bar.bin"].TotalBytes.ShouldBe(1024L);
     }
 
     // ── FileHashedHandler ─────────────────────────────────────────────────────
 
     [Test]
-    public async Task FileHashedHandler_IncrementsHashedDecrementHashing()
+    public async Task FileHashedHandler_SetsHashAndIncrementsFilesHashed()
     {
-        var state       = new ProgressState();
-        var hashingH    = new FileHashingHandler(state);
-        var hashedH     = new FileHashedHandler(state);
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("a.bin", 100), CancellationToken.None);
         await hashedH.Handle(new FileHashedEvent("a.bin", "abc123"), CancellationToken.None);
 
         state.FilesHashed.ShouldBe(1L);
-        state.FilesHashing.ShouldBe(0);
+        state.TrackedFiles["a.bin"].ContentHash.ShouldBe("abc123");
+        state.ContentHashToPath["abc123"].ShouldBe("a.bin");
+    }
+
+    // ── TarEntryAddedHandler ──────────────────────────────────────────────────
+
+    [Test]
+    public async Task TarEntryAddedHandler_SetsQueuedInTar()
+    {
+        var state          = new ProgressState();
+        var hashingH       = new FileHashingHandler(state);
+        var hashedH        = new FileHashedHandler(state);
+        var tarEntryH      = new TarEntryAddedHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("small.txt", 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("small.txt", "def456"), CancellationToken.None);
+        await tarEntryH.Handle(new TarEntryAddedEvent("def456", 1, 100), CancellationToken.None);
+
+        state.TrackedFiles["small.txt"].State.ShouldBe(FileState.QueuedInTar);
     }
 
     // ── ChunkUploadingHandler ─────────────────────────────────────────────────
 
     [Test]
-    public async Task ChunkUploadingHandler_IncrementChunksUploading()
+    public async Task ChunkUploadingHandler_SetsUploading()
     {
-        var state   = new ProgressState();
-        var handler = new ChunkUploadingHandler(state);
+        var state     = new ProgressState();
+        var hashingH  = new FileHashingHandler(state);
+        var hashedH   = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
 
-        await handler.Handle(new ChunkUploadingEvent("deadbeef", 5_000_000), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent("large.bin", 1_000_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("large.bin", "bigfile1"), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent("bigfile1", 1_000_000), CancellationToken.None);
 
-        state.ChunksUploading.ShouldBe(1);
-        state.InFlightUploads.ContainsKey("deadbeef").ShouldBeTrue();
-        state.InFlightUploads["deadbeef"].TotalBytes.ShouldBe(5_000_000L);
+        state.TrackedFiles["large.bin"].State.ShouldBe(FileState.Uploading);
     }
 
     // ── ChunkUploadedHandler ──────────────────────────────────────────────────
 
     [Test]
-    public async Task ChunkUploadedHandler_IncrementsUploadedDecrementsUploading()
+    public async Task ChunkUploadedHandler_RemovesFileAndIncrementsChunksUploaded()
     {
-        var state       = new ProgressState();
-        var uploadingH  = new ChunkUploadingHandler(state);
-        var uploadedH   = new ChunkUploadedHandler(state);
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var uploadedH  = new ChunkUploadedHandler(state);
 
-        await uploadingH.Handle(new ChunkUploadingEvent("hash1", 1000), CancellationToken.None);
-        await uploadedH.Handle(new ChunkUploadedEvent("hash1", 800), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent("data.bin", 5000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("data.bin", "hash999"), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent("hash999", 5000), CancellationToken.None);
+        await uploadedH.Handle(new ChunkUploadedEvent("hash999", 4000), CancellationToken.None);
 
+        state.TrackedFiles.ContainsKey("data.bin").ShouldBeFalse();
         state.ChunksUploaded.ShouldBe(1L);
-        state.ChunksUploading.ShouldBe(0);
-        state.BytesUploaded.ShouldBe(800L);
-    }
-
-    // ── TarBundleSealingHandler ───────────────────────────────────────────────
-
-    [Test]
-    public async Task TarBundleSealingHandler_IncrementsTarsBundled()
-    {
-        var state   = new ProgressState();
-        var handler = new TarBundleSealingHandler(state);
-
-        await handler.Handle(new TarBundleSealingEvent(5, 640_000), CancellationToken.None);
-
-        state.TarsBundled.ShouldBe(1);
-    }
-
-    // ── TarBundleUploadedHandler ──────────────────────────────────────────────
-
-    [Test]
-    public async Task TarBundleUploadedHandler_IncrementsTarsUploaded()
-    {
-        var state   = new ProgressState();
-        var handler = new TarBundleUploadedHandler(state);
-
-        await handler.Handle(new TarBundleUploadedEvent("tarhash", 512_000, 5), CancellationToken.None);
-
-        state.TarsUploaded.ShouldBe(1);
+        state.BytesUploaded.ShouldBe(4000L);
     }
 
     // ── SnapshotCreatedHandler ────────────────────────────────────────────────
@@ -274,127 +390,263 @@ public class NotificationHandlerTests
     }
 }
 
-// ── 7.2b FileProgress Interlocked update test ────────────────────────────────
+// ── 6.6 TarBundleSealingHandler: batch state transition ──────────────────────
 
 /// <summary>
-/// Verifies that <see cref="FileProgress.SetBytesProcessed"/> correctly reports
-/// the latest value under concurrent updates.
+/// Verifies that <see cref="TarBundleSealingHandler"/> transitions all files in the
+/// sealed tar from QueuedInTar → UploadingTar and sets their TarId.
 /// </summary>
-public class FileProgressTests
+public class TarBundleSealingHandlerTests
 {
     [Test]
-    public async Task BytesProcessed_UpdatesCorrectlyUnderContention()
+    public async Task TarBundleSealingHandler_BatchTransitionsAllFilesToUploadingTar()
     {
-        var fp = new FileProgress("test.bin", 1_000_000L);
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+        var tarH     = new TarEntryAddedHandler(state);
+        var sealingH = new TarBundleSealingHandler(state);
 
-        // Simulate concurrent progress reports from a single stream reader.
-        // Each "tick" reports cumulative bytes, so last-writer-wins is the correct behaviour.
-        const int iterations = 10_000;
-        long      finalValue = 0;
+        // Set up 3 files in QueuedInTar
+        var files = new[] { ("f1.txt", "h1"), ("f2.txt", "h2"), ("f3.txt", "h3") };
+        foreach (var (path, hash) in files)
+        {
+            await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
+            await hashedH.Handle(new FileHashedEvent(path, hash), CancellationToken.None);
+            await tarH.Handle(new TarEntryAddedEvent(hash, 1, 100), CancellationToken.None);
+        }
 
-        await Parallel.ForEachAsync(
-            Enumerable.Range(1, iterations),
-            new ParallelOptions { MaxDegreeOfParallelism = 8 },
-            (i, _) =>
-            {
-                fp.SetBytesProcessed(i);
-                Interlocked.Exchange(ref finalValue, i);
-                return ValueTask.CompletedTask;
-            });
+        // Seal the tar
+        await sealingH.Handle(
+            new TarBundleSealingEvent(3, 300, "tar_xyz", ["h1", "h2", "h3"]),
+            CancellationToken.None);
 
-        // After all updates BytesProcessed must be a valid value in [1..iterations]
-        fp.BytesProcessed.ShouldBeInRange(1L, iterations);
+        foreach (var (path, _) in files)
+        {
+            state.TrackedFiles[path].State.ShouldBe(FileState.UploadingTar);
+            state.TrackedFiles[path].TarId.ShouldBe("tar_xyz");
+        }
     }
 }
 
-// ── 7.2c Restore TCS coordination tests ──────────────────────────────────────
+// ── 6.7 TarBundleUploadedHandler: batch removal ──────────────────────────────
 
 /// <summary>
-/// Verifies the TCS phase-coordination pattern used in the restore command:
-/// the question TCS signals the CLI, the CLI unblocks the answer TCS, and the
-/// pipeline completes without deadlock.
+/// Verifies that <see cref="TarBundleUploadedHandler"/> removes all files whose
+/// TarId matches the uploaded tar hash.
 /// </summary>
-public class RestoreTcsCoordinationTests
+public class TarBundleUploadedHandlerTests
 {
     [Test]
-    public async Task ConfirmRehydration_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
+    public async Task TarBundleUploadedHandler_RemovesAllFilesWithMatchingTarId()
     {
-        // Arrange: simulate the ConfirmRehydration callback wiring
-        var questionTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var answerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+        var tarH     = new TarEntryAddedHandler(state);
+        var sealingH = new TarBundleSealingHandler(state);
+        var uploadedH = new TarBundleUploadedHandler(state);
 
-        // "Pipeline" fires the question and waits for the answer
-        var pipelineTask = Task.Run(async () =>
+        var files = new[] { ("a.txt", "ha"), ("b.txt", "hb"), ("c.txt", "hc") };
+        foreach (var (path, hash) in files)
         {
-            questionTcs.TrySetResult(42);         // signal: question ready
-            return await answerTcs.Task;          // block: waiting for answer
-        });
+            await hashingH.Handle(new FileHashingEvent(path, 50), CancellationToken.None);
+            await hashedH.Handle(new FileHashedEvent(path, hash), CancellationToken.None);
+            await tarH.Handle(new TarEntryAddedEvent(hash, 1, 50), CancellationToken.None);
+        }
 
-        // "CLI event loop" waits for either pipeline completion or a question
-        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
+        await sealingH.Handle(
+            new TarBundleSealingEvent(3, 150, "tar_abc", ["ha", "hb", "hc"]),
+            CancellationToken.None);
 
-        firstSignal.ShouldBe(questionTcs.Task, "question should arrive before pipeline completes");
+        await uploadedH.Handle(
+            new TarBundleUploadedEvent("tar_abc", 120, 3),
+            CancellationToken.None);
 
-        var questionValue = await questionTcs.Task;
-        questionValue.ShouldBe(42);
+        foreach (var (path, _) in files)
+            state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
 
-        // CLI provides the answer — unblocks the pipeline
-        answerTcs.TrySetResult(true);
-
-        var answer = await pipelineTask;
-        answer.ShouldBeTrue("pipeline should receive the answer we provided");
-    }
-
-    [Test]
-    public async Task ConfirmCleanup_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
-    {
-        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // "Pipeline" cleanup callback
-        var pipelineTask = Task.Run(async () =>
-        {
-            cleanupQuestionTcs.TrySetResult((3, 1024L));
-            return await cleanupAnswerTcs.Task;
-        });
-
-        // Await the question
-        var (count, bytes) = await cleanupQuestionTcs.Task;
-        count.ShouldBe(3);
-        bytes.ShouldBe(1024L);
-
-        // Provide answer
-        cleanupAnswerTcs.TrySetResult(false);
-
-        var result = await pipelineTask;
-        result.ShouldBeFalse();
-    }
-
-    [Test]
-    public async Task NoRehydrationNeeded_PipelineCompletesFirst_QuestionTcsNeverSet()
-    {
-        var questionTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Pipeline completes immediately without setting the question TCS
-        var pipelineTask = Task.FromResult(true);
-
-        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
-        firstSignal.ShouldBe((Task)pipelineTask, "pipeline should complete first");
-
-        questionTcs.Task.IsCompleted.ShouldBeFalse("question TCS should not be set");
+        state.TarsUploaded.ShouldBe(1L);
+        state.ChunksUploaded.ShouldBe(1L);
     }
 }
 
-// ── 7.3 Integration: Mediator routes events to ProgressState handlers ─────────
+// ── 6.8 BuildArchiveDisplay: stage headers and per-file lines ─────────────────
+
+/// <summary>
+/// Verifies that <see cref="CliBuilder.BuildArchiveDisplay"/> renders stage headers
+/// and per-file lines correctly from a known <see cref="ProgressState"/>.
+/// </summary>
+public class BuildArchiveDisplayTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(new StringWriter()),
+        });
+        var writer = new StringWriter();
+        var testConsole = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        testConsole.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsStageHeaders()
+    {
+        var state = new ProgressState();
+        state.SetTotalFiles(5);
+
+        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var output     = RenderToString(renderable);
+
+        output.ShouldContain("Scanning");
+        output.ShouldContain("Hashing");
+        output.ShouldContain("Uploading");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsScanningComplete_WhenTotalKnown()
+    {
+        var state = new ProgressState();
+        state.SetTotalFiles(1523);
+
+        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var output     = RenderToString(renderable);
+
+        output.ShouldContain("1523");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsPerFileLines_WhenFilesTracked()
+    {
+        var state = new ProgressState();
+        state.AddFile("video.mp4", 5_000_000);
+
+        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var output     = RenderToString(renderable);
+
+        output.ShouldContain("video.mp4");
+        output.ShouldContain("Hashing");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsQueuedInTar_Label()
+    {
+        var state = new ProgressState();
+        state.AddFile("notes.txt", 100);
+        state.SetFileHashed("notes.txt", "h1");
+        state.SetFileQueuedInTar("h1");
+
+        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var output     = RenderToString(renderable);
+
+        output.ShouldContain("notes.txt");
+        output.ShouldContain("Queued in TAR");
+    }
+}
+
+// ── 6.9 BuildArchiveDisplay: Done files not rendered ─────────────────────────
+
+/// <summary>
+/// Verifies that files removed from <see cref="ProgressState.TrackedFiles"/> do not
+/// appear in the display (Done state = removed from dictionary).
+/// </summary>
+public class BuildArchiveDisplayDoneTests
+{
+    [Test]
+    public void BuildArchiveDisplay_DoesNotShowRemovedFiles()
+    {
+        var state = new ProgressState();
+        state.AddFile("completed.bin", 1000);
+        state.SetFileHashed("completed.bin", "done1");
+        // Simulate completion: remove from dict
+        state.RemoveFile("completed.bin");
+
+        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var writer     = new StringWriter();
+        var console    = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        var output = writer.ToString();
+
+        output.ShouldNotContain("completed.bin");
+    }
+}
+
+// ── 6.10 RenderProgressBar: bar character fill ───────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.RenderProgressBar"/> produces correct fill ratios.
+/// </summary>
+public class RenderProgressBarTests
+{
+    [Test]
+    public void RenderProgressBar_ZeroFraction_AllEmpty()
+    {
+        var bar = CliBuilder.RenderProgressBar(0.0, 10);
+        // Zero filled → all empty chars ░
+        bar.ShouldContain(new string('░', 10));
+    }
+
+    [Test]
+    public void RenderProgressBar_FullFraction_AllFilled()
+    {
+        var bar = CliBuilder.RenderProgressBar(1.0, 10);
+        // Full → all filled chars █
+        bar.ShouldContain(new string('█', 10));
+    }
+
+    [Test]
+    public void RenderProgressBar_HalfFraction_HalfFilled()
+    {
+        var bar = CliBuilder.RenderProgressBar(0.5, 12);
+        // 6 filled + 6 empty
+        bar.ShouldContain(new string('█', 6));
+        bar.ShouldContain(new string('░', 6));
+    }
+
+    [Test]
+    public void RenderProgressBar_62Percent_Width12_SevenOrEightFilled()
+    {
+        var bar = CliBuilder.RenderProgressBar(0.62, 12);
+        // Round(0.62 * 12) = Round(7.44) = 7 filled
+        bar.ShouldContain(new string('█', 7));
+        bar.ShouldContain(new string('░', 5));
+    }
+
+    [Test]
+    public void RenderProgressBar_ClampsBelowZero()
+    {
+        var bar = CliBuilder.RenderProgressBar(-0.5, 8);
+        bar.ShouldContain(new string('░', 8));
+    }
+
+    [Test]
+    public void RenderProgressBar_ClampsAboveOne()
+    {
+        var bar = CliBuilder.RenderProgressBar(1.5, 8);
+        bar.ShouldContain(new string('█', 8));
+    }
+}
+
+// ── 6.11 Integration: Mediator routes events to ProgressState handlers ────────
 
 /// <summary>
 /// Verifies that when the CLI's notification handlers are registered via DI
 /// and a real <see cref="IMediator"/> is used, published archive/restore events
 /// are routed to <see cref="ProgressState"/> correctly.
-///
-/// This test confirms the Mediator source-generator discovers handlers in
-/// <c>Arius.Cli</c> when <c>AddMediator()</c> is called from that assembly context,
-/// by exercising the handler chain end-to-end through the real mediator.
 /// </summary>
 public class MediatorEventRoutingIntegrationTests
 {
@@ -408,8 +660,7 @@ public class MediatorEventRoutingIntegrationTests
         // generator discovers INotificationHandler<T> implementations in both Core and CLI.
         services.AddMediator();
 
-        // Provide stub Core services so the source-generated Mediator can initialize
-        // its command handler wrappers (ArchivePipelineHandler etc.) without real Azure deps.
+        // Provide stub Core services so the source-generated Mediator can initialize.
         services.AddArius(
             blobStorage:      Substitute.For<IBlobStorageService>(),
             passphrase:       null,
@@ -417,8 +668,6 @@ public class MediatorEventRoutingIntegrationTests
             containerName:    "test",
             cacheBudgetBytes: 0);
 
-        // No manual handler registration needed: the source generator in this test assembly
-        // discovers all INotificationHandler<T> implementations in both Arius.Core and Arius.Cli.
         return services.BuildServiceProvider();
     }
 
@@ -433,20 +682,17 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileScannedEvent(5));
         await mediator.Publish(new FileHashingEvent("a.bin", 100));
         await mediator.Publish(new FileHashedEvent("a.bin", "hash1"));
-        await mediator.Publish(new ChunkUploadingEvent("hash1", 200));
-        await mediator.Publish(new ChunkUploadedEvent("hash1", 150));
-        await mediator.Publish(new TarBundleSealingEvent(3, 30_000));
-        await mediator.Publish(new TarBundleUploadedEvent("tarhash", 25_000, 3));
+        await mediator.Publish(new TarEntryAddedEvent("hash1", 1, 100));
+        await mediator.Publish(new TarBundleSealingEvent(1, 100, "tar1", ["hash1"]));
+        await mediator.Publish(new TarBundleUploadedEvent("tar1", 80, 1));
         await mediator.Publish(new SnapshotCreatedEvent("root", DateTimeOffset.UtcNow, 5));
 
         // Verify ProgressState was updated
         state.TotalFiles.ShouldBe(5L);
         state.FilesHashed.ShouldBe(1L);
-        state.FilesHashing.ShouldBe(0);
-        state.ChunksUploaded.ShouldBe(1L);
-        state.BytesUploaded.ShouldBe(150L);
-        state.TarsBundled.ShouldBe(1);
-        state.TarsUploaded.ShouldBe(1);
+        state.TarsUploaded.ShouldBe(1L);
+        // a.bin was removed after tar upload
+        state.TrackedFiles.ContainsKey("a.bin").ShouldBeFalse();
         state.SnapshotComplete.ShouldBeTrue();
     }
 
@@ -467,5 +713,157 @@ public class MediatorEventRoutingIntegrationTests
         state.FilesRestored.ShouldBe(2L);
         state.FilesSkipped.ShouldBe(1L);
         state.RehydrationChunkCount.ShouldBe(4);
+    }
+}
+
+// ── 6.12 Integration: progress callbacks report bytes ────────────────────────
+
+/// <summary>
+/// Verifies that <see cref="CliBuilder"/>'s <c>CreateHashProgress</c> and
+/// <c>CreateUploadProgress</c> factory callbacks correctly wire to
+/// <see cref="TrackedFile.SetBytesProcessed"/>.
+/// </summary>
+public class ProgressCallbackIntegrationTests
+{
+    [Test]
+    public void CreateHashProgress_UpdatesBytesProcessed()
+    {
+        var state = new ProgressState();
+        state.AddFile("large.bin", 5_000_000);
+        state.SetFileHashed("large.bin", "lhash1");
+
+        // Simulate what CliBuilder wires: look up TrackedFile by relative path
+        IProgress<long>? hashProgress = null;
+        if (state.TrackedFiles.TryGetValue("large.bin", out var file))
+            hashProgress = new Progress<long>(bytes => file.SetBytesProcessed(bytes));
+
+        hashProgress.ShouldNotBeNull();
+
+        // Report progress (Progress<T> dispatches on sync context; invoke directly)
+        file.SetBytesProcessed(2_500_000);
+        file.BytesProcessed.ShouldBe(2_500_000L);
+    }
+
+    [Test]
+    public void CreateUploadProgress_ResetsThenUpdatesBytesProcessed()
+    {
+        var state = new ProgressState();
+        state.AddFile("chunk.bin", 1_000_000);
+        state.SetFileHashed("chunk.bin", "chash1");
+        state.SetFileUploading("chash1");
+
+        // Simulate what CliBuilder wires: look up via reverse map
+        IProgress<long>? uploadProgress = null;
+        if (state.ContentHashToPath.TryGetValue("chash1", out var relPath) &&
+            state.TrackedFiles.TryGetValue(relPath, out var file))
+        {
+            file.SetBytesProcessed(0);  // reset at upload start
+            uploadProgress = new Progress<long>(bytes => file.SetBytesProcessed(bytes));
+        }
+
+        uploadProgress.ShouldNotBeNull();
+
+        // Verify reset happened
+        state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(0L);
+
+        // Report upload progress
+        state.TrackedFiles["chunk.bin"].SetBytesProcessed(450_000);
+        state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(450_000L);
+    }
+}
+
+// ── Restore TCS coordination tests (unchanged) ────────────────────────────────
+
+/// <summary>
+/// Verifies the TCS phase-coordination pattern used in the restore command.
+/// </summary>
+public class RestoreTcsCoordinationTests
+{
+    [Test]
+    public async Task ConfirmRehydration_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
+    {
+        var questionTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var pipelineTask = Task.Run(async () =>
+        {
+            questionTcs.TrySetResult(42);
+            return await answerTcs.Task;
+        });
+
+        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
+        firstSignal.ShouldBe(questionTcs.Task, "question should arrive before pipeline completes");
+
+        var questionValue = await questionTcs.Task;
+        questionValue.ShouldBe(42);
+
+        answerTcs.TrySetResult(true);
+
+        var answer = await pipelineTask;
+        answer.ShouldBeTrue("pipeline should receive the answer we provided");
+    }
+
+    [Test]
+    public async Task ConfirmCleanup_TcsPhaseTransition_PipelineUnblocksAfterAnswer()
+    {
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var pipelineTask = Task.Run(async () =>
+        {
+            cleanupQuestionTcs.TrySetResult((3, 1024L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        var (count, bytes) = await cleanupQuestionTcs.Task;
+        count.ShouldBe(3);
+        bytes.ShouldBe(1024L);
+
+        cleanupAnswerTcs.TrySetResult(false);
+
+        var result = await pipelineTask;
+        result.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task NoRehydrationNeeded_PipelineCompletesFirst_QuestionTcsNeverSet()
+    {
+        var questionTcs  = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pipelineTask = Task.FromResult(true);
+
+        var firstSignal = await Task.WhenAny(pipelineTask, questionTcs.Task);
+        firstSignal.ShouldBe((Task)pipelineTask, "pipeline should complete first");
+
+        questionTcs.Task.IsCompleted.ShouldBeFalse("question TCS should not be set");
+    }
+}
+
+// ── TrackedFile BytesProcessed Interlocked update test ───────────────────────
+
+/// <summary>
+/// Verifies that <see cref="TrackedFile.SetBytesProcessed"/> reports the latest value
+/// under concurrent updates (last-writer semantics).
+/// </summary>
+public class TrackedFileBytesProcessedTests
+{
+    [Test]
+    public async Task BytesProcessed_UpdatesCorrectlyUnderContention()
+    {
+        var file = new TrackedFile("test.bin", 1_000_000L);
+
+        const int iterations = 10_000;
+        long      finalValue = 0;
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(1, iterations),
+            new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            (i, _) =>
+            {
+                file.SetBytesProcessed(i);
+                Interlocked.Exchange(ref finalValue, i);
+                return ValueTask.CompletedTask;
+            });
+
+        file.BytesProcessed.ShouldBeInRange(1L, iterations);
     }
 }

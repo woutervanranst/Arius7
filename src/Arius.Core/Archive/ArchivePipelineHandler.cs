@@ -367,7 +367,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             tarHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
                         }
 
-                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize), cancellationToken);
+                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
 
                         _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash[..8], tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)

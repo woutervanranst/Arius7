@@ -1,4 +1,4 @@
-## REVISED Requirements
+## REVISED Requirements (v2 — TarBundleSealingEvent enrichment)
 
 ### Requirement: Progress callbacks on ArchiveOptions
 `ArchiveOptions` SHALL expose two optional callback properties for injecting byte-level progress reporting:
@@ -10,7 +10,7 @@ This follows the same pattern as `RestoreOptions.ConfirmRehydration` — Core ex
 
 #### Scenario: CLI injects hash progress callback
 - **WHEN** the CLI creates `ArchiveOptions`
-- **THEN** it SHALL set `CreateHashProgress` to a factory that creates an `IProgress<long>` updating `ProgressState.InFlightHashes[relativePath].BytesProcessed`
+- **THEN** it SHALL set `CreateHashProgress` to a factory that creates an `IProgress<long>` updating `TrackedFile.BytesProcessed` in `ProgressState`
 
 #### Scenario: Core uses hash progress callback
 - **WHEN** a file begins hashing and `CreateHashProgress` is not null
@@ -18,13 +18,9 @@ This follows the same pattern as `RestoreOptions.ConfirmRehydration` — Core ex
 - **WHEN** `CreateHashProgress` is null
 - **THEN** the pipeline SHALL hash the file stream directly without wrapping
 
-#### Scenario: CLI injects upload progress callback
-- **WHEN** the CLI creates `ArchiveOptions`
-- **THEN** it SHALL set `CreateUploadProgress` to a factory that creates an `IProgress<long>` updating `ProgressState.InFlightUploads[contentHash].BytesProcessed`
-
 #### Scenario: Core uses upload progress callback
 - **WHEN** a chunk begins uploading and `CreateUploadProgress` is not null
-- **THEN** the pipeline SHALL call `CreateUploadProgress(contentHash, size)` and use the returned `IProgress<long>` with `ProgressStream` (replacing the current `noOpProgress`)
+- **THEN** the pipeline SHALL call `CreateUploadProgress(contentHash, size)` and use the returned `IProgress<long>` with `ProgressStream`
 - **WHEN** `CreateUploadProgress` is null
 - **THEN** the pipeline SHALL use a no-op `IProgress<long>` (current behavior)
 
@@ -41,23 +37,30 @@ The archive pipeline SHALL wrap the file `FileStream` in a `ProgressStream` duri
 - **THEN** the pipeline SHALL hash the raw `FileStream` directly (no ProgressStream overhead)
 
 ### Requirement: TarEntryAddedEvent
-A new notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize)` SHALL be published after each file is written to the tar archive (after `tarWriter.WriteEntryAsync`). A corresponding `ILogger` debug-level log line SHALL be emitted for consistency with existing event logging patterns.
+A notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize)` SHALL be published after each file is written to the tar archive (after `tarWriter.WriteEntryAsync`). A corresponding `ILogger` debug-level log line SHALL be emitted for consistency with existing event logging patterns. (Already implemented, unchanged.)
 
 #### Scenario: File added to tar
 - **WHEN** a small file is added to the current tar bundle
 - **THEN** the pipeline SHALL publish `TarEntryAddedEvent` with the file's content hash, the updated entry count, and the updated cumulative uncompressed size
 
-#### Scenario: Multiple files in one tar
-- **WHEN** 12 files are added to a tar bundle before it seals
-- **THEN** 12 `TarEntryAddedEvent` notifications SHALL be published with `CurrentEntryCount` incrementing from 1 to 12
+### Requirement: TarBundleSealingEvent with content hashes
+The `TarBundleSealingEvent` record SHALL be enriched to include the list of content hashes in the sealed tar bundle:
+
+`TarBundleSealingEvent(int EntryCount, long UncompressedSize, IReadOnlyList<string> ContentHashes)`
+
+The `ContentHashes` parameter SHALL contain the content hash of every file entry in the tar, in the order they were added. The publish site in `ArchivePipelineHandler` already has `tarEntries` containing this data — the content hashes SHALL be projected from the existing `tarEntries` list.
+
+#### Scenario: Tar sealed with 5 files
+- **WHEN** a tar bundle containing 5 files is sealed
+- **THEN** the pipeline SHALL publish `TarBundleSealingEvent(5, totalSize, ["hash1", "hash2", "hash3", "hash4", "hash5"])` where each hash corresponds to a file in the tar
+
+#### Scenario: CLI uses content hashes for state transition
+- **WHEN** the CLI receives `TarBundleSealingEvent` with `ContentHashes`
+- **THEN** it SHALL use the `ContentHash → RelativePath` reverse map to find each file's `TrackedFile` entry and transition its state from `QueuedInTar` to `UploadingTar`
 
 ### Requirement: Streaming hash computation (enriched)
-The system SHALL compute content hashes by streaming file data through the hash function without loading the entire file into memory. During hashing, the system SHALL publish `FileHashingEvent` with the file's relative path and file size (in bytes) to enable per-file progress display. When `ArchiveOptions.CreateHashProgress` is provided, the file stream SHALL be wrapped in `ProgressStream` before being passed to `ComputeHashAsync`.
+The system SHALL compute content hashes by streaming file data through the hash function without loading the entire file into memory. During hashing, the system SHALL publish `FileHashingEvent` with the file's relative path and file size (in bytes) to enable per-file progress display. When `ArchiveOptions.CreateHashProgress` is provided, the file stream SHALL be wrapped in `ProgressStream` before being passed to `ComputeHashAsync`. (Unchanged from previous design.)
 
 #### Scenario: FileHashingEvent emitted with size
 - **WHEN** a file begins hashing
 - **THEN** the system SHALL publish `FileHashingEvent` with `RelativePath` and `FileSize`
-
-#### Scenario: Large file hashing
-- **WHEN** a 10 GB binary file is hashed
-- **THEN** the system SHALL compute the hash using streaming with bounded memory (stream buffer only, no full file load)

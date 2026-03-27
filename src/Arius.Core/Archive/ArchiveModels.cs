@@ -144,7 +144,11 @@ public sealed record ChunkUploadingEvent(string ContentHash, long Size) : INotif
 public sealed record ChunkUploadedEvent(string ContentHash, long CompressedSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
-public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize) : INotification;
+/// <param name="EntryCount">Number of entries in the sealed tar.</param>
+/// <param name="UncompressedSize">Total uncompressed size of all entries in bytes.</param>
+/// <param name="TarHash">Content hash of the sealed tar archive file (used as the bundle identifier).</param>
+/// <param name="ContentHashes">Content hash of every file entry in the tar, in insertion order.</param>
+public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, string TarHash, IReadOnlyList<string> ContentHashes) : INotification;
 
 /// <summary>A tar bundle was uploaded.</summary>
 public sealed record TarBundleUploadedEvent(string TarHash, long CompressedSize, int EntryCount) : INotification;
