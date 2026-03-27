@@ -128,8 +128,9 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
     /// <returns>A completed ValueTask.</returns>
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var path))
-            state.RemoveFile(path);
+        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
+            foreach (var path in paths)
+                state.RemoveFile(path);
         state.IncrementChunksUploaded(notification.CompressedSize);
         return ValueTask.CompletedTask;
     }

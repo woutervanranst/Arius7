@@ -202,11 +202,17 @@ public static class CliBuilder
                     // Reset BytesProcessed so the upload bar starts from 0, then stream updates.
                     CreateUploadProgress = (contentHash, size) =>
                     {
-                        if (progressState.ContentHashToPath.TryGetValue(contentHash, out var relPath) &&
-                            progressState.TrackedFiles.TryGetValue(relPath, out var file))
+                        if (progressState.ContentHashToPath.TryGetValue(contentHash, out var paths))
                         {
-                            file.SetBytesProcessed(0);
-                            return new Progress<long>(bytes => file.SetBytesProcessed(bytes));
+                            var files = paths
+                                .Select(p => progressState.TrackedFiles.TryGetValue(p, out var f) ? f : null)
+                                .Where(f => f != null)
+                                .ToList();
+                            if (files.Count > 0)
+                            {
+                                foreach (var f in files) f!.SetBytesProcessed(0);
+                                return new Progress<long>(bytes => { foreach (var f in files) f!.SetBytesProcessed(bytes); });
+                            }
                         }
                         return new Progress<long>();
                     },

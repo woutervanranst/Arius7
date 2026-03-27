@@ -113,10 +113,19 @@ public sealed class ProgressState
     public ConcurrentDictionary<string, TrackedFile> TrackedFiles { get; } = new();
 
     /// <summary>
-    /// Reverse lookup: ContentHash → RelativePath.
+    /// Reverse lookup: ContentHash → one or more RelativePaths.
+    /// One-to-many because two files can legitimately hash to the same content in one run.
     /// Populated when <c>FileHashedEvent</c> fires; used by downstream content-hash-keyed events.
     /// </summary>
-    public ConcurrentDictionary<string, string> ContentHashToPath { get; } = new();
+    public ConcurrentDictionary<string, ConcurrentBag<string>> ContentHashToPath { get; } = new();
+
+    /// <summary>
+    /// Membership map: TarHash → list of RelativePaths that belong to that tar bundle.
+    /// Populated atomically by <see cref="SetFilesUploadingTar"/> before individual
+    /// <see cref="TrackedFile.TarId"/> fields are written, so <see cref="RemoveFilesByTarId"/>
+    /// can find all members even if the sealing handler is still in progress.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, IReadOnlyList<string>> _tarIdToPaths = new();
 
     /// <summary>Adds a new <see cref="TrackedFile"/> entry with State=Hashing.</summary>
     public void AddFile(string relativePath, long fileSize) =>
@@ -137,7 +146,7 @@ public sealed class ProgressState
     {
         if (TrackedFiles.TryGetValue(relativePath, out var file))
             file.ContentHash = contentHash;
-        ContentHashToPath.TryAdd(contentHash, relativePath);
+        ContentHashToPath.GetOrAdd(contentHash, _ => new ConcurrentBag<string>()).Add(relativePath);
         Interlocked.Increment(ref _filesHashed);
     }
 
@@ -150,11 +159,10 @@ public sealed class ProgressState
     /// <param name="contentHash">The content hash used to locate the tracked file via ContentHashToPath; if no matching tracked file is found, no change is made.</param>
     public void SetFileQueuedInTar(string contentHash)
     {
-        if (ContentHashToPath.TryGetValue(contentHash, out var path) &&
-            TrackedFiles.TryGetValue(path, out var file))
-        {
-            file.State = FileState.QueuedInTar;
-        }
+        if (ContentHashToPath.TryGetValue(contentHash, out var paths))
+            foreach (var path in paths)
+                if (TrackedFiles.TryGetValue(path, out var file))
+                    file.State = FileState.QueuedInTar;
     }
 
     /// <summary>
@@ -167,15 +175,22 @@ public sealed class ProgressState
     /// <param name="tarId">The identifier of the tar bundle assigned to those files.</param>
     public void SetFilesUploadingTar(IReadOnlyList<string> contentHashes, string tarId)
     {
+        // Pre-collect all paths and register membership atomically BEFORE setting TarId on
+        // individual files. This prevents a race where TarBundleUploadedHandler calls
+        // RemoveFilesByTarId while this loop is still in progress, which would orphan files
+        // whose TarId hadn't been written yet.
+        var paths = new List<string>();
         foreach (var hash in contentHashes)
-        {
-            if (ContentHashToPath.TryGetValue(hash, out var path) &&
-                TrackedFiles.TryGetValue(path, out var file))
+            if (ContentHashToPath.TryGetValue(hash, out var bag))
+                paths.AddRange(bag);
+        _tarIdToPaths.TryAdd(tarId, paths);
+
+        foreach (var path in paths)
+            if (TrackedFiles.TryGetValue(path, out var file))
             {
                 file.TarId = tarId;
                 file.State = FileState.UploadingTar;
             }
-        }
     }
 
     /// <summary>
@@ -187,12 +202,11 @@ public sealed class ProgressState
     /// <param name="contentHash">Content hash used to locate the tracked file.</param>
     public void SetFileUploading(string contentHash)
     {
-        if (ContentHashToPath.TryGetValue(contentHash, out var path) &&
-            TrackedFiles.TryGetValue(path, out var file) &&
-            file.State is not (FileState.QueuedInTar or FileState.UploadingTar))
-        {
-            file.State = FileState.Uploading;
-        }
+        if (ContentHashToPath.TryGetValue(contentHash, out var paths))
+            foreach (var path in paths)
+                if (TrackedFiles.TryGetValue(path, out var file) &&
+                    file.State is not (FileState.QueuedInTar or FileState.UploadingTar))
+                    file.State = FileState.Uploading;
     }
 
     /// <summary>Removes the <see cref="TrackedFile"/> entry for <paramref name="relativePath"/>.</summary>
@@ -202,11 +216,9 @@ public sealed class ProgressState
     /// <summary>Removes all <see cref="TrackedFile"/> entries whose <see cref="TrackedFile.TarId"/> matches <paramref name="tarId"/>.</summary>
     public void RemoveFilesByTarId(string tarId)
     {
-        foreach (var (path, file) in TrackedFiles)
-        {
-            if (file.TarId == tarId)
+        if (_tarIdToPaths.TryRemove(tarId, out var paths))
+            foreach (var path in paths)
                 TrackedFiles.TryRemove(path, out _);
-        }
     }
 
     // ── Archive: scanning ─────────────────────────────────────────────────────

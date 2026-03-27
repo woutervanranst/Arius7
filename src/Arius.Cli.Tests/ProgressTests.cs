@@ -33,7 +33,7 @@ public class TrackedFileSmallFilePathTests
         // FileHashedEvent → SetFileHashed → ContentHash set, reverse map populated
         state.SetFileHashed("notes.txt", "def456");
         state.TrackedFiles["notes.txt"].ContentHash.ShouldBe("def456");
-        state.ContentHashToPath["def456"].ShouldBe("notes.txt");
+        state.ContentHashToPath["def456"].ShouldContain("notes.txt");
         state.FilesHashed.ShouldBe(1L);
 
         // TarEntryAddedEvent → SetFileQueuedInTar
@@ -115,7 +115,7 @@ public class ContentHashToPathTests
 
         // Reverse map populated
         state.ContentHashToPath.ContainsKey("aabbcc").ShouldBeTrue();
-        state.ContentHashToPath["aabbcc"].ShouldBe("dir/file.bin");
+        state.ContentHashToPath["aabbcc"].ShouldContain("dir/file.bin");
 
         // Downstream event via reverse map works
         state.SetFileQueuedInTar("aabbcc");
@@ -266,7 +266,7 @@ public class NotificationHandlerTests
 
         state.FilesHashed.ShouldBe(1L);
         state.TrackedFiles["a.bin"].ContentHash.ShouldBe("abc123");
-        state.ContentHashToPath["abc123"].ShouldBe("a.bin");
+        state.ContentHashToPath["abc123"].ShouldContain("a.bin");
     }
 
     // ── TarEntryAddedHandler ──────────────────────────────────────────────────
@@ -759,13 +759,19 @@ public class ProgressCallbackIntegrationTests
         state.SetFileHashed("chunk.bin", "chash1");
         state.SetFileUploading("chash1");
 
-        // Simulate what CliBuilder wires: look up via reverse map
+        // Simulate what CliBuilder wires: look up via reverse map (one-to-many)
         IProgress<long>? uploadProgress = null;
-        if (state.ContentHashToPath.TryGetValue("chash1", out var relPath) &&
-            state.TrackedFiles.TryGetValue(relPath, out var file))
+        if (state.ContentHashToPath.TryGetValue("chash1", out var paths))
         {
-            file.SetBytesProcessed(0);  // reset at upload start
-            uploadProgress = new Progress<long>(bytes => file.SetBytesProcessed(bytes));
+            var files = paths
+                .Select(p => state.TrackedFiles.TryGetValue(p, out var f) ? f : null)
+                .Where(f => f != null)
+                .ToList();
+            if (files.Count > 0)
+            {
+                foreach (var f in files) f!.SetBytesProcessed(0);
+                uploadProgress = new Progress<long>(bytes => { foreach (var f in files) f!.SetBytesProcessed(bytes); });
+            }
         }
 
         uploadProgress.ShouldNotBeNull();
