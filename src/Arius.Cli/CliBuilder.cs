@@ -1051,8 +1051,7 @@ public static class CliBuilder
             blobStorage,
             passphrase,
             accountName,
-            containerName,
-            ChunkIndexService.DefaultCacheBudgetBytes);
+            containerName);
 
         return services.BuildServiceProvider();
     }
