@@ -1,45 +1,51 @@
 ## Why
 
-The console-progress change was implemented but has critical issues discovered during testing:
+The console-progress change was implemented but the Spectre.Console `Progress` approach has fundamental limitations:
 
-1. **Mediator source generator doesn't discover CLI handlers**: `Mediator.SourceGenerator` is referenced only in `Arius.Core.csproj`. The 12 `INotificationHandler<T>` implementations in `Arius.Cli/ProgressHandlers.cs` are in a different assembly that the source generator never scans. Every `_mediator.Publish()` fires into the void — progress goes 0-100% instantly on both archive and restore.
+1. **Dynamic ProgressTask add/remove doesn't work**: `ProgressTask.StopTask()` marks a task as finished but does NOT remove it from the display. There is no `RemoveTask()` API. Completed sub-tasks accumulate visually, making the per-file progress lines unusable.
 
-2. **Per-file progress not wired**: `ProgressState` tracks a single in-flight hash and a single in-flight upload (last-writer-wins). With 4 hash workers and 4 upload workers running in parallel, the display shows nonsensical data — file name from one thread, bytes from another. The spec requires one sub-line per concurrent operation. Additionally, `SetHashProgress` / `SetUploadProgress` are never called: upload uses a `noOpProgress`, hashing has no `ProgressStream` at all.
+2. **Nested stage + sub-task display is too complex**: The four-stage display (Scanning, Hashing, Bundling, Uploading) with dynamic per-file sub-lines under Hashing and Uploading pushes Spectre.Console `Progress` beyond what it was designed for. The widget expects a fixed or slowly-growing list of tasks, not rapid add/remove of child tasks.
 
-3. **Restore cost display thread-safety**: The `ConfirmRehydration` and `ConfirmCleanup` callbacks render Spectre Console tables and interactive prompts from the pipeline thread while `AnsiConsole.Progress()` is live on the CLI thread. Spectre Console is explicitly not thread safe. This causes garbled output observed in testing.
+3. **The conceptual model is wrong**: Users don't think in pipeline stages. They think in files. "What's happening to my files?" is the question the display should answer.
 
-4. **No progress callbacks on ArchiveOptions**: Core's archive pipeline has a `ProgressStream` placeholder with `noOpProgress` for uploads, and no `ProgressStream` at all for hashing. There is no mechanism for the CLI to inject byte-level progress callbacks. Core should expose enough observable data for any UI (console, web) to render progress — `IProgress<long>` factory callbacks on options are the clean pattern (matching `RestoreOptions.ConfirmRehydration`).
+4. **Mediator source generator issue persists**: `Mediator.SourceGenerator` is referenced only in `Arius.Core.csproj`. The CLI handlers are never discovered.
 
-5. **No tar bundling visibility**: There is no event for individual files being added to a tar bundle. Users cannot see the current tar filling up. A `TarEntryAddedEvent` is needed.
+5. **Restore TCS approach is correct but still needed**: The restore phase coordination via `TaskCompletionSource` remains valid and unchanged.
 
-6. **Upload task has no meaningful denominator**: `uploadTask.MaxValue = 100` is a meaningless placeholder. Total chunk count is not known until dedup completes. The upload bar needs an indeterminate-to-determinate transition.
+### Previous issues that remain relevant
+- Per-file progress not wired (IProgress callbacks still needed)
+- Restore thread-safety (TCS approach still the fix)
+- Poll loop responsiveness (Task.WhenAny still the fix)
 
-7. **Poll loop uses unconditional delay**: `await Task.Delay(100)` means the display lags up to 100ms after the pipeline completes. Should use `Task.WhenAny` to respond immediately.
+### Previous issues that are addressed differently
+- Dynamic ProgressTask lifecycle → replaced by Live display with full rebuild each tick
+- Multi-stage aggregate bars with sub-lines → replaced by flat per-file model with stage headers
 
 ## What Changes
 
-### Arius.Core (minimal, non-UI)
-- **Progress callbacks on ArchiveOptions**: Add `Func<string, long, IProgress<long>>? CreateHashProgress` and `Func<string, long, IProgress<long>>? CreateUploadProgress` to `ArchiveOptions`. Wire `ProgressStream` in hash path (wrap `FileStream` before `ComputeHashAsync`) and replace `noOpProgress` in large-file upload path. Add `ProgressStream` to tar upload path.
-- **New TarEntryAddedEvent**: New notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize)` published after each tar entry write. Add corresponding log line for consistency.
+### Arius.Core (minimal)
+- **Enrich `TarBundleSealingEvent`**: Add `IReadOnlyList<string> ContentHashes` to `TarBundleSealingEvent` so the CLI knows which files are in each sealed tar. This is a legitimate business event enrichment — Core is saying "I sealed a tar containing these content hashes."
+- **Progress callbacks on ArchiveOptions**: (already implemented) `CreateHashProgress` and `CreateUploadProgress` remain as-is.
+- **`TarEntryAddedEvent`**: (already implemented) Remains as-is.
 
 ### Arius.Cli (bulk of changes)
-- **Fix Mediator handler discovery**: Add `Mediator.SourceGenerator` and `Mediator.Abstractions` as direct package references to `Arius.Cli.csproj` so the source generator discovers the 12 handlers.
-- **Per-file progress model**: Replace single-file fields in `ProgressState` with `ConcurrentDictionary<string, FileProgress>` for `InFlightHashes` and `InFlightUploads`. `FileProgress` tracks file name, total bytes, and bytes processed (Interlocked-updated).
-- **Archive display rewrite**: Dynamic `ProgressTask` per in-flight file added/removed by the display poll loop. New "Bundling" task showing current tar entry count. Upload task transitions from indeterminate to determinate when chunk count becomes known.
-- **Restore TCS approach**: Use `TaskCompletionSource` pairs for `ConfirmRehydration` and `ConfirmCleanup` to decouple callbacks from display. No live progress during plan phase (steps 1-6). Progress display only during download phase. Callbacks render freely on a clean console.
-- **Poll loop fix**: Use `Task.WhenAny(pipeline, Task.Delay(100))` instead of unconditional `Task.Delay(100)`.
-- **New TarEntryAddedHandler**: Handles `TarEntryAddedEvent`, updates bundling counter on `ProgressState`.
+- **Replace `Spectre.Console.Progress` with `Spectre.Console.Live`**: Use `AnsiConsole.Live()` with a `Rows` renderable rebuilt every 100ms tick. Full control over what appears and disappears — no dynamic ProgressTask management.
+- **Per-file state machine in ProgressState**: Track each file through its lifecycle: `Hashing → QueuedInTar → UploadingTar → Done` (small files) or `Hashing → Uploading → Done` (large files). Files in `Done` state are removed from the display.
+- **Stage headers as static summary lines**: Scanning (✓ with count), Hashing (N/M), Uploading (N/M) rendered as `Markup` text lines above the per-file lines. Not `ProgressTask` objects.
+- **ContentHash→RelativePath mapping**: Built from `FileHashedEvent` so tar-related events (keyed by content hash) can be displayed with file names.
+- **Fix Mediator handler discovery**: (still needed) Add source generator references to CLI project.
+- **Restore TCS approach**: (already implemented) Unchanged.
 
 ## Capabilities
 
 ### Modified Capabilities
-- `progress-display`: Major revision — per-file concurrent tracking via `ConcurrentDictionary`, tar bundling visibility, TCS-based restore phase coordination, dynamic `ProgressTask` management.
-- `cli`: Archive display with dynamic per-file sub-lines, restore display with TCS phase boundaries, poll loop improvement.
-- `archive-pipeline`: Progress callbacks on `ArchiveOptions`, `ProgressStream` wiring for hash and upload paths, new `TarEntryAddedEvent`.
-- `restore-pipeline`: No pipeline changes. TCS coordination is purely in CLI callback wiring.
+- `progress-display`: Major revision — per-file state machine replacing ConcurrentDictionary of in-flight operations, ContentHash→RelativePath mapping, tar file set tracking.
+- `cli`: Replace `Spectre.Console.Progress` with `Spectre.Console.Live` for archive display. Build `Rows` renderable each tick. Restore display unchanged.
+- `archive-pipeline`: Enrich `TarBundleSealingEvent` with content hash list. Everything else already implemented.
+- `restore-pipeline`: No changes.
 
 ## Impact
 
-- **Arius.Core**: Two new optional properties on `ArchiveOptions`. `ProgressStream` wrapping in hash path + tar upload path. One new event record + one `Publish` call + one log line. No behavioral changes — callbacks are optional, default to null/no-op.
-- **Arius.Cli**: `Arius.Cli.csproj` gains Mediator package references. `ProgressState` substantially rewritten (single-file fields → concurrent dictionaries). `CliBuilder.cs` archive display rewritten with dynamic tasks. Restore display rewritten with TCS phase coordination. New `TarEntryAddedHandler`.
-- **Arius.Cli.Tests**: Existing `ProgressState` tests need updating for new data model. Handler tests need updating. Integration test may need adjustment for Mediator wiring fix. New tests for TCS restore coordination.
+- **Arius.Core**: One record change — `TarBundleSealingEvent` gains `IReadOnlyList<string> ContentHashes`. The publish site must pass the list of hashes. No behavioral changes.
+- **Arius.Cli**: `ProgressState` revised to track per-file lifecycle state machine instead of separate in-flight dictionaries. `CliBuilder.cs` archive display rewritten from `Progress` to `Live`. Handler updates for new state model. New `ContentHash→RelativePath` tracking.
+- **Arius.Cli.Tests**: ProgressState tests updated for new state model. Display rendering is now testable (build the `Rows` renderable and inspect it, rather than testing Spectre `ProgressTask` interactions).
