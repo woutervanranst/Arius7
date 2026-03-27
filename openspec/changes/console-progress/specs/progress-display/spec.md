@@ -109,16 +109,60 @@ Handlers SHALL be thin (state transition / counter increment only, no business l
 - **THEN** all `TrackedFile` entries with `TarId == "tarHash"` SHALL be removed from the dictionary
 
 ### Requirement: Restore notification handlers
-The system SHALL implement `INotificationHandler<T>` for all 4 restore notification events. Each handler SHALL update the corresponding field on `ProgressState`. Restore handlers are unchanged from the previous design.
+The system SHALL implement `INotificationHandler<T>` for all 4 restore notification events. Each handler SHALL update the corresponding fields on `ProgressState`:
+
+| Handler | Action |
+|---------|--------|
+| `RestoreStartedHandler` | Call `state.SetRestoreTotalFiles(count)` |
+| `FileRestoredHandler` | Call `state.IncrementFilesRestored(fileSize)`, `state.AddRestoreEvent(path, size, skipped: false)` |
+| `FileSkippedHandler` | Call `state.IncrementFilesSkipped(fileSize)`, `state.AddRestoreEvent(path, size, skipped: true)` |
+| `RehydrationStartedHandler` | Call `state.SetRehydration(chunkCount, totalBytes)` |
 
 #### Scenario: RestoreStartedEvent sets total
 - **WHEN** `RestoreStartedEvent(TotalFiles: 1000)` is published
 - **THEN** `ProgressState.RestoreTotalFiles` SHALL be set to 1000
 
-#### Scenario: FileRestoredEvent increments counter
-- **WHEN** `FileRestoredEvent` is published
-- **THEN** `ProgressState.FilesRestored` SHALL be incremented
+#### Scenario: FileRestoredEvent increments counter and bytes
+- **WHEN** `FileRestoredEvent("photos/img.jpg", FileSize: 1_200_000)` is published
+- **THEN** `ProgressState.FilesRestored` SHALL be incremented by 1
+- **AND** `ProgressState.BytesRestored` SHALL be incremented by 1,200,000
+- **AND** a `RestoreFileEvent("photos/img.jpg", 1_200_000, Skipped: false)` SHALL be enqueued to `RecentRestoreEvents`
 
-#### Scenario: FileSkippedEvent increments counter
-- **WHEN** `FileSkippedEvent` is published
-- **THEN** `ProgressState.FilesSkipped` SHALL be incremented
+#### Scenario: FileSkippedEvent increments counter and bytes
+- **WHEN** `FileSkippedEvent("photos/img.jpg", FileSize: 500_000)` is published
+- **THEN** `ProgressState.FilesSkipped` SHALL be incremented by 1
+- **AND** `ProgressState.BytesSkipped` SHALL be incremented by 500,000
+- **AND** a `RestoreFileEvent("photos/img.jpg", 500_000, Skipped: true)` SHALL be enqueued
+
+#### Scenario: RehydrationStartedEvent stores bytes
+- **WHEN** `RehydrationStartedEvent(ChunkCount: 7, TotalBytes: 1_048_576)` is published
+- **THEN** `ProgressState.RehydrationChunkCount` SHALL be set to 7
+- **AND** `ProgressState.RehydrationTotalBytes` SHALL be set to 1,048,576
+
+### Requirement: Restore per-file tracking in ProgressState
+`ProgressState` SHALL track restore progress at the file level for display in the restore tail:
+
+**`RestoreFileEvent` record** (internal):
+```
+RestoreFileEvent(string RelativePath, long FileSize, bool Skipped)
+```
+
+**New fields on `ProgressState`**:
+- `BytesRestored` (long, Interlocked) — total bytes of files written to disk
+- `BytesSkipped` (long, Interlocked) — total bytes of files skipped
+- `RehydrationTotalBytes` (long, Interlocked) — total bytes for rehydration, from `RehydrationStartedEvent`
+- `RecentRestoreEvents` (`ConcurrentQueue<RestoreFileEvent>`) — rolling window capped at 10 entries
+
+**Updated / new methods**:
+- `IncrementFilesRestored(long fileSize)` — increments `FilesRestored` and adds `fileSize` to `BytesRestored`
+- `IncrementFilesSkipped(long fileSize)` — increments `FilesSkipped` and adds `fileSize` to `BytesSkipped`
+- `SetRehydration(int count, long bytes)` — sets `RehydrationChunkCount` and `RehydrationTotalBytes`
+- `AddRestoreEvent(string path, long size, bool skipped)` — enqueues to `RecentRestoreEvents`; if count would exceed 10, dequeue the oldest entry first
+
+#### Scenario: Ring buffer caps at 10
+- **WHEN** 15 `FileRestoredEvent` notifications arrive
+- **THEN** `RecentRestoreEvents` SHALL contain exactly 10 entries (the 10 most recent)
+
+#### Scenario: Thread safety of ring buffer
+- **WHEN** multiple restore workers concurrently enqueue events
+- **THEN** `RecentRestoreEvents` SHALL never contain more than 10 entries and no entries SHALL be lost beyond the cap
