@@ -31,17 +31,14 @@ public static class ServiceCollectionExtensions
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
     /// <param name="cacheBudgetBytes">Maximum cache budget, in bytes, for the chunk index service.</param>
     /// <summary>
-    /// Registers Arius Core services (storage, encryption, chunk indexing) and command handlers into the provided service collection.
+    /// Registers Arius Core services into the provided service collection, including the supplied blob storage, an encryption service (passphrase-based or plaintext), a chunk index service configured with the specified account/container and cache budget, and command handler factories that receive the account and container names.
     /// </summary>
-    /// <param name="services">The dependency injection service collection to configure.</param>
-    /// <param name="blobStorage">An implementation of <see cref="IBlobStorageService"/> to use for storage operations.</param>
-    /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough encryption service is used.</param>
-    /// <param name="accountName">Account name used to scope chunk indexing and handler operations.</param>
-    /// <param name="containerName">Container name used to scope chunk indexing and handler operations.</param>
-    /// <param name="cacheBudgetBytes">Optional cache budget in bytes for the chunk index; defaults to <see cref="ChunkIndexService.DefaultCacheBudgetBytes"/>.</param>
-    /// <remarks>
-    /// This method does not configure the mediator or call any mediator registration helpers; the caller (for example, the outermost assembly such as the CLI or test project) must register the mediator so source-generated mediator code can discover notification handlers across assemblies.
-    /// </remarks>
+    /// <param name="services">The service collection to register services into.</param>
+    /// <param name="blobStorage">The blob storage implementation to register as a singleton.</param>
+    /// <param name="passphrase">Optional passphrase; when non-null a passphrase-based encryption service is registered, otherwise a plaintext passthrough encryption service is registered.</param>
+    /// <param name="accountName">The storage account name used by the chunk index service and handlers.</param>
+    /// <param name="containerName">The storage container name used by the chunk index service and handlers.</param>
+    /// <param name="cacheBudgetBytes">Cache budget in bytes to configure the chunk index service.</param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,

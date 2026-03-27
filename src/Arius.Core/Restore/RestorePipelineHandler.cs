@@ -66,12 +66,12 @@ public sealed class RestorePipelineHandler
     /// <returns>
     /// A RestoreResult indicating whether the operation succeeded, how many files were restored, how many were skipped, the number of chunks pending rehydration, and an error message when unsuccessful.
     /// <summary>
-    /// Execute the complete restore pipeline for a repository snapshot using the provided command options.
+    /// Orchestrates the complete restore pipeline for the provided <see cref="RestoreCommand"/>, including snapshot resolution, file selection and conflict handling, chunk lookup and grouping, downloading and extracting chunks, optional archive rehydration requests, and progress/event publishing.
     /// </summary>
-    /// <param name="command">The restore command containing <see cref="RestoreOptions"/> that control target directory, overwrite behavior, rehydration/cleanup confirmations, and other restore settings.</param>
-    /// <param name="cancellationToken">Token to observe while waiting for the operation to complete.</param>
+    /// <param name="command">The command containing <see cref="RestoreOptions"/> that control root directory, target path, overwrite behavior, and optional confirmation callbacks for rehydration and cleanup.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
     /// <returns>
-    /// A <see cref="RestoreResult"/> describing the operation outcome: when <see cref="RestoreResult.Success"/> is `true` the result includes counts for <see cref="RestoreResult.FilesRestored"/>, <see cref="RestoreResult.FilesSkipped"/>, and <see cref="RestoreResult.ChunksPendingRehydration"/>; when `false` <see cref="RestoreResult.ErrorMessage"/> contains a brief error description (for example when no snapshot is found or an internal exception occurred).
+    /// A <see cref="RestoreResult"/> describing whether the restore succeeded, how many files were restored or skipped, how many chunks remain pending rehydration, and an error message when the operation fails.
     /// </returns>
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
@@ -536,13 +536,13 @@ public sealed class RestorePipelineHandler
     /// Downloads a tar bundle and extracts only the files whose content-hash matches
     /// an entry in <paramref name="filesNeeded"/>.
     /// <summary>
-    /// Extracts a gzipped tar blob whose entries are named by content hash and writes each matching entry to its corresponding local file paths.
+    /// Extracts files from a gzip-compressed tar bundle blob and restores only entries whose tar entry names (content hashes) are present in <paramref name="filesNeeded"/>.
     /// </summary>
-    /// <param name="blobName">The name of the blob containing the gzipped tar archive.</param>
-    /// <param name="filesNeeded">Mapping from content-hash to the list of files that should be restored from that content.</param>
-    /// <param name="opts">Restore options that control output directory and pointer-file behavior.</param>
-    /// <param name="cancellationToken">Cancellation token to observe while performing I/O.</param>
-    /// <returns>The total number of files written to disk.</returns>
+    /// <param name="blobName">The blob path of the tar.gz bundle to download and extract.</param>
+    /// <param name="filesNeeded">Mapping from content-hash (tar entry name) to the list of files that should be restored from that content.</param>
+    /// <param name="opts">Restore options that provide the target root directory and pointer-file behavior.</param>
+    /// <param name="cancellationToken">Token to observe for cancellation.</param>
+    /// <returns>The number of files written to disk.</returns>
     private async Task<int> RestoreTarBundleAsync(
         string                                    blobName,
         Dictionary<string, List<FileToRestore>>   filesNeeded,

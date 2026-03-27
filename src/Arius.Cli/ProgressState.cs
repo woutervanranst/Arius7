@@ -33,10 +33,10 @@ public enum FileState
 public sealed class TrackedFile
 {
     /// <summary>
-    /// Initializes a new TrackedFile for the given relative path and total size and sets its initial state to Hashing.
+    /// Initializes a new TrackedFile for the specified relative path and file size and sets its initial state to Hashing.
     /// </summary>
-    /// <param name="relativePath">Relative path key used to identify the tracked file.</param>
-    /// <param name="totalBytes">Total size of the file in bytes.</param>
+    /// <param name="relativePath">The file's relative path used as the tracking key.</param>
+    /// <param name="totalBytes">The file's total size in bytes.</param>
     public TrackedFile(string relativePath, long totalBytes)
     {
         RelativePath = relativePath;
@@ -79,9 +79,9 @@ public sealed class TrackedFile
     private long _bytesProcessed;
 
     /// <summary>
-        /// Set the processed byte count for this tracked file.
+        /// Sets the stored number of bytes processed for this tracked file.
         /// </summary>
-        /// <param name="value">The total number of bytes processed for the file.</param>
+        /// <param name="value">The new processed byte count.</param>
     public void SetBytesProcessed(long value) =>
         Interlocked.Exchange(ref _bytesProcessed, value);
 }
@@ -118,14 +118,7 @@ public sealed class ProgressState
     /// </summary>
     public ConcurrentDictionary<string, string> ContentHashToPath { get; } = new();
 
-    /// <summary>
-        /// Add a new tracked file for the given relative path and file size; the new entry's lifecycle state is initialized to Hashing.
-        /// </summary>
-        /// <param name="relativePath">The file's relative path used as the tracking key.</param>
-        /// <param name="fileSize">The total size of the file in bytes.</param>
-        /// <remarks>
-        /// If an entry for <paramref name="relativePath"/> already exists, this method does nothing.
-        /// </remarks>
+    /// <summary>Adds a new <see cref="TrackedFile"/> entry with State=Hashing.</summary>
     public void AddFile(string relativePath, long fileSize) =>
         TrackedFiles.TryAdd(relativePath, new TrackedFile(relativePath, fileSize));
 
@@ -133,10 +126,13 @@ public sealed class ProgressState
     /// Sets <see cref="TrackedFile.ContentHash"/>, populates the reverse lookup map,
     /// and increments <see cref="FilesHashed"/>.
     /// <summary>
-    /// Record that a file's content has been hashed and update progress state.
+    /// Records a file's computed content hash and updates archive progress state.
     /// </summary>
-    /// <param name="relativePath">The file's relative path used as the tracking key.</param>
+    /// <param name="relativePath">The file's relative path within the archive.</param>
     /// <param name="contentHash">The computed content hash for the file.</param>
+    /// <remarks>
+    /// If the file is tracked, its ContentHash is set; a mapping from content hash to path is added and the hashed-files counter is incremented.
+    /// </remarks>
     public void SetFileHashed(string relativePath, string contentHash)
     {
         if (TrackedFiles.TryGetValue(relativePath, out var file))
@@ -151,7 +147,7 @@ public sealed class ProgressState
     /// <summary>
     /// Marks the tracked file identified by the given content hash as queued in a tar bundle.
     /// </summary>
-    /// <param name="contentHash">Content hash used to look up the tracked file to mark as queued.</param>
+    /// <param name="contentHash">The content hash used to locate the tracked file via ContentHashToPath; if no matching tracked file is found, no change is made.</param>
     public void SetFileQueuedInTar(string contentHash)
     {
         if (ContentHashToPath.TryGetValue(contentHash, out var path) &&
@@ -165,10 +161,10 @@ public sealed class ProgressState
     /// Batch-transitions all files in <paramref name="contentHashes"/> to State=UploadingTar
     /// and sets their <see cref="TrackedFile.TarId"/> to <paramref name="tarId"/>.
     /// <summary>
-    /// Associate tracked files referenced by the given content hashes with a tar bundle and mark them as uploading in that tar.
+    /// Marks the tracked files identified by the given content hashes as being uploaded in the specified tar bundle.
     /// </summary>
-    /// <param name="contentHashes">Content hashes identifying files to associate with the tar.</param>
-    /// <param name="tarId">Identifier of the tar bundle to assign to matching tracked files.</param>
+    /// <param name="contentHashes">Content hashes identifying files to mark as part of the tar bundle.</param>
+    /// <param name="tarId">The identifier of the tar bundle assigned to those files.</param>
     public void SetFilesUploadingTar(IReadOnlyList<string> contentHashes, string tarId)
     {
         foreach (var hash in contentHashes)
@@ -186,9 +182,9 @@ public sealed class ProgressState
     /// Transitions the file identified by <paramref name="contentHash"/> to State=Uploading.
     /// Only applies to files that are NOT on the tar path (i.e., State != QueuedInTar/UploadingTar).
     /// <summary>
-    /// Mark the tracked file identified by its content hash as Uploading when it exists and is not currently queued for or uploading via a tar bundle.
+    /// Set the tracked file's state to Uploading for the file matching the given content hash, unless that file is currently in state QueuedInTar or UploadingTar. If no tracked file is found for the hash, no change is made.
     /// </summary>
-    /// <param name="contentHash">Content hash used to locate the tracked file's relative path.</param>
+    /// <param name="contentHash">Content hash used to locate the tracked file.</param>
     public void SetFileUploading(string contentHash)
     {
         if (ContentHashToPath.TryGetValue(contentHash, out var path) &&
@@ -246,9 +242,9 @@ public sealed class ProgressState
     private long _totalChunks = -1;
 
     /// <summary>
-    /// Record that a single chunk has finished uploading by incrementing the uploaded-chunk count and adding its size to the aggregate uploaded-bytes total.
+    /// Record the completion of a uploaded chunk and add its compressed size to the uploaded-byte total.
     /// </summary>
-    /// <param name="compressedSize">The size of the uploaded chunk in bytes to add to the total uploaded bytes.</param>
+    /// <param name="compressedSize">Size in bytes of the compressed chunk to add to the uploaded total.</param>
     public void IncrementChunksUploaded(long compressedSize)
     {
         Interlocked.Increment(ref _chunksUploaded);
@@ -256,9 +252,9 @@ public sealed class ProgressState
     }
 
     /// <summary>
-/// Sets the expected total number of chunks for the upload process.
+/// Updates the recorded total number of archive chunks; a negative value marks the total as unset.
 /// </summary>
-/// <param name="count">The total number of chunks.</param>
+/// <param name="count">The total chunk count to store; use a value less than zero to indicate the total is unknown/unset.</param>
 public void SetTotalChunks(long count) => Interlocked.Exchange(ref _totalChunks, count);
 
     // ── Archive: tar bundles (aggregate counters) ─────────────────────────────
@@ -268,11 +264,8 @@ public void SetTotalChunks(long count) => Interlocked.Exchange(ref _totalChunks,
     private long _tarsUploaded;
 
     /// <summary>
-/// Record that one tar bundle has completed uploading.
+/// Atomically increments the recorded count of uploaded tar bundles.
 /// </summary>
-/// <remarks>
-/// Increments the aggregate counter of uploaded tar bundles; safe for concurrent use.
-/// </remarks>
 public void IncrementTarsUploaded() => Interlocked.Increment(ref _tarsUploaded);
 
     // ── Archive: snapshot ─────────────────────────────────────────────────────
@@ -317,15 +310,15 @@ public void IncrementTarsUploaded() => Interlocked.Increment(ref _tarsUploaded);
     internal ConcurrentQueue<RestoreFileEvent> RecentRestoreEvents { get; } = new();
 
     /// <summary>
-/// Sets the expected total number of files for the restore operation.
+/// Sets the expected total number of files to restore.
 /// </summary>
-/// <param name="count">The total number of files to be restored.</param>
+/// <param name="count">The total number of files in the restore operation.</param>
 public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restoreTotalFiles, count);
 
     /// <summary>
-    /// Record that a file was restored and add its size to the aggregate restored bytes counter.
+    /// Record a restored file by incrementing the restored-files count and adding its size to the total restored bytes.
     /// </summary>
-    /// <param name="fileSize">Size of the restored file in bytes to add to the total.</param>
+    /// <param name="fileSize">Size of the restored file in bytes (uncompressed) to add to the aggregate.</param>
     public void IncrementFilesRestored(long fileSize)
     {
         Interlocked.Increment(ref _filesRestored);
@@ -333,7 +326,7 @@ public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restore
     }
 
     /// <summary>
-    /// Record a skipped restore file by incrementing the skipped-files count and adding its size to the total skipped bytes.
+    /// Increments the count of skipped files and adds the skipped file's size to the total skipped bytes.
     /// </summary>
     /// <param name="fileSize">Size of the skipped file in bytes.</param>
     public void IncrementFilesSkipped(long fileSize)
@@ -343,7 +336,7 @@ public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restore
     }
 
     /// <summary>
-    /// Sets the rehydration progress totals for chunk count and total bytes.
+    /// Set the expected rehydration workload by storing the number of chunks to rehydrate and the total bytes across those chunks.
     /// </summary>
     /// <param name="count">The total number of rehydration chunks.</param>
     /// <param name="bytes">The total number of bytes to be rehydrated.</param>
@@ -357,11 +350,11 @@ public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restore
     /// Enqueues a restore file event into <see cref="RecentRestoreEvents"/>, capped at 10 entries.
     /// If the queue already has 10 entries the oldest is dequeued first.
     /// <summary>
-    /// Adds a restore event to the recent-events tail, maintaining at most 10 most-recent entries.
+    /// Adds a restore event to the recent restore events queue, maintaining a maximum of 10 entries.
     /// </summary>
-    /// <param name="path">Relative path of the restored file.</param>
-    /// <param name="size">Size of the file in bytes.</param>
-    /// <param name="skipped">Whether the file was skipped during restore.</param>
+    /// <param name="path">Relative path of the restored or skipped file.</param>
+    /// <param name="size">Uncompressed size of the file in bytes.</param>
+    /// <param name="skipped">`true` if the file was skipped during restore, `false` if it was restored.</param>
     public void AddRestoreEvent(string path, long size, bool skipped)
     {
         // Trim to cap before adding so we never exceed 10.
