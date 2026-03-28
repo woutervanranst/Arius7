@@ -37,10 +37,27 @@ jobs:
           dotnet-coverage collect
           --output coverage.cobertura.xml
           --output-format cobertura
-          "dotnet test --solution src/Arius.slnx --no-build -c Release --github-reporter-style full"
+          "dotnet test --solution src/Arius.slnx --no-build -c Release --report-trx --results-directory testresults"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
+
+      - name: 📋 Write test summary
+        if: always()
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for trx in testresults/**/*.trx; do
+            assembly=$(grep -oP '(?<=testName=")[^"]+' "$trx" | head -1 | sed 's/ >.*//')
+            echo "### $(basename "$trx" .trx)" >> $GITHUB_STEP_SUMMARY
+            echo "| Result | Test |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+            grep -oP '<UnitTestResult[^>]+testName="[^"]+"[^>]+outcome="[^"]+"' "$trx" | \
+              sed -E 's/.*testName="([^"]+)".*outcome="([^"]+)".*/\2|\1/' | \
+              awk -F'|' '{icon=($1=="Passed")?"✅":($1=="Failed")?"❌":"⏭️"; print "| "icon" "tolower($1)" | "$2" |"}' \
+              >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
 
       - name: 📈 Upload coverage to Codecov
         if: always()
