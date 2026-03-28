@@ -37,12 +37,10 @@ jobs:
           dotnet-coverage collect
           --output coverage.cobertura.xml
           --output-format cobertura
-          "dotnet test --solution src/Arius.slnx --no-build -c Release --github-reporter-style full"
+          "dotnet test --solution src/Arius.slnx --no-build -c Release"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
-          GITHUB_ACTIONS: "true"
 
       - name: 📈 Upload coverage to Codecov
         if: always()

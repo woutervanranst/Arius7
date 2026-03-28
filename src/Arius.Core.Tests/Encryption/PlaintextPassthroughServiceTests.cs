@@ -56,4 +56,18 @@ public class PlaintextPassthroughServiceTests
         var expected = SHA256.HashData([]);
         _svc.ComputeHash([]).ShouldBe(expected);
     }
+
+    // ── CI reporter visibility probes ─────────────────────────────────────────
+
+    [Test]
+    [Skip("Always skipped - testing CI reporter visibility")]
+    public void CiProbe_AlwaysSkipped()
+    {
+    }
+
+    [Test]
+    public void CiProbe_AlwaysFails()
+    {
+        Assert.Fail("Always fails - testing CI reporter visibility");
+    }
 }
