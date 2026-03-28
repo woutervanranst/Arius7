@@ -57,12 +57,5 @@ public class PlaintextPassthroughServiceTests
         _svc.ComputeHash([]).ShouldBe(expected);
     }
 
-    // ── CI reporter visibility probes ─────────────────────────────────────────
-
-    [Test]
-    [Skip("Always skipped - testing CI reporter visibility")]
-    public void CiProbe_AlwaysSkipped()
-    {
-    }
 
 }
