@@ -37,7 +37,7 @@ jobs:
           dotnet-coverage collect
           --output coverage.cobertura.xml
           --output-format cobertura
-          "dotnet test --solution src/Arius.slnx --no-build -c Release --logger trx --results-directory testresults"
+          "dotnet test --solution src/Arius.slnx --no-build -c Release --report-trx --results-directory testresults"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
