@@ -232,6 +232,9 @@ public static class CliBuilder
                     OnUploadQueueReady = getter => progressState.UploadQueueDepth = getter,
                 };
 
+                // Mirror TarTargetSize into ProgressState so TarBundleStartedHandler can use it.
+                progressState.TarTargetSize = opts.TarTargetSize;
+
                 ArchiveResult? result = null;
                 if (AnsiConsole.Console.Profile.Capabilities.Interactive)
                 {
@@ -897,7 +900,8 @@ public static class CliBuilder
             var tarsUploaded   = state.TarsUploaded;
             var queueDepth     = state.UploadQueueDepth?.Invoke() ?? 0;
 
-            if (chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0)
+            var uploadActive = chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0 || !state.SnapshotComplete && state.ScanComplete;
+            if (uploadActive)
             {
                 var queuePart    = queueDepth > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
                 var uploadDone   = state.SnapshotComplete;

@@ -219,15 +219,25 @@ public sealed class ProgressState
     /// Transitions the file identified by <paramref name="contentHash"/> to State=Uploading
     /// and resets its BytesProcessed to 0. Only applies to large-file path (State == Hashed).
     /// </summary>
-    public void SetFileUploading(string contentHash)
+    /// <summary>
+    /// Transitions all <see cref="TrackedFile"/> entries for <paramref name="contentHash"/> from
+    /// <see cref="FileState.Hashed"/> to <see cref="FileState.Uploading"/>.
+    /// </summary>
+    /// <returns><c>true</c> if at least one file was transitioned; <c>false</c> if the hash is unknown (TAR path).</returns>
+    public bool SetFileUploading(string contentHash)
     {
-        if (ContentHashToPath.TryGetValue(contentHash, out var paths))
-            foreach (var path in paths)
-                if (TrackedFiles.TryGetValue(path, out var file) && file.State == FileState.Hashed)
-                {
-                    file.SetBytesProcessed(0);
-                    file.State = FileState.Uploading;
-                }
+        if (!ContentHashToPath.TryGetValue(contentHash, out var paths))
+            return false;
+
+        var transitioned = false;
+        foreach (var path in paths)
+            if (TrackedFiles.TryGetValue(path, out var file) && file.State == FileState.Hashed)
+            {
+                file.SetBytesProcessed(0);
+                file.State = FileState.Uploading;
+                transitioned = true;
+            }
+        return transitioned;
     }
 
     /// <summary>Removes the <see cref="TrackedFile"/> entry for <paramref name="relativePath"/>.</summary>
@@ -238,6 +248,15 @@ public sealed class ProgressState
 
     /// <summary>TAR bundles currently tracked, keyed by bundle number.</summary>
     public ConcurrentDictionary<int, TrackedTar> TrackedTars { get; } = new();
+
+    /// <summary>Monotonically increasing bundle counter; call <see cref="NextBundleNumber"/> to allocate a new ID.</summary>
+    private long _bundleCounter;
+
+    /// <summary>Allocates the next unique bundle number in a thread-safe manner.</summary>
+    public int NextBundleNumber() => (int)Interlocked.Increment(ref _bundleCounter);
+
+    /// <summary>Target uncompressed size for a single TAR bundle. Defaults to 64 MB; set once at startup.</summary>
+    public long TarTargetSize { get; set; } = 64L * 1024 * 1024;
 
     // ── Archive: scanning ─────────────────────────────────────────────────────
 

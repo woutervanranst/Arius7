@@ -62,9 +62,8 @@ public sealed class TarBundleStartedHandler(ProgressState state) : INotification
 {
     public ValueTask Handle(TarBundleStartedEvent notification, CancellationToken cancellationToken)
     {
-        var bundleNumber = state.TrackedTars.Count + 1;
-        const long tarTargetSize = 64L * 1024 * 1024; // 64 MB
-        var tar = new TrackedTar(bundleNumber, tarTargetSize);
+        var bundleNumber = state.NextBundleNumber();
+        var tar = new TrackedTar(bundleNumber, state.TarTargetSize);
         state.TrackedTars.TryAdd(bundleNumber, tar);
         return ValueTask.CompletedTask;
     }
@@ -142,10 +141,9 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
-        // Try large file first
-        if (state.ContentHashToPath.ContainsKey(notification.ContentHash))
+        // Try large file first; SetFileUploading returns true if it transitioned any TrackedFiles.
+        if (state.SetFileUploading(notification.ContentHash))
         {
-            state.SetFileUploading(notification.ContentHash);
             state.IncrementFilesUnique();
             return ValueTask.CompletedTask;
         }
