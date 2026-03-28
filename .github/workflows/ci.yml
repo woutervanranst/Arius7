@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   test:
+    name: 🧪 Test & Coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -36,10 +37,17 @@ jobs:
           dotnet-coverage collect
           --output coverage.cobertura.xml
           --output-format cobertura
-          "dotnet test --solution src/Arius.slnx --no-build -c Release"
+          "dotnet test --solution src/Arius.slnx --no-build -c Release --logger trx --results-directory testresults"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
+
+      - name: 📋 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: testresults/**/*.trx
 
       - name: 📈 Upload coverage to Codecov
         if: always()
