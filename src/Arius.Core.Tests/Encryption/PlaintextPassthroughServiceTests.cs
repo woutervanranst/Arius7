@@ -65,9 +65,4 @@ public class PlaintextPassthroughServiceTests
     {
     }
 
-    [Test]
-    public void CiProbe_AlwaysFails()
-    {
-        Assert.Fail("Always fails - testing CI reporter visibility");
-    }
 }
