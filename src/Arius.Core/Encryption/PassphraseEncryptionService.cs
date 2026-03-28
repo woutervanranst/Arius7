@@ -75,14 +75,15 @@ public sealed class PassphraseEncryptionService : IEncryptionService
     private static (byte[] key, byte[] iv) DeriveKeyIv(byte[] passphraseBytes, byte[] salt)
     {
         // openssl EVP_BytesToKey equivalent via PBKDF2-SHA256
-        using var pbkdf2 = new Rfc2898DeriveBytes(
+        var derived = Rfc2898DeriveBytes.Pbkdf2(
             passphraseBytes,
             salt,
             Pbkdf2Iter,
-            HashAlgorithmName.SHA256);
+            HashAlgorithmName.SHA256,
+            KeySize + IvSize);
 
-        var key = pbkdf2.GetBytes(KeySize);
-        var iv  = pbkdf2.GetBytes(IvSize);
+        var key = derived[..KeySize];
+        var iv  = derived[KeySize..];
         return (key, iv);
     }
 
