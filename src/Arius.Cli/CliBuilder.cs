@@ -198,10 +198,11 @@ public static class CliBuilder
                         return new Progress<long>();
                     },
 
-                    // ChunkUploadingHandler has already transitioned the file to Uploading state.
-                    // Reset BytesProcessed so the upload bar starts from 0, then stream updates.
+                    // Dual lookup: large file first (via ContentHashToPath → TrackedFiles),
+                    // then TAR bundle (via TrackedTars.TarHash). Reset BytesProcessed before streaming.
                     CreateUploadProgress = (contentHash, size) =>
                     {
+                        // Large file path
                         if (progressState.ContentHashToPath.TryGetValue(contentHash, out var paths))
                         {
                             var files = paths
@@ -214,8 +215,21 @@ public static class CliBuilder
                                 return new Progress<long>(bytes => { foreach (var f in files) f!.SetBytesProcessed(bytes); });
                             }
                         }
+
+                        // TAR bundle path
+                        var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == contentHash);
+                        if (tar != null)
+                        {
+                            tar.SetBytesUploaded(0);
+                            return new Progress<long>(bytes => tar.SetBytesUploaded(bytes));
+                        }
+
                         return new Progress<long>();
                     },
+
+                    // Store queue-depth getters in ProgressState for polling in the display loop.
+                    OnHashQueueReady   = getter => progressState.HashQueueDepth   = getter,
+                    OnUploadQueueReady = getter => progressState.UploadQueueDepth = getter,
                 };
 
                 ArchiveResult? result = null;
@@ -838,87 +852,137 @@ public static class CliBuilder
 
     /// <summary>
     /// Builds the archive display renderable as a pure function of <see cref="ProgressState"/>.
-    /// Returns a <see cref="Rows"/> containing stage header lines followed by per-file lines.
+    /// Returns a <see cref="Rows"/> with three sections: stage headers, per-file lines
+    /// (only <see cref="FileState.Hashing"/> or <see cref="FileState.Uploading"/>),
+    /// and TAR bundle lines.
     /// Called on every 100ms poll tick by the Live display loop.
-    /// <summary>
-    /// Builds a Spectre renderable that visualizes archive progress, including stage summaries (scanning, hashing, uploading) and a per-file progress tail.
     /// </summary>
-    /// <param name="state">Current archive progress and tracked file information used to render stage counts and per-file progress bars.</param>
+    /// <param name="state">Current archive progress state.</param>
     /// <returns>An <see cref="IRenderable"/> that renders the archive progress display.</returns>
     internal static IRenderable BuildArchiveDisplay(ProgressState state)
     {
         var lines = new List<IRenderable>();
 
-        // ── Stage headers ─────────────────────────────────────────────────────
-
-        var totalFiles  = state.TotalFiles;
-        var filesHashed = state.FilesHashed;
-
-        // Scanning
-        if (totalFiles.HasValue)
-            lines.Add(new Markup($"  [green]●[/] Scanning   [dim]{totalFiles.Value} files[/]"));
+        // ── 6.1 Scanning header ───────────────────────────────────────────────
+        // ○ during scan (ticks up), ● when ScanComplete.
+        var displayCount = state.ScanComplete
+            ? (state.TotalFiles ?? state.FilesScanned)
+            : state.FilesScanned;
+        if (state.ScanComplete)
+            lines.Add(new Markup($"  [green]●[/] Scanning   [dim]{displayCount:N0} files[/]"));
         else
-            lines.Add(new Markup("  [yellow]○[/] Scanning   [dim]...[/]"));
+            lines.Add(new Markup($"  [yellow]○[/] Scanning   [dim]{displayCount:N0} files...[/]"));
 
-        // Hashing
-        if (totalFiles.HasValue && filesHashed >= totalFiles.Value)
-            lines.Add(new Markup($"  [green]●[/] Hashing    [dim]{filesHashed}/{totalFiles.Value}[/]"));
-        else if (totalFiles.HasValue)
-            lines.Add(new Markup($"  [yellow]○[/] Hashing    [dim]{filesHashed}/{totalFiles.Value}[/]"));
-        else
-            lines.Add(new Markup($"  [yellow]○[/] Hashing    [dim]{filesHashed}...[/]"));
+        // ── 6.2 Hashing header ────────────────────────────────────────────────
+        // Shows FilesHashed / FilesScanned, unique count, and queue depth.
+        {
+            var filesHashed  = state.FilesHashed;
+            var filesScanned = state.FilesScanned;
+            var filesUnique  = state.FilesUnique;
+            var queueDepth   = state.HashQueueDepth?.Invoke() ?? 0;
 
-        // Uploading
-        var chunksUploaded = state.ChunksUploaded;
-        var totalChunks    = state.TotalChunks;
-        var tarsUploaded   = state.TarsUploaded;
-        if (totalChunks.HasValue && chunksUploaded >= totalChunks.Value && chunksUploaded > 0)
-            lines.Add(new Markup($"  [green]●[/] Uploading  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
-        else if (totalChunks.HasValue)
-            lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded}/{totalChunks.Value} chunks[/]"));
-        else if (chunksUploaded > 0 || tarsUploaded > 0)
-            lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded} chunks...[/]"));
-        else
-            lines.Add(new Markup("  [grey]  Uploading[/]"));
+            var countPart  = filesScanned > 0 ? $"{filesHashed:N0} / {filesScanned:N0} files" : $"{filesHashed:N0} files";
+            var uniquePart = filesUnique  > 0 ? $" ({filesUnique:N0} unique)" : string.Empty;
+            var queuePart  = queueDepth   > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
 
-        // ── Per-file lines (blank separator + one line per active TrackedFile) ─
+            var done   = state.ScanComplete && filesHashed >= filesScanned && filesScanned > 0;
+            var symbol = done ? "[green]●[/]" : "[yellow]○[/]";
+            lines.Add(new Markup($"  {symbol} Hashing    [dim]{countPart}{uniquePart}[/]{queuePart}"));
+        }
 
-        var trackedFiles = state.TrackedFiles.Values.ToList();
-        if (trackedFiles.Count > 0)
+        // ── 6.3 Uploading header ──────────────────────────────────────────────
+        // Shows unique chunks uploaded, queue depth.
+        {
+            var chunksUploaded = state.ChunksUploaded;
+            var tarsUploaded   = state.TarsUploaded;
+            var queueDepth     = state.UploadQueueDepth?.Invoke() ?? 0;
+
+            if (chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0)
+            {
+                var queuePart = queueDepth > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
+                lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded:N0} unique chunks[/]{queuePart}"));
+            }
+            else
+            {
+                lines.Add(new Markup("  [grey]  Uploading[/]"));
+            }
+        }
+
+        // ── 6.4 Per-file lines (only Hashing or Uploading state) ─────────────
+        var activeFiles = state.TrackedFiles.Values
+            .Where(f => f.State is FileState.Hashing or FileState.Uploading)
+            .ToList();
+
+        if (activeFiles.Count > 0)
         {
             lines.Add(new Markup(""));  // blank separator
-            foreach (var file in trackedFiles)
+            foreach (var file in activeFiles)
             {
                 var displayName = Markup.Escape(TruncateAndLeftJustify(file.RelativePath, 30));
+                var stateLabel  = file.State == FileState.Hashing ? "Hashing   " : "Uploading ";
+                var pct         = file.TotalBytes > 0
+                    ? (double)file.BytesProcessed / file.TotalBytes
+                    : 0.0;
+                var bar     = RenderProgressBar(pct, 12);
+                var pctStr  = $"{pct * 100:F0}%".PadLeft(4);
+                var sizeStr = $"{file.BytesProcessed.Bytes().LargestWholeNumberValue:0.##} / {file.TotalBytes.Bytes().Humanize()}";
+                lines.Add(new Markup(
+                    $"  [dim]{displayName}[/]  {bar}  [dim]{stateLabel} {pctStr}  {Markup.Escape(sizeStr)}[/]"));
+            }
+        }
 
-                var stateStr = file.State switch
-                {
-                    FileState.Hashing      => "Hashing      ",
-                    FileState.QueuedInTar  => "Queued in TAR",
-                    FileState.UploadingTar => "Uploading TAR",
-                    FileState.Uploading    => "Uploading    ",
-                    FileState.Done         => "Done         ",
-                    _                      => "             ",
-                };
+        // ── 6.5 TAR bundle lines ──────────────────────────────────────────────
+        var trackedTars = state.TrackedTars.Values.OrderBy(t => t.BundleNumber).ToList();
+        if (trackedTars.Count > 0)
+        {
+            lines.Add(new Markup(""));  // blank separator
+            foreach (var tar in trackedTars)
+            {
+                var label = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
+                var displayLabel = Markup.Escape(TruncateAndLeftJustify(label, 30));
 
-                string line;
-                if (file.State is FileState.Hashing or FileState.Uploading)
+                string bar;
+                string stateLabel;
+                string sizeStr;
+
+                switch (tar.State)
                 {
-                    var pct = file.TotalBytes > 0
-                        ? (double)file.BytesProcessed / file.TotalBytes
-                        : 0.0;
-                    var bar    = RenderProgressBar(pct, 12);
-                    var pctStr = $"{pct * 100:F0}%".PadLeft(4);
-                    var sizeStr = $"{file.BytesProcessed.Bytes().LargestWholeNumberValue:0.##} / {file.TotalBytes.Bytes().Humanize()}";
-                    line = $"  [dim]{displayName}[/]  {bar}  [dim]{stateStr} {pctStr}  {Markup.Escape(sizeStr)}[/]";
+                    case TarState.Accumulating:
+                    {
+                        var pct = tar.TargetSize > 0
+                            ? (double)tar.AccumulatedBytes / tar.TargetSize
+                            : 0.0;
+                        bar        = RenderProgressBar(pct, 12);
+                        stateLabel = "Accumulating";
+                        sizeStr    = $"{tar.AccumulatedBytes.Bytes().Humanize()} / {tar.TargetSize.Bytes().Humanize()}";
+                        break;
+                    }
+                    case TarState.Sealing:
+                    {
+                        var pct = tar.TargetSize > 0
+                            ? (double)tar.AccumulatedBytes / tar.TargetSize
+                            : 1.0;
+                        bar        = RenderProgressBar(pct, 12);
+                        stateLabel = "Sealing     ";
+                        sizeStr    = $"{tar.AccumulatedBytes.Bytes().Humanize()} / {tar.TargetSize.Bytes().Humanize()}";
+                        break;
+                    }
+                    default: // Uploading
+                    {
+                        var totalBytes = tar.TotalBytes > 0 ? tar.TotalBytes : tar.AccumulatedBytes;
+                        var pct        = totalBytes > 0
+                            ? (double)tar.BytesUploaded / totalBytes
+                            : 0.0;
+                        var pctStr = $"{pct * 100:F0}%".PadLeft(4);
+                        bar        = RenderProgressBar(pct, 12);
+                        stateLabel = $"Uploading {pctStr}";
+                        sizeStr    = $"{tar.BytesUploaded.Bytes().Humanize()} / {totalBytes.Bytes().Humanize()}";
+                        break;
+                    }
                 }
-                else
-                {
-                    // QueuedInTar / UploadingTar: no progress bar, show total size only
-                    var sizeStr = file.TotalBytes.Bytes().Humanize();
-                    line = $"  [dim]{displayName}[/]  {"",-12}  [dim]{stateStr}  {Markup.Escape(sizeStr)}[/]";
-                }
-                lines.Add(new Markup(line));
+
+                lines.Add(new Markup(
+                    $"  [dim]{displayLabel}[/]  {bar}  [dim]{stateLabel}  {Markup.Escape(sizeStr)}[/]"));
             }
         }
 

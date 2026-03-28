@@ -101,6 +101,20 @@ public sealed record ArchiveOptions
     /// When <c>null</c>, no byte-level progress is reported for uploads.
     /// </summary>
     public Func<string, long, IProgress<long>>? CreateUploadProgress { get; init; }
+
+    /// <summary>
+    /// Optional callback invoked after the hash-stage input channel is created.
+    /// The argument is a getter that returns the current number of pending items in the hash queue.
+    /// The CLI stores this getter and polls it during display updates.
+    /// </summary>
+    public Action<Func<int>>? OnHashQueueReady { get; init; }
+
+    /// <summary>
+    /// Optional callback invoked after the upload-stage input channels are created.
+    /// The argument is a getter that returns the combined depth of the large-file and sealed-tar queues.
+    /// The CLI stores this getter and polls it during display updates.
+    /// </summary>
+    public Action<Func<int>>? OnUploadQueueReady { get; init; }
 }
 
 /// <summary>
@@ -126,8 +140,15 @@ public sealed record ArchiveResult
 
 // ── Task 8.14: Progress events ─────────────────────────────────────────────────
 
-/// <summary>File enumeration complete: total count known.</summary>
-public sealed record FileScannedEvent(long TotalFiles) : INotification;
+/// <summary>A single file discovered during enumeration (published per-file).</summary>
+/// <param name="RelativePath">Forward-slash relative path of the file.</param>
+/// <param name="FileSize">File size in bytes.</param>
+public sealed record FileScannedEvent(string RelativePath, long FileSize) : INotification;
+
+/// <summary>File enumeration complete: final totals known.</summary>
+/// <param name="TotalFiles">Total number of files enumerated.</param>
+/// <param name="TotalBytes">Total uncompressed bytes of all enumerated files.</param>
+public sealed record ScanCompleteEvent(long TotalFiles, long TotalBytes) : INotification;
 
 /// <summary>A file started hashing.</summary>
 /// <param name="RelativePath">Relative path of the file being hashed.</param>
@@ -155,6 +176,9 @@ public sealed record TarBundleUploadedEvent(string TarHash, long CompressedSize,
 
 /// <summary>Snapshot creation complete.</summary>
 public sealed record SnapshotCreatedEvent(string RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
+
+/// <summary>The tar builder started accumulating a new tar bundle.</summary>
+public sealed record TarBundleStartedEvent() : INotification;
 
 /// <summary>A file was written to the current tar bundle.</summary>
 /// <param name="ContentHash">Content hash of the file added.</param>

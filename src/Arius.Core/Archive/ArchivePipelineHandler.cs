@@ -133,6 +133,10 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
         try
         {
+            // ── Register queue-depth getters (task 2.3) ──────────────────────
+            opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
+            opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
+
             // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
             var enumTask = Task.Run(async () =>
             {
@@ -141,15 +145,22 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                     var enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
                     var pairs      = enumerator.Enumerate(opts.RootDirectory);
                     long count     = 0;
+                    long totalBytes = 0;
 
                     foreach (var pair in pairs)
                     {
                         count++;
+                        var fullPath = pair.BinaryExists
+                            ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
+                            : null;
+                        var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
+                        totalBytes += fileSize;
+                        await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
                     }
 
                     Interlocked.Add(ref filesScanned, count);
-                    await _mediator.Publish(new FileScannedEvent(count), cancellationToken);
+                    await _mediator.Publish(new ScanCompleteEvent(count, totalBytes), cancellationToken);
                     _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
                 }
                 finally
@@ -395,6 +406,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             currentTarPath = Path.GetTempFileName();
                             tarStream = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
                             tarWriter = new TarWriter(tarStream, leaveOpen: false);
+                            await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
 
                         var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -452,7 +464,13 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 await using var encStream      = _encryption.WrapForEncryption(countingStream);
                                 await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
                                 await using (var fs = File.OpenRead(sealed_.TarFilePath))
-                                    await fs.CopyToAsync(gzipStream, ct);
+                                {
+                                    IProgress<long> tarProgress = opts.CreateUploadProgress is not null
+                                        ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
+                                        : new Progress<long>();
+                                    await using var ps = new ProgressStream(fs, tarProgress);
+                                    await ps.CopyToAsync(gzipStream, ct);
+                                }
 
                                 await gzipStream.DisposeAsync();
                                 await encStream.DisposeAsync();
