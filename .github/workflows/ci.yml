@@ -1,4 +1,4 @@
-name: CI
+name: ✅ CI
 
 on:
   push:
@@ -14,24 +14,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: 🛎️ Checkout
         uses: actions/checkout@v6
 
-      - name: Setup .NET
+      - name: ⚙️ Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
-      - name: Restore
+      - name: 📦 Restore dependencies
         run: dotnet restore src/Arius.slnx
 
-      - name: Build
+      - name: 🔨 Build
         run: dotnet build src/Arius.slnx --no-restore -c Release
 
-      - name: Install dotnet-coverage
+      - name: 📊 Install dotnet-coverage
         run: dotnet tool install --global dotnet-coverage
 
-      - name: Test
+      - name: 🧪 Run tests
         run: >
           dotnet-coverage collect
           --output coverage.cobertura.xml
@@ -41,7 +41,7 @@ jobs:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
 
-      - name: Upload coverage to Codecov
+      - name: 📈 Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v5
         with:
