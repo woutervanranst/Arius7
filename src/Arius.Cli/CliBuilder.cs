@@ -914,85 +914,104 @@ public static class CliBuilder
             }
         }
 
-        // ── 6.4 Per-file lines (only Hashing or Uploading state) ─────────────
+        // ── 6.4 + 6.5 Per-file and TAR bundle rows in a borderless table ────────
         var activeFiles = state.TrackedFiles.Values
             .Where(f => f.State is FileState.Hashing or FileState.Uploading)
             .ToList();
+        var trackedTars = state.TrackedTars.Values.OrderBy(t => t.BundleNumber).ToList();
 
-        if (activeFiles.Count > 0)
+        if (activeFiles.Count > 0 || trackedTars.Count > 0)
         {
             lines.Add(new Markup(""));  // blank separator
+
+            // Borderless table with 7 columns: name | bar | state | % | current | / | total+unit
+            var table = new Table()
+                .NoBorder()
+                .HideHeaders()
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // name
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // bar
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // state label
+                .AddColumn(new TableColumn("").NoWrap().RightAligned())  // %
+                .AddColumn(new TableColumn("").NoWrap().RightAligned())  // current value
+                .AddColumn(new TableColumn("").NoWrap().Centered())      // /
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned());  // total value + unit
+
             foreach (var file in activeFiles)
             {
-                var displayName = Markup.Escape(TruncateAndLeftJustify(file.RelativePath, 30));
-                var stateLabel  = file.State == FileState.Hashing ? "Hashing   " : "Uploading ";
-                var pct         = file.TotalBytes > 0
-                    ? (double)file.BytesProcessed / file.TotalBytes
-                    : 0.0;
-                var bar     = RenderProgressBar(pct, 12);
-                var pctStr  = $"{pct * 100:F0}%".PadLeft(4);
-                var sizeStr = $"{file.BytesProcessed.Bytes().LargestWholeNumberValue:0.##} / {file.TotalBytes.Bytes().Humanize()}";
-                lines.Add(new Markup(
-                    $"  [dim]{displayName}[/]  {bar}  [dim]{stateLabel} {pctStr}  {Markup.Escape(sizeStr)}[/]"));
+                var name      = new Markup("[dim]" + Markup.Escape(TruncateAndLeftJustify(file.RelativePath, 30)) + "[/]");
+                var pct       = file.TotalBytes > 0 ? (double)file.BytesProcessed / file.TotalBytes : 0.0;
+                var bar       = new Markup(RenderProgressBar(pct, 12));
+                var state2    = new Markup("[dim]" + (file.State == FileState.Hashing ? "Hashing" : "Uploading") + "[/]");
+                var pctMu     = new Markup($"[dim]{pct * 100:F0}%[/]");
+                var (cur, tot, unit) = SplitSizePair(file.BytesProcessed, file.TotalBytes);
+                table.AddRow(name, bar, state2, pctMu,
+                    new Markup($"[dim]{cur}[/]"), new Markup("[dim]/[/]"), new Markup($"[dim]{tot} {unit}[/]"));
             }
-        }
 
-        // ── 6.5 TAR bundle lines ──────────────────────────────────────────────
-        var trackedTars = state.TrackedTars.Values.OrderBy(t => t.BundleNumber).ToList();
-        if (trackedTars.Count > 0)
-        {
-            lines.Add(new Markup(""));  // blank separator
             foreach (var tar in trackedTars)
             {
-                var label = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
-                var displayLabel = Markup.Escape(TruncateAndLeftJustify(label, 30));
+                var label   = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
+                var name    = new Markup("[dim]" + Markup.Escape(TruncateAndLeftJustify(label, 30)) + "[/]");
 
+                string stateText;
                 string bar;
-                string stateLabel;
-                string sizeStr;
+                string pctText;
+                string cur, tot, unit;
 
                 switch (tar.State)
                 {
                     case TarState.Accumulating:
                     {
-                        var pct = tar.TargetSize > 0
-                            ? (double)tar.AccumulatedBytes / tar.TargetSize
-                            : 0.0;
-                        bar        = RenderProgressBar(pct, 12);
-                        stateLabel = "Accumulating";
-                        sizeStr    = $"{tar.AccumulatedBytes.Bytes().Humanize()} / {tar.TargetSize.Bytes().Humanize()}";
+                        var pct = tar.TargetSize > 0 ? (double)tar.AccumulatedBytes / tar.TargetSize : 0.0;
+                        bar      = RenderProgressBar(pct, 12);
+                        stateText = "Accumulating";
+                        pctText  = $"{pct * 100:F0}%";
+                        (cur, tot, unit) = SplitSizePair(tar.AccumulatedBytes, tar.TargetSize);
                         break;
                     }
                     case TarState.Sealing:
                     {
-                        var pct = tar.TargetSize > 0
-                            ? (double)tar.AccumulatedBytes / tar.TargetSize
-                            : 1.0;
-                        bar        = RenderProgressBar(pct, 12);
-                        stateLabel = "Sealing     ";
-                        sizeStr    = $"{tar.AccumulatedBytes.Bytes().Humanize()} / {tar.TargetSize.Bytes().Humanize()}";
+                        var pct = tar.TargetSize > 0 ? (double)tar.AccumulatedBytes / tar.TargetSize : 1.0;
+                        bar      = RenderProgressBar(pct, 12);
+                        stateText = "Sealing";
+                        pctText  = $"{pct * 100:F0}%";
+                        (cur, tot, unit) = SplitSizePair(tar.AccumulatedBytes, tar.TargetSize);
                         break;
                     }
                     default: // Uploading
                     {
                         var totalBytes = tar.TotalBytes > 0 ? tar.TotalBytes : tar.AccumulatedBytes;
-                        var pct        = totalBytes > 0
-                            ? (double)tar.BytesUploaded / totalBytes
-                            : 0.0;
-                        var pctStr = $"{pct * 100:F0}%".PadLeft(4);
-                        bar        = RenderProgressBar(pct, 12);
-                        stateLabel = $"Uploading {pctStr}";
-                        sizeStr    = $"{tar.BytesUploaded.Bytes().Humanize()} / {totalBytes.Bytes().Humanize()}";
+                        var pct        = totalBytes > 0 ? (double)tar.BytesUploaded / totalBytes : 0.0;
+                        bar      = RenderProgressBar(pct, 12);
+                        stateText = "Uploading";
+                        pctText  = $"{pct * 100:F0}%";
+                        (cur, tot, unit) = SplitSizePair(tar.BytesUploaded, totalBytes);
                         break;
                     }
                 }
 
-                lines.Add(new Markup(
-                    $"  [dim]{displayLabel}[/]  {bar}  [dim]{stateLabel}  {Markup.Escape(sizeStr)}[/]"));
+                table.AddRow(name, new Markup(bar), new Markup($"[dim]{stateText}[/]"), new Markup($"[dim]{pctText}[/]"),
+                    new Markup($"[dim]{cur}[/]"), new Markup("[dim]/[/]"), new Markup($"[dim]{tot} {unit}[/]"));
             }
+
+            lines.Add(table);
         }
 
         return new Rows(lines);
+    }
+
+    /// <summary>
+    /// Splits a (current, total) byte pair into aligned string values sharing the unit of <paramref name="total"/>.
+    /// Returns (currentValueStr, totalValueStr, unitSymbol) — both values formatted to up to 2 decimal places.
+    /// </summary>
+    internal static (string current, string total, string unit) SplitSizePair(long current, long total)
+    {
+        var totalInfo  = total.Bytes();
+        var unit       = totalInfo.LargestWholeNumberSymbol;
+        var divisor    = total > 0 ? (double)total / totalInfo.LargestWholeNumberValue : 1.0;
+        var currentVal = divisor > 0 ? current / divisor : 0.0;
+        var totalVal   = totalInfo.LargestWholeNumberValue;
+        return (currentVal.ToString("0.##"), totalVal.ToString("0.##"), unit);
     }
 
     /// <summary>
@@ -1000,12 +1019,11 @@ public static class CliBuilder
     /// Filled characters use [green]█[/] and empty characters use [dim]░[/].
     /// </summary>
     /// <param name="fraction">Fill ratio in [0.0, 1.0].</param>
-    /// <summary>
-    /// Render a horizontal progress bar as a markup string using filled and empty block characters.
-    /// </summary>
     /// <param name="width">Total bar width in characters.</param>
     /// <returns>
-    /// A markup string of length `width` composed of green filled block characters for the completed fraction and dim empty block characters for the remainder; `fraction` values outside 0.0–1.0 are clamped to that range.
+    /// A markup string of length <paramref name="width"/> composed of green filled block characters
+    /// for the completed fraction and dim empty block characters for the remainder;
+    /// <paramref name="fraction"/> values outside 0.0–1.0 are clamped to that range.
     /// </returns>
     internal static string RenderProgressBar(double fraction, int width)
     {
