@@ -9,6 +9,8 @@ Defines the archive pipeline for Arius: file enumeration, hashing, deduplication
 ### Requirement: File enumeration
 The system SHALL recursively enumerate all files in the local root directory, producing FilePair units for archiving using a single-pass streaming approach. Files with the `.pointer.arius` suffix SHALL always be treated as pointer files. All other files SHALL be treated as binary files. If a file cannot be read (e.g., system-protected), the system SHALL log a warning and continue with the remaining files. Enumeration SHALL be depth-first to provide directory affinity for the tar builder. Enumeration SHALL yield FilePair objects immediately as files are discovered without materializing the full file list into memory. When encountering a binary file, the system SHALL check `File.Exists(binaryPath + ".pointer.arius")` to pair it. When encountering a pointer file, the system SHALL check `File.Exists(pointerPath[..^".pointer.arius".Length])` -- if the binary exists, skip (already emitted with the binary); if not, yield as pointer-only. No dictionaries or state tracking SHALL be used.
 
+During enumeration, the system SHALL publish a `FileScannedEvent(string RelativePath, long FileSize)` for each file discovered. The `RelativePath` and `FileSize` SHALL be taken from the `FilePair` at the enumeration site. After enumeration completes, the system SHALL publish a `ScanCompleteEvent(long TotalFiles, long TotalBytes)` with the final counts.
+
 #### Scenario: Binary file with matching pointer
 - **WHEN** a binary file `photos/vacation.jpg` exists alongside `photos/vacation.jpg.pointer.arius`
 - **THEN** the system SHALL produce a FilePair with both binary and pointer present, discovered via `File.Exists` check on the binary
@@ -36,6 +38,14 @@ The system SHALL recursively enumerate all files in the local root directory, pr
 #### Scenario: No materialization of file list
 - **WHEN** enumerating a directory with 1 million files
 - **THEN** the pipeline SHALL begin processing the first FilePair before enumeration completes, with no `.ToList()` or equivalent materialization
+
+#### Scenario: Per-file scanning event published
+- **WHEN** a FilePair is discovered during enumeration
+- **THEN** the system SHALL publish `FileScannedEvent` with the file's `RelativePath` and `FileSize` before writing the FilePair to the channel
+
+#### Scenario: Scan complete event published
+- **WHEN** all files have been enumerated and the channel is about to be completed
+- **THEN** the system SHALL publish `ScanCompleteEvent` with the total file count and total bytes
 
 ### Requirement: Streaming hash computation
 The system SHALL compute content hashes by streaming file data through the hash function without loading the entire file into memory. The hash function SHALL be SHA256(data) in plaintext mode or SHA256(passphrase + data) in encrypted mode (literal byte concatenation). Pointer file hashes SHALL NEVER be trusted as a cache — every binary file SHALL be re-hashed on every archive run. During hashing, the system SHALL publish `FileHashingEvent` with the file's relative path and file size (in bytes) to enable per-file progress display. When `ArchiveOptions.CreateHashProgress` is provided, the file stream SHALL be wrapped in `ProgressStream` before being passed to `ComputeHashAsync`.
@@ -112,6 +122,8 @@ The system SHALL upload large files individually as chunks using streaming uploa
 ### Requirement: Tar builder
 The system SHALL bundle small files into tar archives using a single tar builder. Files inside the tar SHALL be named by their content-hash (not original path). The tar builder SHALL seal and hand off the tar to the upload channel when the accumulated uncompressed size reaches `--tar-target-size` (default 64 MB). After sealing, the builder SHALL immediately start a new tar. The tar builder SHALL stream to a temp file on disk (not memory). Depth-first enumeration provides natural directory affinity. The tar hash SHALL be computed using `_encryption.ComputeHashAsync(fs)` (passphrase-seeded when a passphrase is provided) for consistency with content hash computation.
 
+The tar builder SHALL publish `TarBundleStartedEvent()` when initializing a new tar (before writing the first entry).
+
 #### Scenario: Tar sealing at target size
 - **WHEN** accumulated small files in the current tar reach 64 MB uncompressed
 - **THEN** the system SHALL seal the tar, compute its tar-hash via `_encryption.ComputeHashAsync`, and hand it off for upload
@@ -132,6 +144,18 @@ The system SHALL bundle small files into tar archives using a single tar builder
 - **WHEN** a tar is sealed with a passphrase configured
 - **THEN** the tar-hash SHALL be `SHA256(passphrase + tarBytes)` via `_encryption.ComputeHashAsync`
 
+#### Scenario: TarBundleStartedEvent published on new tar
+- **WHEN** the tar builder initializes a new tar archive (before writing the first entry)
+- **THEN** the system SHALL publish `TarBundleStartedEvent()` with no parameters
+
+#### Scenario: TarBundleStartedEvent on first tar
+- **WHEN** the first small file arrives at the tar builder
+- **THEN** `TarBundleStartedEvent()` SHALL be published before the first `TarEntryAddedEvent`
+
+#### Scenario: TarBundleStartedEvent on subsequent tars
+- **WHEN** a tar is sealed and the next small file arrives
+- **THEN** a new `TarBundleStartedEvent()` SHALL be published before the new tar's first `TarEntryAddedEvent`
+
 ### Requirement: TarEntryAddedEvent
 A notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize)` SHALL be published after each file is written to the tar archive (after `tarWriter.WriteEntryAsync`). A corresponding `ILogger` debug-level log line SHALL be emitted for consistency with existing event logging patterns.
 
@@ -139,26 +163,61 @@ A notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCo
 - **WHEN** a small file is added to the current tar bundle
 - **THEN** the pipeline SHALL publish `TarEntryAddedEvent` with the file's content hash, the updated entry count, and the updated cumulative uncompressed size
 
-### Requirement: TarBundleSealingEvent with content hashes
-The `TarBundleSealingEvent` record SHALL be enriched to include the list of content hashes in the sealed tar bundle:
+### Requirement: FileScannedEvent per-file notification
+The `FileScannedEvent` record SHALL be defined as `FileScannedEvent(string RelativePath, long FileSize) : INotification`. This replaces the previous `FileScannedEvent(long TotalFiles)` batch event. The event SHALL be published once per file discovered during enumeration, providing the file's relative path and size in bytes.
 
-`TarBundleSealingEvent(int EntryCount, long UncompressedSize, string TarHash, IReadOnlyList<string> ContentHashes)`
+#### Scenario: Per-file event during enumeration
+- **WHEN** a file `photos/vacation.jpg` (1.2 MB) is discovered during enumeration
+- **THEN** the system SHALL publish `FileScannedEvent("photos/vacation.jpg", 1200000)`
 
-The `TarHash` parameter is the tar bundle's content hash (the bundle-level digest). The `ContentHashes` parameter SHALL contain the content hash of every file entry in the tar, in the order they were added — projected from the existing `tarEntries` list in `ArchivePipelineHandler`.
+#### Scenario: Events published before channel write
+- **WHEN** a FilePair is discovered
+- **THEN** `FileScannedEvent` SHALL be published before the FilePair is written to `filePairChannel`
 
-#### Scenario: Tar sealed with 5 files
-- **WHEN** a tar bundle containing 5 files is sealed
-- **THEN** the pipeline SHALL publish `TarBundleSealingEvent(5, totalSize, ["hash1", "hash2", "hash3", "hash4", "hash5"])` where each hash corresponds to a file in the tar
+### Requirement: ScanCompleteEvent notification
+A new notification record `ScanCompleteEvent(long TotalFiles, long TotalBytes) : INotification` SHALL be published once when file enumeration completes. It SHALL carry the final total file count and total byte count. A corresponding `ILogger` debug-level log line SHALL be emitted.
 
-#### Scenario: CLI uses content hashes for state transition
-- **WHEN** the CLI receives `TarBundleSealingEvent` with `ContentHashes`
-- **THEN** it SHALL use the `ContentHash → RelativePath` reverse map to find each file's `TrackedFile` entry and transition its state from `QueuedInTar` to `UploadingTar`
+#### Scenario: Scan complete after enumeration
+- **WHEN** enumeration finishes having discovered 1523 files totaling 5 GB
+- **THEN** the system SHALL publish `ScanCompleteEvent(1523, 5000000000)`
+
+#### Scenario: ScanCompleteEvent published before channel completion
+- **WHEN** all files have been enumerated
+- **THEN** `ScanCompleteEvent` SHALL be published before `filePairChannel.Writer.Complete()` is called
+
+### Requirement: TarBundleStartedEvent notification
+A new notification record `TarBundleStartedEvent() : INotification` SHALL be published by the tar builder when it initializes a new tar archive. The event SHALL have no parameters — bundle numbering is a CLI display concern, not a Core concern. A corresponding `ILogger` debug-level log line SHALL be emitted.
+
+#### Scenario: Event published before first entry
+- **WHEN** the tar builder creates a new tar archive
+- **THEN** `TarBundleStartedEvent()` SHALL be published before the first `TarEntryAddedEvent` for that tar
+
+#### Scenario: Event published on each new tar
+- **WHEN** a tar is sealed at 64 MB and a new tar begins
+- **THEN** a new `TarBundleStartedEvent()` SHALL be published for the new tar
+
+### Requirement: TAR upload ProgressStream wiring
+The tar upload stage SHALL wrap the sealed tar's `FileStream` in a `ProgressStream` when `CreateUploadProgress` is provided. The `ProgressStream` SHALL report cumulative bytes read to the `IProgress<long>` returned by `CreateUploadProgress(tarHash, uncompressedSize)`. This enables byte-level upload progress for TAR bundles in the display.
+
+#### Scenario: TAR upload with progress
+- **WHEN** a sealed tar with hash `"tarhash1"` and uncompressed size 52 MB is uploaded and `CreateUploadProgress` is not null
+- **THEN** the pipeline SHALL call `CreateUploadProgress("tarhash1", 52MB)` and wrap the tar `FileStream` in `ProgressStream` using the returned `IProgress<long>`
+
+#### Scenario: TAR upload without progress callback
+- **WHEN** a sealed tar is uploaded and `CreateUploadProgress` is null
+- **THEN** the pipeline SHALL upload using a no-op `IProgress<long>` (no ProgressStream overhead)
+
+#### Scenario: Progress bytes match source stream
+- **WHEN** the tar upload streams through `ProgressStream -> GZipStream -> EncryptingStream -> OpenWriteAsync`
+- **THEN** the `IProgress<long>` SHALL receive cumulative bytes of the uncompressed tar data read from the source `FileStream`
 
 ### Requirement: Progress callbacks on ArchiveOptions
 `ArchiveOptions` SHALL expose two optional callback properties for injecting byte-level progress reporting:
 
 - `Func<string, long, IProgress<long>>? CreateHashProgress` — called by the pipeline when a file begins hashing. Parameters: relative path, file size in bytes. Returns an `IProgress<long>` that receives cumulative bytes hashed. Default: `null` (no-op).
 - `Func<string, long, IProgress<long>>? CreateUploadProgress` — called by the pipeline when a chunk begins uploading. Parameters: content hash, uncompressed size in bytes. Returns an `IProgress<long>` that receives cumulative bytes read from the source stream. Default: `null` (no-op).
+- `Action<Func<int>>? OnHashQueueReady` — called by the pipeline when the hash input channel is created. The pipeline passes a `Func<int>` that returns `filePairChannel.Reader.Count`. Default: `null`.
+- `Action<Func<int>>? OnUploadQueueReady` — called by the pipeline when the upload channels are created. The pipeline passes a `Func<int>` that returns `largeChannel.Reader.Count + sealedTarChannel.Reader.Count`. Default: `null`.
 
 This follows the same pattern as `RestoreOptions.ConfirmRehydration` — Core exposes observable hooks, the UI injects callbacks. Core SHALL NOT take any dependency on Spectre.Console or any display library.
 
@@ -177,6 +236,14 @@ This follows the same pattern as `RestoreOptions.ConfirmRehydration` — Core ex
 - **THEN** the pipeline SHALL call `CreateUploadProgress(contentHash, size)` and use the returned `IProgress<long>` with `ProgressStream`
 - **WHEN** `CreateUploadProgress` is null
 - **THEN** the pipeline SHALL use a no-op `IProgress<long>` (current behavior)
+
+#### Scenario: Pipeline registers hash queue depth
+- **WHEN** the pipeline creates `filePairChannel` and `OnHashQueueReady` is not null
+- **THEN** the pipeline SHALL call `OnHashQueueReady(() => filePairChannel.Reader.Count)`
+
+#### Scenario: Pipeline registers upload queue depth
+- **WHEN** the pipeline creates `largeChannel` and `sealedTarChannel` and `OnUploadQueueReady` is not null
+- **THEN** the pipeline SHALL call `OnUploadQueueReady(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count)`
 
 ### Requirement: ProgressStream wiring for hash path
 The archive pipeline SHALL wrap the file `FileStream` in a `ProgressStream` during hash computation when `CreateHashProgress` is provided. The `ProgressStream` SHALL report cumulative source bytes read to the `IProgress<long>` returned by the factory. The hash computation (`ComputeHashAsync`) SHALL read from the `ProgressStream` instead of the raw `FileStream`.
