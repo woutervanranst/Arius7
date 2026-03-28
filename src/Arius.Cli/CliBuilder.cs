@@ -899,8 +899,10 @@ public static class CliBuilder
 
             if (chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0)
             {
-                var queuePart = queueDepth > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
-                lines.Add(new Markup($"  [yellow]○[/] Uploading  [dim]{chunksUploaded:N0} unique chunks[/]{queuePart}"));
+                var queuePart    = queueDepth > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
+                var uploadDone   = state.SnapshotComplete;
+                var uploadSymbol = uploadDone ? "[green]●[/]" : "[yellow]○[/]";
+                lines.Add(new Markup($"  {uploadSymbol} Uploading  [dim]{chunksUploaded:N0} unique chunks[/]{queuePart}"));
             }
             else
             {

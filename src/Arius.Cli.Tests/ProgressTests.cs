@@ -748,6 +748,28 @@ public class BuildArchiveDisplayTests
         output.ShouldContain("pending");
     }
 
+    [Test]
+    public void BuildArchiveDisplay_UploadingHeader_FilledCircle_WhenSnapshotComplete()
+    {
+        var state = new ProgressState();
+        state.IncrementChunksUploaded(100);
+        state.SetSnapshotComplete();
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        output.ShouldContain("●");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_UploadingHeader_OpenCircle_WhenNotComplete()
+    {
+        var state = new ProgressState();
+        state.IncrementChunksUploaded(100);
+        // SnapshotComplete NOT set
+
+        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        output.ShouldContain("○");
+    }
+
     // ── 6.4 Per-file lines: only Hashing or Uploading ────────────────────────
 
     [Test]
