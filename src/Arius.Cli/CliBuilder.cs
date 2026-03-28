@@ -16,6 +16,7 @@ using Serilog.Events;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
+using System.Globalization;
 
 namespace Arius.Cli;
 
@@ -942,7 +943,7 @@ public static class CliBuilder
                 var pct       = file.TotalBytes > 0 ? (double)file.BytesProcessed / file.TotalBytes : 0.0;
                 var bar       = new Markup(RenderProgressBar(pct, 12));
                 var state2    = new Markup("[dim]" + (file.State == FileState.Hashing ? "Hashing" : "Uploading") + "[/]");
-                var pctMu     = new Markup($"[dim]{pct * 100:F0}%[/]");
+                var pctMu     = new Markup($"[dim]{Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture)}%[/]");
                 var (cur, tot, unit) = SplitSizePair(file.BytesProcessed, file.TotalBytes);
                 table.AddRow(name, bar, state2, pctMu,
                     new Markup($"[dim]{cur}[/]"), new Markup("[dim]/[/]"), new Markup($"[dim]{tot} {unit}[/]"));
@@ -963,18 +964,18 @@ public static class CliBuilder
                     case TarState.Accumulating:
                     {
                         var pct = tar.TargetSize > 0 ? (double)tar.AccumulatedBytes / tar.TargetSize : 0.0;
-                        bar      = RenderProgressBar(pct, 12);
+                        bar       = RenderProgressBar(pct, 12);
                         stateText = "Accumulating";
-                        pctText  = $"{pct * 100:F0}%";
+                        pctText   = Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture) + "%";
                         (cur, tot, unit) = SplitSizePair(tar.AccumulatedBytes, tar.TargetSize);
                         break;
                     }
                     case TarState.Sealing:
                     {
                         var pct = tar.TargetSize > 0 ? (double)tar.AccumulatedBytes / tar.TargetSize : 1.0;
-                        bar      = RenderProgressBar(pct, 12);
+                        bar       = RenderProgressBar(pct, 12);
                         stateText = "Sealing";
-                        pctText  = $"{pct * 100:F0}%";
+                        pctText   = Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture) + "%";
                         (cur, tot, unit) = SplitSizePair(tar.AccumulatedBytes, tar.TargetSize);
                         break;
                     }
@@ -982,9 +983,9 @@ public static class CliBuilder
                     {
                         var totalBytes = tar.TotalBytes > 0 ? tar.TotalBytes : tar.AccumulatedBytes;
                         var pct        = totalBytes > 0 ? (double)tar.BytesUploaded / totalBytes : 0.0;
-                        bar      = RenderProgressBar(pct, 12);
+                        bar       = RenderProgressBar(pct, 12);
                         stateText = "Uploading";
-                        pctText  = $"{pct * 100:F0}%";
+                        pctText   = Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture) + "%";
                         (cur, tot, unit) = SplitSizePair(tar.BytesUploaded, totalBytes);
                         break;
                     }
@@ -1011,7 +1012,9 @@ public static class CliBuilder
         var divisor    = total > 0 ? (double)total / totalInfo.LargestWholeNumberValue : 1.0;
         var currentVal = divisor > 0 ? current / divisor : 0.0;
         var totalVal   = totalInfo.LargestWholeNumberValue;
-        return (currentVal.ToString("0.##"), totalVal.ToString("0.##"), unit);
+        return (currentVal.ToString("0.##", CultureInfo.InvariantCulture),
+                totalVal  .ToString("0.##", CultureInfo.InvariantCulture),
+                unit);
     }
 
     /// <summary>
