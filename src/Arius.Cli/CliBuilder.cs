@@ -1012,8 +1012,8 @@ public static class CliBuilder
         var divisor    = total > 0 ? (double)total / totalInfo.LargestWholeNumberValue : 1.0;
         var currentVal = divisor > 0 ? current / divisor : 0.0;
         var totalVal   = totalInfo.LargestWholeNumberValue;
-        return (currentVal.ToString("0.##", CultureInfo.InvariantCulture),
-                totalVal  .ToString("0.##", CultureInfo.InvariantCulture),
+        return (currentVal.ToString("0.00", CultureInfo.InvariantCulture),
+                totalVal  .ToString("0.00", CultureInfo.InvariantCulture),
                 unit);
     }
 
