@@ -925,39 +925,26 @@ public static class CliBuilder
         {
             lines.Add(new Markup(""));  // blank separator
 
-            // Borderless table with 7 columns: name | bar | state | % | current | / | total+unit
-            var table = new Table()
-                .NoBorder()
-                .HideHeaders()
-                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // name
-                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // bar
-                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // state label
-                .AddColumn(new TableColumn("").NoWrap().RightAligned())  // %
-                .AddColumn(new TableColumn("").NoWrap().RightAligned())  // current value
-                .AddColumn(new TableColumn("").NoWrap().Centered())      // /
-                .AddColumn(new TableColumn("").NoWrap().LeftAligned());  // total value + unit
+            // Collect row data first so we can compute max widths for padding.
+            // Each row: (nameStr, barMarkup, stateLabel, pctStr, curStr, totStr, unitStr)
+            var rowData = new List<(string name, string bar, string stateLabel, string pct, string cur, string tot, string unit)>();
 
             foreach (var file in activeFiles)
             {
-                var name      = new Markup("[dim]" + Markup.Escape(TruncateAndLeftJustify(file.RelativePath, 30)) + "[/]");
-                var pct       = file.TotalBytes > 0 ? (double)file.BytesProcessed / file.TotalBytes : 0.0;
-                var bar       = new Markup(RenderProgressBar(pct, 12));
-                var state2    = new Markup("[dim]" + (file.State == FileState.Hashing ? "Hashing" : "Uploading") + "[/]");
-                var pctMu     = new Markup($"[dim]{Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture)}%[/]");
+                var pct = file.TotalBytes > 0 ? (double)file.BytesProcessed / file.TotalBytes : 0.0;
                 var (cur, tot, unit) = SplitSizePair(file.BytesProcessed, file.TotalBytes);
-                table.AddRow(name, bar, state2, pctMu,
-                    new Markup($"[dim]{cur}[/]"), new Markup("[dim]/[/]"), new Markup($"[dim]{tot} {unit}[/]"));
+                rowData.Add((
+                    TruncateAndLeftJustify(file.RelativePath, 30),
+                    RenderProgressBar(pct, 12),
+                    file.State == FileState.Hashing ? "Hashing" : "Uploading",
+                    Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture) + "%",
+                    cur, tot, unit));
             }
 
             foreach (var tar in trackedTars)
             {
-                var label   = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
-                var name    = new Markup("[dim]" + Markup.Escape(TruncateAndLeftJustify(label, 30)) + "[/]");
-
-                string stateText;
-                string bar;
-                string pctText;
-                string cur, tot, unit;
+                var label = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
+                string stateText, bar, pctText, cur, tot, unit;
 
                 switch (tar.State)
                 {
@@ -991,8 +978,39 @@ public static class CliBuilder
                     }
                 }
 
-                table.AddRow(name, new Markup(bar), new Markup($"[dim]{stateText}[/]"), new Markup($"[dim]{pctText}[/]"),
-                    new Markup($"[dim]{cur}[/]"), new Markup("[dim]/[/]"), new Markup($"[dim]{tot} {unit}[/]"));
+                rowData.Add((TruncateAndLeftJustify(label, 30), bar, stateText, pctText, cur, tot, unit));
+            }
+
+            // Compute max widths across all rows for the columns that need alignment.
+            var maxPct   = rowData.Max(r => r.pct.Length);
+            var maxCur   = rowData.Max(r => r.cur.Length);
+            var maxTot   = rowData.Max(r => r.tot.Length);
+            var maxState = rowData.Max(r => r.stateLabel.Length);
+
+            // Borderless table with 5 columns: name | bar | state | % | "cur / tot unit"
+            var table = new Table()
+                .NoBorder()
+                .HideHeaders()
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // name
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // bar
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // state label (padded)
+                .AddColumn(new TableColumn("").NoWrap().RightAligned())  // % (padded)
+                .AddColumn(new TableColumn("").NoWrap().LeftAligned());  // "cur / tot unit" (pre-padded)
+
+            foreach (var (name, bar, stateLabel, pct, cur, tot, unit) in rowData)
+            {
+                var paddedState = stateLabel.PadRight(maxState);
+                var paddedPct   = pct.PadLeft(maxPct);
+                var paddedCur   = cur.PadLeft(maxCur);
+                var paddedTot   = tot.PadLeft(maxTot);
+                var sizeStr     = $"{paddedCur} / {paddedTot} {unit}";
+
+                table.AddRow(
+                    new Markup("[dim]" + Markup.Escape(name) + "[/]"),
+                    new Markup(bar),
+                    new Markup("[dim]" + paddedState + "[/]"),
+                    new Markup("[dim]" + paddedPct + "[/]"),
+                    new Markup("[dim]" + sizeStr + "[/]"));
             }
 
             lines.Add(table);
