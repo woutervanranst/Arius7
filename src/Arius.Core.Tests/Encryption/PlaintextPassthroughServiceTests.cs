@@ -56,4 +56,6 @@ public class PlaintextPassthroughServiceTests
         var expected = SHA256.HashData([]);
         _svc.ComputeHash([]).ShouldBe(expected);
     }
+
+
 }
