@@ -61,16 +61,18 @@ The system SHALL implement `INotificationHandler<T>` for all restore notificatio
 | Handler | Action |
 |---------|--------|
 | `RestoreStartedHandler` | Call `state.SetRestoreTotalFiles(count)` |
-| `FileRestoredHandler` | Call `state.IncrementFilesRestored(fileSize)`, `state.AddRestoreEvent(path, size, skipped: false)` |
+| `FileRestoredHandler` | Call `state.IncrementFilesRestored(fileSize)`, `state.AddRestoreEvent(path, size, skipped: false)`. Remove `TrackedDownload` for large files |
 | `FileSkippedHandler` | Call `state.IncrementFilesSkipped(fileSize)`, `state.AddRestoreEvent(path, size, skipped: true)` |
 | `RehydrationStartedHandler` | Call `state.SetRehydration(chunkCount, totalBytes)` |
 | `SnapshotResolvedHandler` | Set `state.SnapshotTimestamp` and `state.SnapshotRootHash` |
 | `TreeTraversalCompleteHandler` | Set `state.RestoreTotalFiles`, `state.RestoreTotalOriginalSize`, `state.TreeTraversalComplete` |
+| `TreeTraversalProgressHandler` | Set `state.RestoreFilesDiscovered` from batched progress event |
 | `FileDispositionHandler` | Increment the appropriate `Disposition*` tally based on the event's `Disposition` enum value |
-| `ChunkResolutionCompleteHandler` | Set `state.ChunkGroups`, `state.LargeChunkCount`, `state.TarChunkCount` |
+| `ChunkResolutionCompleteHandler` | Set `state.ChunkGroups`, `state.LargeChunkCount`, `state.TarChunkCount`, update `TotalOriginalBytes` and `TotalCompressedBytes` |
 | `RehydrationStatusHandler` | Set `state.ChunksAvailable`, `state.ChunksRehydrated`, `state.ChunksNeedingRehydration`, `state.ChunksPending` |
-| `ChunkDownloadStartedHandler` | (reserved for future per-chunk progress — currently no-op or log only) |
-| `CleanupCompleteHandler` | (reserved for future cleanup display — currently no-op or log only) |
+| `ChunkDownloadStartedHandler` | For tar bundles, store `(fileCount, originalSize)` in `state.TarBundleMetadata[chunkHash]` for display label construction |
+| `ChunkDownloadCompletedHandler` | Remove `TrackedDownload` entry and increment `state.RestoreBytesDownloaded` |
+| `CleanupCompleteHandler` | Reserved for future cleanup display — currently no-op |
 
 #### Scenario: RestoreStartedEvent sets total
 - **WHEN** `RestoreStartedEvent(TotalFiles: 1000)` is published

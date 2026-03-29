@@ -101,10 +101,12 @@ The restore pipeline SHALL define the following additional event types in `Resto
 
 - `SnapshotResolvedEvent(DateTimeOffset Timestamp, string RootHash, int FileCount)` — published after snapshot resolution and tree traversal gives the file count
 - `TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize)` — published after all file entries are collected from the tree
+- `TreeTraversalProgressEvent(int FilesFound)` — published periodically during tree traversal with the cumulative count of files discovered
 - `FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize)` — published for each file's disposition decision
-- `ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount)` — published after chunk index lookups
+- `ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0)` — published after chunk index lookups with aggregate byte totals
 - `RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending)` — published after rehydration check
-- `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize)` — published when a chunk download begins
+- `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize)` — published when a chunk download begins, with both compressed and original sizes
+- `ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize)` — published after a chunk has been fully downloaded and extracted
 - `CleanupCompleteEvent(int ChunksDeleted, long BytesFreed)` — published after cleanup
 
 The `RestoreDisposition` enum SHALL have values: `New`, `SkipIdentical`, `Overwrite`, `KeepLocalDiffers`.
