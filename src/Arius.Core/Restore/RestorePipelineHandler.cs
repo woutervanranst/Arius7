@@ -359,19 +359,24 @@ public sealed class RestorePipelineHandler
 
                     bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
 
-                    // Compute total original size: for large files it's a single entry, for tar bundles sum all files
+                    // For large files, sizes come from the single index entry.
+                    // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
+                    // sum across all files to reconstruct the total tar.gz blob size.
+                    var compressedSize = isLargeChunk
+                        ? indexEntry.CompressedSize
+                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.CompressedSize : 0);
                     var originalSize = isLargeChunk
                         ? indexEntry.OriginalSize
                         : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.OriginalSize : 0);
 
-                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize.Bytes().Humanize());
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize, originalSize), ct);
+                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
+                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
 
                     if (isLargeChunk)
                     {
                         // Large file: single file maps to this chunk
                         var file = filesForChunk[0]; // only one file per large chunk
-                        await RestoreLargeFileAsync(blobName, file, opts, indexEntry.CompressedSize, ct);
+                        await RestoreLargeFileAsync(blobName, file, opts, compressedSize, ct);
                         Interlocked.Increment(ref filesRestoredLong);
                         await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
                     }
@@ -383,7 +388,7 @@ public sealed class RestorePipelineHandler
                             .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
                             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                         var restored = await RestoreTarBundleAsync(
-                            blobName, chunkHash, filesByContentHash, opts, indexEntry.CompressedSize, ct);
+                            blobName, chunkHash, filesByContentHash, opts, compressedSize, ct);
                         Interlocked.Add(ref filesRestoredLong, restored);
                     }
                 });
