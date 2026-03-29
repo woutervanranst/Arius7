@@ -43,6 +43,20 @@ public sealed record RestoreOptions
     /// When <c>null</c>, blobs are retained.
     /// </summary>
     public Func<int, long, CancellationToken, Task<bool>>? ConfirmCleanup { get; init; }
+
+    /// <summary>
+    /// Optional factory that creates an <see cref="IProgress{T}"/> for tracking download bytes.
+    /// Parameters: (identifier, compressedSize, kind). For large files, identifier is the file's RelativePath.
+    /// For tar bundles, identifier is the chunk hash. When <c>null</c>, no download progress is reported.
+    /// </summary>
+    public Func<string, long, DownloadKind, IProgress<long>>? CreateDownloadProgress { get; init; }
+
+    /// <summary>
+    /// Optional metadata supplier for tar bundle display labels.
+    /// Parameters: (chunkHash) => (fileCount, originalSize). Called when <see cref="CreateDownloadProgress"/>
+    /// is not null and a tar bundle download starts, so the CLI can build "TAR bundle (N files, X)" labels.
+    /// </summary>
+    public Func<string, (int fileCount, long originalSize)>? GetTarBundleMetadata { get; init; }
 }
 
 /// <summary>
@@ -158,6 +172,18 @@ public sealed record RestoreCostEstimate
         RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost;
 }
 
+// ── Download kind enum ────────────────────────────────────────────────────────
+
+/// <summary>Discriminates between large-file and tar-bundle downloads for progress display.</summary>
+public enum DownloadKind
+{
+    /// <summary>A single large file mapped 1:1 to a chunk.</summary>
+    LargeFile,
+
+    /// <summary>A tar bundle containing multiple small files.</summary>
+    TarBundle,
+}
+
 // ── Progress events ───────────────────────────────────────────────────────────
 
 /// <summary>Emitted when restore begins with file count.</summary>
@@ -178,6 +204,9 @@ public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, string Root
 /// <summary>Emitted after all file entries are collected from the tree.</summary>
 public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification;
 
+/// <summary>Emitted periodically during tree traversal with the cumulative count of files discovered.</summary>
+public sealed record TreeTraversalProgressEvent(int FilesFound) : INotification;
+
 /// <summary>Disposition decision for each file during restore conflict check.</summary>
 public enum RestoreDisposition { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 
@@ -185,13 +214,16 @@ public enum RestoreDisposition { New, SkipIdentical, Overwrite, KeepLocalDiffers
 public sealed record FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize) : INotification;
 
 /// <summary>Emitted after chunk index lookups complete.</summary>
-public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount) : INotification;
+public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
 
 /// <summary>Emitted after rehydration availability check completes.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
 /// <summary>Emitted when a chunk download begins.</summary>
 public sealed record ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize) : INotification;
+
+/// <summary>Emitted after a tar bundle has been fully downloaded and extracted.</summary>
+public sealed record ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize) : INotification;
 
 /// <summary>Emitted after rehydrated blob cleanup finishes.</summary>
 public sealed record CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification;

@@ -161,6 +161,58 @@ public sealed class TrackedTar
         Interlocked.Exchange(ref _bytesUploaded, value);
 }
 
+// ── TrackedDownload class ─────────────────────────────────────────────────
+
+/// <summary>
+/// Per-chunk state for a download being tracked through the restore pipeline.
+/// Present in <see cref="ProgressState.TrackedDownloads"/> while downloading;
+/// removed on completion. <see cref="BytesDownloaded"/> is updated via
+/// <see cref="Interlocked.Exchange(ref long, long)"/> for lock-free thread safety.
+/// </summary>
+public sealed class TrackedDownload
+{
+    /// <summary>
+    /// Initializes a new TrackedDownload for the specified chunk.
+    /// </summary>
+    /// <param name="key">Chunk hash used as dictionary key.</param>
+    /// <param name="kind">Whether this is a large file or tar bundle download.</param>
+    /// <param name="displayName">Human-readable label for display (file path or "TAR bundle (N files, X)").</param>
+    /// <param name="compressedSize">Total compressed download size in bytes.</param>
+    /// <param name="originalSize">Sum of original file sizes for this chunk.</param>
+    public TrackedDownload(string key, Core.Restore.DownloadKind kind, string displayName, long compressedSize, long originalSize)
+    {
+        Key            = key;
+        Kind           = kind;
+        DisplayName    = displayName;
+        CompressedSize = compressedSize;
+        OriginalSize   = originalSize;
+    }
+
+    /// <summary>Chunk hash, used as dictionary key.</summary>
+    public string Key { get; }
+
+    /// <summary>Whether this is a large file or tar bundle download.</summary>
+    public Core.Restore.DownloadKind Kind { get; }
+
+    /// <summary>Human-readable label: file relative path for large files, "TAR bundle (N files, X)" for tar bundles.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>Total compressed download size in bytes.</summary>
+    public long CompressedSize { get; }
+
+    /// <summary>Sum of original file sizes for this chunk.</summary>
+    public long OriginalSize { get; }
+
+    /// <summary>Cumulative bytes downloaded so far.</summary>
+    public long BytesDownloaded => Interlocked.Read(ref _bytesDownloaded);
+    private long _bytesDownloaded;
+
+    /// <summary>Atomically updates the bytes-downloaded counter.</summary>
+    /// <param name="value">The new downloaded byte count.</param>
+    public void SetBytesDownloaded(long value) =>
+        Interlocked.Exchange(ref _bytesDownloaded, value);
+}
+
 // ── RestoreFileEvent ──────────────────────────────────────────────────────────
 
 /// <summary>
@@ -382,6 +434,36 @@ public sealed class ProgressState
     public void SetSnapshotComplete() => Volatile.Write(ref _snapshotComplete, true);
 
     // ── Restore ───────────────────────────────────────────────────────────────
+
+    // ── Restore: active downloads ────────────────────────────────────────────
+
+    /// <summary>Active downloads tracked during restore, keyed by chunk hash.</summary>
+    public ConcurrentDictionary<string, TrackedDownload> TrackedDownloads { get; } = new(StringComparer.Ordinal);
+
+    // ── Restore: tree traversal progress ─────────────────────────────────────
+
+    /// <summary>Number of files discovered so far during tree traversal (ticks up per <c>TreeTraversalProgressEvent</c>).</summary>
+    public long RestoreFilesDiscovered => Interlocked.Read(ref _restoreFilesDiscovered);
+    private long _restoreFilesDiscovered;
+
+    /// <summary>Sets the number of files discovered during tree traversal.</summary>
+    public void SetRestoreFilesDiscovered(long count) => Interlocked.Exchange(ref _restoreFilesDiscovered, count);
+
+    // ── Restore: aggregate byte totals from chunk resolution ─────────────────
+
+    /// <summary>Total compressed download bytes (denominator for aggregate download progress bar).</summary>
+    public long RestoreTotalCompressedBytes => Interlocked.Read(ref _restoreTotalCompressedBytes);
+    private long _restoreTotalCompressedBytes;
+
+    /// <summary>Sets the total compressed download bytes from chunk resolution.</summary>
+    public void SetRestoreTotalCompressedBytes(long bytes) => Interlocked.Exchange(ref _restoreTotalCompressedBytes, bytes);
+
+    /// <summary>Cumulative compressed bytes downloaded across all chunks (numerator for aggregate download progress bar).</summary>
+    public long RestoreBytesDownloaded => Interlocked.Read(ref _restoreBytesDownloaded);
+    private long _restoreBytesDownloaded;
+
+    /// <summary>Adds compressed bytes to the download counter when a chunk completes.</summary>
+    public void AddRestoreBytesDownloaded(long bytes) => Interlocked.Add(ref _restoreBytesDownloaded, bytes);
 
     // ── Restore: snapshot and tree ───────────────────────────────────────────
 

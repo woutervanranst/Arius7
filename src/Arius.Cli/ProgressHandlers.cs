@@ -297,12 +297,14 @@ public sealed class FileDispositionHandler(ProgressState state) : INotificationH
 
 // ── 4.19 ChunkResolutionCompleteHandler ───────────────────────────────────────
 
-/// <summary>Sets <see cref="ProgressState.ChunkGroups"/>, <see cref="ProgressState.LargeChunkCount"/>, and <see cref="ProgressState.TarChunkCount"/>.</summary>
+/// <summary>Sets chunk resolution counts and byte totals from the enriched <see cref="ChunkResolutionCompleteEvent"/>.</summary>
 public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotificationHandler<ChunkResolutionCompleteEvent>
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
         state.SetChunkResolution(notification.ChunkGroups, notification.LargeCount, notification.TarCount);
+        state.SetTreeTraversalComplete(state.RestoreTotalFiles, notification.TotalOriginalBytes);
+        state.SetRestoreTotalCompressedBytes(notification.TotalCompressedBytes);
         return ValueTask.CompletedTask;
     }
 }
@@ -327,6 +329,31 @@ public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotifica
     public ValueTask Handle(ChunkDownloadStartedEvent notification, CancellationToken cancellationToken)
     {
         _ = state; // reserved for future use
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.23 TreeTraversalProgressHandler ─────────────────────────────────────────
+
+/// <summary>Sets <see cref="ProgressState.RestoreFilesDiscovered"/> from the batched tree traversal progress event.</summary>
+public sealed class TreeTraversalProgressHandler(ProgressState state) : INotificationHandler<TreeTraversalProgressEvent>
+{
+    public ValueTask Handle(TreeTraversalProgressEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetRestoreFilesDiscovered(notification.FilesFound);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.24 ChunkDownloadCompletedHandler ────────────────────────────────────────
+
+/// <summary>Removes the <see cref="TrackedDownload"/> entry and increments <see cref="ProgressState.RestoreBytesDownloaded"/>.</summary>
+public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotificationHandler<ChunkDownloadCompletedEvent>
+{
+    public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
+    {
+        state.TrackedDownloads.TryRemove(notification.ChunkHash, out _);
+        state.AddRestoreBytesDownloaded(notification.CompressedSize);
         return ValueTask.CompletedTask;
     }
 }
