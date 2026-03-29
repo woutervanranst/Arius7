@@ -64,11 +64,13 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         fix.Mediator.ClearReceivedCalls();
 
         // Restore WITHOUT --overwrite
-        await fix.RestoreAsync(new RestoreOptions
+        var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
             RootDirectory = fix.RestoreRoot,
             Overwrite     = false,
         });
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
         // Verify FileDispositionEvent with KeepLocalDiffers was published
         await fix.Mediator.Received().Publish(
