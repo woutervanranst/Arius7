@@ -1189,7 +1189,7 @@ public static class CliBuilder
             else
                 checkedSymbol = "[dim]○[/]";
 
-            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew} new, {state.DispositionSkipIdentical} identical, {state.DispositionOverwrite} overwrite, {state.DispositionKeepLocalDiffers} kept"));
+            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew:N0} new, {state.DispositionSkipIdentical:N0} identical, {state.DispositionOverwrite:N0} overwrite, {state.DispositionKeepLocalDiffers:N0} kept"));
         }
 
         // ── Stage 3: Restoring ────────────────────────────────────────────────
@@ -1202,7 +1202,7 @@ public static class CliBuilder
             else
                 restoringSymbol = "[dim]○[/]";
 
-            var countStr = total > 0 ? $"{done}/{total} files" : $"{done} files";
+            var countStr = total > 0 ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
 
             var totalCompressed = state.RestoreTotalCompressedBytes;
             var bytesDownloaded = state.RestoreBytesDownloaded;

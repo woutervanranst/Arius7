@@ -2090,7 +2090,7 @@ public class BuildRestoreDisplayResolvingTests
         var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
 
         output.ShouldContain("Resolved");
-        output.ShouldContain("1247");   // Might be "1,247" or "1.247" depending on locale — check raw number
+        output.ShouldContain(1247.ToString("N0"));   // locale-formatted: "1,247" or "1.247"
         output.ShouldNotContain("Resolving");
     }
 }
