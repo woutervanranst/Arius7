@@ -1208,6 +1208,91 @@ public class RestoreTcsCoordinationTests
 
         questionTcs.Task.IsCompleted.ShouldBeFalse("question TCS should not be set");
     }
+
+    [Test]
+    public async Task NoRehydrationNeeded_CleanupFires_PipelineUnblocksWithoutDeadlock()
+    {
+        // Simulates the deadlock scenario: no rehydration is needed (questionTcs never fires),
+        // but the pipeline invokes ConfirmCleanup, blocking on cleanupAnswerTcs.
+        // The CLI must detect cleanupQuestionTcs and handle it before awaiting pipelineTask.
+        var questionTcs        = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: does some work, then invokes ConfirmCleanup (blocks on cleanupAnswerTcs)
+        var pipelineTask = Task.Run(async () =>
+        {
+            await Task.Delay(50); // simulate pipeline work
+            cleanupQuestionTcs.TrySetResult((5, 2048L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // Simulate the CLI Phase 1 loop: poll for questionTcs OR cleanupQuestionTcs (THE FIX)
+        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // No rehydration question — verify
+        questionTcs.Task.IsCompleted.ShouldBeFalse("rehydration question should not fire");
+
+        // After loop exits, check if cleanup question fired
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(5);
+            bytes.ShouldBe(2048L);
+            cleanupAnswerTcs.TrySetResult(true);
+        }
+
+        // Now pipeline should complete without deadlock
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeTrue("pipeline should receive the cleanup answer");
+    }
+
+    [Test]
+    public async Task PostRehydration_CleanupFiresDuringDownload_PipelineUnblocksWithoutDeadlock()
+    {
+        // Simulates the Phase 3 deadlock: rehydration was needed and answered,
+        // but during the download phase the pipeline invokes ConfirmCleanup.
+        // The Phase 3 live loop must also monitor cleanupQuestionTcs to exit.
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: does download work, then invokes ConfirmCleanup
+        var pipelineTask = Task.Run(async () =>
+        {
+            await Task.Delay(50); // simulate download
+            cleanupQuestionTcs.TrySetResult((3, 1024L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // Simulate Phase 3 live loop (the FIX: also monitor cleanupQuestionTcs)
+        while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // After loop: handle cleanup
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(3);
+            bytes.ShouldBe(1024L);
+            cleanupAnswerTcs.TrySetResult(false);
+        }
+
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeFalse();
+    }
 }
 
 // ── TrackedFile BytesProcessed Interlocked update test ────────────────────────

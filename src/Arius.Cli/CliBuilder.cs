@@ -435,11 +435,11 @@ public static class CliBuilder
                     .AutoClear(false)
                     .StartAsync(async ctx =>
                     {
-                        // Poll until either pipeline completes or a rehydration question arrives.
-                        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted)
+                        // Poll until either pipeline completes, a rehydration question, or a cleanup question arrives.
+                        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
                         {
                             ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                            await Task.WhenAny(pipelineTask, questionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
+                            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
                         }
 
                         // Final update before exiting.
@@ -448,115 +448,138 @@ public static class CliBuilder
 
                 if (!pipelineTask.IsCompleted)
                 {
-                    // ── Phase 2: Rehydration question — render prompt on clean console ─
-                    var estimate = await questionTcs.Task.ConfigureAwait(false);
-
-                    // ── Chunk availability summary table ──────────────────────
-                    var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
-                    summaryTable.AddColumn("Category");
-                    summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
-                    summaryTable.AddColumn(new TableColumn("Size").RightAligned());
-
-                    summaryTable.AddRow("Available (Hot/Cool)",
-                        estimate.ChunksAvailable.ToString(),
-                        estimate.DownloadBytes.Bytes().Humanize());
-                    summaryTable.AddRow("Already rehydrated",
-                        estimate.ChunksAlreadyRehydrated.ToString(),
-                        "-");
-                    summaryTable.AddRow("[yellow]Needs rehydration[/]",
-                        estimate.ChunksNeedingRehydration.ToString(),
-                        estimate.RehydrationBytes.Bytes().Humanize());
-                    summaryTable.AddRow("[dim]Rehydration pending[/]",
-                        estimate.ChunksPendingRehydration.ToString(),
-                        "-");
-                    AnsiConsole.Write(summaryTable);
-
-                    RehydratePriority? priority;
-                    if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
+                    // Check if cleanup question arrived (without rehydration being needed)
+                    if (!questionTcs.Task.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
                     {
-                        priority = RehydratePriority.Standard;
-                    }
-                    else
-                    {
-                        // ── Per-component cost breakdown table ────────────────
-                        var costTable = new Table();
-                        costTable.AddColumn("Cost Component");
-                        costTable.AddColumn(new TableColumn("Standard").RightAligned());
-                        costTable.AddColumn(new TableColumn("High Priority").RightAligned());
-
-                        costTable.AddRow("Data retrieval",
-                            $"\u20ac {estimate.RetrievalCostStandard:F4}",
-                            $"\u20ac {estimate.RetrievalCostHigh:F4}");
-                        costTable.AddRow("Read operations",
-                            $"\u20ac {estimate.ReadOpsCostStandard:F4}",
-                            $"\u20ac {estimate.ReadOpsCostHigh:F4}");
-                        costTable.AddRow("Write operations",
-                            $"\u20ac {estimate.WriteOpsCost:F4}",
-                            $"\u20ac {estimate.WriteOpsCost:F4}");
-                        costTable.AddRow("Storage (1 month)",
-                            $"\u20ac {estimate.StorageCost:F4}",
-                            $"\u20ac {estimate.StorageCost:F4}");
-                        costTable.AddEmptyRow();
-                        costTable.AddRow("[bold]Total[/]",
-                            $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
-                            $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
-                        AnsiConsole.Write(costTable);
-
-                        var choice = AnsiConsole.Prompt(
-                            new SelectionPrompt<string>()
-                                .Title("Select rehydration priority (or cancel):")
-                                .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
-
-                        priority = choice switch
-                        {
-                            "Standard (~15h)" => RehydratePriority.Standard,
-                            "High (~1h)"      => RehydratePriority.High,
-                            _                 => (RehydratePriority?)null,
-                        };
-                    }
-
-                    // Unblock the pipeline callback with the user's answer
-                    answerTcs.TrySetResult(priority);
-
-                    if (priority is null)
-                    {
-                        // User cancelled; wait for pipeline to finish without showing progress
+                        // Handle cleanup prompt before awaiting pipelineTask to prevent deadlock.
+                        // This path fires when all chunks are already available: no rehydration
+                        // question, but ConfirmCleanup still fires for previously-rehydrated blobs.
+                        var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                        var doCleanup = AnsiConsole.Confirm(
+                            $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                        cleanupAnswerTcs.TrySetResult(doCleanup);
                         await pipelineTask.ConfigureAwait(false);
                     }
-                    else
+                    else if (questionTcs.Task.IsCompleted)
                     {
-                        // ── Phase 3: Download — show progress display ─────────
-                        await AnsiConsole.Live(new Markup(""))
-                            .Overflow(VerticalOverflow.Crop)
-                            .Cropping(VerticalOverflowCropping.Bottom)
-                            .AutoClear(false)
-                            .StartAsync(async ctx =>
-                            {
-                                while (!pipelineTask.IsCompleted)
-                                {
-                                    ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                                    await Task.WhenAny(pipelineTask, Task.Delay(100, ct)).ConfigureAwait(false);
-                                }
+                        // ── Phase 2: Rehydration question — render prompt on clean console ─
+                        var estimate = await questionTcs.Task.ConfigureAwait(false);
 
-                                await pipelineTask;
-                                ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                            });
+                        // ── Chunk availability summary table ──────────────────────
+                        var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
+                        summaryTable.AddColumn("Category");
+                        summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
+                        summaryTable.AddColumn(new TableColumn("Size").RightAligned());
 
-                        // ── Phase 4: Cleanup question — after progress clears ─
-                        // pipelineTask is done at this point. If ConfirmCleanup was called,
-                        // cleanupQuestionTcs is already set. If not, it was never set — skip.
-                        if (cleanupQuestionTcs.Task.IsCompleted)
+                        summaryTable.AddRow("Available (Hot/Cool)",
+                            estimate.ChunksAvailable.ToString(),
+                            estimate.DownloadBytes.Bytes().Humanize());
+                        summaryTable.AddRow("Already rehydrated",
+                            estimate.ChunksAlreadyRehydrated.ToString(),
+                            "-");
+                        summaryTable.AddRow("[yellow]Needs rehydration[/]",
+                            estimate.ChunksNeedingRehydration.ToString(),
+                            estimate.RehydrationBytes.Bytes().Humanize());
+                        summaryTable.AddRow("[dim]Rehydration pending[/]",
+                            estimate.ChunksPendingRehydration.ToString(),
+                            "-");
+                        AnsiConsole.Write(summaryTable);
+
+                        RehydratePriority? priority;
+                        if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
                         {
-                            var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
-                            var doCleanup = AnsiConsole.Confirm(
-                                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
-                            cleanupAnswerTcs.TrySetResult(doCleanup);
+                            priority = RehydratePriority.Standard;
+                        }
+                        else
+                        {
+                            // ── Per-component cost breakdown table ────────────────
+                            var costTable = new Table();
+                            costTable.AddColumn("Cost Component");
+                            costTable.AddColumn(new TableColumn("Standard").RightAligned());
+                            costTable.AddColumn(new TableColumn("High Priority").RightAligned());
+
+                            costTable.AddRow("Data retrieval",
+                                $"\u20ac {estimate.RetrievalCostStandard:F4}",
+                                $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                            costTable.AddRow("Read operations",
+                                $"\u20ac {estimate.ReadOpsCostStandard:F4}",
+                                $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                            costTable.AddRow("Write operations",
+                                $"\u20ac {estimate.WriteOpsCost:F4}",
+                                $"\u20ac {estimate.WriteOpsCost:F4}");
+                            costTable.AddRow("Storage (1 month)",
+                                $"\u20ac {estimate.StorageCost:F4}",
+                                $"\u20ac {estimate.StorageCost:F4}");
+                            costTable.AddEmptyRow();
+                            costTable.AddRow("[bold]Total[/]",
+                                $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
+                                $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                            AnsiConsole.Write(costTable);
+
+                            var choice = AnsiConsole.Prompt(
+                                new SelectionPrompt<string>()
+                                    .Title("Select rehydration priority (or cancel):")
+                                    .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
+
+                            priority = choice switch
+                            {
+                                "Standard (~15h)" => RehydratePriority.Standard,
+                                "High (~1h)"      => RehydratePriority.High,
+                                _                 => (RehydratePriority?)null,
+                            };
+                        }
+
+                        // Unblock the pipeline callback with the user's answer
+                        answerTcs.TrySetResult(priority);
+
+                        if (priority is null)
+                        {
+                            // User cancelled; wait for pipeline to finish without showing progress
+                            await pipelineTask.ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            // ── Phase 3: Download — show progress display ─────────
+                            await AnsiConsole.Live(new Markup(""))
+                                .Overflow(VerticalOverflow.Crop)
+                                .Cropping(VerticalOverflowCropping.Bottom)
+                                .AutoClear(false)
+                                .StartAsync(async ctx =>
+                                {
+                                    // Also monitor cleanupQuestionTcs to prevent deadlock
+                                    while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+                                    {
+                                        ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
+                                        await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
+                                    }
+
+                                    ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
+                                });
+
+                            // ── Phase 4: Cleanup question — after progress clears ─
+                            // Handle cleanup if the question arrived (during or after download).
+                            if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+                            {
+                                var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                                var doCleanup = AnsiConsole.Confirm(
+                                    $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                                cleanupAnswerTcs.TrySetResult(doCleanup);
+                            }
+                            await pipelineTask.ConfigureAwait(false);
                         }
                     }
                 }
                 else
                 {
-                    // Pipeline completed without rehydration question (phase 1 progress already shown).
+                    // Pipeline completed during Phase 1 (no rehydration question needed).
+                    // Still check if cleanup question fired just before completion.
+                    if (cleanupQuestionTcs.Task.IsCompleted)
+                    {
+                        var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                        var doCleanup = AnsiConsole.Confirm(
+                            $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                        cleanupAnswerTcs.TrySetResult(doCleanup);
+                    }
                     await pipelineTask.ConfigureAwait(false);
                 }
             }

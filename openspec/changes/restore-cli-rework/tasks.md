@@ -51,8 +51,8 @@
 
 ## 7. TCS Deadlock Fix (TDD)
 
-- [ ] 7.1 Write test: cleanup TCS is handled when no rehydration is needed but `ConfirmCleanup` fires
-- [ ] 7.2 Fix `CliBuilder.cs` `BuildRestoreCommand`: after any live loop exits and `pipelineTask` is not complete, check `cleanupQuestionTcs.Task.IsCompleted` and handle cleanup before awaiting `pipelineTask`
+- [x] 7.1 Write test: cleanup TCS is handled when no rehydration is needed but `ConfirmCleanup` fires
+- [x] 7.2 Fix `CliBuilder.cs` `BuildRestoreCommand`: after any live loop exits and `pipelineTask` is not complete, check `cleanupQuestionTcs.Task.IsCompleted` and handle cleanup before awaiting `pipelineTask`
 
 ## 8. Rework BuildRestoreDisplay
 
