@@ -539,20 +539,29 @@ public sealed class RestorePipelineHandler
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
         // Streaming: download → decrypt → gunzip → write
-        await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        await using var decryptStream  = _encryption.WrapForDecryption(downloadStream);
-        await using var gzipStream     = new GZipStream(decryptStream, CompressionMode.Decompress);
-        await using var outputStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+        // All streams must be closed before setting timestamps, otherwise the
+        // FileStream disposal resets LastWriteTimeUtc to "now" on some platforms.
+        {
+            await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
+            await using var decryptStream  = _encryption.WrapForDecryption(downloadStream);
+            await using var gzipStream     = new GZipStream(decryptStream, CompressionMode.Decompress);
+            await using var outputStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
-        await gzipStream.CopyToAsync(outputStream, cancellationToken);
+            await gzipStream.CopyToAsync(outputStream, cancellationToken);
+        }
 
-        // Set file timestamps from tree metadata
+        // Set file timestamps from tree metadata (after stream is closed)
         File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
         File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
 
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
-            await File.WriteAllTextAsync(localPath + ".pointer.arius", file.ContentHash, cancellationToken);
+        {
+            var pointerPath = localPath + ".pointer.arius";
+            await File.WriteAllTextAsync(pointerPath, file.ContentHash, cancellationToken);
+            File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
+            File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+        }
     }
 
     // ── Tar bundle restore (task 10.7) ────────────────────────────────────────
@@ -620,7 +629,12 @@ public sealed class RestorePipelineHandler
 
                 // Create pointer file (task 10.11)
                 if (!opts.NoPointers)
-                    await File.WriteAllTextAsync(localPath + ".pointer.arius", contentHash, cancellationToken);
+                {
+                    var pointerPath = localPath + ".pointer.arius";
+                    await File.WriteAllTextAsync(pointerPath, contentHash, cancellationToken);
+                    File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
+                    File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+                }
 
                 await _mediator.Publish(new FileRestoredEvent(file.RelativePath, dataBuffer?.Length ?? 0), cancellationToken);
                 restored++;

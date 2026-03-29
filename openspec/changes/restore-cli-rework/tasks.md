@@ -29,9 +29,9 @@
 
 ## 4. Pointer File Timestamps
 
-- [ ] 4.1 Write test: pointer file gets same Created/Modified timestamps as restored binary
-- [ ] 4.2 Set `CreationTimeUtc` and `LastWriteTimeUtc` on pointer files in `RestoreLargeFileAsync`
-- [ ] 4.3 Set `CreationTimeUtc` and `LastWriteTimeUtc` on pointer files in `RestoreTarBundleAsync`
+- [x] 4.1 Write test: pointer file gets same Created/Modified timestamps as restored binary
+- [x] 4.2 Set `CreationTimeUtc` and `LastWriteTimeUtc` on pointer files in `RestoreLargeFileAsync`
+- [x] 4.3 Set `CreationTimeUtc` and `LastWriteTimeUtc` on pointer files in `RestoreTarBundleAsync`
 
 ## 5. ProgressState Extensions
 
