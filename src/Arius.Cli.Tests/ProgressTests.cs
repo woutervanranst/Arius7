@@ -1842,6 +1842,30 @@ public class BuildRestoreDisplayTests
     public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
     {
     }
+
+    [Test]
+    public void BuildRestoreDisplay_ZeroFileRestore_ShowsAllGreenBullets()
+    {
+        // A snapshot with 0 files — tree traversal completes, no dispositions, no downloads.
+        // All stages should show as completed (green ●).
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(0, 0L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Stage 1: Resolved (green ●)
+        output.ShouldContain("Resolved");
+        output.ShouldNotContain("Resolving");
+
+        // Stage 3: Restoring should show 0/0 files and be green (●)
+        output.ShouldContain("Restoring");
+        output.ShouldContain("0/0 files");
+
+        // Count ● occurrences — all 3 stages should be green
+        var bulletCount = output.Split('●').Length - 1;
+        bulletCount.ShouldBe(3, $"expected 3 green bullets for zero-file restore, got {bulletCount}. Output:\n{output}");
+    }
 }
 
 // ── 8.1 TrackedDownload lifecycle ─────────────────────────────────────────────

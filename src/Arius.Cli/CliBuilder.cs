@@ -1148,7 +1148,7 @@ public static class CliBuilder
         var restored = state.FilesRestored;
         var skipped  = state.FilesSkipped;
         var done     = restored + skipped;
-        var allDone  = total > 0 && done >= total;
+        var allDone  = state.TreeTraversalComplete && done >= total;
 
         // ── Stage 1: Resolving / Resolved ─────────────────────────────────────
         {
@@ -1179,10 +1179,10 @@ public static class CliBuilder
             var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
                             + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
             var dispositionStarted = dispTotal > 0;
-            var checkedComplete = state.ChunkGroups > 0 || done > 0;
+            var checkedComplete = state.ChunkGroups > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
 
             string checkedSymbol;
-            if (checkedComplete && dispositionStarted)
+            if (checkedComplete && (dispositionStarted || total == 0))
                 checkedSymbol = "[green]●[/]";
             else if (dispositionStarted)
                 checkedSymbol = "[yellow]○[/]";
@@ -1202,7 +1202,7 @@ public static class CliBuilder
             else
                 restoringSymbol = "[dim]○[/]";
 
-            var countStr = total > 0 ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
+            var countStr = state.TreeTraversalComplete ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
 
             var totalCompressed = state.RestoreTotalCompressedBytes;
             var bytesDownloaded = state.RestoreBytesDownloaded;
