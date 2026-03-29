@@ -2163,6 +2163,39 @@ public class BuildRestoreDisplayActiveDownloadsTests
         // No progress bars in the download area
         output.ShouldNotContain("TAR bundle");
     }
+
+    [Test]
+    public void BuildRestoreDisplay_ActiveDownloads_ColumnsAreAligned()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(10, 100_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(5, 3, 2);
+        state.SetRestoreTotalCompressedBytes(50_000_000);
+
+        // Two downloads with different-length names and sizes
+        var td1 = new TrackedDownload("chunk1", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        td1.SetBytesDownloaded(18_300_000);
+        state.TrackedDownloads.TryAdd("chunk1", td1);
+
+        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        td2.SetBytesDownloaded(4_800_000);
+        state.TrackedDownloads.TryAdd("chunk2", td2);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var dlLines = output.Split('\n')
+            .Where(l => l.Contains("█") || l.Contains("░"))
+            .Where(l => !l.Contains("Restoring"))  // exclude the aggregate line
+            .ToArray();
+
+        dlLines.Length.ShouldBe(2, $"Expected 2 download rows, got:\n{string.Join('\n', dlLines)}");
+
+        // Progress bar character (█ or ░) should start at the same column in both rows
+        var barCol0 = dlLines[0].IndexOf('█') >= 0 ? dlLines[0].IndexOf('█') : dlLines[0].IndexOf('░');
+        var barCol1 = dlLines[1].IndexOf('█') >= 0 ? dlLines[1].IndexOf('█') : dlLines[1].IndexOf('░');
+        barCol0.ShouldBe(barCol1,
+            $"Progress bars should start at same column.\nRow 0: [{dlLines[0]}]\nRow 1: [{dlLines[1]}]");
+    }
 }
 
 // ── 8.9 BuildRestoreDisplay: Aggregate progress bar ───────────────────────────
@@ -2232,6 +2265,40 @@ public class BuildRestoreDisplayAggregateProgressTests
         output.ShouldContain("100%");
         // Should have green bullet for completion
         output.ShouldContain("●");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_RestoringLine_UseTwoLineLayout()
+    {
+        // Worst case: large GB values with 4-digit file counts
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(4612);
+        state.SetTreeTraversalComplete(4612, 5_260_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(100, 50, 50);
+        state.SetRestoreTotalCompressedBytes(4_920_000_000);
+        state.AddRestoreBytesDownloaded(10_000_000); // small progress so far
+        state.IncrementFilesRestored(100_000L);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var allLines = output.Split('\n');
+
+        // Line 1: progress bar line with file count, bar, and percentage — no byte counters
+        var progressLine = allLines.First(l => l.Contains("Restoring"));
+        progressLine.Length.ShouldBeLessThanOrEqualTo(80,
+            $"Progress line is {progressLine.Length} chars: [{progressLine}]");
+        progressLine.ShouldContain("░");
+        progressLine.ShouldContain("0%");
+        progressLine.ShouldNotContain("download");
+        progressLine.ShouldNotContain("original");
+
+        // Line 2: byte counters on a separate indented line
+        var byteLine = allLines.First(l => l.Contains("download"));
+        byteLine.Length.ShouldBeLessThanOrEqualTo(80,
+            $"Byte counter line is {byteLine.Length} chars: [{byteLine}]");
+        byteLine.ShouldContain("download");
+        byteLine.ShouldContain("original");
     }
 }
 

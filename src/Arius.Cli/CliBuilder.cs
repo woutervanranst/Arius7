@@ -1210,15 +1210,18 @@ public static class CliBuilder
 
             if (totalCompressed > 0)
             {
-                // Show aggregate progress bar with dual byte counters
+                // Two-line layout: progress bar on line 1, byte counters on line 2
                 var fraction = (double)bytesDownloaded / totalCompressed;
                 var pct      = (int)Math.Round(fraction * 100);
                 var bar      = RenderProgressBar(fraction, 16);
 
+                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%"));
+
                 var (dlCur, dlTot, dlUnit) = SplitSizePair(bytesDownloaded, totalCompressed);
                 var origStr = totalOriginal.Bytes().Humanize();
 
-                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%  ({dlCur} / {dlTot} {dlUnit} download, {origStr} original)"));
+                // Indent to align under the count (17 spaces = "  ○ Restoring    ")
+                lines.Add(new Markup($"                 [dim]({dlCur} / {dlTot} {dlUnit} download, {origStr} original)[/]"));
             }
             else
             {
@@ -1233,18 +1236,51 @@ public static class CliBuilder
             if (activeDownloads.Length > 0)
             {
                 lines.Add(new Markup(""));  // blank separator
+
+                // Collect row data first so we can compute max widths for padding (same pattern as archive).
+                var rowData = new List<(string name, string bar, string pct, string cur, string tot, string unit)>();
+
                 foreach (var dl in activeDownloads)
                 {
                     var fraction = dl.CompressedSize > 0
                         ? (double)dl.BytesDownloaded / dl.CompressedSize
                         : 0.0;
-                    var pct      = (int)Math.Round(fraction * 100);
-                    var bar      = RenderProgressBar(fraction, 12);
-                    var name     = Markup.Escape(TruncateAndLeftJustify(dl.DisplayName, 35));
+                    var pctVal = (int)Math.Round(fraction * 100);
+                    var bar    = RenderProgressBar(fraction, 12);
+                    var name   = TruncateAndLeftJustify(dl.DisplayName, 35);
                     var (cur, tot, unit) = SplitSizePair(dl.BytesDownloaded, dl.CompressedSize);
 
-                    lines.Add(new Markup($"    [dim]{name}[/]  {bar}  {pct}%  ({cur} / {tot} {unit})"));
+                    rowData.Add((name, bar, pctVal + "%", cur, tot, unit));
                 }
+
+                var maxPct = rowData.Max(r => r.pct.Length);
+                var maxCur = rowData.Max(r => r.cur.Length);
+                var maxTot = rowData.Max(r => r.tot.Length);
+
+                // Borderless table with 4 columns: name | bar | % | "cur / tot unit"
+                var table = new Table()
+                    .NoBorder()
+                    .HideHeaders()
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // name
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // bar
+                    .AddColumn(new TableColumn("").NoWrap().RightAligned())  // % (padded)
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned());  // "cur / tot unit"
+
+                foreach (var (name, bar, pct, cur, tot, unit) in rowData)
+                {
+                    var paddedPct = pct.PadLeft(maxPct);
+                    var paddedCur = cur.PadLeft(maxCur);
+                    var paddedTot = tot.PadLeft(maxTot);
+                    var sizeStr   = $"{paddedCur} / {paddedTot} {unit}";
+
+                    table.AddRow(
+                        new Markup("[dim]" + Markup.Escape(name) + "[/]"),
+                        new Markup(bar),
+                        new Markup("[dim]" + paddedPct + "[/]"),
+                        new Markup("[dim]" + sizeStr + "[/]"));
+                }
+
+                lines.Add(table);
             }
             else
             {
