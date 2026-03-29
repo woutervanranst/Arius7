@@ -257,3 +257,88 @@ public sealed class RehydrationStartedHandler(ProgressState state) : INotificati
         return ValueTask.CompletedTask;
     }
 }
+
+// ── 4.16 SnapshotResolvedHandler ──────────────────────────────────────────────
+
+/// <summary>Sets <see cref="ProgressState.SnapshotTimestamp"/> and <see cref="ProgressState.SnapshotRootHash"/> when the snapshot is resolved.</summary>
+public sealed class SnapshotResolvedHandler(ProgressState state) : INotificationHandler<SnapshotResolvedEvent>
+{
+    public ValueTask Handle(SnapshotResolvedEvent notification, CancellationToken cancellationToken)
+    {
+        state.SnapshotTimestamp = notification.Timestamp;
+        state.SnapshotRootHash = notification.RootHash;
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.17 TreeTraversalCompleteHandler ─────────────────────────────────────────
+
+/// <summary>Sets <see cref="ProgressState.RestoreTotalFiles"/>, <see cref="ProgressState.RestoreTotalOriginalSize"/>, and <see cref="ProgressState.TreeTraversalComplete"/>.</summary>
+public sealed class TreeTraversalCompleteHandler(ProgressState state) : INotificationHandler<TreeTraversalCompleteEvent>
+{
+    public ValueTask Handle(TreeTraversalCompleteEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetTreeTraversalComplete(notification.FileCount, notification.TotalOriginalSize);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.18 FileDispositionHandler ───────────────────────────────────────────────
+
+/// <summary>Increments the appropriate disposition tally based on the event's <see cref="RestoreDisposition"/> value.</summary>
+public sealed class FileDispositionHandler(ProgressState state) : INotificationHandler<FileDispositionEvent>
+{
+    public ValueTask Handle(FileDispositionEvent notification, CancellationToken cancellationToken)
+    {
+        state.IncrementDisposition(notification.Disposition);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.19 ChunkResolutionCompleteHandler ───────────────────────────────────────
+
+/// <summary>Sets <see cref="ProgressState.ChunkGroups"/>, <see cref="ProgressState.LargeChunkCount"/>, and <see cref="ProgressState.TarChunkCount"/>.</summary>
+public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotificationHandler<ChunkResolutionCompleteEvent>
+{
+    public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetChunkResolution(notification.ChunkGroups, notification.LargeCount, notification.TarCount);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.20 RehydrationStatusHandler ─────────────────────────────────────────────
+
+/// <summary>Sets chunk availability counts from the rehydration check.</summary>
+public sealed class RehydrationStatusHandler(ProgressState state) : INotificationHandler<RehydrationStatusEvent>
+{
+    public ValueTask Handle(RehydrationStatusEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetRehydrationStatus(notification.Available, notification.Rehydrated, notification.NeedsRehydration, notification.Pending);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.21 ChunkDownloadStartedHandler ──────────────────────────────────────────
+
+/// <summary>Reserved for future per-chunk download progress. Currently a no-op.</summary>
+public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotificationHandler<ChunkDownloadStartedEvent>
+{
+    public ValueTask Handle(ChunkDownloadStartedEvent notification, CancellationToken cancellationToken)
+    {
+        _ = state; // reserved for future use
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── 4.22 CleanupCompleteHandler ───────────────────────────────────────────────
+
+/// <summary>Reserved for future cleanup display. Currently a no-op.</summary>
+public sealed class CleanupCompleteHandler(ProgressState state) : INotificationHandler<CleanupCompleteEvent>
+{
+    public ValueTask Handle(CleanupCompleteEvent notification, CancellationToken cancellationToken)
+    {
+        _ = state; // reserved for future use
+        return ValueTask.CompletedTask;
+    }
+}

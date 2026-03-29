@@ -35,19 +35,19 @@
 
 ## 5. ProgressState Extensions
 
-- [ ] 5.1 Add `SnapshotTimestamp`, `SnapshotRootHash`, `TreeTraversalComplete`, `RestoreTotalOriginalSize` fields to `ProgressState`
-- [ ] 5.2 Add disposition tally fields (`DispositionNew`, `DispositionSkipIdentical`, `DispositionOverwrite`, `DispositionKeepLocalDiffers`) to `ProgressState`
-- [ ] 5.3 Add chunk/rehydration fields (`ChunkGroups`, `LargeChunkCount`, `TarChunkCount`, `ChunksAvailable`, `ChunksRehydrated`, `ChunksNeedingRehydration`, `ChunksPending`) to `ProgressState`
+- [x] 5.1 Add `SnapshotTimestamp`, `SnapshotRootHash`, `TreeTraversalComplete`, `RestoreTotalOriginalSize` fields to `ProgressState`
+- [x] 5.2 Add disposition tally fields (`DispositionNew`, `DispositionSkipIdentical`, `DispositionOverwrite`, `DispositionKeepLocalDiffers`) to `ProgressState`
+- [x] 5.3 Add chunk/rehydration fields (`ChunkGroups`, `LargeChunkCount`, `TarChunkCount`, `ChunksAvailable`, `ChunksRehydrated`, `ChunksNeedingRehydration`, `ChunksPending`) to `ProgressState`
 
 ## 6. Notification Handlers
 
-- [ ] 6.1 Add `SnapshotResolvedHandler` in `ProgressHandlers.cs`
-- [ ] 6.2 Add `TreeTraversalCompleteHandler` in `ProgressHandlers.cs` — sets `RestoreTotalFiles`, `RestoreTotalOriginalSize`, `TreeTraversalComplete`
-- [ ] 6.3 Add `FileDispositionHandler` in `ProgressHandlers.cs` — increments the appropriate disposition tally
-- [ ] 6.4 Add `ChunkResolutionCompleteHandler` in `ProgressHandlers.cs`
-- [ ] 6.5 Add `RehydrationStatusHandler` in `ProgressHandlers.cs`
-- [ ] 6.6 Add `ChunkDownloadStartedHandler` in `ProgressHandlers.cs` (no-op or log for now)
-- [ ] 6.7 Add `CleanupCompleteHandler` in `ProgressHandlers.cs` (no-op or log for now)
+- [x] 6.1 Add `SnapshotResolvedHandler` in `ProgressHandlers.cs`
+- [x] 6.2 Add `TreeTraversalCompleteHandler` in `ProgressHandlers.cs` — sets `RestoreTotalFiles`, `RestoreTotalOriginalSize`, `TreeTraversalComplete`
+- [x] 6.3 Add `FileDispositionHandler` in `ProgressHandlers.cs` — increments the appropriate disposition tally
+- [x] 6.4 Add `ChunkResolutionCompleteHandler` in `ProgressHandlers.cs`
+- [x] 6.5 Add `RehydrationStatusHandler` in `ProgressHandlers.cs`
+- [x] 6.6 Add `ChunkDownloadStartedHandler` in `ProgressHandlers.cs` (no-op or log for now)
+- [x] 6.7 Add `CleanupCompleteHandler` in `ProgressHandlers.cs` (no-op or log for now)
 
 ## 7. TCS Deadlock Fix (TDD)
 
