@@ -45,19 +45,30 @@ The system SHALL walk the merkle tree from the root to the requested path, downl
 - **THEN** the system SHALL parse hash as `def456...`, type as directory, and name as `2024 trip/`
 
 ### Requirement: Restore conflict check
-The system SHALL check each target file against the local filesystem before restoring. If a local file exists and its hash matches the snapshot entry, it SHALL be skipped. If a local file exists with a different hash, the system SHALL prompt the user (overwrite? y/N/all). This check makes restore idempotent on re-run.
+The system SHALL check each target file against the local filesystem before restoring, using a `[disposition]` log scope (renamed from `[conflict]`). Four dispositions SHALL be recognized:
+
+1. **New** — file does not exist locally. The system SHALL proceed with restore and log `[disposition] {RelativePath} -> new`.
+2. **SkipIdentical** — file exists and its hash matches the snapshot entry. The system SHALL skip the file and log `[disposition] {RelativePath} -> skip (identical)`.
+3. **Overwrite** — file exists with a different hash AND `--overwrite` is set. The system SHALL proceed with restore and log `[disposition] {RelativePath} -> overwrite`.
+4. **KeepLocalDiffers** — file exists with a different hash AND `--overwrite` is NOT set. The system SHALL NOT restore the file, SHALL log `[disposition] {RelativePath} -> keep (local differs, no --overwrite)`, and SHALL `continue` to the next file (not add it to `toRestore`).
+
+Every disposition SHALL publish a `FileDispositionEvent(RelativePath, Disposition, FileSize)` via the mediator AND log the decision at Information level with the `[disposition]` scope.
 
 #### Scenario: Local file matches snapshot
 - **WHEN** local file `photos/vacation.jpg` exists and its hash matches the snapshot entry
-- **THEN** the system SHALL skip the file (already restored correctly)
+- **THEN** the system SHALL skip the file, log `[disposition] photos/vacation.jpg -> skip (identical)`, and publish `FileDispositionEvent` with `Disposition = SkipIdentical`
 
-#### Scenario: Local file differs from snapshot
-- **WHEN** local file `photos/vacation.jpg` exists but its hash differs from the snapshot entry
-- **THEN** the system SHALL prompt the user whether to overwrite
+#### Scenario: Local file differs, no overwrite
+- **WHEN** local file `photos/vacation.jpg` exists with a different hash and `--overwrite` is NOT set
+- **THEN** the system SHALL NOT restore the file, SHALL log `[disposition] photos/vacation.jpg -> keep (local differs, no --overwrite)`, SHALL publish `FileDispositionEvent` with `Disposition = KeepLocalDiffers`, and SHALL NOT add the file to `toRestore`
+
+#### Scenario: Local file differs, overwrite set
+- **WHEN** local file `photos/vacation.jpg` exists with a different hash and `--overwrite` IS set
+- **THEN** the system SHALL proceed with restore, log `[disposition] photos/vacation.jpg -> overwrite`, and publish `FileDispositionEvent` with `Disposition = Overwrite`
 
 #### Scenario: Local file does not exist
 - **WHEN** the target path has no local file
-- **THEN** the system SHALL proceed with restore
+- **THEN** the system SHALL proceed with restore, log `[disposition] photos/vacation.jpg -> new`, and publish `FileDispositionEvent` with `Disposition = New`
 
 ### Requirement: Chunk resolution from index
 The system SHALL look up each content hash in the chunk index to determine the chunk hash and chunk type. For large files, the content-hash equals the chunk-hash (reconstructed on parse from 3-field entries). For tar-bundled files, the content-hash maps to a different chunk-hash (the tar, from 4-field entries). The system SHALL group all file entries by chunk hash to minimize downloads (multiple files from the same tar → one download).
@@ -150,9 +161,16 @@ The system SHALL load Azure pricing rates from a JSON configuration file. The fi
 ### Requirement: Streaming restore (no local cache)
 The system SHALL restore files by streaming chunks directly to their final path without intermediate local caching. For large files: download → decrypt → gunzip → write to final path. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final paths. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
 
+Downloads SHALL execute in parallel with up to 4 concurrent workers. When `RestoreOptions.CreateDownloadProgress` is provided, the download stream SHALL be wrapped with `ProgressStream` to report byte-level progress via `IProgress<long>`.
+
 #### Scenario: Large file streaming restore
 - **WHEN** restoring a 2 GB large file
 - **THEN** the system SHALL stream download → decrypt → gunzip → write directly to the target path with no intermediate temp file
+
+#### Scenario: Large file streaming restore with progress
+- **WHEN** restoring a 2 GB large file with `CreateDownloadProgress` set
+- **THEN** the system SHALL wrap the download stream with `ProgressStream`
+- **AND** the `IProgress<long>` callback SHALL receive cumulative byte counts as data is read
 
 #### Scenario: Tar bundle streaming extract
 - **WHEN** restoring 3 files that are bundled in the same tar
@@ -161,6 +179,10 @@ The system SHALL restore files by streaming chunks directly to their final path 
 #### Scenario: Tar entry not needed
 - **WHEN** a tar contains 300 files but only 2 are needed for this restore
 - **THEN** the system SHALL skip the 298 unneeded entries during streaming tar iteration
+
+#### Scenario: Parallel downloads saturate bandwidth
+- **WHEN** 4 chunks are being downloaded concurrently
+- **THEN** each SHALL independently stream download → decrypt → gunzip → write without contention
 
 ### Requirement: Rehydration kick-off
 The system SHALL start rehydration for all archive-tier chunks that are not yet rehydrated, using the user-selected priority (Standard or High). Rehydration SHALL copy blobs to `chunks-rehydrated/` (Hot tier). If Azure throttles the request, the system SHALL retry with exponential backoff. After starting rehydration, the system SHALL exit with a message indicating how many chunks are pending and suggesting the user re-run later.
@@ -184,8 +206,21 @@ Restore SHALL be fully idempotent. Re-running the same restore command SHALL: sk
 - `FileRestoredEvent(RelativePath, FileSize)` after each file is written to disk
 - `FileSkippedEvent(RelativePath, FileSize)` for each file skipped due to hash match
 - `RehydrationStartedEvent(ChunkCount, TotalBytes)` when rehydration is kicked off
+- `SnapshotResolvedEvent(Timestamp, RootHash, FileCount)` after snapshot resolution
+- `TreeTraversalCompleteEvent(FileCount, TotalOriginalSize)` after tree walk
+- `FileDispositionEvent(RelativePath, Disposition, FileSize)` for each file's disposition decision
+- `ChunkResolutionCompleteEvent(ChunkGroups, LargeCount, TarCount)` after chunk index lookup
+- `RehydrationStatusEvent(Available, Rehydrated, NeedsRehydration, Pending)` after rehydration check
+- `ChunkDownloadStartedEvent(ChunkHash, Type, FileCount, CompressedSize)` when chunk download begins
+- `CleanupCompleteEvent(ChunksDeleted, BytesFreed)` after cleanup
+- `TreeTraversalProgressEvent(FilesFound)` periodically during tree traversal
+- `ChunkDownloadCompletedEvent(ChunkHash, FilesRestored, CompressedSize)` after each tar bundle download completes
+
+Every `_mediator.Publish()` call SHALL be accompanied by a corresponding `_logger.Log*()` call at the same site, mirroring the archive pipeline pattern.
 
 `FileRestoredEvent` and `FileSkippedEvent` SHALL carry `long FileSize` (the file's uncompressed size in bytes) so the CLI can accumulate bytes-restored/skipped and show per-file sizes in the restore tail display.
+
+`ChunkResolutionCompleteEvent` SHALL carry `TotalOriginalBytes` and `TotalCompressedBytes` in addition to the existing `ChunkGroups`, `LargeCount`, and `TarCount` fields. These byte totals SHALL be computed by summing `OriginalSize` and `CompressedSize` from the chunk index entries for all chunks to be downloaded.
 
 #### Scenario: Partial restore re-run
 - **WHEN** a restore previously restored 500 of 1000 files and rehydration has completed for 300 more chunks
@@ -198,6 +233,34 @@ Restore SHALL be fully idempotent. Re-running the same restore command SHALL: sk
 #### Scenario: Progress events emitted during restore
 - **WHEN** a restore operation begins
 - **THEN** the system SHALL publish `RestoreStartedEvent(TotalFiles)` before downloading, and `FileRestoredEvent(path, size)` / `FileSkippedEvent(path, size)` for each file processed
+
+#### Scenario: Snapshot resolution event
+- **WHEN** the snapshot is resolved and the root hash is obtained
+- **THEN** the system SHALL publish `SnapshotResolvedEvent` with the snapshot timestamp, root hash, and file count from the tree, and log at Information level with `[snapshot]` scope
+
+#### Scenario: Tree traversal event
+- **WHEN** tree traversal completes and all file entries are collected
+- **THEN** the system SHALL publish `TreeTraversalCompleteEvent` with total file count and total original size, and log at Information level with `[tree]` scope
+
+#### Scenario: Chunk resolution event
+- **WHEN** chunk index lookups complete for all files to restore
+- **THEN** the system SHALL publish `ChunkResolutionCompleteEvent` with the number of chunk groups, large file count, and tar count, and log at Information level with `[chunk]` scope
+
+#### Scenario: Rehydration status event
+- **WHEN** rehydration availability check completes
+- **THEN** the system SHALL publish `RehydrationStatusEvent` with counts of available, already-rehydrated, needs-rehydration, and pending chunks, and log at Information level with `[rehydration]` scope
+
+#### Scenario: Chunk download start event
+- **WHEN** a chunk download begins
+- **THEN** the system SHALL publish `ChunkDownloadStartedEvent` with the chunk hash, type (large/tar), number of files in the chunk, and compressed size, and log at Information level with `[download]` scope
+
+#### Scenario: Cleanup complete event
+- **WHEN** rehydrated blob cleanup finishes
+- **THEN** the system SHALL publish `CleanupCompleteEvent` with chunks deleted and bytes freed, and log at Information level with `[cleanup]` scope
+
+#### Scenario: ChunkResolutionCompleteEvent carries byte totals
+- **WHEN** chunk resolution completes with 10 chunks totaling 500 MB original, 200 MB compressed
+- **THEN** `ChunkResolutionCompleteEvent` SHALL carry `TotalOriginalBytes: 500_000_000` and `TotalCompressedBytes: 200_000_000`
 
 ### Requirement: FileSize source at each publish site
 The pipeline SHALL obtain `FileSize` from the most direct available source at each of the three publish sites:
@@ -234,11 +297,17 @@ After a full restore is complete, the system SHALL prompt the user to delete blo
 - **THEN** the blobs SHALL be retained (useful if another restore is planned soon)
 
 ### Requirement: Pointer file creation during restore
-The system SHALL create `.pointer.arius` files alongside each restored file (unless `--no-pointers` is set). The pointer SHALL contain the content hash. File metadata (created, modified dates) SHALL be set from the tree blob entry.
+The system SHALL create `.pointer.arius` files alongside each restored file (unless `--no-pointers` is set). The pointer SHALL contain the content hash. File metadata (created, modified dates) SHALL be set from the tree blob entry on BOTH the restored binary file AND the pointer file.
 
-#### Scenario: Restored file gets pointer
-- **WHEN** `photos/vacation.jpg` is restored from a snapshot
-- **THEN** `photos/vacation.jpg.pointer.arius` SHALL be created with the content hash, and the file's modified date SHALL be set from the snapshot metadata
+#### Scenario: Restored file gets pointer with timestamps
+- **WHEN** `photos/vacation.jpg` is restored from a snapshot with Created=2025-06-15T10:00:00Z and Modified=2025-06-20T14:30:00Z
+- **THEN** `photos/vacation.jpg.pointer.arius` SHALL be created with the content hash
+- **AND** the pointer file's CreationTimeUtc SHALL be set to 2025-06-15T10:00:00Z
+- **AND** the pointer file's LastWriteTimeUtc SHALL be set to 2025-06-20T14:30:00Z
+
+#### Scenario: Pointer timestamps match binary timestamps
+- **WHEN** a binary file is restored and its timestamps are set from the tree entry
+- **THEN** the corresponding `.pointer.arius` file SHALL have identical CreationTimeUtc and LastWriteTimeUtc values
 
 ### Requirement: Rehydration state machine test coverage
 The system SHALL have test coverage for all three rehydration states in the restore pipeline: (1) chunk needs rehydration (initiates copy-to-rehydrate), (2) chunk rehydration is pending (recognizes pending state, no duplicate request), (3) chunk is already rehydrated (downloads from `chunks-rehydrated/`). Both mock-based unit tests and real Azure E2E tests SHALL exercise these states.
@@ -277,3 +346,91 @@ The system SHALL have an E2E test against real Azure Blob Storage that: archives
 #### Scenario: Test cost documentation
 - **WHEN** the E2E test completes and the container is deleted
 - **THEN** the Azure cost SHALL be negligible (prorated early deletion for tiny files = fractions of a cent), documented in test comments
+
+### Requirement: Parallel chunk downloads
+The restore pipeline SHALL download chunks using `Parallel.ForEachAsync` with `MaxDegreeOfParallelism = 4`, replacing the sequential `foreach` loop. Each chunk download (large file or tar bundle) SHALL execute independently and concurrently. The `filesRestored` counter SHALL use `Interlocked.Increment` for thread-safe updates from parallel workers.
+
+#### Scenario: Four concurrent downloads
+- **WHEN** 20 chunks are available for download
+- **THEN** the pipeline SHALL process up to 4 chunks concurrently via `Parallel.ForEachAsync`
+- **AND** all 20 chunks SHALL be downloaded and restored
+
+#### Scenario: Thread-safe counter updates
+- **WHEN** two parallel workers each restore a file simultaneously
+- **THEN** `filesRestored` SHALL be incremented atomically via `Interlocked.Increment`
+- **AND** the final count SHALL equal the total number of files restored
+
+#### Scenario: Parallel mediator publish
+- **WHEN** parallel workers publish `FileRestoredEvent` concurrently
+- **THEN** all events SHALL be delivered to handlers without data races
+
+#### Scenario: Error in one worker does not corrupt others
+- **WHEN** a download fails in one parallel worker
+- **THEN** the exception SHALL propagate to `Parallel.ForEachAsync` and cancel remaining workers
+- **AND** no partial state SHALL remain in `ProgressState`
+
+### Requirement: Download progress callback on RestoreOptions
+`RestoreOptions` SHALL expose a `CreateDownloadProgress` property of type `Func<string, long, DownloadKind, IProgress<long>>?` (defaulting to `null`). The factory accepts: identifier (string), compressed size (long), and kind (`DownloadKind` enum). `DownloadKind` SHALL have values `LargeFile` and `TarBundle`.
+
+For large files, the identifier SHALL be the file's `RelativePath`. For tar bundles, the identifier SHALL be the chunk hash.
+
+When `CreateDownloadProgress` is not null, the pipeline SHALL call it before each download and wrap the download stream with `ProgressStream` using the returned `IProgress<long>`.
+
+#### Scenario: Large file download with progress
+- **WHEN** `CreateDownloadProgress` is set and a large file `photos/sunset.jpg` (25.4 MB compressed) is downloaded
+- **THEN** the pipeline SHALL call `CreateDownloadProgress("photos/sunset.jpg", 25_400_000, DownloadKind.LargeFile)`
+- **AND** wrap the download stream with `ProgressStream` reporting cumulative bytes to the returned `IProgress<long>`
+
+#### Scenario: Tar bundle download with progress
+- **WHEN** `CreateDownloadProgress` is set and a tar bundle (chunk hash `ab12cd34`, 15.2 MB compressed, containing 3 files totaling 847 KB original) is downloaded
+- **THEN** the pipeline SHALL call `CreateDownloadProgress("ab12cd34", 15_200_000, DownloadKind.TarBundle)`
+- **AND** wrap the download stream with `ProgressStream`
+
+#### Scenario: CreateDownloadProgress is null
+- **WHEN** `CreateDownloadProgress` is null (default)
+- **THEN** the pipeline SHALL download without wrapping in `ProgressStream`
+- **AND** behavior SHALL be identical to the current implementation (no progress callbacks)
+
+### Requirement: Tree traversal progress events
+During `WalkTreeAsync`, the pipeline SHALL emit `TreeTraversalProgressEvent(int FilesFound)` periodically as file entries are discovered. The event SHALL be emitted in batches (not per-file) to minimize overhead -- at least every 10 files or every 100ms, whichever comes first.
+
+#### Scenario: Progress during traversal of large tree
+- **WHEN** tree traversal discovers 1,247 files across 200 tree blobs
+- **THEN** the pipeline SHALL emit multiple `TreeTraversalProgressEvent` notifications with increasing `FilesFound` counts
+- **AND** the final `TreeTraversalCompleteEvent` SHALL follow with `FileCount: 1247`
+
+#### Scenario: Small tree emits at least one progress event
+- **WHEN** tree traversal discovers 5 files in a single tree blob
+- **THEN** the pipeline SHALL emit at least one `TreeTraversalProgressEvent(5)` before `TreeTraversalCompleteEvent`
+
+### Requirement: Chunk download completed event for tar bundles
+The pipeline SHALL emit a `ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize)` after a tar bundle has been fully downloaded and extracted. This event is needed to remove the `TrackedDownload` entry for tar bundles (large files are removed via `FileRestoredEvent` since they map 1:1 to chunks).
+
+#### Scenario: Tar bundle completion event
+- **WHEN** a tar bundle containing 3 files finishes downloading and extracting
+- **THEN** the pipeline SHALL emit `ChunkDownloadCompletedEvent(chunkHash, 3, compressedSize)`
+
+### Requirement: Restore event types
+The restore pipeline SHALL define the following additional event types in `RestoreModels.cs`:
+
+- `SnapshotResolvedEvent(DateTimeOffset Timestamp, string RootHash, int FileCount)` — published after snapshot resolution and tree traversal gives the file count
+- `TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize)` — published after all file entries are collected from the tree
+- `TreeTraversalProgressEvent(int FilesFound)` — published periodically during tree traversal with the cumulative count of files discovered
+- `FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize)` — published for each file's disposition decision
+- `ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0)` — published after chunk index lookups with aggregate byte totals
+- `RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending)` — published after rehydration check
+- `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize)` — published when a chunk download begins, with both compressed and original sizes
+- `ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize)` — published after a chunk has been fully downloaded and extracted
+- `CleanupCompleteEvent(int ChunksDeleted, long BytesFreed)` — published after cleanup
+
+The `RestoreDisposition` enum SHALL have values: `New`, `SkipIdentical`, `Overwrite`, `KeepLocalDiffers`.
+
+All events SHALL implement `INotification` from the Mediator library.
+
+#### Scenario: FileDispositionEvent with enum
+- **WHEN** a file disposition is determined during restore
+- **THEN** a `FileDispositionEvent` SHALL be published with the appropriate `RestoreDisposition` enum value
+
+#### Scenario: All new events are INotification
+- **WHEN** any new restore event type is instantiated
+- **THEN** it SHALL implement `INotification` and be publishable via `_mediator.Publish()`
