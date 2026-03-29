@@ -11,21 +11,21 @@
 
 ## 2. Disposition Bug Fix (TDD)
 
-- [ ] 2.1 Write test: `KeepLocalDiffers_WhenNoOverwrite_DoesNotRestore` — verify that when `!opts.Overwrite` and file exists with differing hash, the file is NOT added to `toRestore`
-- [ ] 2.2 Write test: `KeepLocalDiffers_WhenNoOverwrite_PublishesDispositionEvent` — verify `FileDispositionEvent` with `KeepLocalDiffers` is published
-- [ ] 2.3 Fix `RestorePipelineHandler.cs` step 3: add `continue` after the hash-mismatch-no-overwrite case so the file is not added to `toRestore`
-- [ ] 2.4 Add `FileDispositionEvent` publish + log for all 4 disposition cases in the conflict check loop
-- [ ] 2.5 Rename `[conflict]` log scope to `[disposition]` in `RestorePipelineHandler.cs`
+- [x] 2.1 Write test: `KeepLocalDiffers_WhenNoOverwrite_DoesNotRestore` — verify that when `!opts.Overwrite` and file exists with differing hash, the file is NOT added to `toRestore`
+- [x] 2.2 Write test: `KeepLocalDiffers_WhenNoOverwrite_PublishesDispositionEvent` — verify `FileDispositionEvent` with `KeepLocalDiffers` is published
+- [x] 2.3 Fix `RestorePipelineHandler.cs` step 3: add `continue` after the hash-mismatch-no-overwrite case so the file is not added to `toRestore`
+- [x] 2.4 Add `FileDispositionEvent` publish + log for all 4 disposition cases in the conflict check loop
+- [x] 2.5 Rename `[conflict]` log scope to `[disposition]` in `RestorePipelineHandler.cs`
 
 ## 3. Pipeline Events and Logging
 
-- [ ] 3.1 Add `SnapshotResolvedEvent` publish + log at `[snapshot]` scope after snapshot resolution
-- [ ] 3.2 Add `TreeTraversalCompleteEvent` publish + log at `[tree]` scope after tree traversal
-- [ ] 3.3 Add `ChunkResolutionCompleteEvent` publish + log at `[chunk]` scope after chunk index lookups
-- [ ] 3.4 Add `RehydrationStatusEvent` publish + log at `[rehydration]` scope after rehydration check
-- [ ] 3.5 Add `ChunkDownloadStartedEvent` publish + log at `[download]` scope when each chunk download begins
-- [ ] 3.6 Add `CleanupCompleteEvent` publish + log at `[cleanup]` scope after cleanup
-- [ ] 3.7 Audit all existing `_logger.Log*` calls in `RestorePipelineHandler.cs` — add missing `_mediator.Publish` counterparts
+- [x] 3.1 Add `SnapshotResolvedEvent` publish + log at `[snapshot]` scope after snapshot resolution
+- [x] 3.2 Add `TreeTraversalCompleteEvent` publish + log at `[tree]` scope after tree traversal
+- [x] 3.3 Add `ChunkResolutionCompleteEvent` publish + log at `[chunk]` scope after chunk index lookups
+- [x] 3.4 Add `RehydrationStatusEvent` publish + log at `[rehydration]` scope after rehydration check
+- [x] 3.5 Add `ChunkDownloadStartedEvent` publish + log at `[download]` scope when each chunk download begins
+- [x] 3.6 Add `CleanupCompleteEvent` publish + log at `[cleanup]` scope after cleanup
+- [x] 3.7 Audit all existing `_logger.Log*` calls in `RestorePipelineHandler.cs` — add missing `_mediator.Publish` counterparts
 
 ## 4. Pointer File Timestamps
 

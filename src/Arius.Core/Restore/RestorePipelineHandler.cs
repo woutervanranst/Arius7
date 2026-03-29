@@ -113,6 +113,9 @@ public sealed class RestorePipelineHandler
 
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
+            // Publish snapshot resolved after tree traversal so we include file count (from tree)
+            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, files.Count), cancellationToken);
+            await _mediator.Publish(new TreeTraversalCompleteEvent(files.Count, TotalOriginalSize: 0), cancellationToken);
             await _mediator.Publish(new RestoreStartedEvent(files.Count), cancellationToken);
 
             // ── Step 3: Conflict check ────────────────────────────────────────
@@ -198,7 +201,9 @@ public sealed class RestorePipelineHandler
             }
 
             int largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
-            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", filesByChunkHash.Count, largeChunks, filesByChunkHash.Count - largeChunks);
+            int tarChunks   = filesByChunkHash.Count - largeChunks;
+            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", filesByChunkHash.Count, largeChunks, tarChunks);
+            await _mediator.Publish(new ChunkResolutionCompleteEvent(filesByChunkHash.Count, largeChunks, tarChunks), cancellationToken);
 
             // ── Step 5: Rehydration status check ──────────────────────────────
 
@@ -252,6 +257,7 @@ public sealed class RestorePipelineHandler
             }
 
             _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count);
+            await _mediator.Publish(new RehydrationStatusEvent(available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count), cancellationToken);
 
             // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
 
@@ -325,6 +331,7 @@ public sealed class RestorePipelineHandler
                 bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
 
                 _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize.Bytes().Humanize());
+                await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize), cancellationToken);
 
                 if (isLargeChunk)
                 {
@@ -395,18 +402,27 @@ public sealed class RestorePipelineHandler
 
                 if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(rehydrated.Count, totalRehydratedBytes, cancellationToken))
                 {
+                    int chunksDeleted = 0;
+                    long bytesFreed   = 0;
+
                     foreach (var chunkHash in rehydrated)
                     {
                         var blobName = BlobPaths.ChunkRehydrated(chunkHash);
                         try
                         {
                             await _blobs.DeleteAsync(blobName, cancellationToken);
+                            chunksDeleted++;
+                            if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var deletedIe))
+                                bytesFreed += deletedIe.CompressedSize;
                         }
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Failed to delete rehydrated chunk {ChunkHash}", chunkHash);
                         }
                     }
+
+                    _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated chunk(s), freed {BytesFreed} bytes", chunksDeleted, bytesFreed);
+                    await _mediator.Publish(new CleanupCompleteEvent(chunksDeleted, bytesFreed), cancellationToken);
                 }
             }
 
