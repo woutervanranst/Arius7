@@ -1293,6 +1293,68 @@ public class RestoreTcsCoordinationTests
         var result = await pipelineTask;
         result.ShouldBeFalse();
     }
+
+    [Test]
+    public async Task RehydrationFirst_ThenCleanup_PipelineUnblocksWithoutDeadlock()
+    {
+        // Full flow: rehydration fires first, CLI answers it, pipeline continues
+        // into download phase, then cleanup fires and CLI must detect and answer it.
+        var questionTcs        = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerTcs          = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: rehydration question → wait for answer → download work → cleanup question → wait for answer
+        var pipelineTask = Task.Run(async () =>
+        {
+            // Phase 2: invoke ConfirmRehydration
+            questionTcs.TrySetResult(42);
+            var rehydrate = await answerTcs.Task;
+            rehydrate.ShouldBeTrue("CLI should confirm rehydration");
+
+            // Phase 3: download work, then invoke ConfirmCleanup
+            await Task.Delay(50); // simulate download
+            cleanupQuestionTcs.TrySetResult((7, 4096L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // ── Phase 1 loop: wait for rehydration question or pipeline completion ──
+        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // Rehydration question should have fired
+        questionTcs.Task.IsCompleted.ShouldBeTrue("rehydration question should fire");
+        var rehydrationValue = await questionTcs.Task;
+        rehydrationValue.ShouldBe(42);
+
+        // CLI answers: yes, rehydrate
+        answerTcs.TrySetResult(true);
+
+        // ── Phase 3 loop: download live display, also monitoring cleanupQuestionTcs ──
+        while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // After Phase 3 loop: handle cleanup if pipeline is still running
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(7);
+            bytes.ShouldBe(4096L);
+            cleanupAnswerTcs.TrySetResult(true);
+        }
+
+        // Pipeline should complete without deadlock
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeTrue("pipeline should receive the cleanup answer");
+    }
 }
 
 // ── TrackedFile BytesProcessed Interlocked update test ────────────────────────

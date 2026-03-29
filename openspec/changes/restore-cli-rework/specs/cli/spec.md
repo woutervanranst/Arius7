@@ -41,32 +41,50 @@ await pipelineTask;
 ### Requirement: BuildRestoreDisplay pure function
 `BuildRestoreDisplay(ProgressState state) → IRenderable` SHALL be a pure function returning a `Rows(...)` renderable with:
 
-**Stage headers**:
+**Stage headers** (three stages, always shown):
+
 ```
-  ● Resolved     2026-03-28T14:00:00Z (9 files, 6.91 MB)
-  ● Checked      9 new, 0 identical, 0 overwrite, 0 kept
-  ◐ Restoring    7/9 files  (4.23 / 6.91 MB)
-    Restored:    5  (3.12 MB)
-    Skipped:     0  (0 B)
+  ● Resolved     2026-03-28T14:00:00.0000000+00:00 (9,224 files, 5.16 GB)
+  ● Checked      4,613 new, 4,601 identical, 0 overwrite, 10 kept
+  ○ Restoring    4,867/9,224 files  █████░░░░░░░░░░░  32%
+                 (1.57 / 4.92 GB download, 5.16 GB original)
 ```
 
-Stage progression:
-- **Resolved**: `[dim]○[/]` initially, `[green]●[/]` when `TreeTraversalCompleteEvent` fires. Shows snapshot timestamp, file count, and total size.
-- **Checked**: `[dim]○[/]` initially, `[yellow]○[/]` during disposition checks, `[green]●[/]` when disposition is complete (detected when the first download event or chunk resolution event arrives). Shows tallies: N new, N identical, N overwrite, N kept.
-- **Restoring**: `[dim]○[/]` initially, `[yellow]○[/]` during downloads, `[green]●[/]` when all files done. Shows files restored/total and bytes restored/total. Sub-lines show restored count+bytes and skipped count+bytes.
+Stage 1 — **Resolved / Resolving**:
+- During tree traversal: `[dim]○[/] Resolving    N files...` where N is `RestoreFilesDiscovered` (`:N0` formatted). If no files discovered yet, no count shown.
+- After traversal (`TreeTraversalComplete`): `[green]●[/] Resolved     <timestamp> (N files)` initially without size.
+- After chunk resolution sets `RestoreTotalOriginalSize > 0`: `[green]●[/] Resolved     <timestamp> (N files, X)` with humanized total original size appended.
+- Timestamp: `SnapshotTimestamp.Value.ToString("o")`, or `"?"` if null. The detail string is `Markup.Escape()`-d.
 
-**Tail lines** (the 10 most recent `RestoreFileEvent` entries from `RecentRestoreEvents`):
-```
-  [green]●[/] ...tos/2026/march/IMG_1231.jpg  (1.2 MB)
-  [green]●[/] ...tos/2026/march/IMG_1232.jpg  (3.4 MB)
-  [dim]○[/] ...tos/2026/march/IMG_1233.jpg  (500 KB)
-  [green]●[/] ...tos/2026/march/IMG_1234.jpg  (2.1 MB)
-```
+Stage 2 — **Checked**:
+- `[dim]○[/]` when no dispositions yet, `[yellow]○[/]` during disposition checks, `[green]●[/]` when complete (detected when `ChunkGroups > 0` or `done > 0`).
+- Shows tallies: `N new, N identical, N overwrite, N kept` (all `:N0` formatted).
 
-- `[green]●[/]` for restored (`Skipped = false`), `[dim]○[/]` for skipped (`Skipped = true`)
-- Path column: `TruncateAndLeftJustify(path, 40)` then `Markup.Escape()`
-- Size: `fileSize.Bytes().Humanize()` in parentheses
-- On completion (all files done): tail lines are omitted; only the stage headers are shown with `[green]●[/]`
+Stage 3 — **Restoring** (two-line layout when byte totals are known):
+- `[dim]○[/]` initially, `[yellow]○[/]` during downloads (`done > 0` or `RestoreBytesDownloaded > 0`), `[green]●[/]` when all files done.
+- Line 1: `{symbol} Restoring    {done:N0}/{total:N0} files  {bar}  {pct}%` — progress bar (16 chars, `RenderProgressBar`) tracking compressed download bytes (`RestoreBytesDownloaded / RestoreTotalCompressedBytes`).
+- Line 2 (indented 17 spaces): `[dim]({dlCur} / {dlTot} {dlUnit} download, {origStr} original)[/]` — dual byte counters via `SplitSizePair` for download and `Bytes().Humanize()` for original.
+- When `RestoreTotalCompressedBytes` is 0 (no byte totals yet), only a single line is shown: `{symbol} Restoring    {done:N0} files` (or `{done:N0}/{total:N0} files` if total is known), with no progress bar or byte counters.
+
+**Active download table** (shown when not all done AND `TrackedDownloads` is non-empty):
+- Blank separator line, then a borderless Spectre `Table` (`NoBorder()`, `HideHeaders()`, `NoWrap()` columns) with 4 columns: name | bar | % | size.
+- Row data is collected first to compute max widths for padding (same pattern as archive per-file display).
+- Name: `TruncateAndLeftJustify(dl.DisplayName, 35)` then `Markup.Escape()`, rendered `[dim]`.
+- Bar: `RenderProgressBar(fraction, 12)` tracking `BytesDownloaded / CompressedSize`.
+- Percentage: right-aligned, `PadLeft(maxPct)`, rendered `[dim]`.
+- Size: `SplitSizePair(BytesDownloaded, CompressedSize)` with `PadLeft` alignment, rendered `[dim]`.
+
+**Tail lines** (shown when not all done AND no active downloads):
+- The 10 most recent `RestoreFileEvent` entries from `RecentRestoreEvents`.
+- Blank separator line, then each entry:
+  ```
+  {sym} [dim]{path}[/]  ({sizeStr})
+  ```
+- `[green]●[/]` for restored (`Skipped = false`), `[dim]○[/]` for skipped (`Skipped = true`).
+- Path column: `TruncateAndLeftJustify(path, 40)` then `Markup.Escape()`.
+- Size: `fileSize.Bytes().Humanize()` in parentheses, `Markup.Escape()`-d.
+
+**On completion** (`FilesRestored + FilesSkipped >= RestoreTotalFiles`): the active download table and tail lines are both omitted; only the three stage headers remain, all with `[green]●[/]`.
 
 #### Scenario: In-progress restore display with resolved and checked stages
 - **WHEN** snapshot is resolved with 9 files totaling 6.91 MB, all dispositions checked (9 new), and 5 of 9 files restored
