@@ -5,6 +5,8 @@
 
 Content-addressable archival to Azure Blob Storage. Deduplicated, optionally encrypted, with Archive-tier support.
 
+Arius7 is a deliberate Agentic Engineering (HOTL) rewrite of [Arius](https://github.com/woutervanranst/Arius).
+
 ## Installation
 
 Download the binary for your platform from the

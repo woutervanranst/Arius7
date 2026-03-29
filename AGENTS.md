@@ -1,3 +1,5 @@
+<!-- https://dev.to/webdeveloperhyper/how-to-make-ai-follow-your-instructions-more-for-free-openspec-2c85 -->
+
 # AGENTS.md
 
 When making code changes, always run the tests.
