@@ -273,4 +273,80 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // No copy calls — blob was already in chunks-rehydrated/
         sim.CopyCalls.ShouldBeEmpty("rehydrated blob already exists, no copy should be issued");
     }
+
+    // ── Cleanup should delete ALL rehydrated blobs, not just those used by the current restore ──
+
+    [Test]
+    public async Task Restore_Cleanup_DeletesAllRehydratedBlobs_NotJustCurrentRestores()
+    {
+        var (fix, sim, chunkBlobName) = await SetupArchivedFixtureAsync(azurite);
+        await using var _ = fix;
+
+        var chunkHash = chunkBlobName[BlobPaths.Chunks.Length..];
+        var rehydratedBlobName = BlobPaths.ChunkRehydrated(chunkHash);
+
+        // Sideload: copy the real chunk blob to chunks-rehydrated/ (simulating completed rehydration)
+        await using (var srcStream = await fix.BlobStorage.DownloadAsync(chunkBlobName))
+        {
+            using var ms = new MemoryStream();
+            await srcStream.CopyToAsync(ms);
+            ms.Position = 0;
+            var origMeta = await fix.BlobStorage.GetMetadataAsync(chunkBlobName);
+            await fix.BlobStorage.UploadAsync(rehydratedBlobName, ms, origMeta.Metadata, BlobTier.Hot);
+        }
+
+        // Sideload an EXTRA rehydrated blob that is NOT related to the current restore.
+        // This simulates a leftover rehydrated chunk from a previous restore of different files.
+        var extraHash = "extra-orphan-hash-not-in-current-restore";
+        var extraRehydratedBlob = BlobPaths.ChunkRehydrated(extraHash);
+        using (var extraMs = new MemoryStream(new byte[] { 0x00, 0x01, 0x02 }))
+        {
+            await fix.BlobStorage.UploadAsync(extraRehydratedBlob, extraMs,
+                new Dictionary<string, string>(), BlobTier.Hot);
+        }
+
+        // Verify both blobs exist in chunks-rehydrated/
+        var rehydratedBefore = new List<string>();
+        await foreach (var name in fix.BlobStorage.ListAsync(BlobPaths.ChunksRehydrated))
+            rehydratedBefore.Add(name);
+        rehydratedBefore.Count.ShouldBe(2, "both rehydrated blobs should exist before restore");
+
+        // Mark the original chunk as Archive tier so restore uses the rehydrated copy
+        sim.ArchiveTierBlobs.Add(chunkBlobName);
+
+        bool cleanupInvoked = false;
+        int  cleanupCount   = 0;
+        long cleanupBytes   = 0;
+
+        var restoreOpts = new RestoreOptions
+        {
+            RootDirectory = fix.RestoreRoot,
+            Overwrite     = true,
+            ConfirmCleanup = (count, bytes, ct) =>
+            {
+                cleanupInvoked = true;
+                cleanupCount   = count;
+                cleanupBytes   = bytes;
+                return Task.FromResult(true); // confirm deletion
+            },
+        };
+
+        var result = await MakeRestoreHandler(sim, fix)
+            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.FilesRestored.ShouldBe(1);
+
+        // Cleanup should have been invoked
+        cleanupInvoked.ShouldBeTrue("ConfirmCleanup should be called");
+
+        // The count should include ALL rehydrated blobs (2), not just the one used by this restore (1)
+        cleanupCount.ShouldBe(2, "cleanup should report ALL rehydrated blobs, including orphans from previous restores");
+
+        // After cleanup, no rehydrated blobs should remain
+        var rehydratedAfter = new List<string>();
+        await foreach (var name in fix.BlobStorage.ListAsync(BlobPaths.ChunksRehydrated))
+            rehydratedAfter.Add(name);
+        rehydratedAfter.ShouldBeEmpty("all rehydrated blobs should be deleted after cleanup");
+    }
 }

@@ -388,41 +388,54 @@ public sealed class RestorePipelineHandler
 
             int totalPending = chunksToRehydrate;
 
-            // ── Step 9 (task 10.10): Cleanup rehydrated blobs after full restore ─
+            // ── Step 9 (task 10.10): Cleanup ALL rehydrated blobs in the container ─
 
-            if (totalPending == 0 && rehydrated.Count > 0)
+            if (totalPending == 0)
             {
-                // All chunks were downloaded; rehydrated copies can be cleaned up.
-                long totalRehydratedBytes = 0;
-                foreach (var chunkHash in rehydrated)
-                {
-                    if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
-                        totalRehydratedBytes += ie.CompressedSize;
-                }
+                // Enumerate ALL blobs under chunks-rehydrated/, not just those used by this restore.
+                var allRehydratedBlobs = new List<string>();
+                await foreach (var blobName in _blobs.ListAsync(BlobPaths.ChunksRehydrated, cancellationToken))
+                    allRehydratedBlobs.Add(blobName);
 
-                if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(rehydrated.Count, totalRehydratedBytes, cancellationToken))
+                if (allRehydratedBlobs.Count > 0)
                 {
-                    int chunksDeleted = 0;
-                    long bytesFreed   = 0;
-
-                    foreach (var chunkHash in rehydrated)
+                    long totalRehydratedBytes = 0;
+                    foreach (var blobName in allRehydratedBlobs)
                     {
-                        var blobName = BlobPaths.ChunkRehydrated(chunkHash);
                         try
                         {
-                            await _blobs.DeleteAsync(blobName, cancellationToken);
-                            chunksDeleted++;
-                            if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var deletedIe))
-                                bytesFreed += deletedIe.CompressedSize;
+                            var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
+                            totalRehydratedBytes += meta.ContentLength ?? 0;
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to delete rehydrated chunk {ChunkHash}", chunkHash);
+                            _logger.LogWarning(ex, "Failed to get metadata for rehydrated blob {BlobName}", blobName);
                         }
                     }
 
-                    _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated chunk(s), freed {BytesFreed} bytes", chunksDeleted, bytesFreed);
-                    await _mediator.Publish(new CleanupCompleteEvent(chunksDeleted, bytesFreed), cancellationToken);
+                    if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(allRehydratedBlobs.Count, totalRehydratedBytes, cancellationToken))
+                    {
+                        int chunksDeleted = 0;
+                        long bytesFreed   = 0;
+
+                        foreach (var blobName in allRehydratedBlobs)
+                        {
+                            try
+                            {
+                                var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
+                                await _blobs.DeleteAsync(blobName, cancellationToken);
+                                chunksDeleted++;
+                                bytesFreed += meta.ContentLength ?? 0;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to delete rehydrated blob {BlobName}", blobName);
+                            }
+                        }
+
+                        _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", chunksDeleted, bytesFreed);
+                        await _mediator.Publish(new CleanupCompleteEvent(chunksDeleted, bytesFreed), cancellationToken);
+                    }
                 }
             }
 
