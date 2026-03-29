@@ -1,13 +1,13 @@
 ## 1. New Event Types and Enum
 
-- [ ] 1.1 Add `RestoreDisposition` enum (`New`, `SkipIdentical`, `Overwrite`, `KeepLocalDiffers`) to `RestoreModels.cs`
-- [ ] 1.2 Add `FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize) : INotification` to `RestoreModels.cs`
-- [ ] 1.3 Add `SnapshotResolvedEvent(DateTimeOffset Timestamp, string RootHash, int FileCount) : INotification` to `RestoreModels.cs`
-- [ ] 1.4 Add `TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification` to `RestoreModels.cs`
-- [ ] 1.5 Add `ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount) : INotification` to `RestoreModels.cs`
-- [ ] 1.6 Add `RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification` to `RestoreModels.cs`
-- [ ] 1.7 Add `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize) : INotification` to `RestoreModels.cs`
-- [ ] 1.8 Add `CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification` to `RestoreModels.cs`
+- [x] 1.1 Add `RestoreDisposition` enum (`New`, `SkipIdentical`, `Overwrite`, `KeepLocalDiffers`) to `RestoreModels.cs`
+- [x] 1.2 Add `FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize) : INotification` to `RestoreModels.cs`
+- [x] 1.3 Add `SnapshotResolvedEvent(DateTimeOffset Timestamp, string RootHash, int FileCount) : INotification` to `RestoreModels.cs`
+- [x] 1.4 Add `TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification` to `RestoreModels.cs`
+- [x] 1.5 Add `ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount) : INotification` to `RestoreModels.cs`
+- [x] 1.6 Add `RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification` to `RestoreModels.cs`
+- [x] 1.7 Add `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize) : INotification` to `RestoreModels.cs`
+- [x] 1.8 Add `CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification` to `RestoreModels.cs`
 
 ## 2. Disposition Bug Fix (TDD)
 

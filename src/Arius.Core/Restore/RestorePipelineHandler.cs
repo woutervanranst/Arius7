@@ -135,20 +135,29 @@ public sealed class RestorePipelineHandler
 
                         if (localHash == file.ContentHash)
                         {
-                            _logger.LogInformation("[conflict] {Path} -> skip (identical)", file.RelativePath);
+                            _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
                             await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
                             continue;
                         }
+
+                        // File exists with different hash, no --overwrite → keep local
+                        _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
+                        continue;
                     }
                     else
                     {
-                        _logger.LogInformation("[conflict] {Path} -> overwrite", file.RelativePath);
+                        _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
+                        var fi = new FileInfo(localPath);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
                     }
                 }
                 else
                 {
-                    _logger.LogInformation("[conflict] {Path} -> new", file.RelativePath);
+                    _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath);
+                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.New, 0), cancellationToken);
                 }
 
                 toRestore.Add(file);

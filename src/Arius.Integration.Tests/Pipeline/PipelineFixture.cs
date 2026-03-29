@@ -25,7 +25,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     public  IBlobStorageService BlobStorage   { get; private set; } = null!;
     public  IEncryptionService  Encryption    { get; private set; } = null!;
     public  ChunkIndexService   Index         { get; private set; } = null!;
-    private IMediator           _mediator     = null!;
+    public  IMediator           Mediator      { get; private set; } = null!;
 
     public  string              LocalRoot     { get; private set; } = null!;
     public  string              RestoreRoot   { get; private set; } = null!;
@@ -59,7 +59,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
         Index      = new ChunkIndexService(BlobStorage, Encryption, Account, container.Name);
-        _mediator  = Substitute.For<IMediator>();
+        Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
         RestoreRoot = Path.Combine(_tempRoot, "restore");
@@ -70,12 +70,12 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchivePipelineHandler CreateArchiveHandler() =>
-        new(BlobStorage, Encryption, Index, _mediator,
+        new(BlobStorage, Encryption, Index, Mediator,
             NullLogger<ArchivePipelineHandler>.Instance,
             Account, Container.Name);
 
     public RestorePipelineHandler CreateRestoreHandler() =>
-        new(BlobStorage, Encryption, Index, _mediator,
+        new(BlobStorage, Encryption, Index, Mediator,
             NullLogger<RestorePipelineHandler>.Instance,
             Account, Container.Name);
 
