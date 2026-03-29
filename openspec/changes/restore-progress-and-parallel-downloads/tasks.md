@@ -31,10 +31,10 @@
 
 ## 5. Progress Handlers (ProgressHandlers.cs)
 
-- [ ] 5.1 Add `TreeTraversalProgressHandler` -- sets `RestoreFilesDiscovered`
-- [ ] 5.2 Add `ChunkDownloadCompletedHandler` -- removes `TrackedDownload`, increments `RestoreBytesDownloaded`
-- [ ] 5.3 Update `ChunkResolutionCompleteHandler` -- set `RestoreTotalOriginalSize` and `RestoreTotalCompressedBytes` from enriched event
-- [ ] 5.4 Update `FileRestoredHandler` -- remove corresponding `TrackedDownload` for large files, increment `RestoreBytesDownloaded`
+- [x] 5.1 Add `TreeTraversalProgressHandler` -- sets `RestoreFilesDiscovered`
+- [x] 5.2 Add `ChunkDownloadCompletedHandler` -- removes `TrackedDownload`, increments `RestoreBytesDownloaded`
+- [x] 5.3 Update `ChunkResolutionCompleteHandler` -- set `RestoreTotalOriginalSize` and `RestoreTotalCompressedBytes` from enriched event
+- [x] 5.4 Update `FileRestoredHandler` -- remove corresponding `TrackedDownload` for large files, increment `RestoreBytesDownloaded`
 
 ## 6. CLI Wiring (CliBuilder.cs)
 
@@ -51,14 +51,14 @@
 
 ## 8. Tests (ProgressTests.cs)
 
-- [ ] 8.1 Test `TrackedDownload` lifecycle: add, update bytes, remove on completion
-- [ ] 8.2 Test `TreeTraversalProgressHandler` updates `RestoreFilesDiscovered`
-- [ ] 8.3 Test `ChunkDownloadCompletedHandler` removes tracked download and increments bytes
-- [ ] 8.4 Test updated `FileRestoredHandler` removes tracked download for large files
-- [ ] 8.5 Test updated `ChunkResolutionCompleteHandler` sets byte totals
+- [x] 8.1 Test `TrackedDownload` lifecycle: add, update bytes, remove on completion
+- [x] 8.2 Test `TreeTraversalProgressHandler` updates `RestoreFilesDiscovered`
+- [x] 8.3 Test `ChunkDownloadCompletedHandler` removes tracked download and increments bytes
+- [x] 8.4 Test updated `FileRestoredHandler` removes tracked download for large files
+- [x] 8.5 Test updated `ChunkResolutionCompleteHandler` sets byte totals
 - [ ] 8.6 Test `BuildRestoreDisplay` renders Resolving phase correctly
 - [ ] 8.7 Test `BuildRestoreDisplay` renders Checking phase correctly
 - [ ] 8.8 Test `BuildRestoreDisplay` renders active download table with progress bars
 - [ ] 8.9 Test `BuildRestoreDisplay` renders aggregate progress bar with dual byte counters
 - [ ] 8.10 Test `BuildRestoreDisplay` renders completion state correctly
-- [ ] 8.11 Test thread safety: concurrent `TrackedDownload` add/update/remove from 4 workers
+- [x] 8.11 Test thread safety: concurrent `TrackedDownload` add/update/remove from 4 workers

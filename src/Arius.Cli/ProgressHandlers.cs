@@ -222,13 +222,31 @@ public sealed class RestoreStartedHandler(ProgressState state) : INotificationHa
 
 // ── 4.13 FileRestoredHandler ──────────────────────────────────────────────────
 
-/// <summary>Increments <see cref="ProgressState.FilesRestored"/> and <see cref="ProgressState.BytesRestored"/> when a file is written to disk.</summary>
+/// <summary>
+/// Increments <see cref="ProgressState.FilesRestored"/> and <see cref="ProgressState.BytesRestored"/> when a file is written to disk.
+/// For large-file downloads, also removes the corresponding <see cref="TrackedDownload"/> and adds its
+/// <see cref="TrackedDownload.CompressedSize"/> to <see cref="ProgressState.RestoreBytesDownloaded"/>.
+/// </summary>
 public sealed class FileRestoredHandler(ProgressState state) : INotificationHandler<FileRestoredEvent>
 {
     public ValueTask Handle(FileRestoredEvent notification, CancellationToken cancellationToken)
     {
         state.IncrementFilesRestored(notification.FileSize);
         state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: false);
+
+        // Remove TrackedDownload for large files (keyed by chunk hash, matched by DisplayName)
+        // Tar bundle files are removed by ChunkDownloadCompletedHandler instead.
+        foreach (var kvp in state.TrackedDownloads)
+        {
+            if (kvp.Value.Kind == Core.Restore.DownloadKind.LargeFile &&
+                kvp.Value.DisplayName == notification.RelativePath)
+            {
+                if (state.TrackedDownloads.TryRemove(kvp.Key, out var removed))
+                    state.AddRestoreBytesDownloaded(removed.CompressedSize);
+                break;
+            }
+        }
+
         return ValueTask.CompletedTask;
     }
 }

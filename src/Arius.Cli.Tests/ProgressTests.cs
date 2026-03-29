@@ -1780,6 +1780,292 @@ public class BuildRestoreDisplayTests
     [Test]
     public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
     {
+    }
+}
+
+// ── 8.1 TrackedDownload lifecycle ─────────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="TrackedDownload"/> lifecycle: add, update bytes, remove on completion.
+/// Covers large file (removed by FileRestoredHandler) and tar bundle (removed by ChunkDownloadCompletedHandler).
+/// </summary>
+public class TrackedDownloadLifecycleTests
+{
+    [Test]
+    public async Task LargeFile_TrackedDownload_AddUpdateRemove()
+    {
+        var state = new ProgressState();
+
+        // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
+        var td = new TrackedDownload("chunk_abc", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
+        state.TrackedDownloads.TryAdd("chunk_abc", td);
+
+        state.TrackedDownloads.Count.ShouldBe(1);
+        state.TrackedDownloads["chunk_abc"].DisplayName.ShouldBe("photos/sunset.jpg");
+        state.TrackedDownloads["chunk_abc"].Kind.ShouldBe(Core.Restore.DownloadKind.LargeFile);
+
+        // Simulate byte-level progress updates
+        td.SetBytesDownloaded(12_300_000);
+        td.BytesDownloaded.ShouldBe(12_300_000L);
+
+        td.SetBytesDownloaded(25_400_000);
+        td.BytesDownloaded.ShouldBe(25_400_000L);
+
+        // FileRestoredHandler should remove the TrackedDownload and increment RestoreBytesDownloaded
+        var handler = new FileRestoredHandler(state);
+        await handler.Handle(new Core.Restore.FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("chunk_abc").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
+        state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(50_000_000L);
+    }
+
+    [Test]
+    public async Task TarBundle_TrackedDownload_AddUpdateRemove()
+    {
+        var state = new ProgressState();
+
+        // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
+        var td = new TrackedDownload("ab12cd34", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
+        state.TrackedDownloads.TryAdd("ab12cd34", td);
+
+        state.TrackedDownloads.Count.ShouldBe(1);
+        state.TrackedDownloads["ab12cd34"].Kind.ShouldBe(Core.Restore.DownloadKind.TarBundle);
+
+        // Simulate byte-level progress
+        td.SetBytesDownloaded(4_800_000);
+        td.BytesDownloaded.ShouldBe(4_800_000L);
+
+        // ChunkDownloadCompletedHandler should remove the TrackedDownload
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("ab12cd34", 3, 15_200_000), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("ab12cd34").ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
+        state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+    }
+
+    [Test]
+    public void TrackedDownload_BytesDownloaded_InterlockedUpdate()
+    {
+        var td = new TrackedDownload("key1", Core.Restore.DownloadKind.LargeFile, "file.bin", 1_000_000, 2_000_000);
+
+        td.BytesDownloaded.ShouldBe(0L);
+        td.SetBytesDownloaded(500_000);
+        td.BytesDownloaded.ShouldBe(500_000L);
+        td.SetBytesDownloaded(1_000_000);
+        td.BytesDownloaded.ShouldBe(1_000_000L);
+    }
+
+    [Test]
+    public async Task FileRestoredHandler_NoTrackedDownload_StillUpdatesCounters()
+    {
+        // When no TrackedDownload exists (e.g. file from tar bundle), handler should still work
+        var state   = new ProgressState();
+        var handler = new FileRestoredHandler(state);
+
+        await handler.Handle(new Core.Restore.FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
+
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(1024L);
+        // No TrackedDownload removal expected, RestoreBytesDownloaded stays at 0
+        state.RestoreBytesDownloaded.ShouldBe(0L);
+    }
+}
+
+// ── 8.2 TreeTraversalProgressHandler ──────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="TreeTraversalProgressHandler"/> updates <see cref="ProgressState.RestoreFilesDiscovered"/>.
+/// </summary>
+public class TreeTraversalProgressHandlerTests
+{
+    [Test]
+    public async Task TreeTraversalProgressHandler_SetsFilesDiscovered()
+    {
+        var state   = new ProgressState();
+        var handler = new TreeTraversalProgressHandler(state);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+
+        state.RestoreFilesDiscovered.ShouldBe(523L);
+    }
+
+    [Test]
+    public async Task TreeTraversalProgressHandler_UpdatesOnSubsequentEvents()
+    {
+        var state   = new ProgressState();
+        var handler = new TreeTraversalProgressHandler(state);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(100), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(100L);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(523L);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(1247), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(1247L);
+    }
+}
+
+// ── 8.3 ChunkDownloadCompletedHandler ─────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="ChunkDownloadCompletedHandler"/> removes tracked download and increments bytes.
+/// </summary>
+public class ChunkDownloadCompletedHandlerTests
+{
+    [Test]
+    public async Task ChunkDownloadCompletedHandler_RemovesTrackedDownloadAndIncrementsBytesDownloaded()
+    {
+        var state = new ProgressState();
+        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (5 files, 1.2 MB)", 8_000_000, 1_200_000);
+        state.TrackedDownloads.TryAdd("tar_hash", td);
+
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("tar_hash", 5, 8_000_000), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeFalse();
+        state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
+    }
+
+    [Test]
+    public async Task ChunkDownloadCompletedHandler_AccumulatesAcrossMultipleChunks()
+    {
+        var state = new ProgressState();
+        state.TrackedDownloads.TryAdd("h1", new TrackedDownload("h1", Core.Restore.DownloadKind.TarBundle, "TAR 1", 5_000_000, 1_000_000));
+        state.TrackedDownloads.TryAdd("h2", new TrackedDownload("h2", Core.Restore.DownloadKind.TarBundle, "TAR 2", 3_000_000, 800_000));
+
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h1", 3, 5_000_000), CancellationToken.None);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h2", 2, 3_000_000), CancellationToken.None);
+
+        state.TrackedDownloads.Count.ShouldBe(0);
+        state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
+    }
+}
+
+// ── 8.4 FileRestoredHandler removes TrackedDownload for large files ───────────
+
+/// <summary>
+/// Verifies updated <see cref="FileRestoredHandler"/> removes TrackedDownload for large file downloads.
+/// </summary>
+public class FileRestoredHandlerTrackedDownloadTests
+{
+    [Test]
+    public async Task FileRestoredHandler_RemovesLargeFileTrackedDownload()
+    {
+        var state = new ProgressState();
+        var td = new TrackedDownload("chunk_xyz", Core.Restore.DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
+        state.TrackedDownloads.TryAdd("chunk_xyz", td);
+
+        var handler = new FileRestoredHandler(state);
+        await handler.Handle(new Core.Restore.FileRestoredEvent("videos/movie.mp4", 200_000_000L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("chunk_xyz").ShouldBeFalse("Large file TrackedDownload should be removed");
+        state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add CompressedSize to RestoreBytesDownloaded");
+    }
+
+    [Test]
+    public async Task FileRestoredHandler_DoesNotRemoveTarBundleTrackedDownload()
+    {
+        // Tar bundle downloads are removed by ChunkDownloadCompletedHandler, not FileRestoredHandler
+        var state = new ProgressState();
+        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 500 KB)", 5_000_000, 500_000);
+        state.TrackedDownloads.TryAdd("tar_hash", td);
+
+        var handler = new FileRestoredHandler(state);
+        // This file is from inside the tar bundle — handler should not remove the tar's TrackedDownload
+        await handler.Handle(new Core.Restore.FileRestoredEvent("docs/readme.txt", 1024L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeTrue("Tar TrackedDownload should NOT be removed by FileRestoredHandler");
+        state.RestoreBytesDownloaded.ShouldBe(0L, "No compressed bytes should be added for tar bundle files");
+    }
+}
+
+// ── 8.5 ChunkResolutionCompleteHandler byte totals ────────────────────────────
+
+/// <summary>
+/// Verifies updated <see cref="ChunkResolutionCompleteHandler"/> sets byte totals from enriched event.
+/// </summary>
+public class ChunkResolutionCompleteHandlerByteTotalsTests
+{
+    [Test]
+    public async Task ChunkResolutionCompleteHandler_SetsByteTotals()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(100, 0); // initial traversal without sizes
+        var handler = new ChunkResolutionCompleteHandler(state);
+
+        await handler.Handle(
+            new Core.Restore.ChunkResolutionCompleteEvent(10, 5, 5, TotalOriginalBytes: 500_000_000, TotalCompressedBytes: 200_000_000),
+            CancellationToken.None);
+
+        state.ChunkGroups.ShouldBe(10);
+        state.LargeChunkCount.ShouldBe(5);
+        state.TarChunkCount.ShouldBe(5);
+        state.RestoreTotalOriginalSize.ShouldBe(500_000_000L);
+        state.RestoreTotalCompressedBytes.ShouldBe(200_000_000L);
+    }
+}
+
+// ── 8.11 Thread safety: concurrent TrackedDownload add/update/remove ──────────
+
+/// <summary>
+/// Verifies thread safety of concurrent TrackedDownload add/update/remove from 4 workers.
+/// </summary>
+public class TrackedDownloadThreadSafetyTests
+{
+    [Test]
+    public async Task ConcurrentAddUpdateRemove_NoDataRaces()
+    {
+        var state = new ProgressState();
+        const int n = 1_000;
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, n),
+            new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            (i, ct) =>
+            {
+                var key = $"chunk_{i:x8}";
+                var td = new TrackedDownload(key, Core.Restore.DownloadKind.LargeFile, $"file_{i}.bin", 1_000_000, 2_000_000);
+                state.TrackedDownloads.TryAdd(key, td);
+
+                // Simulate byte-level progress
+                td.SetBytesDownloaded(500_000);
+                td.SetBytesDownloaded(1_000_000);
+
+                // Remove on completion
+                state.TrackedDownloads.TryRemove(key, out _);
+                state.AddRestoreBytesDownloaded(1_000_000);
+                return ValueTask.CompletedTask;
+            });
+
+        state.TrackedDownloads.Count.ShouldBe(0, "All tracked downloads should be removed");
+        state.RestoreBytesDownloaded.ShouldBe(n * 1_000_000L, "All bytes should be accounted for");
+    }
+}
+
+// ── end of new tests ──────────────────────────────────────────────────────────
+
+public class BuildRestoreDisplayDispositionTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
+    {
         var state = new ProgressState();
         state.SetTreeTraversalComplete(4, 4000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
