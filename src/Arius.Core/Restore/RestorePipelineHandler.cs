@@ -200,7 +200,10 @@ public sealed class RestorePipelineHandler
             int largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
             int tarChunks   = filesByChunkHash.Count - largeChunks;
 
-            // Sum original and compressed sizes from index entries for the aggregate counters
+            // Sum original and compressed sizes from index entries for the aggregate counters.
+            // For large files, sizes come from the single index entry.
+            // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
+            // sum across all files to reconstruct the total tar.gz blob size.
             long totalOriginalBytes   = 0;
             long totalCompressedBytes = 0;
             foreach (var chunkHash in filesByChunkHash.Keys)
@@ -208,19 +211,23 @@ public sealed class RestorePipelineHandler
                 var firstFile = filesByChunkHash[chunkHash][0];
                 if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
                 {
-                    totalCompressedBytes += ie2.CompressedSize;
-                    // For large files, OriginalSize is the file size.
-                    // For tar bundles, sum OriginalSize for all files in the bundle.
-                    if (ie2.ContentHash == ie2.ChunkHash)
+                    bool isLargeChunk = ie2.ContentHash == ie2.ChunkHash;
+                    if (isLargeChunk)
                     {
-                        totalOriginalBytes += ie2.OriginalSize;
+                        totalOriginalBytes   += ie2.OriginalSize;
+                        totalCompressedBytes += ie2.CompressedSize;
                     }
                     else
                     {
-                        // Tar bundle: sum original sizes of all files that map to this chunk
+                        // Tar bundle: sum across all files that map to this chunk
                         foreach (var file in filesByChunkHash[chunkHash])
+                        {
                             if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
-                                totalOriginalBytes += fileEntry.OriginalSize;
+                            {
+                                totalOriginalBytes   += fileEntry.OriginalSize;
+                                totalCompressedBytes += fileEntry.CompressedSize;
+                            }
+                        }
                     }
                 }
             }
