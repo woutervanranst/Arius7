@@ -1715,7 +1715,8 @@ public class BuildRestoreDisplayTests
 
         var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
 
-        output.ShouldContain("Resolved");
+        // Before tree traversal completes, stage 1 shows "Resolving" (not "Resolved")
+        output.ShouldContain("Resolving");
         output.ShouldContain("Checked");
         output.ShouldContain("Restoring");
         // All stages should show dim circles (○) — no green bullets yet
@@ -1747,12 +1748,10 @@ public class BuildRestoreDisplayTests
         output.ShouldContain("2 new");
         output.ShouldContain("0 identical");
 
-        // Stage 3: Restoring
+        // Stage 3: Restoring with file count (new format: no Restored/Skipped sub-lines)
         output.ShouldContain("Restoring");
-        output.ShouldContain("Restored");
-        output.ShouldContain("Skipped");
 
-        // Tail lines
+        // Tail lines (shown when no active downloads)
         output.ShouldContain("foo/bar.txt");
         output.ShouldContain("baz/skip.txt");
     }
@@ -2043,6 +2042,196 @@ public class TrackedDownloadThreadSafetyTests
 
         state.TrackedDownloads.Count.ShouldBe(0, "All tracked downloads should be removed");
         state.RestoreBytesDownloaded.ShouldBe(n * 1_000_000L, "All bytes should be accounted for");
+    }
+}
+
+// ── 8.6 BuildRestoreDisplay: Resolving phase ──────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the Resolving phase
+/// with <see cref="ProgressState.RestoreFilesDiscovered"/> during tree traversal.
+/// </summary>
+public class BuildRestoreDisplayResolvingTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DuringTraversal_ShowsResolvingWithFileCount()
+    {
+        var state = new ProgressState();
+        state.SetRestoreFilesDiscovered(523);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("Resolving");
+        output.ShouldContain("523");
+        output.ShouldContain("files");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_AfterTraversal_ShowsResolvedNotResolving()
+    {
+        var state = new ProgressState();
+        state.SetRestoreFilesDiscovered(1247);
+        state.SetTreeTraversalComplete(1247, 14_200_000_000L);
+        state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("Resolved");
+        output.ShouldContain("1247");   // Might be "1,247" or "1.247" depending on locale — check raw number
+        output.ShouldNotContain("Resolving");
+    }
+}
+
+// ── 8.8 BuildRestoreDisplay: Active download table ────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders active download table
+/// with per-item progress bars for <see cref="TrackedDownload"/> entries.
+/// </summary>
+public class BuildRestoreDisplayActiveDownloadsTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_WithActiveDownloads_ShowsDownloadTable()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(10, 100_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(5, 3, 2);
+        state.SetRestoreTotalCompressedBytes(50_000_000);
+
+        // Add a large file download in progress
+        var td1 = new TrackedDownload("chunk1", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        td1.SetBytesDownloaded(18_300_000);
+        state.TrackedDownloads.TryAdd("chunk1", td1);
+
+        // Add a tar bundle download in progress
+        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        td2.SetBytesDownloaded(4_800_000);
+        state.TrackedDownloads.TryAdd("chunk2", td2);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Should show file names / labels
+        output.ShouldContain("sunset.jpg");
+        output.ShouldContain("TAR bundle");
+
+        // Should show progress bar characters
+        output.ShouldContain("█");
+        output.ShouldContain("░");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_NoActiveDownloads_NoDownloadTable()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(2, 800L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(1, 1, 0);
+        state.SetRestoreTotalCompressedBytes(500);
+        state.IncrementFilesRestored(400L);
+        state.IncrementFilesRestored(400L);
+        // No TrackedDownloads
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // No progress bars in the download area
+        output.ShouldNotContain("TAR bundle");
+    }
+}
+
+// ── 8.9 BuildRestoreDisplay: Aggregate progress bar ───────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the aggregate progress bar
+/// with dual byte counters (compressed download + original).
+/// </summary>
+public class BuildRestoreDisplayAggregateProgressTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DuringDownloads_ShowsAggregateProgressBar()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(847, 14_200_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(10, 5, 5);
+        state.SetRestoreTotalCompressedBytes(8_310_000_000);
+        state.AddRestoreBytesDownloaded(3_170_000_000);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Should show progress bar
+        output.ShouldContain("█");
+        output.ShouldContain("░");
+
+        // Should show "download" label
+        output.ShouldContain("download");
+
+        // Should show "original" label
+        output.ShouldContain("original");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_AllComplete_ShowsFullProgressBar()
+    {
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(5);
+        state.SetTreeTraversalComplete(5, 10_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(2, 1, 1);
+        state.SetRestoreTotalCompressedBytes(5_000_000);
+        state.AddRestoreBytesDownloaded(5_000_000);
+        state.IncrementFilesRestored(4_000_000L);
+        state.IncrementFilesRestored(3_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Restoring line should show 100%
+        output.ShouldContain("100%");
+        // Should have green bullet for completion
+        output.ShouldContain("●");
     }
 }
 

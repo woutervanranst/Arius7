@@ -341,12 +341,16 @@ public sealed class RehydrationStatusHandler(ProgressState state) : INotificatio
 
 // ── 4.21 ChunkDownloadStartedHandler ──────────────────────────────────────────
 
-/// <summary>Reserved for future per-chunk download progress. Currently a no-op.</summary>
+/// <summary>
+/// Stores tar bundle metadata (file count + original size) in <see cref="ProgressState.TarBundleMetadata"/>
+/// before the <c>CreateDownloadProgress</c> callback is invoked, so the CLI can build display labels.
+/// </summary>
 public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotificationHandler<ChunkDownloadStartedEvent>
 {
     public ValueTask Handle(ChunkDownloadStartedEvent notification, CancellationToken cancellationToken)
     {
-        _ = state; // reserved for future use
+        if (notification.Type == "tar")
+            state.TarBundleMetadata[notification.ChunkHash] = (notification.FileCount, notification.OriginalSize);
         return ValueTask.CompletedTask;
     }
 }

@@ -440,6 +440,13 @@ public sealed class ProgressState
     /// <summary>Active downloads tracked during restore, keyed by chunk hash.</summary>
     public ConcurrentDictionary<string, TrackedDownload> TrackedDownloads { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Per-chunk metadata for tar bundles (file count + original size), populated by
+    /// <c>ChunkDownloadStartedHandler</c> before <c>CreateDownloadProgress</c> is called.
+    /// Used by the <c>CreateDownloadProgress</c> factory to build display names.
+    /// </summary>
+    internal ConcurrentDictionary<string, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new(StringComparer.Ordinal);
+
     // ── Restore: tree traversal progress ─────────────────────────────────────
 
     /// <summary>Number of files discovered so far during tree traversal (ticks up per <c>TreeTraversalProgressEvent</c>).</summary>

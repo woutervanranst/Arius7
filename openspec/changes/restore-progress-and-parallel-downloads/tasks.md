@@ -38,16 +38,16 @@
 
 ## 6. CLI Wiring (CliBuilder.cs)
 
-- [ ] 6.1 Wire `CreateDownloadProgress` factory in restore command setup: create `TrackedDownload` entries, return `IProgress<long>` that updates `BytesDownloaded`
-- [ ] 6.2 Pass file count and original size metadata for tar bundles to build `"TAR bundle (N files, X)"` display name
+- [x] 6.1 Wire `CreateDownloadProgress` factory in restore command setup: create `TrackedDownload` entries, return `IProgress<long>` that updates `BytesDownloaded`
+- [x] 6.2 Pass file count and original size metadata for tar bundles to build `"TAR bundle (N files, X)"` display name
 
 ## 7. Restore Display (CliBuilder.cs - BuildRestoreDisplay)
 
-- [ ] 7.1 Stage 1: Implement `○ Resolving  N files...` → `● Resolved  <ts> (N files)` → append size after chunk resolution
-- [ ] 7.2 Stage 2: Implement `○ Checking  N new, M identical...` → `● Checked  N new, M identical, O overwrite, P kept`
-- [ ] 7.3 Stage 3: Add aggregate progress bar to Restoring line with dual byte counters `(X / Y download, Z original)`
-- [ ] 7.4 Replace completed-file tail with active download table: iterate `TrackedDownloads`, render per-item progress bars using `RenderProgressBar`, `SplitSizePair`, `TruncateAndLeftJustify`
-- [ ] 7.5 Show file relative path for large files, `TAR bundle (N files, X)` for tar bundles in active download rows
+- [x] 7.1 Stage 1: Implement `○ Resolving  N files...` → `● Resolved  <ts> (N files)` → append size after chunk resolution
+- [x] 7.2 Stage 2: Implement `○ Checking  N new, M identical...` → `● Checked  N new, M identical, O overwrite, P kept`
+- [x] 7.3 Stage 3: Add aggregate progress bar to Restoring line with dual byte counters `(X / Y download, Z original)`
+- [x] 7.4 Replace completed-file tail with active download table: iterate `TrackedDownloads`, render per-item progress bars using `RenderProgressBar`, `SplitSizePair`, `TruncateAndLeftJustify`
+- [x] 7.5 Show file relative path for large files, `TAR bundle (N files, X)` for tar bundles in active download rows
 
 ## 8. Tests (ProgressTests.cs)
 
@@ -56,9 +56,9 @@
 - [x] 8.3 Test `ChunkDownloadCompletedHandler` removes tracked download and increments bytes
 - [x] 8.4 Test updated `FileRestoredHandler` removes tracked download for large files
 - [x] 8.5 Test updated `ChunkResolutionCompleteHandler` sets byte totals
-- [ ] 8.6 Test `BuildRestoreDisplay` renders Resolving phase correctly
-- [ ] 8.7 Test `BuildRestoreDisplay` renders Checking phase correctly
-- [ ] 8.8 Test `BuildRestoreDisplay` renders active download table with progress bars
-- [ ] 8.9 Test `BuildRestoreDisplay` renders aggregate progress bar with dual byte counters
-- [ ] 8.10 Test `BuildRestoreDisplay` renders completion state correctly
+- [x] 8.6 Test `BuildRestoreDisplay` renders Resolving phase correctly
+- [x] 8.7 Test `BuildRestoreDisplay` renders Checking phase correctly
+- [x] 8.8 Test `BuildRestoreDisplay` renders active download table with progress bars
+- [x] 8.9 Test `BuildRestoreDisplay` renders aggregate progress bar with dual byte counters
+- [x] 8.10 Test `BuildRestoreDisplay` renders completion state correctly
 - [x] 8.11 Test thread safety: concurrent `TrackedDownload` add/update/remove from 4 workers

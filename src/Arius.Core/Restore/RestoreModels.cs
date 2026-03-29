@@ -220,7 +220,7 @@ public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCoun
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
 /// <summary>Emitted when a chunk download begins.</summary>
-public sealed record ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize) : INotification;
+public sealed record ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize) : INotification;
 
 /// <summary>Emitted after a tar bundle has been fully downloaded and extracted.</summary>
 public sealed record ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize) : INotification;

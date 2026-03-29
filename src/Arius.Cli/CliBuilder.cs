@@ -380,6 +380,7 @@ public static class CliBuilder
 
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
+            var restoreProgress = services.GetRequiredService<ProgressState>();
 
             // ── TCS pairs for thread-safe phase coordination ──────────────────
             // The pipeline runs on a background task; its callbacks signal these TCS pairs.
@@ -411,12 +412,43 @@ public static class CliBuilder
                     cleanupQuestionTcs.TrySetResult((count, bytes));
                     return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                 },
+
+                // Wire byte-level download progress into ProgressState (tasks 6.1 / 6.2).
+                // ChunkDownloadStartedHandler has already stored tar bundle metadata in
+                // TarBundleMetadata before this callback is invoked (Mediator publish is sync).
+                CreateDownloadProgress = (identifier, compressedSize, kind) =>
+                {
+                    string displayName;
+                    long originalSize = 0;
+
+                    if (kind == Core.Restore.DownloadKind.TarBundle)
+                    {
+                        // Look up metadata stored by ChunkDownloadStartedHandler
+                        if (restoreProgress.TarBundleMetadata.TryGetValue(identifier, out var meta))
+                        {
+                            displayName  = $"TAR bundle ({meta.FileCount} files, {meta.OriginalSize.Bytes().Humanize()})";
+                            originalSize = meta.OriginalSize;
+                        }
+                        else
+                        {
+                            displayName = $"TAR bundle ({identifier[..8]}...)";
+                        }
+                    }
+                    else
+                    {
+                        displayName = identifier; // relative path for large files
+                    }
+
+                    var tracked = new TrackedDownload(identifier, kind, displayName, compressedSize, originalSize);
+                    restoreProgress.TrackedDownloads[identifier] = tracked;
+
+                    return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                },
             };
 
             RestoreResult? result = null;
             if (AnsiConsole.Console.Profile.Capabilities.Interactive)
             {
-                var restoreProgress = services.GetRequiredService<ProgressState>();
 
                 // ── Phase 1 + 3: Download progress display ────────────────────
                 // Wrap the entire download flow in a Progress display so files being
@@ -1118,32 +1150,35 @@ public static class CliBuilder
         var done     = restored + skipped;
         var allDone  = total > 0 && done >= total;
 
-        // ── Stage 1: Resolved ─────────────────────────────────────────────────
-        // [dim]○[/] initially, [green]●[/] when TreeTraversalComplete fires.
+        // ── Stage 1: Resolving / Resolved ─────────────────────────────────────
         {
             var treeComplete = state.TreeTraversalComplete;
-            var resolvedSymbol = treeComplete ? "[green]●[/]" : "[dim]○[/]";
-            var detail = string.Empty;
             if (treeComplete)
             {
+                // Resolved: show ● with timestamp, file count, and size (once chunk resolution sets it)
                 var ts = state.SnapshotTimestamp;
                 var tsStr = ts.HasValue ? ts.Value.ToString("o") : "?";
                 var fileCount = total;
-                var sizeStr = state.RestoreTotalOriginalSize.Bytes().Humanize();
-                detail = $"{tsStr} ({fileCount:N0} files, {sizeStr})";
+                var sizeTotal = state.RestoreTotalOriginalSize;
+                var detail = sizeTotal > 0
+                    ? $"{tsStr} ({fileCount:N0} files, {sizeTotal.Bytes().Humanize()})"
+                    : $"{tsStr} ({fileCount:N0} files)";
+                lines.Add(new Markup($"  [green]●[/] Resolved     {Markup.Escape(detail)}"));
             }
-            lines.Add(new Markup($"  {resolvedSymbol} Resolved     {Markup.Escape(detail)}"));
+            else
+            {
+                // Resolving: show ○ with live file count
+                var discovered = state.RestoreFilesDiscovered;
+                var detail = discovered > 0 ? $"{discovered:N0} files..." : string.Empty;
+                lines.Add(new Markup($"  [dim]○[/] Resolving    {Markup.Escape(detail)}"));
+            }
         }
 
-        // ── Stage 2: Checked ──────────────────────────────────────────────────
-        // [dim]○[/] initially, [yellow]○[/] during disposition, [green]●[/] when done.
-        // "Done" is detected when the first download event arrives or chunk resolution completes.
+        // ── Stage 2: Checking / Checked ───────────────────────────────────────
         {
             var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
                             + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
             var dispositionStarted = dispTotal > 0;
-            // Checked is complete when chunk resolution has happened (ChunkGroups > 0)
-            // or when restoring has started (files being restored/skipped).
             var checkedComplete = state.ChunkGroups > 0 || done > 0;
 
             string checkedSymbol;
@@ -1158,39 +1193,73 @@ public static class CliBuilder
         }
 
         // ── Stage 3: Restoring ────────────────────────────────────────────────
-        // [dim]○[/] initially, [yellow]○[/] during downloads, [green]●[/] when all done.
         {
             string restoringSymbol;
             if (allDone)
                 restoringSymbol = "[green]●[/]";
-            else if (done > 0)
+            else if (done > 0 || state.RestoreBytesDownloaded > 0)
                 restoringSymbol = "[yellow]○[/]";
             else
                 restoringSymbol = "[dim]○[/]";
 
             var countStr = total > 0 ? $"{done}/{total} files" : $"{done} files";
-            var bytesStr = state.RestoreTotalOriginalSize > 0
-                ? $"  ({state.BytesRestored.Bytes().Humanize()} / {state.RestoreTotalOriginalSize.Bytes().Humanize()})"
-                : string.Empty;
-            lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}{bytesStr}"));
-            lines.Add(new Markup($"    Restored:    {restored}  ({state.BytesRestored.Bytes().Humanize()})"));
-            lines.Add(new Markup($"    Skipped:     {skipped}  ({state.BytesSkipped.Bytes().Humanize()})"));
+
+            var totalCompressed = state.RestoreTotalCompressedBytes;
+            var bytesDownloaded = state.RestoreBytesDownloaded;
+            var totalOriginal   = state.RestoreTotalOriginalSize;
+
+            if (totalCompressed > 0)
+            {
+                // Show aggregate progress bar with dual byte counters
+                var fraction = (double)bytesDownloaded / totalCompressed;
+                var pct      = (int)Math.Round(fraction * 100);
+                var bar      = RenderProgressBar(fraction, 16);
+
+                var (dlCur, dlTot, dlUnit) = SplitSizePair(bytesDownloaded, totalCompressed);
+                var origStr = totalOriginal.Bytes().Humanize();
+
+                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%  ({dlCur} / {dlTot} {dlUnit} download, {origStr} original)"));
+            }
+            else
+            {
+                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}"));
+            }
         }
 
-        // ── Per-file tail (omitted on completion) ─────────────────────────────
-
+        // ── Active download table (replaces completed-file tail) ──────────────
         if (!allDone)
         {
-            var recent = state.RecentRestoreEvents.ToArray();
-            if (recent.Length > 0)
+            var activeDownloads = state.TrackedDownloads.Values.ToArray();
+            if (activeDownloads.Length > 0)
             {
                 lines.Add(new Markup(""));  // blank separator
-                foreach (var ev in recent)
+                foreach (var dl in activeDownloads)
                 {
-                    var sym      = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
-                    var path     = Markup.Escape(TruncateAndLeftJustify(ev.RelativePath, 40));
-                    var sizeStr  = Markup.Escape(ev.FileSize.Bytes().Humanize());
-                    lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
+                    var fraction = dl.CompressedSize > 0
+                        ? (double)dl.BytesDownloaded / dl.CompressedSize
+                        : 0.0;
+                    var pct      = (int)Math.Round(fraction * 100);
+                    var bar      = RenderProgressBar(fraction, 12);
+                    var name     = Markup.Escape(TruncateAndLeftJustify(dl.DisplayName, 35));
+                    var (cur, tot, unit) = SplitSizePair(dl.BytesDownloaded, dl.CompressedSize);
+
+                    lines.Add(new Markup($"    [dim]{name}[/]  {bar}  {pct}%  ({cur} / {tot} {unit})"));
+                }
+            }
+            else
+            {
+                // Fall back to recent restore events tail
+                var recent = state.RecentRestoreEvents.ToArray();
+                if (recent.Length > 0)
+                {
+                    lines.Add(new Markup(""));  // blank separator
+                    foreach (var ev in recent)
+                    {
+                        var sym      = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
+                        var path     = Markup.Escape(TruncateAndLeftJustify(ev.RelativePath, 40));
+                        var sizeStr  = Markup.Escape(ev.FileSize.Bytes().Humanize());
+                        lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
+                    }
                 }
             }
         }

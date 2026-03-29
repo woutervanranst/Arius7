@@ -359,8 +359,13 @@ public sealed class RestorePipelineHandler
 
                     bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
 
+                    // Compute total original size: for large files it's a single entry, for tar bundles sum all files
+                    var originalSize = isLargeChunk
+                        ? indexEntry.OriginalSize
+                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.OriginalSize : 0);
+
                     _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize.Bytes().Humanize());
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize), ct);
+                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, indexEntry.CompressedSize, originalSize), ct);
 
                     if (isLargeChunk)
                     {
