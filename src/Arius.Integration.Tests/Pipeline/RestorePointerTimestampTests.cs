@@ -73,14 +73,22 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
             File.Exists(pointerPath).ShouldBeTrue($"Pointer should exist: {relPath}");
 
             // Binary timestamps should match the originals
-            File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
-                $"Binary CreationTimeUtc for {relPath}");
+            // Note: CreationTimeUtc is not reliably settable on Linux (ext4 has no birth time),
+            // so only assert it on Windows/macOS.
+            if (!OperatingSystem.IsLinux())
+            {
+                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
+                    $"Binary CreationTimeUtc for {relPath}");
+            }
             File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified,
                 $"Binary LastWriteTimeUtc for {relPath}");
 
             // Pointer timestamps should match the binary
-            File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
-                $"Pointer CreationTimeUtc should match binary for {relPath}");
+            if (!OperatingSystem.IsLinux())
+            {
+                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
+                    $"Pointer CreationTimeUtc should match binary for {relPath}");
+            }
             File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified,
                 $"Pointer LastWriteTimeUtc should match binary for {relPath}");
         }
@@ -139,14 +147,22 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         File.ReadAllBytes(restoredPath).ShouldBe(content);
 
         // Binary timestamps should match the originals
-        File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
-            "Binary CreationTimeUtc");
+        // Note: CreationTimeUtc is not reliably settable on Linux (ext4 has no birth time),
+        // so only assert it on Windows/macOS.
+        if (!OperatingSystem.IsLinux())
+        {
+            File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
+                "Binary CreationTimeUtc");
+        }
         File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified,
             "Binary LastWriteTimeUtc");
 
         // Pointer timestamps should match the binary
-        File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
-            "Pointer CreationTimeUtc should match binary");
+        if (!OperatingSystem.IsLinux())
+        {
+            File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
+                "Pointer CreationTimeUtc should match binary");
+        }
         File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified,
             "Pointer LastWriteTimeUtc should match binary");
     }
