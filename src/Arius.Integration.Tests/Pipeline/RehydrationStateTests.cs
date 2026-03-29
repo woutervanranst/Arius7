@@ -274,6 +274,70 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         sim.CopyCalls.ShouldBeEmpty("rehydrated blob already exists, no copy should be issued");
     }
 
+    // ── Cleanup prompt should appear even when all files are identical (nothing to restore) ──
+
+    [Test]
+    public async Task Restore_Cleanup_PromptsWhenAllFilesIdentical()
+    {
+        var (fix, sim, chunkBlobName) = await SetupArchivedFixtureAsync(azurite);
+        await using var _ = fix;
+
+        var chunkHash = chunkBlobName[BlobPaths.Chunks.Length..];
+        var rehydratedBlobName = BlobPaths.ChunkRehydrated(chunkHash);
+
+        // First restore: get the file on disk so the second restore sees it as identical.
+        var firstResult = await MakeRestoreHandler(sim, fix)
+            .Handle(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fix.RestoreRoot,
+                Overwrite     = false,
+            }), default).AsTask();
+        firstResult.Success.ShouldBeTrue(firstResult.ErrorMessage);
+        firstResult.FilesRestored.ShouldBe(1);
+
+        // Sideload a rehydrated blob (simulating a completed rehydration from a previous run)
+        await using (var srcStream = await fix.BlobStorage.DownloadAsync(chunkBlobName))
+        {
+            using var ms = new MemoryStream();
+            await srcStream.CopyToAsync(ms);
+            ms.Position = 0;
+            var origMeta = await fix.BlobStorage.GetMetadataAsync(chunkBlobName);
+            await fix.BlobStorage.UploadAsync(rehydratedBlobName, ms, origMeta.Metadata, BlobTier.Hot);
+        }
+
+        // Now run restore again — all files are identical, nothing to restore.
+        // But the cleanup prompt should still appear because there is a rehydrated blob.
+        bool cleanupInvoked = false;
+        int  cleanupCount   = 0;
+
+        var secondResult = await MakeRestoreHandler(sim, fix)
+            .Handle(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory  = fix.RestoreRoot,
+                Overwrite      = false,
+                ConfirmCleanup = (count, bytes, ct) =>
+                {
+                    cleanupInvoked = true;
+                    cleanupCount   = count;
+                    return Task.FromResult(true);
+                },
+            }), default).AsTask();
+
+        secondResult.Success.ShouldBeTrue(secondResult.ErrorMessage);
+        secondResult.FilesRestored.ShouldBe(0, "all files are identical, nothing to restore");
+        secondResult.FilesSkipped.ShouldBe(1, "one file should be skipped as identical");
+
+        // Cleanup MUST be invoked even though no files were restored
+        cleanupInvoked.ShouldBeTrue("ConfirmCleanup should be called even when all files are skipped");
+        cleanupCount.ShouldBe(1, "cleanup should report the rehydrated blob");
+
+        // After cleanup, no rehydrated blobs should remain
+        var rehydratedAfter = new List<string>();
+        await foreach (var name in fix.BlobStorage.ListAsync(BlobPaths.ChunksRehydrated))
+            rehydratedAfter.Add(name);
+        rehydratedAfter.ShouldBeEmpty("rehydrated blob should be deleted after cleanup");
+    }
+
     // ── Cleanup should delete ALL rehydrated blobs, not just those used by the current restore ──
 
     [Test]

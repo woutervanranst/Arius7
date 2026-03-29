@@ -166,16 +166,11 @@ public sealed class RestorePipelineHandler
                 toRestore.Add(file);
             }
 
-            if (toRestore.Count == 0)
+            int filesRestored    = 0;
+            int totalPending     = 0;
+
+            if (toRestore.Count > 0)
             {
-                return new RestoreResult
-                {
-                    Success             = true,
-                    FilesRestored       = 0,
-                    FilesSkipped        = skipped,
-                    ChunksPendingRehydration = 0,
-                };
-            }
 
             // ── Step 4: Chunk resolution ──────────────────────────────────────
 
@@ -309,8 +304,6 @@ public sealed class RestorePipelineHandler
 
             // ── Step 7: Phase 1 — download available chunks ───────────────────
 
-            int filesRestored = 0;
-
             // Download both directly-available and already-rehydrated chunks
             foreach (var chunkHash in available.Concat(rehydrated))
             {
@@ -386,7 +379,9 @@ public sealed class RestorePipelineHandler
                 await _mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
             }
 
-            int totalPending = chunksToRehydrate;
+            totalPending = chunksToRehydrate;
+
+            } // end if (toRestore.Count > 0)
 
             // ── Step 9 (task 10.10): Cleanup ALL rehydrated blobs in the container ─
 
