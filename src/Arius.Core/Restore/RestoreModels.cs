@@ -51,12 +51,6 @@ public sealed record RestoreOptions
     /// </summary>
     public Func<string, long, DownloadKind, IProgress<long>>? CreateDownloadProgress { get; init; }
 
-    /// <summary>
-    /// Optional metadata supplier for tar bundle display labels.
-    /// Parameters: (chunkHash) => (fileCount, originalSize). Called when <see cref="CreateDownloadProgress"/>
-    /// is not null and a tar bundle download starts, so the CLI can build "TAR bundle (N files, X)" labels.
-    /// </summary>
-    public Func<string, (int fileCount, long originalSize)>? GetTarBundleMetadata { get; init; }
 }
 
 /// <summary>
