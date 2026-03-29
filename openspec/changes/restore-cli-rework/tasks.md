@@ -56,12 +56,12 @@
 
 ## 8. Rework BuildRestoreDisplay
 
-- [ ] 8.1 Rewrite `BuildRestoreDisplay` with 3-stage layout: Resolved (snapshot info + size), Checked (disposition tallies), Restoring (files + bytes progress)
-- [ ] 8.2 Add tail lines showing 10 most recent `RestoreFileEvent` entries
-- [ ] 8.3 Wire `BuildRestoreDisplay` into the `AnsiConsole.Live()` loop in `BuildRestoreCommand`
+- [x] 8.1 Rewrite `BuildRestoreDisplay` with 3-stage layout: Resolved (snapshot info + size), Checked (disposition tallies), Restoring (files + bytes progress)
+- [x] 8.2 Add tail lines showing 10 most recent `RestoreFileEvent` entries
+- [x] 8.3 Wire `BuildRestoreDisplay` into the `AnsiConsole.Live()` loop in `BuildRestoreCommand`
 
 ## 9. Tests and Verification
 
-- [ ] 9.1 Add `ProgressTests` for new restore handlers (disposition, snapshot, tree, chunk, rehydration)
-- [ ] 9.2 Run all tests (`dotnet test`) and fix any failures
-- [ ] 9.3 Run build (`dotnet build`) and fix any compilation errors
+- [x] 9.1 Add `ProgressTests` for new restore handlers (disposition, snapshot, tree, chunk, rehydration)
+- [x] 9.2 Run all tests (`dotnet test`) and fix any failures
+- [x] 9.3 Run build (`dotnet build`) and fix any compilation errors

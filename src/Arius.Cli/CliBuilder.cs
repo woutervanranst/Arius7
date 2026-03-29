@@ -1103,13 +1103,11 @@ public static class CliBuilder
 
     /// <summary>
     /// Builds the restore display renderable as a pure function of <see cref="ProgressState"/>.
-    /// Returns a <see cref="Rows"/> containing a stage header (4 lines) followed by a tail of
-    /// up to 10 recent file events. When all files are done the tail is omitted.
-    /// <summary>
-    /// Builds a Spectre.Console renderable that visualizes restore progress and recent restore events.
+    /// Returns a <see cref="Rows"/> with three stage headers (Resolved, Checked, Restoring)
+    /// followed by a tail of up to 10 recent file events. When all files are done the tail is omitted.
     /// </summary>
-    /// <param name="state">The current restore progress state containing totals, counts, byte summaries, rehydration info, and recent events.</param>
-    /// <returns>An <see cref="IRenderable"/> that displays stage headers (Restored/Skipped/Rehydrating) and, while not complete, a tail of recent file restore events.</returns>
+    /// <param name="state">The current restore progress state.</param>
+    /// <returns>An <see cref="IRenderable"/> that displays the 3-stage restore progress and recent file events.</returns>
     internal static IRenderable BuildRestoreDisplay(ProgressState state)
     {
         var lines = new List<IRenderable>();
@@ -1118,23 +1116,70 @@ public static class CliBuilder
         var restored = state.FilesRestored;
         var skipped  = state.FilesSkipped;
         var done     = restored + skipped;
-        var complete = total > 0 && done >= total;
+        var allDone  = total > 0 && done >= total;
 
-        // ── Stage header ──────────────────────────────────────────────────────
+        // ── Stage 1: Resolved ─────────────────────────────────────────────────
+        // [dim]○[/] initially, [green]●[/] when TreeTraversalComplete fires.
+        {
+            var treeComplete = state.TreeTraversalComplete;
+            var resolvedSymbol = treeComplete ? "[green]●[/]" : "[dim]○[/]";
+            var detail = string.Empty;
+            if (treeComplete)
+            {
+                var ts = state.SnapshotTimestamp;
+                var tsStr = ts.HasValue ? ts.Value.ToString("o") : "?";
+                var fileCount = total;
+                var sizeStr = state.RestoreTotalOriginalSize.Bytes().Humanize();
+                detail = $"{tsStr} ({fileCount:N0} files, {sizeStr})";
+            }
+            lines.Add(new Markup($"  {resolvedSymbol} Resolved     {Markup.Escape(detail)}"));
+        }
 
-        var symbol = complete ? "[green]●[/]" : "[yellow]○[/]";
-        var countStr = total > 0 ? $"{done}/{total}" : $"{done}...";
-        lines.Add(new Markup($"  {symbol} Restoring  {countStr} files"));
+        // ── Stage 2: Checked ──────────────────────────────────────────────────
+        // [dim]○[/] initially, [yellow]○[/] during disposition, [green]●[/] when done.
+        // "Done" is detected when the first download event arrives or chunk resolution completes.
+        {
+            var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
+                            + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
+            var dispositionStarted = dispTotal > 0;
+            // Checked is complete when chunk resolution has happened (ChunkGroups > 0)
+            // or when restoring has started (files being restored/skipped).
+            var checkedComplete = state.ChunkGroups > 0 || done > 0;
 
-        lines.Add(new Markup($"    Restored:    {restored}  ({state.BytesRestored.Bytes().Humanize()})"));
-        lines.Add(new Markup($"    Skipped:     {skipped}  ({state.BytesSkipped.Bytes().Humanize()})"));
+            string checkedSymbol;
+            if (checkedComplete && dispositionStarted)
+                checkedSymbol = "[green]●[/]";
+            else if (dispositionStarted)
+                checkedSymbol = "[yellow]○[/]";
+            else
+                checkedSymbol = "[dim]○[/]";
 
-        if (state.RehydrationChunkCount > 0)
-            lines.Add(new Markup($"    Rehydrating: {state.RehydrationChunkCount} chunks ({state.RehydrationTotalBytes.Bytes().Humanize()})"));
+            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew} new, {state.DispositionSkipIdentical} identical, {state.DispositionOverwrite} overwrite, {state.DispositionKeepLocalDiffers} kept"));
+        }
+
+        // ── Stage 3: Restoring ────────────────────────────────────────────────
+        // [dim]○[/] initially, [yellow]○[/] during downloads, [green]●[/] when all done.
+        {
+            string restoringSymbol;
+            if (allDone)
+                restoringSymbol = "[green]●[/]";
+            else if (done > 0)
+                restoringSymbol = "[yellow]○[/]";
+            else
+                restoringSymbol = "[dim]○[/]";
+
+            var countStr = total > 0 ? $"{done}/{total} files" : $"{done} files";
+            var bytesStr = state.RestoreTotalOriginalSize > 0
+                ? $"  ({state.BytesRestored.Bytes().Humanize()} / {state.RestoreTotalOriginalSize.Bytes().Humanize()})"
+                : string.Empty;
+            lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}{bytesStr}"));
+            lines.Add(new Markup($"    Restored:    {restored}  ({state.BytesRestored.Bytes().Humanize()})"));
+            lines.Add(new Markup($"    Skipped:     {skipped}  ({state.BytesSkipped.Bytes().Humanize()})"));
+        }
 
         // ── Per-file tail (omitted on completion) ─────────────────────────────
 
-        if (!complete)
+        if (!allDone)
         {
             var recent = state.RecentRestoreEvents.ToArray();
             if (recent.Length > 0)
