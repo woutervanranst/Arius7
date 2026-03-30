@@ -1,9 +1,9 @@
 ## ADDED Requirements
 
 ### Requirement: TrackedDownload state entity
-`ProgressState` SHALL maintain a `ConcurrentDictionary<string, TrackedDownload>` keyed by chunk hash for tracking active restore downloads. `TrackedDownload` SHALL contain:
+`ProgressState` SHALL maintain a `ConcurrentDictionary<string, TrackedDownload>` keyed by identifier (RelativePath for large files, chunk hash for tar bundles) for tracking active restore downloads. `TrackedDownload` SHALL contain:
 
-- `Key` (string) -- chunk hash, used as dictionary key
+- `Key` (string) -- identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles
 - `Kind` (`DownloadKind` enum) -- `LargeFile` or `TarBundle`
 - `DisplayName` (string) -- file relative path for large files, `"TAR bundle (N files, X)"` for tar bundles
 - `CompressedSize` (long) -- total compressed download size in bytes
@@ -14,9 +14,9 @@
 
 #### Scenario: Large file tracked download lifecycle
 - **WHEN** `CreateDownloadProgress("photos/sunset.jpg", 25_400_000, LargeFile)` is called
-- **THEN** a `TrackedDownload` SHALL be added with `Key` = chunk hash, `Kind = LargeFile`, `DisplayName = "photos/sunset.jpg"`, `CompressedSize = 25_400_000`
+- **THEN** a `TrackedDownload` SHALL be added with `Key = "photos/sunset.jpg"`, `Kind = LargeFile`, `DisplayName = "photos/sunset.jpg"`, `CompressedSize = 25_400_000`
 - **WHEN** `FileRestoredEvent("photos/sunset.jpg", ...)` is published
-- **THEN** the `TrackedDownload` SHALL be removed from the dictionary
+- **THEN** the `TrackedDownload` SHALL be removed from the dictionary by direct key lookup on `notification.RelativePath`
 
 #### Scenario: Tar bundle tracked download lifecycle
 - **WHEN** `CreateDownloadProgress("ab12cd34", 15_200_000, TarBundle)` is called with metadata (3 files, 847 KB original)
@@ -173,9 +173,9 @@ RestoreFileEvent(string RelativePath, long FileSize, bool Skipped)
 - After traversal: `● Resolved  <timestamp> (N files)` initially without size
 - After chunk resolution: `● Resolved  <timestamp> (N files, X)` with total original size appended
 
-**Stage 2: Checking/Checked**
-- Before any dispositions: `○ Checking`
-- During conflict check: `○ Checking  N new, M identical, ...` with ticking counters
+**Stage 2: Checked**
+- Before any dispositions: `○ Checked`
+- During conflict check: `○ Checked  N new, M identical, ...` with ticking counters
 - After chunk resolution or first download: `● Checked  N new, M identical, O overwrite, P kept`
 
 **Stage 3: Restoring**

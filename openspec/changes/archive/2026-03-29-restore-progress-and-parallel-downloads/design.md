@@ -44,7 +44,7 @@ For large files, `identifier` is the file's `RelativePath`. For tar bundles, `id
 Rather than separate `TrackedLargeFile` and `TrackedTar` entities (like archive's `TrackedFile` vs `TrackedTar`), use a single `TrackedDownload` with a `Kind` discriminator. Restore downloads have a simpler lifecycle than archive (just `Downloading → Done`), so a unified type reduces complexity.
 
 Fields:
-- `Key` (string) -- unique identifier for the dictionary (chunk hash)
+- `Key` (string) -- unique identifier for the dictionary (RelativePath for large files, chunk hash for tar bundles)
 - `Kind` (DownloadKind) -- `LargeFile` or `TarBundle`
 - `DisplayName` (string) -- file path for large files, "TAR bundle (N files, X)" for tars
 - `CompressedSize` (long) -- total download size
@@ -53,7 +53,7 @@ Fields:
 
 ### Decision 4: Tree traversal progress via file-count event
 
-Emit `FileDiscoveredDuringTraversalEvent(int cumulativeCount)` each time a file entry is added during `WalkTreeAsync`. The CLI handler updates a counter displayed as `○ Resolving  523 files...`. After traversal completes, the existing `TreeTraversalCompleteEvent` fires and the display transitions to `● Resolved ... (1,247 files)`.
+Emit `TreeTraversalProgressEvent(int FilesFound)` periodically during `WalkTreeAsync` with the cumulative count of files discovered. The CLI handler updates a counter displayed as `○ Resolving  523 files...`. After traversal completes, the existing `TreeTraversalCompleteEvent` fires and the display transitions to `● Resolved ... (1,247 files)`.
 
 To avoid excessive event overhead (one per file), batch the event: emit every N files (e.g., every 10 or every 100ms elapsed). A simple counter with periodic publish keeps I/O overhead negligible.
 
@@ -75,7 +75,7 @@ Replace `int filesRestored` with a shared `long` updated via `Interlocked.Increm
 
 ### Decision 8: Display layout for the Restoring phase
 
-```
+```text
   ○ Restoring   312/847 files  ████████░░░░░░░░  38%  (3.17 / 8.31 GB download, 14.2 GB original)
 
   vacation/photos/sunset.jpg

@@ -102,7 +102,7 @@ The deadlock occurs when:
 **Fix**: After the live display loop exits AND `pipelineTask` is not yet complete, always check `cleanupQuestionTcs` before awaiting `pipelineTask`. This applies in both the "no rehydration" path and the "post-rehydration download" path.
 
 Simplified structure:
-```
+```text
 // After any live display loop exits:
 if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
 {
@@ -115,7 +115,7 @@ await pipelineTask;
 
 The reworked `BuildRestoreDisplay` will show:
 
-```
+```text
   ● Resolved     2026-03-28T14:00:00Z (9 files, 6.91 MB)
   ● Checked      9 new, 0 identical, 0 overwrite, 0 kept
   ◐ Restoring    7/9 files  (4.23 / 6.91 MB)

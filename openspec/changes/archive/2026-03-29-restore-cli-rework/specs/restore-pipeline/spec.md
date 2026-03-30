@@ -39,9 +39,11 @@ Restore SHALL be fully idempotent. Re-running the same restore command SHALL: sk
 - `ChunkResolutionCompleteEvent(ChunkGroups, LargeCount, TarCount)` after chunk index lookup
 - `RehydrationStatusEvent(Available, Rehydrated, NeedsRehydration, Pending)` after rehydration check
 - `ChunkDownloadStartedEvent(ChunkHash, Type, FileCount, CompressedSize)` when chunk download begins
+- `ChunkDownloadCompletedEvent(ChunkHash, FilesRestored, CompressedSize)` after each chunk download completes
 - `CleanupCompleteEvent(ChunksDeleted, BytesFreed)` after cleanup
+- `TreeTraversalProgressEvent(FilesFound)` periodically during tree traversal
 
-Every `_mediator.Publish()` call SHALL be accompanied by a corresponding `_logger.Log*()` call at the same site, mirroring the archive pipeline pattern.
+Stage-level and aggregate `_mediator.Publish()` calls (e.g., `SnapshotResolvedEvent`, `TreeTraversalCompleteEvent`, `ChunkResolutionCompleteEvent`, `RehydrationStatusEvent`, `ChunkDownloadStartedEvent`, `CleanupCompleteEvent`) SHALL be accompanied by a corresponding `_logger.LogInformation()` call at the same site, mirroring the archive pipeline pattern. High-volume per-item events (`FileRestoredEvent`, `FileSkippedEvent`, `TreeTraversalProgressEvent`) are exempt from `LogInformation` pairing; these MAY use `LogDebug` instead to avoid log spam.
 
 `FileRestoredEvent` and `FileSkippedEvent` SHALL carry `long FileSize` (the file's uncompressed size in bytes) so the CLI can accumulate bytes-restored/skipped and show per-file sizes in the restore tail display.
 
