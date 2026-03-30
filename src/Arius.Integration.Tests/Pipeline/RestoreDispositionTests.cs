@@ -79,6 +79,11 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
                 e.RelativePath == "test.txt" &&
                 e.Disposition == RestoreDisposition.KeepLocalDiffers),
             Arg.Any<CancellationToken>());
+
+        // Verify exactly 1 FileSkippedEvent was published with the file's size
+        await fix.Mediator.Received(1).Publish(
+            Arg.Is<FileSkippedEvent>(e => e.RelativePath == "test.txt" && e.FileSize > 0),
+            Arg.Any<CancellationToken>());
     }
 
     // ── SkipIdentical: file exists, hash matches → skip ──
