@@ -43,6 +43,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // The local file should NOT have been overwritten
         File.ReadAllBytes(restoredPath).ShouldBe(localContent);
         restoreResult.FilesRestored.ShouldBe(0);
+        restoreResult.FilesSkipped.ShouldBe(1, "KeepLocalDiffers files should be counted as skipped");
     }
 
     [Test]

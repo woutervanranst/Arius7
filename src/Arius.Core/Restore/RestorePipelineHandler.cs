@@ -148,6 +148,8 @@ public sealed class RestorePipelineHandler
 
                         // File exists with different hash, no --overwrite → keep local
                         _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                        skipped++;
+                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
                         await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
                         continue;
                     }
@@ -536,13 +538,17 @@ public sealed class RestorePipelineHandler
             {
                 lastEmitCount = result.Count;
                 lastEmit = now;
+                _logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", result.Count);
                 await _mediator.Publish(new TreeTraversalProgressEvent(result.Count), cancellationToken);
             }
         });
 
         // Emit final progress event to ensure the last count is reported
         if (result.Count > lastEmitCount)
+        {
+            _logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", result.Count);
             await _mediator.Publish(new TreeTraversalProgressEvent(result.Count), cancellationToken);
+        }
 
         return result;
     }

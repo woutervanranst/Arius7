@@ -209,14 +209,14 @@ Restore SHALL be fully idempotent. Re-running the same restore command SHALL: sk
 - `SnapshotResolvedEvent(Timestamp, RootHash, FileCount)` after snapshot resolution
 - `TreeTraversalCompleteEvent(FileCount, TotalOriginalSize)` after tree walk
 - `FileDispositionEvent(RelativePath, Disposition, FileSize)` for each file's disposition decision
-- `ChunkResolutionCompleteEvent(ChunkGroups, LargeCount, TarCount)` after chunk index lookup
+- `ChunkResolutionCompleteEvent(ChunkGroups, LargeCount, TarCount, TotalOriginalBytes, TotalCompressedBytes)` after chunk index lookup
 - `RehydrationStatusEvent(Available, Rehydrated, NeedsRehydration, Pending)` after rehydration check
-- `ChunkDownloadStartedEvent(ChunkHash, Type, FileCount, CompressedSize)` when chunk download begins
+- `ChunkDownloadStartedEvent(ChunkHash, Type, FileCount, CompressedSize, OriginalSize)` when chunk download begins
 - `CleanupCompleteEvent(ChunksDeleted, BytesFreed)` after cleanup
 - `TreeTraversalProgressEvent(FilesFound)` periodically during tree traversal
 - `ChunkDownloadCompletedEvent(ChunkHash, FilesRestored, CompressedSize)` after each tar bundle download completes
 
-Every `_mediator.Publish()` call SHALL be accompanied by a corresponding `_logger.Log*()` call at the same site, mirroring the archive pipeline pattern.
+Stage-level and aggregate `_mediator.Publish()` calls (e.g., `SnapshotResolvedEvent`, `TreeTraversalCompleteEvent`, `ChunkResolutionCompleteEvent`, `RehydrationStatusEvent`, `ChunkDownloadStartedEvent`, `CleanupCompleteEvent`) SHALL be accompanied by a corresponding `_logger.LogInformation()` call at the same site, mirroring the archive pipeline pattern. High-volume per-item events (`FileRestoredEvent`, `FileSkippedEvent`, `TreeTraversalProgressEvent`) are exempt from `LogInformation` pairing; these MAY use `LogDebug` instead to avoid log spam.
 
 `FileRestoredEvent` and `FileSkippedEvent` SHALL carry `long FileSize` (the file's uncompressed size in bytes) so the CLI can accumulate bytes-restored/skipped and show per-file sizes in the restore tail display.
 
@@ -252,7 +252,7 @@ Every `_mediator.Publish()` call SHALL be accompanied by a corresponding `_logge
 
 #### Scenario: Chunk download start event
 - **WHEN** a chunk download begins
-- **THEN** the system SHALL publish `ChunkDownloadStartedEvent` with the chunk hash, type (large/tar), number of files in the chunk, and compressed size, and log at Information level with `[download]` scope
+- **THEN** the system SHALL publish `ChunkDownloadStartedEvent` with the chunk hash, type (large/tar), number of files in the chunk, compressed size, and original size, and log at Information level with `[download]` scope
 
 #### Scenario: Cleanup complete event
 - **WHEN** rehydrated blob cleanup finishes

@@ -8,6 +8,8 @@
 - [x] 1.6 Add `RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification` to `RestoreModels.cs`
 - [x] 1.7 Add `ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize) : INotification` to `RestoreModels.cs`
 - [x] 1.8 Add `CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification` to `RestoreModels.cs`
+- [x] 1.9 Add `TreeTraversalProgressEvent(int FilesFound) : INotification` to `RestoreModels.cs`
+- [x] 1.10 Add `ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize) : INotification` to `RestoreModels.cs`
 
 ## 2. Disposition Bug Fix (TDD)
 
@@ -48,6 +50,8 @@
 - [x] 6.5 Add `RehydrationStatusHandler` in `ProgressHandlers.cs`
 - [x] 6.6 Add `ChunkDownloadStartedHandler` in `ProgressHandlers.cs` (no-op or log for now)
 - [x] 6.7 Add `CleanupCompleteHandler` in `ProgressHandlers.cs` (no-op or log for now)
+- [x] 6.8 Add `TreeTraversalProgressHandler` in `ProgressHandlers.cs` — sets `RestoreFilesDiscovered` from batched progress event
+- [x] 6.9 Add `ChunkDownloadCompletedHandler` in `ProgressHandlers.cs` — removes `TrackedDownload` entry and increments `RestoreBytesDownloaded`
 
 ## 7. TCS Deadlock Fix (TDD)
 
