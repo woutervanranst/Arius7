@@ -1839,11 +1839,6 @@ public class BuildRestoreDisplayTests
     }
 
     [Test]
-    public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
-    {
-    }
-
-    [Test]
     public void BuildRestoreDisplay_ZeroFileRestore_ShowsAllGreenBullets()
     {
         // A snapshot with 0 files — tree traversal completes, no dispositions, no downloads.
