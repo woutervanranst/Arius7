@@ -380,6 +380,7 @@ public static class CliBuilder
 
             var services = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
             var mediator = services.GetRequiredService<IMediator>();
+            var restoreProgress = services.GetRequiredService<ProgressState>();
 
             // ── TCS pairs for thread-safe phase coordination ──────────────────
             // The pipeline runs on a background task; its callbacks signal these TCS pairs.
@@ -411,12 +412,43 @@ public static class CliBuilder
                     cleanupQuestionTcs.TrySetResult((count, bytes));
                     return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                 },
+
+                // Wire byte-level download progress into ProgressState (tasks 6.1 / 6.2).
+                // ChunkDownloadStartedHandler has already stored tar bundle metadata in
+                // TarBundleMetadata before this callback is invoked (Mediator publish is sync).
+                CreateDownloadProgress = (identifier, compressedSize, kind) =>
+                {
+                    string displayName;
+                    long originalSize = 0;
+
+                    if (kind == Core.Restore.DownloadKind.TarBundle)
+                    {
+                        // Look up metadata stored by ChunkDownloadStartedHandler
+                        if (restoreProgress.TarBundleMetadata.TryGetValue(identifier, out var meta))
+                        {
+                            displayName  = $"TAR bundle ({meta.FileCount} files, {meta.OriginalSize.Bytes().Humanize()})";
+                            originalSize = meta.OriginalSize;
+                        }
+                        else
+                        {
+                            displayName = $"TAR bundle ({identifier[..8]}...)";
+                        }
+                    }
+                    else
+                    {
+                        displayName = identifier; // relative path for large files
+                    }
+
+                    var tracked = new TrackedDownload(identifier, kind, displayName, compressedSize, originalSize);
+                    restoreProgress.TrackedDownloads[identifier] = tracked;
+
+                    return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                },
             };
 
             RestoreResult? result = null;
             if (AnsiConsole.Console.Profile.Capabilities.Interactive)
             {
-                var restoreProgress = services.GetRequiredService<ProgressState>();
 
                 // ── Phase 1 + 3: Download progress display ────────────────────
                 // Wrap the entire download flow in a Progress display so files being
@@ -435,11 +467,11 @@ public static class CliBuilder
                     .AutoClear(false)
                     .StartAsync(async ctx =>
                     {
-                        // Poll until either pipeline completes or a rehydration question arrives.
-                        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted)
+                        // Poll until either pipeline completes, a rehydration question, or a cleanup question arrives.
+                        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
                         {
                             ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                            await Task.WhenAny(pipelineTask, questionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
+                            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
                         }
 
                         // Final update before exiting.
@@ -448,115 +480,138 @@ public static class CliBuilder
 
                 if (!pipelineTask.IsCompleted)
                 {
-                    // ── Phase 2: Rehydration question — render prompt on clean console ─
-                    var estimate = await questionTcs.Task.ConfigureAwait(false);
-
-                    // ── Chunk availability summary table ──────────────────────
-                    var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
-                    summaryTable.AddColumn("Category");
-                    summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
-                    summaryTable.AddColumn(new TableColumn("Size").RightAligned());
-
-                    summaryTable.AddRow("Available (Hot/Cool)",
-                        estimate.ChunksAvailable.ToString(),
-                        estimate.DownloadBytes.Bytes().Humanize());
-                    summaryTable.AddRow("Already rehydrated",
-                        estimate.ChunksAlreadyRehydrated.ToString(),
-                        "-");
-                    summaryTable.AddRow("[yellow]Needs rehydration[/]",
-                        estimate.ChunksNeedingRehydration.ToString(),
-                        estimate.RehydrationBytes.Bytes().Humanize());
-                    summaryTable.AddRow("[dim]Rehydration pending[/]",
-                        estimate.ChunksPendingRehydration.ToString(),
-                        "-");
-                    AnsiConsole.Write(summaryTable);
-
-                    RehydratePriority? priority;
-                    if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
+                    // Check if cleanup question arrived (without rehydration being needed)
+                    if (!questionTcs.Task.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
                     {
-                        priority = RehydratePriority.Standard;
-                    }
-                    else
-                    {
-                        // ── Per-component cost breakdown table ────────────────
-                        var costTable = new Table();
-                        costTable.AddColumn("Cost Component");
-                        costTable.AddColumn(new TableColumn("Standard").RightAligned());
-                        costTable.AddColumn(new TableColumn("High Priority").RightAligned());
-
-                        costTable.AddRow("Data retrieval",
-                            $"\u20ac {estimate.RetrievalCostStandard:F4}",
-                            $"\u20ac {estimate.RetrievalCostHigh:F4}");
-                        costTable.AddRow("Read operations",
-                            $"\u20ac {estimate.ReadOpsCostStandard:F4}",
-                            $"\u20ac {estimate.ReadOpsCostHigh:F4}");
-                        costTable.AddRow("Write operations",
-                            $"\u20ac {estimate.WriteOpsCost:F4}",
-                            $"\u20ac {estimate.WriteOpsCost:F4}");
-                        costTable.AddRow("Storage (1 month)",
-                            $"\u20ac {estimate.StorageCost:F4}",
-                            $"\u20ac {estimate.StorageCost:F4}");
-                        costTable.AddEmptyRow();
-                        costTable.AddRow("[bold]Total[/]",
-                            $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
-                            $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
-                        AnsiConsole.Write(costTable);
-
-                        var choice = AnsiConsole.Prompt(
-                            new SelectionPrompt<string>()
-                                .Title("Select rehydration priority (or cancel):")
-                                .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
-
-                        priority = choice switch
-                        {
-                            "Standard (~15h)" => RehydratePriority.Standard,
-                            "High (~1h)"      => RehydratePriority.High,
-                            _                 => (RehydratePriority?)null,
-                        };
-                    }
-
-                    // Unblock the pipeline callback with the user's answer
-                    answerTcs.TrySetResult(priority);
-
-                    if (priority is null)
-                    {
-                        // User cancelled; wait for pipeline to finish without showing progress
+                        // Handle cleanup prompt before awaiting pipelineTask to prevent deadlock.
+                        // This path fires when all chunks are already available: no rehydration
+                        // question, but ConfirmCleanup still fires for previously-rehydrated blobs.
+                        var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                        var doCleanup = AnsiConsole.Confirm(
+                            $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                        cleanupAnswerTcs.TrySetResult(doCleanup);
                         await pipelineTask.ConfigureAwait(false);
                     }
-                    else
+                    else if (questionTcs.Task.IsCompleted)
                     {
-                        // ── Phase 3: Download — show progress display ─────────
-                        await AnsiConsole.Live(new Markup(""))
-                            .Overflow(VerticalOverflow.Crop)
-                            .Cropping(VerticalOverflowCropping.Bottom)
-                            .AutoClear(false)
-                            .StartAsync(async ctx =>
-                            {
-                                while (!pipelineTask.IsCompleted)
-                                {
-                                    ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                                    await Task.WhenAny(pipelineTask, Task.Delay(100, ct)).ConfigureAwait(false);
-                                }
+                        // ── Phase 2: Rehydration question — render prompt on clean console ─
+                        var estimate = await questionTcs.Task.ConfigureAwait(false);
 
-                                await pipelineTask;
-                                ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
-                            });
+                        // ── Chunk availability summary table ──────────────────────
+                        var summaryTable = new Table().Title("[yellow]Rehydration Cost Estimate[/]");
+                        summaryTable.AddColumn("Category");
+                        summaryTable.AddColumn(new TableColumn("Chunks").RightAligned());
+                        summaryTable.AddColumn(new TableColumn("Size").RightAligned());
 
-                        // ── Phase 4: Cleanup question — after progress clears ─
-                        // pipelineTask is done at this point. If ConfirmCleanup was called,
-                        // cleanupQuestionTcs is already set. If not, it was never set — skip.
-                        if (cleanupQuestionTcs.Task.IsCompleted)
+                        summaryTable.AddRow("Available (Hot/Cool)",
+                            estimate.ChunksAvailable.ToString(),
+                            estimate.DownloadBytes.Bytes().Humanize());
+                        summaryTable.AddRow("Already rehydrated",
+                            estimate.ChunksAlreadyRehydrated.ToString(),
+                            "-");
+                        summaryTable.AddRow("[yellow]Needs rehydration[/]",
+                            estimate.ChunksNeedingRehydration.ToString(),
+                            estimate.RehydrationBytes.Bytes().Humanize());
+                        summaryTable.AddRow("[dim]Rehydration pending[/]",
+                            estimate.ChunksPendingRehydration.ToString(),
+                            "-");
+                        AnsiConsole.Write(summaryTable);
+
+                        RehydratePriority? priority;
+                        if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
                         {
-                            var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
-                            var doCleanup = AnsiConsole.Confirm(
-                                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
-                            cleanupAnswerTcs.TrySetResult(doCleanup);
+                            priority = RehydratePriority.Standard;
+                        }
+                        else
+                        {
+                            // ── Per-component cost breakdown table ────────────────
+                            var costTable = new Table();
+                            costTable.AddColumn("Cost Component");
+                            costTable.AddColumn(new TableColumn("Standard").RightAligned());
+                            costTable.AddColumn(new TableColumn("High Priority").RightAligned());
+
+                            costTable.AddRow("Data retrieval",
+                                $"\u20ac {estimate.RetrievalCostStandard:F4}",
+                                $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                            costTable.AddRow("Read operations",
+                                $"\u20ac {estimate.ReadOpsCostStandard:F4}",
+                                $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                            costTable.AddRow("Write operations",
+                                $"\u20ac {estimate.WriteOpsCost:F4}",
+                                $"\u20ac {estimate.WriteOpsCost:F4}");
+                            costTable.AddRow("Storage (1 month)",
+                                $"\u20ac {estimate.StorageCost:F4}",
+                                $"\u20ac {estimate.StorageCost:F4}");
+                            costTable.AddEmptyRow();
+                            costTable.AddRow("[bold]Total[/]",
+                                $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
+                                $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                            AnsiConsole.Write(costTable);
+
+                            var choice = AnsiConsole.Prompt(
+                                new SelectionPrompt<string>()
+                                    .Title("Select rehydration priority (or cancel):")
+                                    .AddChoices("Standard (~15h)", "High (~1h)", "Cancel"));
+
+                            priority = choice switch
+                            {
+                                "Standard (~15h)" => RehydratePriority.Standard,
+                                "High (~1h)"      => RehydratePriority.High,
+                                _                 => (RehydratePriority?)null,
+                            };
+                        }
+
+                        // Unblock the pipeline callback with the user's answer
+                        answerTcs.TrySetResult(priority);
+
+                        if (priority is null)
+                        {
+                            // User cancelled; wait for pipeline to finish without showing progress
+                            await pipelineTask.ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            // ── Phase 3: Download — show progress display ─────────
+                            await AnsiConsole.Live(new Markup(""))
+                                .Overflow(VerticalOverflow.Crop)
+                                .Cropping(VerticalOverflowCropping.Bottom)
+                                .AutoClear(false)
+                                .StartAsync(async ctx =>
+                                {
+                                    // Also monitor cleanupQuestionTcs to prevent deadlock
+                                    while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+                                    {
+                                        ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
+                                        await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(100, ct)).ConfigureAwait(false);
+                                    }
+
+                                    ctx.UpdateTarget(BuildRestoreDisplay(restoreProgress));
+                                });
+
+                            // ── Phase 4: Cleanup question — after progress clears ─
+                            // Handle cleanup if the question arrived (during or after download).
+                            if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+                            {
+                                var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                                var doCleanup = AnsiConsole.Confirm(
+                                    $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                                cleanupAnswerTcs.TrySetResult(doCleanup);
+                            }
+                            await pipelineTask.ConfigureAwait(false);
                         }
                     }
                 }
                 else
                 {
-                    // Pipeline completed without rehydration question (phase 1 progress already shown).
+                    // Pipeline completed during Phase 1 (no rehydration question needed).
+                    // Still check if cleanup question fired just before completion.
+                    if (cleanupQuestionTcs.Task.IsCompleted)
+                    {
+                        var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
+                        var doCleanup = AnsiConsole.Confirm(
+                            $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                        cleanupAnswerTcs.TrySetResult(doCleanup);
+                    }
                     await pipelineTask.ConfigureAwait(false);
                 }
             }
@@ -1080,13 +1135,11 @@ public static class CliBuilder
 
     /// <summary>
     /// Builds the restore display renderable as a pure function of <see cref="ProgressState"/>.
-    /// Returns a <see cref="Rows"/> containing a stage header (4 lines) followed by a tail of
-    /// up to 10 recent file events. When all files are done the tail is omitted.
-    /// <summary>
-    /// Builds a Spectre.Console renderable that visualizes restore progress and recent restore events.
+    /// Returns a <see cref="Rows"/> with three stage headers (Resolved, Checked, Restoring)
+    /// followed by a tail of up to 10 recent file events. When all files are done the tail is omitted.
     /// </summary>
-    /// <param name="state">The current restore progress state containing totals, counts, byte summaries, rehydration info, and recent events.</param>
-    /// <returns>An <see cref="IRenderable"/> that displays stage headers (Restored/Skipped/Rehydrating) and, while not complete, a tail of recent file restore events.</returns>
+    /// <param name="state">The current restore progress state.</param>
+    /// <returns>An <see cref="IRenderable"/> that displays the 3-stage restore progress and recent file events.</returns>
     internal static IRenderable BuildRestoreDisplay(ProgressState state)
     {
         var lines = new List<IRenderable>();
@@ -1095,34 +1148,154 @@ public static class CliBuilder
         var restored = state.FilesRestored;
         var skipped  = state.FilesSkipped;
         var done     = restored + skipped;
-        var complete = total > 0 && done >= total;
+        var allDone  = state.TreeTraversalComplete && done >= total;
 
-        // ── Stage header ──────────────────────────────────────────────────────
-
-        var symbol = complete ? "[green]●[/]" : "[yellow]○[/]";
-        var countStr = total > 0 ? $"{done}/{total}" : $"{done}...";
-        lines.Add(new Markup($"  {symbol} Restoring  {countStr} files"));
-
-        lines.Add(new Markup($"    Restored:    {restored}  ({state.BytesRestored.Bytes().Humanize()})"));
-        lines.Add(new Markup($"    Skipped:     {skipped}  ({state.BytesSkipped.Bytes().Humanize()})"));
-
-        if (state.RehydrationChunkCount > 0)
-            lines.Add(new Markup($"    Rehydrating: {state.RehydrationChunkCount} chunks ({state.RehydrationTotalBytes.Bytes().Humanize()})"));
-
-        // ── Per-file tail (omitted on completion) ─────────────────────────────
-
-        if (!complete)
+        // ── Stage 1: Resolving / Resolved ─────────────────────────────────────
         {
-            var recent = state.RecentRestoreEvents.ToArray();
-            if (recent.Length > 0)
+            var treeComplete = state.TreeTraversalComplete;
+            if (treeComplete)
+            {
+                // Resolved: show ● with timestamp, file count, and size (once chunk resolution sets it)
+                var ts = state.SnapshotTimestamp;
+                var tsStr = ts.HasValue ? ts.Value.ToString("o") : "?";
+                var fileCount = total;
+                var sizeTotal = state.RestoreTotalOriginalSize;
+                var detail = sizeTotal > 0
+                    ? $"{tsStr} ({fileCount:N0} files, {sizeTotal.Bytes().Humanize()})"
+                    : $"{tsStr} ({fileCount:N0} files)";
+                lines.Add(new Markup($"  [green]●[/] Resolved     {Markup.Escape(detail)}"));
+            }
+            else
+            {
+                // Resolving: show ○ with live file count
+                var discovered = state.RestoreFilesDiscovered;
+                var detail = discovered > 0 ? $"{discovered:N0} files..." : string.Empty;
+                lines.Add(new Markup($"  [dim]○[/] Resolving    {Markup.Escape(detail)}"));
+            }
+        }
+
+        // ── Stage 2: Checking / Checked ───────────────────────────────────────
+        {
+            var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
+                            + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
+            var dispositionStarted = dispTotal > 0;
+            var checkedComplete = state.ChunkGroups > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
+
+            string checkedSymbol;
+            if (checkedComplete && (dispositionStarted || total == 0))
+                checkedSymbol = "[green]●[/]";
+            else if (dispositionStarted)
+                checkedSymbol = "[yellow]○[/]";
+            else
+                checkedSymbol = "[dim]○[/]";
+
+            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew:N0} new, {state.DispositionSkipIdentical:N0} identical, {state.DispositionOverwrite:N0} overwrite, {state.DispositionKeepLocalDiffers:N0} kept"));
+        }
+
+        // ── Stage 3: Restoring ────────────────────────────────────────────────
+        {
+            string restoringSymbol;
+            if (allDone)
+                restoringSymbol = "[green]●[/]";
+            else if (done > 0 || state.RestoreBytesDownloaded > 0)
+                restoringSymbol = "[yellow]○[/]";
+            else
+                restoringSymbol = "[dim]○[/]";
+
+            var countStr = state.TreeTraversalComplete ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
+
+            var totalCompressed = state.RestoreTotalCompressedBytes;
+            var bytesDownloaded = state.RestoreBytesDownloaded;
+            var totalOriginal   = state.RestoreTotalOriginalSize;
+
+            if (totalCompressed > 0)
+            {
+                // Two-line layout: progress bar on line 1, byte counters on line 2
+                var fraction = (double)bytesDownloaded / totalCompressed;
+                var pct      = (int)Math.Round(fraction * 100);
+                var bar      = RenderProgressBar(fraction, 16);
+
+                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%"));
+
+                var (dlCur, dlTot, dlUnit) = SplitSizePair(bytesDownloaded, totalCompressed);
+                var origStr = totalOriginal.Bytes().Humanize();
+
+                // Indent to align under the count (17 spaces = "  ○ Restoring    ")
+                lines.Add(new Markup($"                 [dim]({dlCur} / {dlTot} {dlUnit} download, {origStr} original)[/]"));
+            }
+            else
+            {
+                lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}"));
+            }
+        }
+
+        // ── Active download table (replaces completed-file tail) ──────────────
+        if (!allDone)
+        {
+            var activeDownloads = state.TrackedDownloads.Values.ToArray();
+            if (activeDownloads.Length > 0)
             {
                 lines.Add(new Markup(""));  // blank separator
-                foreach (var ev in recent)
+
+                // Collect row data first so we can compute max widths for padding (same pattern as archive).
+                var rowData = new List<(string name, string bar, string pct, string cur, string tot, string unit)>();
+
+                foreach (var dl in activeDownloads)
                 {
-                    var sym      = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
-                    var path     = Markup.Escape(TruncateAndLeftJustify(ev.RelativePath, 40));
-                    var sizeStr  = Markup.Escape(ev.FileSize.Bytes().Humanize());
-                    lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
+                    var fraction = dl.CompressedSize > 0
+                        ? (double)dl.BytesDownloaded / dl.CompressedSize
+                        : 0.0;
+                    var pctVal = (int)Math.Round(fraction * 100);
+                    var bar    = RenderProgressBar(fraction, 12);
+                    var name   = TruncateAndLeftJustify(dl.DisplayName, 35);
+                    var (cur, tot, unit) = SplitSizePair(dl.BytesDownloaded, dl.CompressedSize);
+
+                    rowData.Add((name, bar, pctVal + "%", cur, tot, unit));
+                }
+
+                var maxPct = rowData.Max(r => r.pct.Length);
+                var maxCur = rowData.Max(r => r.cur.Length);
+                var maxTot = rowData.Max(r => r.tot.Length);
+
+                // Borderless table with 4 columns: name | bar | % | "cur / tot unit"
+                var table = new Table()
+                    .NoBorder()
+                    .HideHeaders()
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // name
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned())   // bar
+                    .AddColumn(new TableColumn("").NoWrap().RightAligned())  // % (padded)
+                    .AddColumn(new TableColumn("").NoWrap().LeftAligned());  // "cur / tot unit"
+
+                foreach (var (name, bar, pct, cur, tot, unit) in rowData)
+                {
+                    var paddedPct = pct.PadLeft(maxPct);
+                    var paddedCur = cur.PadLeft(maxCur);
+                    var paddedTot = tot.PadLeft(maxTot);
+                    var sizeStr   = $"{paddedCur} / {paddedTot} {unit}";
+
+                    table.AddRow(
+                        new Markup("[dim]" + Markup.Escape(name) + "[/]"),
+                        new Markup(bar),
+                        new Markup("[dim]" + paddedPct + "[/]"),
+                        new Markup("[dim]" + sizeStr + "[/]"));
+                }
+
+                lines.Add(table);
+            }
+            else
+            {
+                // Fall back to recent restore events tail
+                var recent = state.RecentRestoreEvents.ToArray();
+                if (recent.Length > 0)
+                {
+                    lines.Add(new Markup(""));  // blank separator
+                    foreach (var ev in recent)
+                    {
+                        var sym      = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
+                        var path     = Markup.Escape(TruncateAndLeftJustify(ev.RelativePath, 40));
+                        var sizeStr  = Markup.Escape(ev.FileSize.Bytes().Humanize());
+                        lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
+                    }
                 }
             }
         }

@@ -1208,6 +1208,153 @@ public class RestoreTcsCoordinationTests
 
         questionTcs.Task.IsCompleted.ShouldBeFalse("question TCS should not be set");
     }
+
+    [Test]
+    public async Task NoRehydrationNeeded_CleanupFires_PipelineUnblocksWithoutDeadlock()
+    {
+        // Simulates the deadlock scenario: no rehydration is needed (questionTcs never fires),
+        // but the pipeline invokes ConfirmCleanup, blocking on cleanupAnswerTcs.
+        // The CLI must detect cleanupQuestionTcs and handle it before awaiting pipelineTask.
+        var questionTcs        = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: does some work, then invokes ConfirmCleanup (blocks on cleanupAnswerTcs)
+        var pipelineTask = Task.Run(async () =>
+        {
+            await Task.Delay(50); // simulate pipeline work
+            cleanupQuestionTcs.TrySetResult((5, 2048L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // Simulate the CLI Phase 1 loop: poll for questionTcs OR cleanupQuestionTcs (THE FIX)
+        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // No rehydration question — verify
+        questionTcs.Task.IsCompleted.ShouldBeFalse("rehydration question should not fire");
+
+        // After loop exits, check if cleanup question fired
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(5);
+            bytes.ShouldBe(2048L);
+            cleanupAnswerTcs.TrySetResult(true);
+        }
+
+        // Now pipeline should complete without deadlock
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeTrue("pipeline should receive the cleanup answer");
+    }
+
+    [Test]
+    public async Task PostRehydration_CleanupFiresDuringDownload_PipelineUnblocksWithoutDeadlock()
+    {
+        // Simulates the Phase 3 deadlock: rehydration was needed and answered,
+        // but during the download phase the pipeline invokes ConfirmCleanup.
+        // The Phase 3 live loop must also monitor cleanupQuestionTcs to exit.
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: does download work, then invokes ConfirmCleanup
+        var pipelineTask = Task.Run(async () =>
+        {
+            await Task.Delay(50); // simulate download
+            cleanupQuestionTcs.TrySetResult((3, 1024L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // Simulate Phase 3 live loop (the FIX: also monitor cleanupQuestionTcs)
+        while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // After loop: handle cleanup
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(3);
+            bytes.ShouldBe(1024L);
+            cleanupAnswerTcs.TrySetResult(false);
+        }
+
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task RehydrationFirst_ThenCleanup_PipelineUnblocksWithoutDeadlock()
+    {
+        // Full flow: rehydration fires first, CLI answers it, pipeline continues
+        // into download phase, then cleanup fires and CLI must detect and answer it.
+        var questionTcs        = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerTcs          = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupQuestionTcs = new TaskCompletionSource<(int count, long bytes)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupAnswerTcs   = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Pipeline: rehydration question → wait for answer → download work → cleanup question → wait for answer
+        var pipelineTask = Task.Run(async () =>
+        {
+            // Phase 2: invoke ConfirmRehydration
+            questionTcs.TrySetResult(42);
+            var rehydrate = await answerTcs.Task;
+            rehydrate.ShouldBeTrue("CLI should confirm rehydration");
+
+            // Phase 3: download work, then invoke ConfirmCleanup
+            await Task.Delay(50); // simulate download
+            cleanupQuestionTcs.TrySetResult((7, 4096L));
+            return await cleanupAnswerTcs.Task;
+        });
+
+        // ── Phase 1 loop: wait for rehydration question or pipeline completion ──
+        while (!pipelineTask.IsCompleted && !questionTcs.Task.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // Rehydration question should have fired
+        questionTcs.Task.IsCompleted.ShouldBeTrue("rehydration question should fire");
+        var rehydrationValue = await questionTcs.Task;
+        rehydrationValue.ShouldBe(42);
+
+        // CLI answers: yes, rehydrate
+        answerTcs.TrySetResult(true);
+
+        // ── Phase 3 loop: download live display, also monitoring cleanupQuestionTcs ──
+        while (!pipelineTask.IsCompleted && !cleanupQuestionTcs.Task.IsCompleted)
+        {
+            await Task.WhenAny(pipelineTask, cleanupQuestionTcs.Task, Task.Delay(20));
+        }
+
+        // After Phase 3 loop: handle cleanup if pipeline is still running
+        if (!pipelineTask.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
+        {
+            var (count, bytes) = await cleanupQuestionTcs.Task;
+            count.ShouldBe(7);
+            bytes.ShouldBe(4096L);
+            cleanupAnswerTcs.TrySetResult(true);
+        }
+
+        // Pipeline should complete without deadlock
+        var timeoutTask = Task.Delay(5000);
+        var finishedFirst = await Task.WhenAny(pipelineTask, timeoutTask);
+        finishedFirst.ShouldBe(pipelineTask, "pipeline should complete, not timeout — deadlock detected if this fails");
+
+        var result = await pipelineTask;
+        result.ShouldBeTrue("pipeline should receive the cleanup answer");
+    }
 }
 
 // ── TrackedFile BytesProcessed Interlocked update test ────────────────────────
@@ -1496,11 +1643,117 @@ public class RestoreHandlerNewSignatureTests
     }
 }
 
+// ── New restore notification handler tests ───────────────────────────────────
+
+/// <summary>
+/// Verifies the new restore notification handlers correctly update ProgressState.
+/// </summary>
+public class RestoreNotificationHandlerTests
+{
+    [Test]
+    public async Task SnapshotResolvedHandler_SetsTimestampAndRootHash()
+    {
+        var state   = new ProgressState();
+        var handler = new SnapshotResolvedHandler(state);
+        var ts      = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
+
+        await handler.Handle(new SnapshotResolvedEvent(ts, "abc123", 9), CancellationToken.None);
+
+        state.SnapshotTimestamp.ShouldBe(ts);
+        state.SnapshotRootHash.ShouldBe("abc123");
+    }
+
+    [Test]
+    public async Task TreeTraversalCompleteHandler_SetsFileCountAndSize()
+    {
+        var state   = new ProgressState();
+        var handler = new TreeTraversalCompleteHandler(state);
+
+        await handler.Handle(new TreeTraversalCompleteEvent(42, 7_000_000L), CancellationToken.None);
+
+        state.RestoreTotalFiles.ShouldBe(42);
+        state.RestoreTotalOriginalSize.ShouldBe(7_000_000L);
+        state.TreeTraversalComplete.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task FileDispositionHandler_IncrementsNew()
+    {
+        var state   = new ProgressState();
+        var handler = new FileDispositionHandler(state);
+
+        await handler.Handle(new FileDispositionEvent("a.txt", RestoreDisposition.New, 1024L), CancellationToken.None);
+
+        state.DispositionNew.ShouldBe(1);
+        state.DispositionSkipIdentical.ShouldBe(0);
+    }
+
+    [Test]
+    public async Task FileDispositionHandler_IncrementsSkipIdentical()
+    {
+        var state   = new ProgressState();
+        var handler = new FileDispositionHandler(state);
+
+        await handler.Handle(new FileDispositionEvent("b.txt", RestoreDisposition.SkipIdentical, 512L), CancellationToken.None);
+
+        state.DispositionSkipIdentical.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task FileDispositionHandler_IncrementsOverwrite()
+    {
+        var state   = new ProgressState();
+        var handler = new FileDispositionHandler(state);
+
+        await handler.Handle(new FileDispositionEvent("c.txt", RestoreDisposition.Overwrite, 2048L), CancellationToken.None);
+
+        state.DispositionOverwrite.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task FileDispositionHandler_IncrementsKeepLocalDiffers()
+    {
+        var state   = new ProgressState();
+        var handler = new FileDispositionHandler(state);
+
+        await handler.Handle(new FileDispositionEvent("d.txt", RestoreDisposition.KeepLocalDiffers, 4096L), CancellationToken.None);
+
+        state.DispositionKeepLocalDiffers.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task ChunkResolutionCompleteHandler_SetsAllCounts()
+    {
+        var state   = new ProgressState();
+        var handler = new ChunkResolutionCompleteHandler(state);
+
+        await handler.Handle(new ChunkResolutionCompleteEvent(10, 3, 7), CancellationToken.None);
+
+        state.ChunkGroups.ShouldBe(10);
+        state.LargeChunkCount.ShouldBe(3);
+        state.TarChunkCount.ShouldBe(7);
+    }
+
+    [Test]
+    public async Task RehydrationStatusHandler_SetsAllCounts()
+    {
+        var state   = new ProgressState();
+        var handler = new RehydrationStatusHandler(state);
+
+        await handler.Handle(new RehydrationStatusEvent(5, 2, 3, 1), CancellationToken.None);
+
+        state.ChunksAvailable.ShouldBe(5);
+        state.ChunksRehydrated.ShouldBe(2);
+        state.ChunksNeedingRehydration.ShouldBe(3);
+        state.ChunksPending.ShouldBe(1);
+    }
+}
+
 // ── BuildRestoreDisplay ───────────────────────────────────────────────────────
 
 /// <summary>
 /// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders correctly in
-/// in-progress, completed, and rehydrating states.
+/// its 3-stage layout: Resolved, Checked, Restoring — plus tail lines.
 /// </summary>
 public class BuildRestoreDisplayTests
 {
@@ -1518,30 +1771,62 @@ public class BuildRestoreDisplayTests
     }
 
     [Test]
-    public void BuildRestoreDisplay_InProgress_ShowsOpenCircleAndTailLines()
+    public void BuildRestoreDisplay_BeforeAnyEvents_ShowsAllDimCircles()
     {
         var state = new ProgressState();
-        state.SetRestoreTotalFiles(10);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Before tree traversal completes, stage 1 shows "Resolving" (not "Resolved")
+        output.ShouldContain("Resolving");
+        output.ShouldContain("Checked");
+        output.ShouldContain("Restoring");
+        // All stages should show dim circles (○) — no green bullets yet
+        output.ShouldNotContain("●");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_InProgress_ShowsStagesAndTailLines()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(10, 7_000_000L);
+        state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(3, 1, 2);
         state.IncrementFilesRestored(1024L);
         state.AddRestoreEvent("foo/bar.txt", 1024L, skipped: false);
         state.AddRestoreEvent("baz/skip.txt", 512L, skipped: true);
 
         var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
 
-        output.ShouldContain("○");
+        // Stage 1: Resolved should show green bullet + snapshot info
+        output.ShouldContain("Resolved");
+        output.ShouldContain("2026");  // timestamp
+        output.ShouldContain("10");    // file count
+
+        // Stage 2: Checked should show disposition tallies
+        output.ShouldContain("Checked");
+        output.ShouldContain("2 new");
+        output.ShouldContain("0 identical");
+
+        // Stage 3: Restoring with file count (new format: no Restored/Skipped sub-lines)
         output.ShouldContain("Restoring");
-        output.ShouldContain("Restored");
-        output.ShouldContain("Skipped");
+
+        // Tail lines (shown when no active downloads)
         output.ShouldContain("foo/bar.txt");
         output.ShouldContain("baz/skip.txt");
-        output.ShouldContain("●");
     }
 
     [Test]
-    public void BuildRestoreDisplay_Completed_ShowsFilledCircleNoTail()
+    public void BuildRestoreDisplay_Completed_ShowsGreenBulletsNoTail()
     {
         var state = new ProgressState();
-        state.SetRestoreTotalFiles(2);
+        state.SetTreeTraversalComplete(2, 800L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(1, 1, 0);
         state.IncrementFilesRestored(500L);
         state.IncrementFilesRestored(300L);
         state.AddRestoreEvent("done.txt", 500L, skipped: false);
@@ -1554,24 +1839,585 @@ public class BuildRestoreDisplayTests
     }
 
     [Test]
-    public void BuildRestoreDisplay_NoRehydration_NoRehydratingLine()
+    public void BuildRestoreDisplay_ZeroFileRestore_ShowsAllGreenBullets()
     {
+        // A snapshot with 0 files — tree traversal completes, no dispositions, no downloads.
+        // All stages should show as completed (green ●).
         var state = new ProgressState();
-        state.SetRestoreTotalFiles(5);
+        state.SetTreeTraversalComplete(0, 0L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
 
         var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
-        output.ShouldNotContain("Rehydrating");
+
+        // Stage 1: Resolved (green ●)
+        output.ShouldContain("Resolved");
+        output.ShouldNotContain("Resolving");
+
+        // Stage 3: Restoring should show 0/0 files and be green (●)
+        output.ShouldContain("Restoring");
+        output.ShouldContain("0/0 files");
+
+        // Count ● occurrences — all 3 stages should be green
+        var bulletCount = output.Split('●').Length - 1;
+        bulletCount.ShouldBe(3, $"expected 3 green bullets for zero-file restore, got {bulletCount}. Output:\n{output}");
+    }
+}
+
+// ── 8.1 TrackedDownload lifecycle ─────────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="TrackedDownload"/> lifecycle: add, update bytes, remove on completion.
+/// Covers large file (removed by FileRestoredHandler) and tar bundle (removed by ChunkDownloadCompletedHandler).
+/// </summary>
+public class TrackedDownloadLifecycleTests
+{
+    [Test]
+    public async Task LargeFile_TrackedDownload_AddUpdateRemove()
+    {
+        var state = new ProgressState();
+
+        // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
+        // Key is RelativePath (the identifier passed from RestorePipelineHandler for large files)
+        var td = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
+
+        state.TrackedDownloads.Count.ShouldBe(1);
+        state.TrackedDownloads["photos/sunset.jpg"].DisplayName.ShouldBe("photos/sunset.jpg");
+        state.TrackedDownloads["photos/sunset.jpg"].Kind.ShouldBe(Core.Restore.DownloadKind.LargeFile);
+
+        // Simulate byte-level progress updates
+        td.SetBytesDownloaded(12_300_000);
+        td.BytesDownloaded.ShouldBe(12_300_000L);
+
+        td.SetBytesDownloaded(25_400_000);
+        td.BytesDownloaded.ShouldBe(25_400_000L);
+
+        // FileRestoredHandler should remove the TrackedDownload by direct key lookup on RelativePath
+        var handler = new FileRestoredHandler(state);
+        await handler.Handle(new Core.Restore.FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
+        state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(50_000_000L);
     }
 
     [Test]
-    public void BuildRestoreDisplay_WithRehydration_ShowsRehydratingLine()
+    public async Task TarBundle_TrackedDownload_AddUpdateRemove()
+    {
+        var state = new ProgressState();
+
+        // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
+        var td = new TrackedDownload("ab12cd34", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
+        state.TrackedDownloads.TryAdd("ab12cd34", td);
+
+        state.TrackedDownloads.Count.ShouldBe(1);
+        state.TrackedDownloads["ab12cd34"].Kind.ShouldBe(Core.Restore.DownloadKind.TarBundle);
+
+        // Simulate byte-level progress
+        td.SetBytesDownloaded(4_800_000);
+        td.BytesDownloaded.ShouldBe(4_800_000L);
+
+        // ChunkDownloadCompletedHandler should remove the TrackedDownload
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("ab12cd34", 3, 15_200_000), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("ab12cd34").ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
+        state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+    }
+
+    [Test]
+    public void TrackedDownload_BytesDownloaded_InterlockedUpdate()
+    {
+        var td = new TrackedDownload("key1", Core.Restore.DownloadKind.LargeFile, "file.bin", 1_000_000, 2_000_000);
+
+        td.BytesDownloaded.ShouldBe(0L);
+        td.SetBytesDownloaded(500_000);
+        td.BytesDownloaded.ShouldBe(500_000L);
+        td.SetBytesDownloaded(1_000_000);
+        td.BytesDownloaded.ShouldBe(1_000_000L);
+    }
+
+    [Test]
+    public async Task FileRestoredHandler_NoTrackedDownload_StillUpdatesCounters()
+    {
+        // When no TrackedDownload exists (e.g. file from tar bundle), handler should still work
+        var state   = new ProgressState();
+        var handler = new FileRestoredHandler(state);
+
+        await handler.Handle(new Core.Restore.FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
+
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(1024L);
+        // No TrackedDownload removal expected, RestoreBytesDownloaded stays at 0
+        state.RestoreBytesDownloaded.ShouldBe(0L);
+    }
+}
+
+// ── 8.2 TreeTraversalProgressHandler ──────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="TreeTraversalProgressHandler"/> updates <see cref="ProgressState.RestoreFilesDiscovered"/>.
+/// </summary>
+public class TreeTraversalProgressHandlerTests
+{
+    [Test]
+    public async Task TreeTraversalProgressHandler_SetsFilesDiscovered()
+    {
+        var state   = new ProgressState();
+        var handler = new TreeTraversalProgressHandler(state);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+
+        state.RestoreFilesDiscovered.ShouldBe(523L);
+    }
+
+    [Test]
+    public async Task TreeTraversalProgressHandler_UpdatesOnSubsequentEvents()
+    {
+        var state   = new ProgressState();
+        var handler = new TreeTraversalProgressHandler(state);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(100), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(100L);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(523L);
+
+        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(1247), CancellationToken.None);
+        state.RestoreFilesDiscovered.ShouldBe(1247L);
+    }
+}
+
+// ── 8.3 ChunkDownloadCompletedHandler ─────────────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="ChunkDownloadCompletedHandler"/> removes tracked download and increments bytes.
+/// </summary>
+public class ChunkDownloadCompletedHandlerTests
+{
+    [Test]
+    public async Task ChunkDownloadCompletedHandler_RemovesTrackedDownloadAndIncrementsBytesDownloaded()
+    {
+        var state = new ProgressState();
+        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (5 files, 1.2 MB)", 8_000_000, 1_200_000);
+        state.TrackedDownloads.TryAdd("tar_hash", td);
+
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("tar_hash", 5, 8_000_000), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeFalse();
+        state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
+    }
+
+    [Test]
+    public async Task ChunkDownloadCompletedHandler_AccumulatesAcrossMultipleChunks()
+    {
+        var state = new ProgressState();
+        state.TrackedDownloads.TryAdd("h1", new TrackedDownload("h1", Core.Restore.DownloadKind.TarBundle, "TAR 1", 5_000_000, 1_000_000));
+        state.TrackedDownloads.TryAdd("h2", new TrackedDownload("h2", Core.Restore.DownloadKind.TarBundle, "TAR 2", 3_000_000, 800_000));
+
+        var handler = new ChunkDownloadCompletedHandler(state);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h1", 3, 5_000_000), CancellationToken.None);
+        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h2", 2, 3_000_000), CancellationToken.None);
+
+        state.TrackedDownloads.Count.ShouldBe(0);
+        state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
+    }
+}
+
+// ── 8.4 FileRestoredHandler removes TrackedDownload for large files ───────────
+
+/// <summary>
+/// Verifies updated <see cref="FileRestoredHandler"/> removes TrackedDownload for large file downloads.
+/// </summary>
+public class FileRestoredHandlerTrackedDownloadTests
+{
+    [Test]
+    public async Task FileRestoredHandler_RemovesLargeFileTrackedDownload()
+    {
+        var state = new ProgressState();
+        // Key is RelativePath for large files (matching production behavior)
+        var td = new TrackedDownload("videos/movie.mp4", Core.Restore.DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
+        state.TrackedDownloads.TryAdd("videos/movie.mp4", td);
+
+        var handler = new FileRestoredHandler(state);
+        await handler.Handle(new Core.Restore.FileRestoredEvent("videos/movie.mp4", 200_000_000L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("videos/movie.mp4").ShouldBeFalse("Large file TrackedDownload should be removed");
+        state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add CompressedSize to RestoreBytesDownloaded");
+    }
+
+    [Test]
+    public async Task FileRestoredHandler_DoesNotRemoveTarBundleTrackedDownload()
+    {
+        // Tar bundle downloads are removed by ChunkDownloadCompletedHandler, not FileRestoredHandler
+        var state = new ProgressState();
+        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 500 KB)", 5_000_000, 500_000);
+        state.TrackedDownloads.TryAdd("tar_hash", td);
+
+        var handler = new FileRestoredHandler(state);
+        // This file is from inside the tar bundle — handler should not remove the tar's TrackedDownload
+        await handler.Handle(new Core.Restore.FileRestoredEvent("docs/readme.txt", 1024L), CancellationToken.None);
+
+        state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeTrue("Tar TrackedDownload should NOT be removed by FileRestoredHandler");
+        state.RestoreBytesDownloaded.ShouldBe(0L, "No compressed bytes should be added for tar bundle files");
+    }
+}
+
+// ── 8.5 ChunkResolutionCompleteHandler byte totals ────────────────────────────
+
+/// <summary>
+/// Verifies updated <see cref="ChunkResolutionCompleteHandler"/> sets byte totals from enriched event.
+/// </summary>
+public class ChunkResolutionCompleteHandlerByteTotalsTests
+{
+    [Test]
+    public async Task ChunkResolutionCompleteHandler_SetsByteTotals()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(100, 0); // initial traversal without sizes
+        var handler = new ChunkResolutionCompleteHandler(state);
+
+        await handler.Handle(
+            new Core.Restore.ChunkResolutionCompleteEvent(10, 5, 5, TotalOriginalBytes: 500_000_000, TotalCompressedBytes: 200_000_000),
+            CancellationToken.None);
+
+        state.ChunkGroups.ShouldBe(10);
+        state.LargeChunkCount.ShouldBe(5);
+        state.TarChunkCount.ShouldBe(5);
+        state.RestoreTotalOriginalSize.ShouldBe(500_000_000L);
+        state.RestoreTotalCompressedBytes.ShouldBe(200_000_000L);
+    }
+}
+
+// ── 8.11 Thread safety: concurrent TrackedDownload add/update/remove ──────────
+
+/// <summary>
+/// Verifies thread safety of concurrent TrackedDownload add/update/remove from 4 workers.
+/// </summary>
+public class TrackedDownloadThreadSafetyTests
+{
+    [Test]
+    public async Task ConcurrentAddUpdateRemove_NoDataRaces()
+    {
+        var state = new ProgressState();
+        const int n = 1_000;
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, n),
+            new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            (i, ct) =>
+            {
+                var key = $"file_{i}.bin"; // Key is RelativePath for large files
+                var td = new TrackedDownload(key, Core.Restore.DownloadKind.LargeFile, $"file_{i}.bin", 1_000_000, 2_000_000);
+                state.TrackedDownloads.TryAdd(key, td);
+
+                // Simulate byte-level progress
+                td.SetBytesDownloaded(500_000);
+                td.SetBytesDownloaded(1_000_000);
+
+                // Remove on completion
+                state.TrackedDownloads.TryRemove(key, out _);
+                state.AddRestoreBytesDownloaded(1_000_000);
+                return ValueTask.CompletedTask;
+            });
+
+        state.TrackedDownloads.Count.ShouldBe(0, "All tracked downloads should be removed");
+        state.RestoreBytesDownloaded.ShouldBe(n * 1_000_000L, "All bytes should be accounted for");
+    }
+}
+
+// ── 8.6 BuildRestoreDisplay: Resolving phase ──────────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the Resolving phase
+/// with <see cref="ProgressState.RestoreFilesDiscovered"/> during tree traversal.
+/// </summary>
+public class BuildRestoreDisplayResolvingTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DuringTraversal_ShowsResolvingWithFileCount()
+    {
+        var state = new ProgressState();
+        state.SetRestoreFilesDiscovered(523);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("Resolving");
+        output.ShouldContain("523");
+        output.ShouldContain("files");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_AfterTraversal_ShowsResolvedNotResolving()
+    {
+        var state = new ProgressState();
+        state.SetRestoreFilesDiscovered(1247);
+        state.SetTreeTraversalComplete(1247, 14_200_000_000L);
+        state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("Resolved");
+        output.ShouldContain(1247.ToString("N0"));   // locale-formatted: "1,247" or "1.247"
+        output.ShouldNotContain("Resolving");
+    }
+}
+
+// ── 8.8 BuildRestoreDisplay: Active download table ────────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders active download table
+/// with per-item progress bars for <see cref="TrackedDownload"/> entries.
+/// </summary>
+public class BuildRestoreDisplayActiveDownloadsTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_WithActiveDownloads_ShowsDownloadTable()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(10, 100_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(5, 3, 2);
+        state.SetRestoreTotalCompressedBytes(50_000_000);
+
+        // Add a large file download in progress (key is RelativePath for large files)
+        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        td1.SetBytesDownloaded(18_300_000);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
+
+        // Add a tar bundle download in progress (key is chunk hash for tar bundles)
+        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        td2.SetBytesDownloaded(4_800_000);
+        state.TrackedDownloads.TryAdd("chunk2", td2);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Should show file names / labels
+        output.ShouldContain("sunset.jpg");
+        output.ShouldContain("TAR bundle");
+
+        // Should show progress bar characters
+        output.ShouldContain("█");
+        output.ShouldContain("░");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_NoActiveDownloads_NoDownloadTable()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(2, 800L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(1, 1, 0);
+        state.SetRestoreTotalCompressedBytes(500);
+        state.IncrementFilesRestored(400L);
+        state.IncrementFilesRestored(400L);
+        // No TrackedDownloads
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // No progress bars in the download area
+        output.ShouldNotContain("TAR bundle");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_ActiveDownloads_ColumnsAreAligned()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(10, 100_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(5, 3, 2);
+        state.SetRestoreTotalCompressedBytes(50_000_000);
+
+        // Two downloads with different-length names and sizes
+        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        td1.SetBytesDownloaded(18_300_000);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
+
+        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        td2.SetBytesDownloaded(4_800_000);
+        state.TrackedDownloads.TryAdd("chunk2", td2);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var dlLines = output.Split('\n')
+            .Where(l => l.Contains("█") || l.Contains("░"))
+            .Where(l => !l.Contains("Restoring"))  // exclude the aggregate line
+            .ToArray();
+
+        dlLines.Length.ShouldBe(2, $"Expected 2 download rows, got:\n{string.Join('\n', dlLines)}");
+
+        // Progress bar character (█ or ░) should start at the same column in both rows
+        var barCol0 = dlLines[0].IndexOf('█') >= 0 ? dlLines[0].IndexOf('█') : dlLines[0].IndexOf('░');
+        var barCol1 = dlLines[1].IndexOf('█') >= 0 ? dlLines[1].IndexOf('█') : dlLines[1].IndexOf('░');
+        barCol0.ShouldBe(barCol1,
+            $"Progress bars should start at same column.\nRow 0: [{dlLines[0]}]\nRow 1: [{dlLines[1]}]");
+    }
+}
+
+// ── 8.9 BuildRestoreDisplay: Aggregate progress bar ───────────────────────────
+
+/// <summary>
+/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the aggregate progress bar
+/// with dual byte counters (compressed download + original).
+/// </summary>
+public class BuildRestoreDisplayAggregateProgressTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DuringDownloads_ShowsAggregateProgressBar()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(847, 14_200_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(10, 5, 5);
+        state.SetRestoreTotalCompressedBytes(8_310_000_000);
+        state.AddRestoreBytesDownloaded(3_170_000_000);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        // Should show progress bar
+        output.ShouldContain("█");
+        output.ShouldContain("░");
+
+        // Should show "download" label
+        output.ShouldContain("download");
+
+        // Should show "original" label
+        output.ShouldContain("original");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_AllComplete_ShowsFullProgressBar()
     {
         var state = new ProgressState();
         state.SetRestoreTotalFiles(5);
-        state.SetRehydration(3, 1_048_576L);
+        state.SetTreeTraversalComplete(5, 10_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.SetChunkResolution(2, 1, 1);
+        state.SetRestoreTotalCompressedBytes(5_000_000);
+        state.AddRestoreBytesDownloaded(5_000_000);
+        state.IncrementFilesRestored(4_000_000L);
+        state.IncrementFilesRestored(3_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
+        state.IncrementFilesRestored(1_000_000L);
 
         var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
-        output.ShouldContain("Rehydrating");
-        output.ShouldContain("3");
+
+        // Restoring line should show 100%
+        output.ShouldContain("100%");
+        // Should have green bullet for completion
+        output.ShouldContain("●");
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_RestoringLine_UseTwoLineLayout()
+    {
+        // Worst case: large GB values with 4-digit file counts
+        var state = new ProgressState();
+        state.SetRestoreTotalFiles(4612);
+        state.SetTreeTraversalComplete(4612, 5_260_000_000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.SetChunkResolution(100, 50, 50);
+        state.SetRestoreTotalCompressedBytes(4_920_000_000);
+        state.AddRestoreBytesDownloaded(10_000_000); // small progress so far
+        state.IncrementFilesRestored(100_000L);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var allLines = output.Split('\n');
+
+        // Line 1: progress bar line with file count, bar, and percentage — no byte counters
+        var progressLine = allLines.First(l => l.Contains("Restoring"));
+        progressLine.Length.ShouldBeLessThanOrEqualTo(80,
+            $"Progress line is {progressLine.Length} chars: [{progressLine}]");
+        progressLine.ShouldContain("░");
+        progressLine.ShouldContain("0%");
+        progressLine.ShouldNotContain("download");
+        progressLine.ShouldNotContain("original");
+
+        // Line 2: byte counters on a separate indented line
+        var byteLine = allLines.First(l => l.Contains("download"));
+        byteLine.Length.ShouldBeLessThanOrEqualTo(80,
+            $"Byte counter line is {byteLine.Length} chars: [{byteLine}]");
+        byteLine.ShouldContain("download");
+        byteLine.ShouldContain("original");
+    }
+}
+
+// ── end of new tests ──────────────────────────────────────────────────────────
+
+public class BuildRestoreDisplayDispositionTests
+{
+    private static string RenderToString(IRenderable renderable)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi        = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out         = new AnsiConsoleOutput(writer),
+        });
+        console.Write(renderable);
+        return writer.ToString();
+    }
+
+    [Test]
+    public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
+    {
+        var state = new ProgressState();
+        state.SetTreeTraversalComplete(4, 4000L);
+        state.SnapshotTimestamp = DateTimeOffset.UtcNow;
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.SkipIdentical);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.Overwrite);
+        state.IncrementDisposition(Core.Restore.RestoreDisposition.KeepLocalDiffers);
+
+        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+
+        output.ShouldContain("1 new");
+        output.ShouldContain("1 identical");
+        output.ShouldContain("1 overwrite");
+        output.ShouldContain("1 kept");
     }
 }

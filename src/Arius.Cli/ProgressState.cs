@@ -161,6 +161,58 @@ public sealed class TrackedTar
         Interlocked.Exchange(ref _bytesUploaded, value);
 }
 
+// ── TrackedDownload class ─────────────────────────────────────────────────
+
+/// <summary>
+/// Per-chunk state for a download being tracked through the restore pipeline.
+/// Present in <see cref="ProgressState.TrackedDownloads"/> while downloading;
+/// removed on completion. <see cref="BytesDownloaded"/> is updated via
+/// <see cref="Interlocked.Exchange(ref long, long)"/> for lock-free thread safety.
+/// </summary>
+public sealed class TrackedDownload
+{
+    /// <summary>
+    /// Initializes a new TrackedDownload for the specified chunk.
+    /// </summary>
+    /// <param name="key">Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</param>
+    /// <param name="kind">Whether this is a large file or tar bundle download.</param>
+    /// <param name="displayName">Human-readable label for display (file path or "TAR bundle (N files, X)").</param>
+    /// <param name="compressedSize">Total compressed download size in bytes.</param>
+    /// <param name="originalSize">Sum of original file sizes for this chunk.</param>
+    public TrackedDownload(string key, Core.Restore.DownloadKind kind, string displayName, long compressedSize, long originalSize)
+    {
+        Key            = key;
+        Kind           = kind;
+        DisplayName    = displayName;
+        CompressedSize = compressedSize;
+        OriginalSize   = originalSize;
+    }
+
+    /// <summary>Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</summary>
+    public string Key { get; }
+
+    /// <summary>Whether this is a large file or tar bundle download.</summary>
+    public Core.Restore.DownloadKind Kind { get; }
+
+    /// <summary>Human-readable label: file relative path for large files, "TAR bundle (N files, X)" for tar bundles.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>Total compressed download size in bytes.</summary>
+    public long CompressedSize { get; }
+
+    /// <summary>Sum of original file sizes for this chunk.</summary>
+    public long OriginalSize { get; }
+
+    /// <summary>Cumulative bytes downloaded so far.</summary>
+    public long BytesDownloaded => Interlocked.Read(ref _bytesDownloaded);
+    private long _bytesDownloaded;
+
+    /// <summary>Atomically updates the bytes-downloaded counter.</summary>
+    /// <param name="value">The new downloaded byte count.</param>
+    public void SetBytesDownloaded(long value) =>
+        Interlocked.Exchange(ref _bytesDownloaded, value);
+}
+
 // ── RestoreFileEvent ──────────────────────────────────────────────────────────
 
 /// <summary>
@@ -383,6 +435,121 @@ public sealed class ProgressState
 
     // ── Restore ───────────────────────────────────────────────────────────────
 
+    // ── Restore: active downloads ────────────────────────────────────────────
+
+    /// <summary>Active downloads tracked during restore, keyed by identifier (RelativePath for large files, chunk hash for tar bundles).</summary>
+    public ConcurrentDictionary<string, TrackedDownload> TrackedDownloads { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Per-chunk metadata for tar bundles (file count + original size), populated by
+    /// <c>ChunkDownloadStartedHandler</c> before <c>CreateDownloadProgress</c> is called.
+    /// Used by the <c>CreateDownloadProgress</c> factory to build display names.
+    /// </summary>
+    internal ConcurrentDictionary<string, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new(StringComparer.Ordinal);
+
+    // ── Restore: tree traversal progress ─────────────────────────────────────
+
+    /// <summary>Number of files discovered so far during tree traversal (ticks up per <c>TreeTraversalProgressEvent</c>).</summary>
+    public long RestoreFilesDiscovered => Interlocked.Read(ref _restoreFilesDiscovered);
+    private long _restoreFilesDiscovered;
+
+    /// <summary>Sets the number of files discovered during tree traversal.</summary>
+    public void SetRestoreFilesDiscovered(long count) => Interlocked.Exchange(ref _restoreFilesDiscovered, count);
+
+    // ── Restore: aggregate byte totals from chunk resolution ─────────────────
+
+    /// <summary>Total compressed download bytes (denominator for aggregate download progress bar).</summary>
+    public long RestoreTotalCompressedBytes => Interlocked.Read(ref _restoreTotalCompressedBytes);
+    private long _restoreTotalCompressedBytes;
+
+    /// <summary>Sets the total compressed download bytes from chunk resolution.</summary>
+    public void SetRestoreTotalCompressedBytes(long bytes) => Interlocked.Exchange(ref _restoreTotalCompressedBytes, bytes);
+
+    /// <summary>Cumulative compressed bytes downloaded across all chunks (numerator for aggregate download progress bar).</summary>
+    public long RestoreBytesDownloaded => Interlocked.Read(ref _restoreBytesDownloaded);
+    private long _restoreBytesDownloaded;
+
+    /// <summary>Adds compressed bytes to the download counter when a chunk completes.</summary>
+    public void AddRestoreBytesDownloaded(long bytes) => Interlocked.Add(ref _restoreBytesDownloaded, bytes);
+
+    // ── Restore: snapshot and tree ───────────────────────────────────────────
+
+    /// <summary>Snapshot timestamp resolved by the pipeline. <c>null</c> until <c>SnapshotResolvedEvent</c> fires.</summary>
+    public DateTimeOffset? SnapshotTimestamp
+    {
+        get
+        {
+            var box = Volatile.Read(ref _snapshotTimestampBox);
+            return box is DateTimeOffset dto ? dto : null;
+        }
+        set => Volatile.Write(ref _snapshotTimestampBox, value.HasValue ? (object)value.Value : null);
+    }
+    private object? _snapshotTimestampBox;
+
+    /// <summary>Root hash of the resolved snapshot. <c>null</c> until <c>SnapshotResolvedEvent</c> fires.</summary>
+    public string? SnapshotRootHash
+    {
+        get => Volatile.Read(ref _snapshotRootHash);
+        set => Volatile.Write(ref _snapshotRootHash, value);
+    }
+    private string? _snapshotRootHash;
+
+    /// <summary>True once tree traversal completes and all file entries are known.</summary>
+    public bool TreeTraversalComplete => Volatile.Read(ref _treeTraversalComplete);
+    private bool _treeTraversalComplete;
+
+    /// <summary>Total uncompressed size of all files in the tree (set by <c>TreeTraversalCompleteEvent</c>).</summary>
+    public long RestoreTotalOriginalSize => Interlocked.Read(ref _restoreTotalOriginalSize);
+    private long _restoreTotalOriginalSize;
+
+    /// <summary>Marks tree traversal as complete and sets the total original size.</summary>
+    public void SetTreeTraversalComplete(int fileCount, long totalOriginalSize)
+    {
+        Interlocked.Exchange(ref _restoreTotalFiles, fileCount);
+        Interlocked.Exchange(ref _restoreTotalOriginalSize, totalOriginalSize);
+        Volatile.Write(ref _treeTraversalComplete, true);
+    }
+
+    // ── Restore: disposition tallies ─────────────────────────────────────────
+
+    /// <summary>Count of files with disposition New (not yet on disk).</summary>
+    public int DispositionNew => (int)Interlocked.Read(ref _dispositionNew);
+    private long _dispositionNew;
+
+    /// <summary>Count of files skipped because local copy is identical.</summary>
+    public int DispositionSkipIdentical => (int)Interlocked.Read(ref _dispositionSkipIdentical);
+    private long _dispositionSkipIdentical;
+
+    /// <summary>Count of files overwritten (--overwrite flag set).</summary>
+    public int DispositionOverwrite => (int)Interlocked.Read(ref _dispositionOverwrite);
+    private long _dispositionOverwrite;
+
+    /// <summary>Count of files kept because local differs and --overwrite not set.</summary>
+    public int DispositionKeepLocalDiffers => (int)Interlocked.Read(ref _dispositionKeepLocalDiffers);
+    private long _dispositionKeepLocalDiffers;
+
+    /// <summary>Increments the disposition tally for the specified disposition.</summary>
+    public void IncrementDisposition(Core.Restore.RestoreDisposition disposition)
+    {
+        switch (disposition)
+        {
+            case Core.Restore.RestoreDisposition.New:
+                Interlocked.Increment(ref _dispositionNew);
+                break;
+            case Core.Restore.RestoreDisposition.SkipIdentical:
+                Interlocked.Increment(ref _dispositionSkipIdentical);
+                break;
+            case Core.Restore.RestoreDisposition.Overwrite:
+                Interlocked.Increment(ref _dispositionOverwrite);
+                break;
+            case Core.Restore.RestoreDisposition.KeepLocalDiffers:
+                Interlocked.Increment(ref _dispositionKeepLocalDiffers);
+                break;
+        }
+    }
+
+    // ── Restore: file counts ─────────────────────────────────────────────────
+
     /// <summary>Total files to restore (set at restore start).</summary>
     public int RestoreTotalFiles => (int)Interlocked.Read(ref _restoreTotalFiles);
     private long _restoreTotalFiles;
@@ -410,9 +577,6 @@ public sealed class ProgressState
     /// <summary>Total bytes covered by the rehydration request.</summary>
     public long RehydrationTotalBytes => Interlocked.Read(ref _rehydrationTotalBytes);
     private long _rehydrationTotalBytes;
-
-    /// <summary>Rolling window of the 10 most recent restore file events, for display tail.</summary>
-    internal ConcurrentQueue<RestoreFileEvent> RecentRestoreEvents { get; } = new();
 
     /// <summary>Sets the expected total number of files to restore.</summary>
     public void SetRestoreTotalFiles(int count) => Interlocked.Exchange(ref _restoreTotalFiles, count);
@@ -443,6 +607,58 @@ public sealed class ProgressState
         Interlocked.Exchange(ref _rehydrationChunkCount, count);
         Interlocked.Exchange(ref _rehydrationTotalBytes, bytes);
     }
+
+    // ── Restore: chunk resolution and rehydration status ─────────────────────
+
+    /// <summary>Number of distinct chunk groups (unique content hashes) to download.</summary>
+    public int ChunkGroups => (int)Interlocked.Read(ref _chunkGroups);
+    private long _chunkGroups;
+
+    /// <summary>Number of large-file chunks.</summary>
+    public int LargeChunkCount => (int)Interlocked.Read(ref _largeChunkCount);
+    private long _largeChunkCount;
+
+    /// <summary>Number of tar-bundle chunks.</summary>
+    public int TarChunkCount => (int)Interlocked.Read(ref _tarChunkCount);
+    private long _tarChunkCount;
+
+    /// <summary>Sets chunk resolution counts.</summary>
+    public void SetChunkResolution(int chunkGroups, int largeCount, int tarCount)
+    {
+        Interlocked.Exchange(ref _chunkGroups, chunkGroups);
+        Interlocked.Exchange(ref _largeChunkCount, largeCount);
+        Interlocked.Exchange(ref _tarChunkCount, tarCount);
+    }
+
+    /// <summary>Chunks available for immediate download (Hot/Cool tier).</summary>
+    public int ChunksAvailable => (int)Interlocked.Read(ref _chunksAvailable);
+    private long _chunksAvailable;
+
+    /// <summary>Chunks already rehydrated (ready to download).</summary>
+    public int ChunksRehydrated => (int)Interlocked.Read(ref _chunksRehydrated);
+    private long _chunksRehydrated;
+
+    /// <summary>Chunks needing rehydration from Archive tier.</summary>
+    public int ChunksNeedingRehydration => (int)Interlocked.Read(ref _chunksNeedingRehydration);
+    private long _chunksNeedingRehydration;
+
+    /// <summary>Chunks currently being rehydrated (pending from a previous run).</summary>
+    public int ChunksPending => (int)Interlocked.Read(ref _chunksPending);
+    private long _chunksPending;
+
+    /// <summary>Sets rehydration availability status counts.</summary>
+    public void SetRehydrationStatus(int available, int rehydrated, int needsRehydration, int pending)
+    {
+        Interlocked.Exchange(ref _chunksAvailable, available);
+        Interlocked.Exchange(ref _chunksRehydrated, rehydrated);
+        Interlocked.Exchange(ref _chunksNeedingRehydration, needsRehydration);
+        Interlocked.Exchange(ref _chunksPending, pending);
+    }
+
+    // ── Restore: recent events ───────────────────────────────────────────────
+
+    /// <summary>Rolling window of the 10 most recent restore file events, for display tail.</summary>
+    internal ConcurrentQueue<RestoreFileEvent> RecentRestoreEvents { get; } = new();
 
     /// <summary>
     /// Enqueues a restore file event into <see cref="RecentRestoreEvents"/>, capped at 10 entries.
