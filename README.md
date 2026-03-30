@@ -1,11 +1,21 @@
-# Arius
+# Arius: a Lightweight Tiered Archival Solution for Azure Blob Storage
 
 [![CI](https://github.com/woutervanranst/Arius7/actions/workflows/ci.yml/badge.svg)](https://github.com/woutervanranst/Arius7/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/woutervanranst/Arius7/graph/badge.svg)](https://codecov.io/gh/woutervanranst/Arius7)
 
-Content-addressable archival to Azure Blob Storage. Deduplicated, optionally encrypted, with Archive-tier support.
+<img src="docs/iceberg.svg" width="200" />
 
-Arius7 is a deliberate Agentic Engineering (HOTL) rewrite of [Arius](https://github.com/woutervanranst/Arius).
+Arius is a lightweight archival solution, specifically built to leverage the Azure Blob Archive tier. It's content-addressable, deduplicated, client-side encrypted and versioned.
+
+The name derives from the Greek for 'immortal'.
+
+Arius7 is a deliberate Agentic Engineering (human-on-the-loop) rewrite of [Arius](https://github.com/woutervanranst/Arius).
+
+Principles:
+* Code is not human-written
+* Important business logic may get glanced at
+* Tests is where the human attention goes to - so coverage is inherently high
+* Like [Peter Steinberger](https://youtube.com/watch?v=YFjfBk8HI5o&t=4437), the ClawdBot creator, I never revert, only fix forward
 
 ## Installation
 
