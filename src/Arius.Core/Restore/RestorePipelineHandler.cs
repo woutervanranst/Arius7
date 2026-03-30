@@ -297,14 +297,28 @@ public sealed class RestorePipelineHandler
             long downloadBytes    = 0;
 
             foreach (var chunkHash in available.Concat(rehydrated))
-            {
-                if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
-                    downloadBytes += ie.CompressedSize;
-            }
+                downloadBytes += SumCompressedBytes(chunkHash);
             foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
+                rehydrationBytes += SumCompressedBytes(chunkHash);
+
+            long SumCompressedBytes(string chunkHash)
             {
-                if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
-                    rehydrationBytes += ie.CompressedSize;
+                var firstFile = filesByChunkHash[chunkHash][0];
+                if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
+                    return 0;
+
+                bool isLargeChunk = ie.ContentHash == ie.ChunkHash;
+                if (isLargeChunk)
+                    return ie.CompressedSize;
+
+                // Tar bundle: sum proportional shares across all files in the chunk
+                long sum = 0;
+                foreach (var file in filesByChunkHash[chunkHash])
+                {
+                    if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                        sum += fileEntry.CompressedSize;
+                }
+                return sum;
             }
 
             // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
