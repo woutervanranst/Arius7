@@ -234,17 +234,13 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
         state.IncrementFilesRestored(notification.FileSize);
         state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: false);
 
-        // Remove TrackedDownload for large files (keyed by chunk hash, matched by DisplayName)
-        // Tar bundle files are removed by ChunkDownloadCompletedHandler instead.
-        foreach (var kvp in state.TrackedDownloads)
+        // Remove TrackedDownload for large files (keyed by RelativePath — the identifier
+        // passed from RestorePipelineHandler). Tar bundles are removed by ChunkDownloadCompletedHandler.
+        if (state.TrackedDownloads.TryGetValue(notification.RelativePath, out var td)
+            && td.Kind == Core.Restore.DownloadKind.LargeFile
+            && state.TrackedDownloads.TryRemove(notification.RelativePath, out var removed))
         {
-            if (kvp.Value.Kind == Core.Restore.DownloadKind.LargeFile &&
-                kvp.Value.DisplayName == notification.RelativePath)
-            {
-                if (state.TrackedDownloads.TryRemove(kvp.Key, out var removed))
-                    state.AddRestoreBytesDownloaded(removed.CompressedSize);
-                break;
-            }
+            state.AddRestoreBytesDownloaded(removed.CompressedSize);
         }
 
         return ValueTask.CompletedTask;

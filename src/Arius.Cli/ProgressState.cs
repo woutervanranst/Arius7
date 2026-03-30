@@ -174,7 +174,7 @@ public sealed class TrackedDownload
     /// <summary>
     /// Initializes a new TrackedDownload for the specified chunk.
     /// </summary>
-    /// <param name="key">Chunk hash used as dictionary key.</param>
+    /// <param name="key">Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</param>
     /// <param name="kind">Whether this is a large file or tar bundle download.</param>
     /// <param name="displayName">Human-readable label for display (file path or "TAR bundle (N files, X)").</param>
     /// <param name="compressedSize">Total compressed download size in bytes.</param>
@@ -188,7 +188,7 @@ public sealed class TrackedDownload
         OriginalSize   = originalSize;
     }
 
-    /// <summary>Chunk hash, used as dictionary key.</summary>
+    /// <summary>Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</summary>
     public string Key { get; }
 
     /// <summary>Whether this is a large file or tar bundle download.</summary>
@@ -437,7 +437,7 @@ public sealed class ProgressState
 
     // ── Restore: active downloads ────────────────────────────────────────────
 
-    /// <summary>Active downloads tracked during restore, keyed by chunk hash.</summary>
+    /// <summary>Active downloads tracked during restore, keyed by identifier (RelativePath for large files, chunk hash for tar bundles).</summary>
     public ConcurrentDictionary<string, TrackedDownload> TrackedDownloads { get; } = new(StringComparer.Ordinal);
 
     /// <summary>

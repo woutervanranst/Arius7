@@ -1882,12 +1882,13 @@ public class TrackedDownloadLifecycleTests
         var state = new ProgressState();
 
         // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
-        var td = new TrackedDownload("chunk_abc", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
-        state.TrackedDownloads.TryAdd("chunk_abc", td);
+        // Key is RelativePath (the identifier passed from RestorePipelineHandler for large files)
+        var td = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
-        state.TrackedDownloads["chunk_abc"].DisplayName.ShouldBe("photos/sunset.jpg");
-        state.TrackedDownloads["chunk_abc"].Kind.ShouldBe(Core.Restore.DownloadKind.LargeFile);
+        state.TrackedDownloads["photos/sunset.jpg"].DisplayName.ShouldBe("photos/sunset.jpg");
+        state.TrackedDownloads["photos/sunset.jpg"].Kind.ShouldBe(Core.Restore.DownloadKind.LargeFile);
 
         // Simulate byte-level progress updates
         td.SetBytesDownloaded(12_300_000);
@@ -1896,11 +1897,11 @@ public class TrackedDownloadLifecycleTests
         td.SetBytesDownloaded(25_400_000);
         td.BytesDownloaded.ShouldBe(25_400_000L);
 
-        // FileRestoredHandler should remove the TrackedDownload and increment RestoreBytesDownloaded
+        // FileRestoredHandler should remove the TrackedDownload by direct key lookup on RelativePath
         var handler = new FileRestoredHandler(state);
         await handler.Handle(new Core.Restore.FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
 
-        state.TrackedDownloads.ContainsKey("chunk_abc").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
+        state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
         state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(50_000_000L);
@@ -2041,13 +2042,14 @@ public class FileRestoredHandlerTrackedDownloadTests
     public async Task FileRestoredHandler_RemovesLargeFileTrackedDownload()
     {
         var state = new ProgressState();
-        var td = new TrackedDownload("chunk_xyz", Core.Restore.DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
-        state.TrackedDownloads.TryAdd("chunk_xyz", td);
+        // Key is RelativePath for large files (matching production behavior)
+        var td = new TrackedDownload("videos/movie.mp4", Core.Restore.DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
+        state.TrackedDownloads.TryAdd("videos/movie.mp4", td);
 
         var handler = new FileRestoredHandler(state);
         await handler.Handle(new Core.Restore.FileRestoredEvent("videos/movie.mp4", 200_000_000L), CancellationToken.None);
 
-        state.TrackedDownloads.ContainsKey("chunk_xyz").ShouldBeFalse("Large file TrackedDownload should be removed");
+        state.TrackedDownloads.ContainsKey("videos/movie.mp4").ShouldBeFalse("Large file TrackedDownload should be removed");
         state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add CompressedSize to RestoreBytesDownloaded");
     }
 
@@ -2112,7 +2114,7 @@ public class TrackedDownloadThreadSafetyTests
             new ParallelOptions { MaxDegreeOfParallelism = 4 },
             (i, ct) =>
             {
-                var key = $"chunk_{i:x8}";
+                var key = $"file_{i}.bin"; // Key is RelativePath for large files
                 var td = new TrackedDownload(key, Core.Restore.DownloadKind.LargeFile, $"file_{i}.bin", 1_000_000, 2_000_000);
                 state.TrackedDownloads.TryAdd(key, td);
 
@@ -2211,12 +2213,12 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetChunkResolution(5, 3, 2);
         state.SetRestoreTotalCompressedBytes(50_000_000);
 
-        // Add a large file download in progress
-        var td1 = new TrackedDownload("chunk1", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        // Add a large file download in progress (key is RelativePath for large files)
+        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
         td1.SetBytesDownloaded(18_300_000);
-        state.TrackedDownloads.TryAdd("chunk1", td1);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
 
-        // Add a tar bundle download in progress
+        // Add a tar bundle download in progress (key is chunk hash for tar bundles)
         var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
         td2.SetBytesDownloaded(4_800_000);
         state.TrackedDownloads.TryAdd("chunk2", td2);
@@ -2260,9 +2262,9 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetRestoreTotalCompressedBytes(50_000_000);
 
         // Two downloads with different-length names and sizes
-        var td1 = new TrackedDownload("chunk1", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
         td1.SetBytesDownloaded(18_300_000);
-        state.TrackedDownloads.TryAdd("chunk1", td1);
+        state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
 
         var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
         td2.SetBytesDownloaded(4_800_000);
