@@ -7,7 +7,6 @@ using Arius.Core;
 using Arius.Core.ChunkIndex;
 using Azure.Storage;
 using Azure.Storage.Blobs;
-using Mediator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;

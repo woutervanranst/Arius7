@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
-using System.Globalization;
 
 namespace Arius.Cli.Commands.Restore;
 
