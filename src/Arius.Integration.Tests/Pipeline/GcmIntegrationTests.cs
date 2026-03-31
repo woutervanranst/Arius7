@@ -112,11 +112,17 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         cbcResult.Success.ShouldBeTrue(cbcResult.ErrorMessage);
         cbcResult.FilesUploaded.ShouldBe(1);
 
-        // Phase 2: archive more files using new GCM encryption into the same container
+        // Phase 2: archive more files using new GCM encryption into the same container.
+        // Also place cbc-large.bin in gcmFix's LocalRoot so the new GCM snapshot includes it.
+        // Its hash is already in the chunk index (from cbcFix), so the chunk is deduplicated —
+        // no re-upload happens, but the file appears in the latest snapshot that restore reads.
+        // When restore downloads that chunk it auto-detects the Salted__ magic and decrypts via CBC.
         await using var gcmFix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
             new PassphraseEncryptionService(Passphrase),
             existingContainer: cbcFix.Container);
+
+        gcmFix.WriteFile("cbc-large.bin", cbcLargeContent); // deduplicates against cbcFix chunk
 
         var gcmContent = new byte[300];
         Random.Shared.NextBytes(gcmContent);
@@ -124,12 +130,13 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         var gcmResult = await gcmFix.ArchiveAsync();
         gcmResult.Success.ShouldBeTrue(gcmResult.ErrorMessage);
-        gcmResult.FilesUploaded.ShouldBe(1);
+        gcmResult.FilesUploaded.ShouldBe(1); // only gcm-small.bin is new; cbc-large.bin deduplicates
 
-        // Phase 3: restore from the GCM fixture (which sees the full mixed archive)
-        // The restore path auto-detects magic bytes, so both CBC and GCM blobs are readable.
+        // Phase 3: restore from the GCM fixture (latest snapshot has both files).
+        // The restore auto-detects magic bytes, so both CBC and GCM blobs are readable.
         var restoreResult = await gcmFix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
 
         // GCM-archived file must be restored correctly
         gcmFix.ReadRestored("gcm-small.bin").ShouldBe(gcmContent);

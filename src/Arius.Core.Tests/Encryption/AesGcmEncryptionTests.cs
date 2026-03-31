@@ -259,6 +259,33 @@ public class AesGcmEncryptionTests
         Encoding.UTF8.GetString(ms.ToArray()).ShouldBe(expectedPlaintext);
     }
 
+    // ── 5.11 CBC text golden file decryption ─────────────────────────────────────
+
+    [Test]
+    public async Task CbcTextGoldenFile_Decrypt_PlaintextMatchesExpected()
+    {
+        // Golden file: CBC-encrypted gzip of "Hello, Salted__ CBC golden file!" with passphrase "wouter"
+        // Fixed salt: deadbeef01020304 (8 bytes)
+        // Key+IV derived via PBKDF2-SHA256(passphrase, salt, 10_000, dklen=48)
+        const string cbcGoldenFile    = "680ccc692b5c2b058a0d9964ae08f9343350f8873dd900bb62742ba0a0b313de";
+        const string expectedPlaintext = "Hello, Salted__ CBC golden file!";
+        const string goldenPassphrase  = "wouter";
+
+        var goldenDir = Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
+        var path      = Path.Combine(goldenDir, cbcGoldenFile);
+        File.Exists(path).ShouldBeTrue($"CBC text golden file not found: {path}");
+
+        var svc = new PassphraseEncryptionService(goldenPassphrase);
+
+        await using var fs   = File.OpenRead(path);
+        await using var dec  = svc.WrapForDecryption(fs);  // auto-detects Salted__ magic → CBC
+        await using var gzip = new GZipStream(dec, CompressionMode.Decompress);
+        var ms = new MemoryStream();
+        await gzip.CopyToAsync(ms);
+
+        Encoding.UTF8.GetString(ms.ToArray()).ShouldBe(expectedPlaintext);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────────
 
     private sealed class ZeroStream(long length) : Stream
