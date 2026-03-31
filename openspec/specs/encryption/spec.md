@@ -111,7 +111,7 @@ The encryption format and hash construction SHALL be backwards compatible with c
 - **THEN** the hash SHALL be identical
 
 ### Requirement: Worst-case recovery with standard tools
-All encrypted blobs SHALL be recoverable using only standard tools. For CBC blobs: `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase> | gunzip`. For GCM blobs: `recover-chunk.py <chunk-file> <passphrase> | gunzip` (or piped to `tar x` for tar chunks).
+All encrypted blobs SHALL be recoverable using only standard tools. For CBC blobs: `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase> | gunzip`. For GCM blobs: `recover-chunk.py <chunk-file> <passphrase>` (the script decrypts and decompresses internally; for tar chunks the output is pipeable to `tar x`).
 
 #### Scenario: Manual recovery of CBC-encrypted large file
 - **WHEN** the Arius software is unavailable and a user has the passphrase and content-hash
@@ -141,7 +141,7 @@ When a passphrase is provided, filetree blob bodies SHALL be gzip-compressed and
 - **THEN** the cached file SHALL be plaintext UTF-8 text (no compression or encryption)
 
 ### Requirement: Worst-case recovery of filetree blobs
-Encrypted filetree blobs SHALL be recoverable using only standard tools. For CBC-encrypted filetrees: download blob, pipe through `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase>`, pipe through `gunzip`, producing the plaintext tree blob text. For GCM-encrypted filetrees: download blob, run `recover-chunk.py <blob-file> <passphrase>`, producing the plaintext tree blob text. For an unencrypted filetree: download blob, pipe through `gunzip`.
+Encrypted filetree blobs SHALL be recoverable using only standard tools. For CBC-encrypted filetrees: download blob, pipe through `openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:<passphrase>`, pipe through `gunzip`, producing the plaintext tree blob text. For GCM-encrypted filetrees: download blob, run `recover-chunk.py <blob-file> <passphrase>` (the script decrypts and decompresses internally), producing the plaintext tree blob text. For an unencrypted filetree: download blob, pipe through `gunzip`.
 
 #### Scenario: Manual recovery of encrypted filetree
 - **WHEN** the Arius software is unavailable and a user has the passphrase and tree hash
