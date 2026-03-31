@@ -10,8 +10,8 @@ AES-256-CBC is a legacy cipher mode without built-in authentication — cipherte
 - **Zero new dependencies**: Uses built-in `System.Security.Cryptography.AesGcm` for AEAD and existing `Rfc2898DeriveBytes` for PBKDF2.
 - **New content types**: `application/aes256gcm+gzip` and `application/aes256gcm+tar+gzip`.
 - **Auto-detection on read**: `WrapForDecryption` peeks at magic bytes (`ArGCM1` vs `Salted__`) to select the correct decryption path — zero caller changes needed.
-- **Rename existing classes** to clarify encryption scheme: `PassphraseEncryptionService` becomes scheme-explicit (e.g., `AesCbcEncryptionService` for legacy, `AesGcmEncryptionService` for new).
-- **Pure bash recovery script** (`recover-chunk.sh`) for emergency decryption of GCM-encrypted chunks using only `openssl` (3.x), `xxd`, `dd`, and `gunzip`. Tested in the CI/CD release pipeline.
+- **`PassphraseEncryptionService` remains the single public entry point** — it writes GCM by default and reads both GCM and CBC via auto-detection. Internal stream classes renamed to `AesCbcEncryptingStream`, `AesCbcDecryptingStream`, `AesGcmEncryptingStream`, `AesGcmDecryptingStream` to make the scheme explicit.
+- **Pure Python recovery script** (`recover-chunk.py`) for emergency decryption of GCM-encrypted chunks using Python 3 and the `cryptography` package. Tested in the CI/CD release pipeline. (`openssl enc -aes-256-gcm` is not viable — OpenSSL 3.x `enc` subcommand explicitly refuses AEAD ciphers.)
 - **BREAKING**: Non-chunk folders (filetrees, snapshots, chunk-index) will switch to GCM-only — no backwards compatibility for those. Migration of existing non-chunk blobs is out of scope for this change.
 - **Mixed archives**: After this change, an archive can contain both CBC and GCM chunks. The read path handles both transparently.
 
@@ -25,8 +25,8 @@ AES-256-CBC is a legacy cipher mode without built-in authentication — cipherte
 
 ## Impact
 
-- **Code**: `IEncryptionService` interface unchanged. `PassphraseEncryptionService` split/renamed. New `AesGcmEncryptionService` class. `BlobConstants.ContentTypes` gains GCM entries. DI registration updated to use GCM by default.
+- **Code**: `IEncryptionService` interface unchanged. `PassphraseEncryptionService` remains the single public entry point. Internal stream classes renamed for scheme clarity. `BlobConstants.ContentTypes` gains GCM entries. DI registration updated to use GCM by default.
 - **Dependencies**: None added. All cryptography uses `System.Security.Cryptography` (BCL).
 - **Storage**: New chunks get `application/aes256gcm+gzip` content type. Existing chunks untouched.
-- **Tests**: Golden file tests for CBC remain. New golden file tests for GCM. Mixed-archive roundtrip tests (CBC + GCM chunks in same archive). Bash recovery script tested in CI/CD release pipeline.
+- **Tests**: Golden file tests for CBC remain. New golden file tests for GCM. Mixed-archive roundtrip tests (CBC + GCM chunks in same archive). Python recovery script tested in CI/CD release pipeline.
 - **CLI**: No user-facing changes — `--passphrase` works the same way.
