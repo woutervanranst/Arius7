@@ -129,34 +129,34 @@ The system SHALL use `application/aes256gcm+gzip` as the content type for GCM-en
 - **WHEN** a filetree, snapshot, or chunk-index shard is uploaded with GCM encryption
 - **THEN** the blob content type SHALL be `application/aes256gcm+gzip`
 
-### Requirement: Pure bash recovery script
+### Requirement: Pure Python recovery script
 
-A bash script (`recover-chunk.sh`) SHALL be provided that can decrypt any AES-256-GCM encrypted chunk given the chunk file and passphrase. The script SHALL depend only on `openssl` (3.x), `dd`, `xxd`, and `gunzip`. The script SHALL verify the OpenSSL version at startup and fail with a clear error if below 3.0.
+A Python script (`recover-chunk.py`) SHALL be provided that can decrypt any AES-256-GCM encrypted chunk given the chunk file and passphrase. The script SHALL depend only on Python's standard library (`hashlib`, `struct`, `gzip`, `sys`, `argparse`) and the `cryptography` package. The script SHALL verify its dependencies at startup and fail with a clear error if unavailable.
 
 #### Scenario: Recover a GCM-encrypted large chunk
-- **WHEN** `recover-chunk.sh <chunk-file> <passphrase>` is run against a GCM-encrypted large chunk
+- **WHEN** `recover-chunk.py <chunk-file> <passphrase>` is run against a GCM-encrypted large chunk
 - **THEN** the script SHALL output the original uncompressed file content to stdout
 
 #### Scenario: Recover a GCM-encrypted tar chunk
-- **WHEN** `recover-chunk.sh <chunk-file> <passphrase>` is run against a GCM-encrypted tar chunk
+- **WHEN** `recover-chunk.py <chunk-file> <passphrase>` is run against a GCM-encrypted tar chunk
 - **THEN** the script SHALL output the uncompressed tar stream to stdout (pipeable to `tar x`)
 
-#### Scenario: OpenSSL version check
-- **WHEN** `recover-chunk.sh` is run with OpenSSL < 3.0
-- **THEN** the script SHALL exit with a non-zero code and print an error message indicating OpenSSL 3.x is required
+#### Scenario: Dependencies check
+- **WHEN** `recover-chunk.py` is run without the `cryptography` package installed
+- **THEN** the script SHALL exit with a non-zero code and print an error message with installation instructions
 
 #### Scenario: Wrong passphrase
-- **WHEN** `recover-chunk.sh` is run with an incorrect passphrase
+- **WHEN** `recover-chunk.py` is run with an incorrect passphrase
 - **THEN** the script SHALL fail with a non-zero exit code (GCM authentication failure on the first block)
 
 ### Requirement: Recovery script tested in CI/CD
 
-The bash recovery script SHALL be tested in the GitHub Actions release pipeline (`release.yml`). The test SHALL create a GCM-encrypted chunk using the Arius binary, then run `recover-chunk.sh` to decrypt it, and verify the output matches the original file by comparing SHA256 hashes.
+The Python recovery script SHALL be tested in the GitHub Actions release pipeline (`release.yml`). The test SHALL run `recover-chunk.py` against a pre-committed golden file with a known passphrase, and verify the output matches the expected plaintext by comparing SHA256 hashes.
 
 #### Scenario: Recovery script roundtrip in CI
 - **WHEN** the release pipeline runs
-- **THEN** a job SHALL encrypt a known file, recover it with `recover-chunk.sh`, and assert the SHA256 of the recovered output matches the SHA256 of the original file
+- **THEN** a job SHALL decrypt the golden chunk file with `recover-chunk.py`, and assert the SHA256 of the recovered output matches the SHA256 of the known plaintext
 
 #### Scenario: Recovery script test runs on ubuntu-latest
 - **WHEN** the recovery script test job runs
-- **THEN** it SHALL execute on `ubuntu-latest` which provides OpenSSL 3.x
+- **THEN** it SHALL execute on `ubuntu-latest` which provides Python 3 and installs `cryptography` via `pip`
