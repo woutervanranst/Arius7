@@ -121,13 +121,16 @@ internal static class UpdateVerb
 
                 if (!OperatingSystem.IsWindows())
                 {
-                    File.SetUnixFileMode(currentExe,
-                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                        UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                    File.SetUnixFileMode(currentExe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
                 }
 
-                try { Directory.Delete(tempDir, true); } catch { }
+                try
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                catch
+                {
+                }
 
                 AnsiConsole.MarkupLine($"[green]Updated to {versionStr}. Please restart arius.[/]");
                 return 0;
