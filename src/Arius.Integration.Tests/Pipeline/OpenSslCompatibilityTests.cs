@@ -20,21 +20,21 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
 {
     private const string Passphrase = "openssl-compat-test";
 
-    /// <summary>Absolute path to recover-chunk.sh in the repo root.</summary>
+    /// <summary>Absolute path to recover-chunk.py in the repo root.</summary>
     private static string RecoverScript
     {
         get
         {
-            // Walk up from the test assembly to find the repo root (contains recover-chunk.sh)
+            // Walk up from the test assembly to find the repo root (contains recover-chunk.py)
             var dir = AppContext.BaseDirectory;
             while (dir is not null)
             {
-                var candidate = Path.Combine(dir, "recover-chunk.sh");
+                var candidate = Path.Combine(dir, "recover-chunk.py");
                 if (File.Exists(candidate))
                     return candidate;
                 dir = Path.GetDirectoryName(dir);
             }
-            throw new FileNotFoundException("recover-chunk.sh not found in any ancestor of " + AppContext.BaseDirectory);
+            throw new FileNotFoundException("recover-chunk.py not found in any ancestor of " + AppContext.BaseDirectory);
         }
     }
 
@@ -42,8 +42,7 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
     {
         try
         {
-            // Needs python3 + cryptography + gunzip
-            if (!CommandExists("python3") || !CommandExists("gunzip"))
+            if (!CommandExists("python3"))
                 return false;
 
             var p = Process.Start(new ProcessStartInfo("python3", "-c \"from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"")
@@ -74,13 +73,12 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
 
     private static (int exitCode, string stdout, string stderr) RunScript(params string[] args)
     {
-        var psi = new ProcessStartInfo("bash")
+        var psi = new ProcessStartInfo("python3")
         {
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
         };
-        // bash <script> arg1 arg2 ...
         psi.ArgumentList.Add(RecoverScript);
         foreach (var a in args)
             psi.ArgumentList.Add(a);

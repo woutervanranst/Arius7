@@ -83,12 +83,11 @@ jobs:
 
       - name: 🔑 Decrypt GCM golden file and verify output
         run: |
-          chmod +x recover-chunk.sh
           GOLDEN="src/Arius.Core.Tests/Encryption/GoldenFiles/2594868716c414b39895e10299bc609a1d1602a65b8576599d149f911aa33be8"
           PASSPHRASE="wouter"
           EXPECTED="Hello, ArGCM1 golden file!"
 
-          ACTUAL=$(./recover-chunk.sh "$GOLDEN" "$PASSPHRASE")
+          ACTUAL=$(python3 recover-chunk.py "$GOLDEN" "$PASSPHRASE")
           if [[ "$ACTUAL" != "$EXPECTED" ]]; then
             echo "❌ Recovery mismatch!" >&2
             echo "  expected: $EXPECTED" >&2
