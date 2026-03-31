@@ -1,9 +1,7 @@
 using Arius.AzureBlob;
-using Arius.Core.Archive;
 using Arius.Core.ChunkIndex;
 using Arius.Core.Restore;
 using Arius.Core.Storage;
-using Azure.Storage.Blobs;
 using Shouldly;
 using System.Formats.Tar;
 using System.IO.Compression;

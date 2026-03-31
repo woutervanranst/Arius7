@@ -1,3 +1,5 @@
+using Arius.Cli.Commands.Archive;
+using Arius.Cli.Commands.Restore;
 using Arius.Core;
 using Arius.Core.Archive;
 using Arius.Core.Restore;
@@ -640,7 +642,7 @@ public class ChunkUploadingHandlerDualLookupTests
 // ── 7.6 BuildArchiveDisplay: redesigned rendering ────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildArchiveDisplay"/> renders the new three-section
+/// Verifies <see cref="ArchiveVerb.BuildDisplay"/> renders the new three-section
 /// layout: scanning header with live counter, hashing header with unique count + queue depth,
 /// uploading header, per-file lines (only Hashing/Uploading), and TAR bundle lines.
 /// </summary>
@@ -665,7 +667,7 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_ShowsAllThreeStageHeaders()
     {
         var state = new ProgressState();
-        var renderable = CliBuilder.BuildArchiveDisplay(state);
+        var renderable = ArchiveVerb.BuildDisplay(state);
         var output     = RenderToString(renderable);
 
         output.ShouldContain("Scanning");
@@ -682,7 +684,7 @@ public class BuildArchiveDisplayTests
         state.IncrementFilesScanned(1024);
         state.IncrementFilesScanned(2048);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("2");  // 2 files scanned
         output.ShouldContain("○"); // not complete
     }
@@ -693,7 +695,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.SetScanComplete(1523, 5_000_000L);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("●");
         output.ShouldContain("1");  // count shown
     }
@@ -708,7 +710,7 @@ public class BuildArchiveDisplayTests
         state.IncrementFilesUnique();
         state.IncrementFilesUnique();
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("unique");
         output.ShouldContain("3");
     }
@@ -719,7 +721,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.HashQueueDepth = () => 12;
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("pending");
         output.ShouldContain("12");
     }
@@ -730,7 +732,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.HashQueueDepth = () => 0;
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldNotContain("pending");
     }
 
@@ -743,7 +745,7 @@ public class BuildArchiveDisplayTests
         state.IncrementChunksUploaded(100);
         state.UploadQueueDepth = () => 3;
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("3");
         output.ShouldContain("pending");
     }
@@ -755,7 +757,7 @@ public class BuildArchiveDisplayTests
         state.IncrementChunksUploaded(100);
         state.SetSnapshotComplete();
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("●");
     }
 
@@ -766,7 +768,7 @@ public class BuildArchiveDisplayTests
         state.IncrementChunksUploaded(100);
         // SnapshotComplete NOT set
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("○");
     }
 
@@ -779,7 +781,7 @@ public class BuildArchiveDisplayTests
         state.AddFile("video.mp4", 5_000_000);
         // State is Hashing by default
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("video.mp4");
         output.ShouldContain("Hashing");
     }
@@ -792,7 +794,7 @@ public class BuildArchiveDisplayTests
         state.SetFileHashed("large.bin", "lhash");
         state.SetFileUploading("lhash");
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("large.bin");
         output.ShouldContain("Uploading");
     }
@@ -806,7 +808,7 @@ public class BuildArchiveDisplayTests
         state.SetFileHashed("pending.bin", "ph1");
         // State is now Hashed — should not appear
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldNotContain("pending.bin");
     }
 
@@ -818,7 +820,7 @@ public class BuildArchiveDisplayTests
         state.SetFileHashed("completed.bin", "done1");
         state.RemoveFile("completed.bin");
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldNotContain("completed.bin");
     }
 
@@ -831,7 +833,7 @@ public class BuildArchiveDisplayTests
         var startedH = new TarBundleStartedHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("TAR #1");
         output.ShouldContain("Accumulating");
     }
@@ -847,7 +849,7 @@ public class BuildArchiveDisplayTests
             new TarBundleSealingEvent(3, 300, "t1", ["h1", "h2", "h3"]),
             CancellationToken.None);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("TAR #1");
         output.ShouldContain("Sealing");
     }
@@ -865,7 +867,7 @@ public class BuildArchiveDisplayTests
             CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent("t2", 200), CancellationToken.None);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("TAR #1");
         output.ShouldContain("Uploading");
     }
@@ -878,7 +880,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.AddFile("some/deep/path/file.bin", 1024);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("some/deep/path/file.bin");
     }
 
@@ -889,7 +891,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.AddFile(longPath, 2048);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("...");
         output.ShouldNotContain(longPath);
     }
@@ -900,7 +902,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.AddFile("doc.pdf", 5_000_000);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("MB");
     }
 }
@@ -928,7 +930,7 @@ public class BuildArchiveDisplayDoneTests
             ColorSystem = ColorSystemSupport.NoColors,
             Out         = new AnsiConsoleOutput(writer),
         });
-        console.Write(CliBuilder.BuildArchiveDisplay(state));
+        console.Write(ArchiveVerb.BuildDisplay(state));
         var output = writer.ToString();
 
         output.ShouldNotContain("completed.bin");
@@ -938,28 +940,28 @@ public class BuildArchiveDisplayDoneTests
 // ── RenderProgressBar: bar character fill ─────────────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.RenderProgressBar"/> produces correct fill ratios.
+/// Verifies <see cref="DisplayHelpers.RenderProgressBar"/> produces correct fill ratios.
 /// </summary>
 public class RenderProgressBarTests
 {
     [Test]
     public void RenderProgressBar_ZeroFraction_AllEmpty()
     {
-        var bar = CliBuilder.RenderProgressBar(0.0, 10);
+        var bar = DisplayHelpers.RenderProgressBar(0.0, 10);
         bar.ShouldContain(new string('░', 10));
     }
 
     [Test]
     public void RenderProgressBar_FullFraction_AllFilled()
     {
-        var bar = CliBuilder.RenderProgressBar(1.0, 10);
+        var bar = DisplayHelpers.RenderProgressBar(1.0, 10);
         bar.ShouldContain(new string('█', 10));
     }
 
     [Test]
     public void RenderProgressBar_HalfFraction_HalfFilled()
     {
-        var bar = CliBuilder.RenderProgressBar(0.5, 12);
+        var bar = DisplayHelpers.RenderProgressBar(0.5, 12);
         bar.ShouldContain(new string('█', 6));
         bar.ShouldContain(new string('░', 6));
     }
@@ -967,7 +969,7 @@ public class RenderProgressBarTests
     [Test]
     public void RenderProgressBar_62Percent_Width12_SevenOrEightFilled()
     {
-        var bar = CliBuilder.RenderProgressBar(0.62, 12);
+        var bar = DisplayHelpers.RenderProgressBar(0.62, 12);
         bar.ShouldContain(new string('█', 7));
         bar.ShouldContain(new string('░', 5));
     }
@@ -975,14 +977,14 @@ public class RenderProgressBarTests
     [Test]
     public void RenderProgressBar_ClampsBelowZero()
     {
-        var bar = CliBuilder.RenderProgressBar(-0.5, 8);
+        var bar = DisplayHelpers.RenderProgressBar(-0.5, 8);
         bar.ShouldContain(new string('░', 8));
     }
 
     [Test]
     public void RenderProgressBar_ClampsAboveOne()
     {
-        var bar = CliBuilder.RenderProgressBar(1.5, 8);
+        var bar = DisplayHelpers.RenderProgressBar(1.5, 8);
         bar.ShouldContain(new string('█', 8));
     }
 }
@@ -1390,7 +1392,7 @@ public class TrackedFileBytesProcessedTests
 // ── BuildArchiveDisplay: round-2 refinements ──────────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildArchiveDisplay"/> uses ●/○ symbols,
+/// Verifies <see cref="ArchiveVerb.BuildDisplay"/> uses ●/○ symbols,
 /// full relative path truncation, and a size column.
 /// </summary>
 public class BuildArchiveDisplayRound2Tests
@@ -1414,7 +1416,7 @@ public class BuildArchiveDisplayRound2Tests
         var state = new ProgressState();
         state.SetScanComplete(3, 3000L);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("●");
     }
 
@@ -1422,7 +1424,7 @@ public class BuildArchiveDisplayRound2Tests
     public void BuildArchiveDisplay_UsesOpenCircle_WhenScanningInProgress()
     {
         var state  = new ProgressState();   // ScanComplete not set
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
 
         output.ShouldContain("○");
     }
@@ -1433,7 +1435,7 @@ public class BuildArchiveDisplayRound2Tests
         var state = new ProgressState();
         state.AddFile("some/deep/path/file.bin", 1024);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("some/deep/path/file.bin");
     }
 
@@ -1444,7 +1446,7 @@ public class BuildArchiveDisplayRound2Tests
         var state = new ProgressState();
         state.AddFile(longPath, 2048);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("...");
         output.ShouldNotContain(longPath);
     }
@@ -1455,7 +1457,7 @@ public class BuildArchiveDisplayRound2Tests
         var state = new ProgressState();
         state.AddFile("doc.pdf", 5_000_000);
 
-        var output = RenderToString(CliBuilder.BuildArchiveDisplay(state));
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("MB");
     }
 }
@@ -1463,14 +1465,14 @@ public class BuildArchiveDisplayRound2Tests
 // ── TruncateAndLeftJustify ────────────────────────────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.TruncateAndLeftJustify"/> edge cases.
+/// Verifies <see cref="DisplayHelpers.TruncateAndLeftJustify"/> edge cases.
 /// </summary>
 public class TruncateAndLeftJustifyTests
 {
     [Test]
     public void ShortPath_PaddedToWidth()
     {
-        var result = CliBuilder.TruncateAndLeftJustify("hi.txt", 10);
+        var result = DisplayHelpers.TruncateAndLeftJustify("hi.txt", 10);
         result.ShouldBe("hi.txt    ");
         result.Length.ShouldBe(10);
     }
@@ -1478,7 +1480,7 @@ public class TruncateAndLeftJustifyTests
     [Test]
     public void ExactWidthPath_NotPadded()
     {
-        var result = CliBuilder.TruncateAndLeftJustify("12345", 5);
+        var result = DisplayHelpers.TruncateAndLeftJustify("12345", 5);
         result.ShouldBe("12345");
         result.Length.ShouldBe(5);
     }
@@ -1486,7 +1488,7 @@ public class TruncateAndLeftJustifyTests
     [Test]
     public void LongPath_TruncatedWithEllipsisPrefix()
     {
-        var result = CliBuilder.TruncateAndLeftJustify("abcdefghij", 7);
+        var result = DisplayHelpers.TruncateAndLeftJustify("abcdefghij", 7);
         result.ShouldBe("...ghij");
         result.Length.ShouldBe(7);
     }
@@ -1494,7 +1496,7 @@ public class TruncateAndLeftJustifyTests
     [Test]
     public void Width4_LongPath_EllipsisPlusOneChar()
     {
-        var result = CliBuilder.TruncateAndLeftJustify("abcde", 4);
+        var result = DisplayHelpers.TruncateAndLeftJustify("abcde", 4);
         result.ShouldBe("...e");
         result.Length.ShouldBe(4);
     }
@@ -1502,7 +1504,7 @@ public class TruncateAndLeftJustifyTests
     [Test]
     public void EmptyString_PaddedToWidth()
     {
-        var result = CliBuilder.TruncateAndLeftJustify("", 5);
+        var result = DisplayHelpers.TruncateAndLeftJustify("", 5);
         result.ShouldBe("     ");
         result.Length.ShouldBe(5);
     }
@@ -1752,7 +1754,7 @@ public class RestoreNotificationHandlerTests
 // ── BuildRestoreDisplay ───────────────────────────────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders correctly in
+/// Verifies <see cref="RestoreVerb.BuildDisplay"/> renders correctly in
 /// its 3-stage layout: Resolved, Checked, Restoring — plus tail lines.
 /// </summary>
 public class BuildRestoreDisplayTests
@@ -1775,7 +1777,7 @@ public class BuildRestoreDisplayTests
     {
         var state = new ProgressState();
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Before tree traversal completes, stage 1 shows "Resolving" (not "Resolved")
         output.ShouldContain("Resolving");
@@ -1798,7 +1800,7 @@ public class BuildRestoreDisplayTests
         state.AddRestoreEvent("foo/bar.txt", 1024L, skipped: false);
         state.AddRestoreEvent("baz/skip.txt", 512L, skipped: true);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Stage 1: Resolved should show green bullet + snapshot info
         output.ShouldContain("Resolved");
@@ -1831,7 +1833,7 @@ public class BuildRestoreDisplayTests
         state.IncrementFilesRestored(300L);
         state.AddRestoreEvent("done.txt", 500L, skipped: false);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         output.ShouldContain("●");
         output.ShouldContain("Restoring");
@@ -1847,7 +1849,7 @@ public class BuildRestoreDisplayTests
         state.SetTreeTraversalComplete(0, 0L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Stage 1: Resolved (green ●)
         output.ShouldContain("Resolved");
@@ -2131,7 +2133,7 @@ public class TrackedDownloadThreadSafetyTests
 // ── 8.6 BuildRestoreDisplay: Resolving phase ──────────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the Resolving phase
+/// Verifies <see cref="RestoreVerb.BuildDisplay"/> renders the Resolving phase
 /// with <see cref="ProgressState.RestoreFilesDiscovered"/> during tree traversal.
 /// </summary>
 public class BuildRestoreDisplayResolvingTests
@@ -2155,7 +2157,7 @@ public class BuildRestoreDisplayResolvingTests
         var state = new ProgressState();
         state.SetRestoreFilesDiscovered(523);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         output.ShouldContain("Resolving");
         output.ShouldContain("523");
@@ -2170,7 +2172,7 @@ public class BuildRestoreDisplayResolvingTests
         state.SetTreeTraversalComplete(1247, 14_200_000_000L);
         state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         output.ShouldContain("Resolved");
         output.ShouldContain(1247.ToString("N0"));   // locale-formatted: "1,247" or "1.247"
@@ -2181,7 +2183,7 @@ public class BuildRestoreDisplayResolvingTests
 // ── 8.8 BuildRestoreDisplay: Active download table ────────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders active download table
+/// Verifies <see cref="RestoreVerb.BuildDisplay"/> renders active download table
 /// with per-item progress bars for <see cref="TrackedDownload"/> entries.
 /// </summary>
 public class BuildRestoreDisplayActiveDownloadsTests
@@ -2218,7 +2220,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         td2.SetBytesDownloaded(4_800_000);
         state.TrackedDownloads.TryAdd("chunk2", td2);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Should show file names / labels
         output.ShouldContain("sunset.jpg");
@@ -2241,7 +2243,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.IncrementFilesRestored(400L);
         // No TrackedDownloads
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // No progress bars in the download area
         output.ShouldNotContain("TAR bundle");
@@ -2265,7 +2267,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         td2.SetBytesDownloaded(4_800_000);
         state.TrackedDownloads.TryAdd("chunk2", td2);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
         var dlLines = output.Split('\n')
             .Where(l => l.Contains("█") || l.Contains("░"))
             .Where(l => !l.Contains("Restoring"))  // exclude the aggregate line
@@ -2284,7 +2286,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
 // ── 8.9 BuildRestoreDisplay: Aggregate progress bar ───────────────────────────
 
 /// <summary>
-/// Verifies <see cref="CliBuilder.BuildRestoreDisplay"/> renders the aggregate progress bar
+/// Verifies <see cref="RestoreVerb.BuildDisplay"/> renders the aggregate progress bar
 /// with dual byte counters (compressed download + original).
 /// </summary>
 public class BuildRestoreDisplayAggregateProgressTests
@@ -2313,7 +2315,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         state.SetRestoreTotalCompressedBytes(8_310_000_000);
         state.AddRestoreBytesDownloaded(3_170_000_000);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Should show progress bar
         output.ShouldContain("█");
@@ -2342,7 +2344,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         state.IncrementFilesRestored(1_000_000L);
         state.IncrementFilesRestored(1_000_000L);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         // Restoring line should show 100%
         output.ShouldContain("100%");
@@ -2364,7 +2366,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         state.AddRestoreBytesDownloaded(10_000_000); // small progress so far
         state.IncrementFilesRestored(100_000L);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
         var allLines = output.Split('\n');
 
         // Line 1: progress bar line with file count, bar, and percentage — no byte counters
@@ -2413,7 +2415,7 @@ public class BuildRestoreDisplayDispositionTests
         state.IncrementDisposition(Core.Restore.RestoreDisposition.Overwrite);
         state.IncrementDisposition(Core.Restore.RestoreDisposition.KeepLocalDiffers);
 
-        var output = RenderToString(CliBuilder.BuildRestoreDisplay(state));
+        var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
         output.ShouldContain("1 new");
         output.ShouldContain("1 identical");
