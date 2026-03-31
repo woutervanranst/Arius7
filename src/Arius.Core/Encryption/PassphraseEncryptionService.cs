@@ -32,12 +32,13 @@ public sealed class PassphraseEncryptionService : IEncryptionService
     private static readonly byte[] SaltedMagic = "Salted__"u8.ToArray();
 
     // ── GCM constants ────────────────────────────────────────────────────────────
-    private const int GcmSaltSize    = 16;
-    private const int GcmKeySize     = 32;  // AES-256
-    private const int GcmNonceSize   = 12;
-    private const int GcmTagSize     = 16;
-    private const int GcmBlockSize   = 64 * 1024; // 64 KiB
-    private const int GcmPbkdf2Iter  = 100_000;
+    private const int GcmSaltSize       = 16;
+    private const int GcmKeySize        = 32;  // AES-256
+    private const int GcmNonceSize      = 12;
+    private const int GcmTagSize        = 16;
+    private const int GcmBlockSize      = 64 * 1024; // 64 KiB
+    private const int GcmPbkdf2Iter     = 100_000;
+    private const uint GcmMaxPbkdf2Iter = 10_000_000; // sanity cap: reject crafted blobs
     private static readonly byte[] GcmMagic = "ArGCM1"u8.ToArray(); // 6 bytes
 
     private readonly byte[] _passphraseBytes;
@@ -346,9 +347,14 @@ public sealed class PassphraseEncryptionService : IEncryptionService
             if (!header.AsSpan(0, GcmMagic.Length).SequenceEqual(GcmMagic))
                 throw new InvalidDataException("Stream does not begin with ArGCM1 magic.");
 
-            var salt       = header.AsSpan(6, GcmSaltSize).ToArray();
-            var iterations = (int)BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(6 + GcmSaltSize, 4));
-            _nonce0        = header.AsSpan(6 + GcmSaltSize + 4, GcmNonceSize).ToArray();
+            var salt           = header.AsSpan(6, GcmSaltSize).ToArray();
+            var iterRaw        = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(6 + GcmSaltSize, 4));
+            if (iterRaw == 0 || iterRaw > GcmMaxPbkdf2Iter)
+                throw new InvalidDataException(
+                    $"ArGCM1 header contains an out-of-range PBKDF2 iteration count ({iterRaw}). " +
+                    $"Expected 1–{GcmMaxPbkdf2Iter}.");
+            var iterations     = (int)iterRaw;
+            _nonce0            = header.AsSpan(6 + GcmSaltSize + 4, GcmNonceSize).ToArray();
 
             var key     = DeriveGcmKey(passphraseBytes, salt, iterations);
             _aesGcm     = new AesGcm(key, GcmTagSize);
