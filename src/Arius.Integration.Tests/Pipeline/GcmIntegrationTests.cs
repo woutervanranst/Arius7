@@ -133,6 +133,9 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         // GCM-archived file must be restored correctly
         gcmFix.ReadRestored("gcm-small.bin").ShouldBe(gcmContent);
+
+        // CBC-archived file must also be restored correctly (auto-detection of legacy format)
+        gcmFix.ReadRestored("cbc-large.bin").ShouldBe(cbcLargeContent);
     }
 
     // ── Helper: adapter that writes CBC but reads/hashes via real service ─────
