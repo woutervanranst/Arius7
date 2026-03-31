@@ -10,6 +10,7 @@ If output-file is omitted, the decrypted+decompressed content is written to stdo
 Prerequisites:
   - Python 3.7+
   - 'cryptography' package  (pip install cryptography)
+  - stdlib only otherwise (hashlib, struct, zlib, sys, argparse)
 
 Format (ArGCM1):
   HEADER (38 bytes):
@@ -30,10 +31,10 @@ Key derivation: PBKDF2-SHA256 (iterations from header, output 32 bytes)
 """
 
 import argparse
-import gzip
+import sys
 import hashlib
 import struct
-import sys
+import zlib
 
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -55,12 +56,14 @@ def _derive_nonce(nonce0: bytes, block_index: int) -> bytes:
     return bytes(a ^ b for a, b in zip(nonce0, counter))
 
 
-def decrypt_argcm1(chunk_path: str, passphrase: str) -> bytes:
+def decrypt_argcm1(chunk_path: str, passphrase: str, out_stream) -> None:
     """
-    Parse and decrypt an ArGCM1 file.
-    Returns the raw (still gzip-compressed) plaintext.
+    Parse and decrypt an ArGCM1 file, writing decompressed plaintext to out_stream.
+    Uses a streaming zlib decompressor so no full chunk is ever buffered in memory.
     """
     passphrase_bytes = passphrase.encode("utf-8")
+    # wbits=47 means gzip format auto-detect (16 | 15)
+    decompressor = zlib.decompressobj(wbits=47)
 
     with open(chunk_path, "rb") as f:
         # ── Parse 38-byte header ───────────────────────────────────────────
@@ -77,8 +80,7 @@ def decrypt_argcm1(chunk_path: str, passphrase: str) -> bytes:
         key = hashlib.pbkdf2_hmac("sha256", passphrase_bytes, salt, iterations, dklen=32)
         aes = AESGCM(key)
 
-        # ── Decrypt blocks ─────────────────────────────────────────────────
-        plaintext_blocks: list[bytes] = []
+        # ── Decrypt blocks, decompress incrementally ───────────────────────
         block_index = 0
 
         while True:
@@ -106,6 +108,8 @@ def decrypt_argcm1(chunk_path: str, passphrase: str) -> bytes:
                         file=sys.stderr,
                     )
                     sys.exit(1)
+                # Flush remaining decompressor output
+                out_stream.write(decompressor.flush())
                 break
 
             cipher_and_tag = f.read(plain_len + TAG_SIZE)
@@ -114,7 +118,7 @@ def decrypt_argcm1(chunk_path: str, passphrase: str) -> bytes:
                 sys.exit(1)
 
             try:
-                plaintext_blocks.append(aes.decrypt(nonce_i, cipher_and_tag, None))
+                plaintext_block = aes.decrypt(nonce_i, cipher_and_tag, None)
             except Exception:
                 print(
                     f"Error: authentication failed on block {block_index - 1} "
@@ -123,7 +127,8 @@ def decrypt_argcm1(chunk_path: str, passphrase: str) -> bytes:
                 )
                 sys.exit(1)
 
-    return b"".join(plaintext_blocks)
+            # Feed decrypted bytes into the streaming decompressor
+            out_stream.write(decompressor.decompress(plaintext_block))
 
 
 def main() -> None:
@@ -137,15 +142,12 @@ def main() -> None:
     parser.add_argument("output_file", nargs="?", help="Output file (default: stdout)")
     args = parser.parse_args()
 
-    compressed = decrypt_argcm1(args.chunk_file, args.passphrase)
-    plaintext  = gzip.decompress(compressed)
-
     if args.output_file:
         with open(args.output_file, "wb") as out:
-            out.write(plaintext)
+            decrypt_argcm1(args.chunk_file, args.passphrase, out)
         print(f"Recovered: {args.output_file}", file=sys.stderr)
     else:
-        sys.stdout.buffer.write(plaintext)
+        decrypt_argcm1(args.chunk_file, args.passphrase, sys.stdout.buffer)
 
 
 if __name__ == "__main__":
