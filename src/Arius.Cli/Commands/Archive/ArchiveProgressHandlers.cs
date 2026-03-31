@@ -83,14 +83,15 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
             foreach (var path in paths)
                 state.RemoveFile(path);
 
-        if (state.TrackedTars.Count > 0)
+        var tar = state.TrackedTars.Values
+            .Where(t => t.State == TarState.Accumulating)
+            .OrderByDescending(t => t.BundleNumber)
+            .FirstOrDefault();
+
+        if (tar != null)
         {
-            var maxKey = state.TrackedTars.Keys.Max();
-            if (state.TrackedTars.TryGetValue(maxKey, out var tar))
-            {
-                var addedBytes = notification.CurrentTarSize - (tar.AccumulatedBytes);
-                tar.AddEntry(addedBytes > 0 ? addedBytes : 0);
-            }
+            var addedBytes = notification.CurrentTarSize - tar.AccumulatedBytes;
+            tar.AddEntry(addedBytes > 0 ? addedBytes : 0);
         }
 
         state.IncrementFilesUnique();
