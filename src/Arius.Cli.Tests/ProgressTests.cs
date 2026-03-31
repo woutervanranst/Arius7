@@ -1,6 +1,5 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Restore;
-using Arius.Cli.Commands.Shared;
 using Arius.Core;
 using Arius.Core.Archive;
 using Arius.Core.Restore;

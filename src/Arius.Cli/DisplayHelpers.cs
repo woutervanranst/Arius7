@@ -1,7 +1,7 @@
 using Humanizer;
 using System.Globalization;
 
-namespace Arius.Cli.Commands.Shared;
+namespace Arius.Cli;
 
 /// <summary>
 /// Shared rendering utilities used by both <see cref="Archive.ArchiveVerb"/> and <see cref="Restore.RestoreVerb"/>.
