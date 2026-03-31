@@ -202,7 +202,92 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
     }
 
-    // ── Encrypted tar bundle → recover-chunk.py → tar extract ────────────────────
+    // ── CBC tar bundle → recover-chunk.py → tar extract ──────────────────────────
+
+    [Test]
+    public async Task Archive_CbcEncryptedTarBundle_RecoverScript_FilesCorrect()
+    {
+        if (!RecoverScriptAvailable())
+        {
+            Skip.Unless(false, "recover-chunk.py prerequisites not available — skipping");
+            return;
+        }
+
+        await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
+            azurite,
+            new CbcEncryptionServiceAdapter(Passphrase));
+
+        // Small files → tar bundled
+        var c1 = new byte[100]; Random.Shared.NextBytes(c1);
+        var c2 = new byte[200]; Random.Shared.NextBytes(c2);
+        fix.WriteFile("small1.txt", c1);
+        fix.WriteFile("small2.txt", c2);
+
+        var ar = await fix.ArchiveAsync();
+        ar.Success.ShouldBeTrue(ar.ErrorMessage);
+
+        // Find tar chunk blob
+        var chunkBlobs = new List<string>();
+        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+        {
+            var meta = await fix.BlobStorage.GetMetadataAsync(blob);
+            if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
+                chunkBlobs.Add(blob);
+        }
+        chunkBlobs.Count.ShouldBe(1);
+
+        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-cbc-tar-{Guid.NewGuid():N}");
+        var encryptedFile = Path.Combine(tempDir, "tar.enc");
+        var tarFile       = Path.Combine(tempDir, "bundle.tar");
+
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Download raw blob
+            {
+                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobs[0]);
+                await using var fileStream     = File.Create(encryptedFile);
+                await downloadStream.CopyToAsync(fileStream);
+            }
+
+            // Decrypt + decompress to tar using recover-chunk.py (auto-detects Salted__ magic)
+            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, tarFile);
+            exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
+
+            // Read tar entries (named by content-hash)
+            var extracted = new Dictionary<string, byte[]>();
+            await using var tarStream = File.OpenRead(tarFile);
+            var tarReader = new TarReader(tarStream);
+            TarEntry? entry;
+            while ((entry = await tarReader.GetNextEntryAsync(copyData: true)) is not null)
+            {
+                if (entry.DataStream is not null)
+                {
+                    using var ms = new MemoryStream();
+                    await entry.DataStream.CopyToAsync(ms);
+                    extracted[entry.Name] = ms.ToArray();
+                }
+            }
+
+            // Verify both files are in the tar (by content-hash lookup)
+            var enc   = new PassphraseEncryptionService(Passphrase);
+            var hash1 = Convert.ToHexString(enc.ComputeHash(c1)).ToLowerInvariant();
+            var hash2 = Convert.ToHexString(enc.ComputeHash(c2)).ToLowerInvariant();
+
+            extracted.ShouldContainKey(hash1);
+            extracted.ShouldContainKey(hash2);
+            extracted[hash1].ShouldBe(c1);
+            extracted[hash2].ShouldBe(c2);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    // ── GCM tar bundle → recover-chunk.py → tar extract ──────────────────────────
 
     [Test]
     public async Task Archive_EncryptedTarBundle_RecoverScript_FilesCorrect()
