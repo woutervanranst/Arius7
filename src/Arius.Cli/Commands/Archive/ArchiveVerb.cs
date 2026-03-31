@@ -147,10 +147,7 @@ internal static class ArchiveVerb
                         .AutoClear(false)
                         .StartAsync(async ctx =>
                         {
-                            var archiveTask = mediator.Send(new ArchiveCommand(opts), ct)
-                                .AsTask()
-                                .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
-                                    CancellationToken.None);
+                            var archiveTask = mediator.Send(new ArchiveCommand(opts), ct).AsTask();
 
                             while (!archiveTask.IsCompleted)
                             {
@@ -158,7 +155,7 @@ internal static class ArchiveVerb
                                 await Task.WhenAny(archiveTask, Task.Delay(100, ct)).ConfigureAwait(false);
                             }
 
-                            await archiveTask;
+                            result = await archiveTask;
                             ctx.UpdateTarget(BuildDisplay(progressState));
                         });
                 }
