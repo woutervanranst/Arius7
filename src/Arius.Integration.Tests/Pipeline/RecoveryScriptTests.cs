@@ -9,16 +9,16 @@ using System.IO.Compression;
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
-/// Recovery script compatibility tests: archive encrypted content → download raw blob →
-/// decrypt with <c>recover-chunk.sh</c> → verify the output is byte-identical.
+/// Tests for <c>recover-chunk.py</c>: archive encrypted content → download raw blob →
+/// decrypt with the Python recovery script → verify the output is byte-identical.
 ///
-/// Requires Python3 with the 'cryptography' package and gunzip on PATH.
+/// Requires Python3 with the 'cryptography' package on PATH.
 /// Skipped when those prerequisites are unavailable.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
-public class OpenSslCompatibilityTests(AzuriteFixture azurite)
+public class RecoveryScriptTests(AzuriteFixture azurite)
 {
-    private const string Passphrase = "openssl-compat-test";
+    private const string Passphrase = "recovery-script-test";
 
     /// <summary>Absolute path to recover-chunk.py in the repo root.</summary>
     private static string RecoverScript
@@ -88,14 +88,14 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         return (p.ExitCode, p.StandardOutput.ReadToEnd(), p.StandardError.ReadToEnd());
     }
 
-    // ── Large file encrypted → recover-chunk.sh decrypt → byte-identical ──────
+    // ── Large file encrypted → recover-chunk.py → byte-identical ────────────────
 
     [Test]
     public async Task Archive_EncryptedLargeFile_RecoverScript_ByteIdentical()
     {
         if (!RecoverScriptAvailable())
         {
-            Skip.Unless(false, "recover-chunk.sh prerequisites not available — skipping");
+            Skip.Unless(false, "recover-chunk.py prerequisites not available — skipping");
             return;
         }
 
@@ -131,9 +131,9 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 await downloadStream.CopyToAsync(fileStream);
             }
 
-            // Decrypt + decompress using recover-chunk.sh
+            // Decrypt + decompress using recover-chunk.py
             var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, recoveredFile);
-            exitCode.ShouldBe(0, $"recover-chunk.sh failed: {stderr}");
+            exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             File.ReadAllBytes(recoveredFile).ShouldBe(original);
         }
@@ -144,14 +144,14 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         }
     }
 
-    // ── Encrypted tar bundle → recover-chunk.sh decrypt → tar extract ─────────
+    // ── Encrypted tar bundle → recover-chunk.py → tar extract ────────────────────
 
     [Test]
     public async Task Archive_EncryptedTarBundle_RecoverScript_FilesCorrect()
     {
         if (!RecoverScriptAvailable())
         {
-            Skip.Unless(false, "recover-chunk.sh prerequisites not available — skipping");
+            Skip.Unless(false, "recover-chunk.py prerequisites not available — skipping");
             return;
         }
 
@@ -191,9 +191,9 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 await downloadStream.CopyToAsync(fileStream);
             }
 
-            // Decrypt + decompress to tar using recover-chunk.sh
+            // Decrypt + decompress to tar using recover-chunk.py
             var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, tarFile);
-            exitCode.ShouldBe(0, $"recover-chunk.sh failed: {stderr}");
+            exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             // Read tar entries (named by content-hash)
             var extracted = new Dictionary<string, byte[]>();
