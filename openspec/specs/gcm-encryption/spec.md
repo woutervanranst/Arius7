@@ -147,9 +147,9 @@ A Python script (`recover-chunk.py`) SHALL be provided that can decrypt any AES-
 - **WHEN** `recover-chunk.py <chunk-file> <passphrase>` is run against a GCM-encrypted tar chunk
 - **THEN** the script SHALL output the uncompressed tar stream to stdout (pipeable to `tar x`)
 
-#### Scenario: OpenSSL version check
-- **WHEN** `recover-chunk.py` is run with OpenSSL < 3.0
-- **THEN** the script SHALL exit with a non-zero code and print an error message indicating OpenSSL 3.x is required
+#### Scenario: Dependencies check
+- **WHEN** `recover-chunk.py` is run without the `cryptography` package installed
+- **THEN** the script SHALL exit with a non-zero code and print an error message with installation instructions (`pip install cryptography`)
 
 #### Scenario: Wrong passphrase
 - **WHEN** `recover-chunk.py` is run with an incorrect passphrase
@@ -165,4 +165,4 @@ The Python recovery script SHALL be tested in the GitHub Actions release pipelin
 
 #### Scenario: Recovery script test runs on ubuntu-latest
 - **WHEN** the recovery script test job runs
-- **THEN** it SHALL execute on `ubuntu-latest` which provides OpenSSL 3.x
+- **THEN** it SHALL execute on `ubuntu-latest` which provides Python 3 and installs `cryptography` via `pip`
