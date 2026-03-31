@@ -57,7 +57,7 @@ public class ProgressStreamTests
     public void Read_ZeroLengthSource_NoProgressReported()
     {
         using var src  = new MemoryStream([]);
-        int reportCount = 0;
+        var reportCount = 0;
         var progress    = new SyncProgress<long>(_ => reportCount++);
         using var ps    = new ProgressStream(src, progress);
 

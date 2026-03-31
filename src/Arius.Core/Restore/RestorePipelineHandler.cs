@@ -122,7 +122,7 @@ public sealed class RestorePipelineHandler
             // ── Step 3: Conflict check ────────────────────────────────────────
 
             var toRestore = new List<FileToRestore>();
-            int skipped   = 0;
+            var skipped   = 0;
 
             foreach (var file in files)
             {
@@ -169,9 +169,9 @@ public sealed class RestorePipelineHandler
                 toRestore.Add(file);
             }
 
-            int filesRestored    = 0;
+            var filesRestored    = 0;
             long filesRestoredLong = 0;
-            int totalPending     = 0;
+            var totalPending     = 0;
 
             if (toRestore.Count > 0)
             {
@@ -199,8 +199,8 @@ public sealed class RestorePipelineHandler
                 list.Add(file);
             }
 
-            int largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
-            int tarChunks   = filesByChunkHash.Count - largeChunks;
+            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
+            var tarChunks   = filesByChunkHash.Count - largeChunks;
 
             // Sum original and compressed sizes from index entries for the aggregate counters.
             // For large files, sizes come from the single index entry.
@@ -213,7 +213,7 @@ public sealed class RestorePipelineHandler
                 var firstFile = filesByChunkHash[chunkHash][0];
                 if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
                 {
-                    bool isLargeChunk = ie2.ContentHash == ie2.ChunkHash;
+                    var isLargeChunk = ie2.ContentHash == ie2.ChunkHash;
                     if (isLargeChunk)
                     {
                         totalOriginalBytes   += ie2.OriginalSize;
@@ -307,7 +307,7 @@ public sealed class RestorePipelineHandler
                 if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
                     return 0;
 
-                bool isLargeChunk = ie.ContentHash == ie.ChunkHash;
+                var isLargeChunk = ie.ContentHash == ie.ChunkHash;
                 if (isLargeChunk)
                     return ie.CompressedSize;
 
@@ -380,7 +380,7 @@ public sealed class RestorePipelineHandler
                     if (!indexEntries.TryGetValue(firstFile.ContentHash, out var indexEntry))
                         return;
 
-                    bool isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
+                    var isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
 
                     // For large files, sizes come from the single index entry.
                     // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
@@ -425,7 +425,7 @@ public sealed class RestorePipelineHandler
             // would throw BlobArchived 409 from Azure because StartCopyFromUri is not
             // permitted on an archived blob that already has a pending copy.
             var chunksToRequest = needsRehydration.ToList();
-            int chunksToRehydrate = chunksToRequest.Count + rehydrationPending.Count;
+            var chunksToRehydrate = chunksToRequest.Count + rehydrationPending.Count;
 
             if (chunksToRehydrate > 0)
             {
@@ -481,7 +481,7 @@ public sealed class RestorePipelineHandler
 
                     if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(allRehydratedBlobs.Count, totalRehydratedBytes, cancellationToken))
                     {
-                        int chunksDeleted = 0;
+                        var chunksDeleted = 0;
                         long bytesFreed   = 0;
 
                         foreach (var blobName in allRehydratedBlobs)
@@ -652,7 +652,7 @@ public sealed class RestorePipelineHandler
             await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
 
             // Wrap with ProgressStream if progress callback is provided
-            Stream progressOrRawStream = downloadStream;
+            var progressOrRawStream = downloadStream;
             if (opts.CreateDownloadProgress is not null)
             {
                 var progress = opts.CreateDownloadProgress(file.RelativePath, compressedSize, DownloadKind.LargeFile);
@@ -704,12 +704,12 @@ public sealed class RestorePipelineHandler
         long                                      compressedSize,
         CancellationToken                         cancellationToken)
     {
-        int restored = 0;
+        var restored = 0;
 
         await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
 
         // Wrap with ProgressStream if progress callback is provided
-        Stream progressOrRawStream = downloadStream;
+        var progressOrRawStream = downloadStream;
         if (opts.CreateDownloadProgress is not null)
         {
             var progress = opts.CreateDownloadProgress(chunkHash, compressedSize, DownloadKind.TarBundle);
