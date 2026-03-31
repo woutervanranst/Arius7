@@ -143,10 +143,7 @@ internal static class RestoreVerb
                 RestoreResult? result = null;
                 if (AnsiConsole.Console.Profile.Capabilities.Interactive)
                 {
-                    var pipelineTask = mediator.Send(new RestoreCommand(opts), ct)
-                        .AsTask()
-                        .ContinueWith(t => { result = t.IsCompletedSuccessfully ? t.Result : null; },
-                            CancellationToken.None);
+                    var pipelineTask = mediator.Send(new RestoreCommand(opts), ct).AsTask();
 
                     await AnsiConsole.Live(new Markup(""))
                         .Overflow(VerticalOverflow.Crop)
@@ -171,7 +168,7 @@ internal static class RestoreVerb
                             var doCleanup = AnsiConsole.Confirm(
                                 $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
                             cleanupAnswerTcs.TrySetResult(doCleanup);
-                            await pipelineTask.ConfigureAwait(false);
+                            result = await pipelineTask.ConfigureAwait(false);
                         }
                         else if (questionTcs.Task.IsCompleted)
                         {
@@ -244,7 +241,7 @@ internal static class RestoreVerb
 
                             if (priority is null)
                             {
-                                await pipelineTask.ConfigureAwait(false);
+                                result = await pipelineTask.ConfigureAwait(false);
                             }
                             else
                             {
@@ -272,7 +269,7 @@ internal static class RestoreVerb
                                         $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
                                     cleanupAnswerTcs.TrySetResult(doCleanup);
                                 }
-                                await pipelineTask.ConfigureAwait(false);
+                                result = await pipelineTask.ConfigureAwait(false);
                             }
                         }
                     }
@@ -285,7 +282,7 @@ internal static class RestoreVerb
                                 $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
                             cleanupAnswerTcs.TrySetResult(doCleanup);
                         }
-                        await pipelineTask.ConfigureAwait(false);
+                        result = await pipelineTask.ConfigureAwait(false);
                     }
                 }
                 else
