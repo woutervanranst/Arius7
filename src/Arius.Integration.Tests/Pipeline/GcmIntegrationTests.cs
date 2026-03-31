@@ -41,6 +41,14 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         meta.Exists.ShouldBeTrue();
         meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
 
+        // Verify the blob was GCM-encrypted: first 6 bytes must be the ArGCM1 magic
+        await using (var blobStream = await fix.BlobStorage.DownloadAsync(blobs[0]))
+        {
+            var magic = new byte[6];
+            await blobStream.ReadExactlyAsync(magic);
+            System.Text.Encoding.ASCII.GetString(magic).ShouldBe("ArGCM1");
+        }
+
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
@@ -131,6 +139,22 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         var gcmResult = await gcmFix.ArchiveAsync();
         gcmResult.Success.ShouldBeTrue(gcmResult.ErrorMessage);
         gcmResult.FilesUploaded.ShouldBe(1); // only gcm-small.bin is new; cbc-large.bin deduplicates
+
+        // Assert that the container holds both a CBC blob (Salted__ magic) and a GCM blob (ArGCM1 magic),
+        // confirming the mixed-format scenario before restore exercises auto-detection.
+        var hasCbc = false;
+        var hasGcm = false;
+        await foreach (var blobName in gcmFix.BlobStorage.ListAsync("chunks/"))
+        {
+            var header = new byte[8];
+            await using var s = await gcmFix.BlobStorage.DownloadAsync(blobName);
+            _ = await s.ReadAsync(header);
+
+            if (System.Text.Encoding.ASCII.GetString(header, 0, 8) == "Salted__") hasCbc = true;
+            if (System.Text.Encoding.ASCII.GetString(header, 0, 6) == "ArGCM1") hasGcm = true;
+        }
+        hasCbc.ShouldBeTrue("expected at least one CBC-encrypted (Salted__) blob in the container");
+        hasGcm.ShouldBeTrue("expected at least one GCM-encrypted (ArGCM1) blob in the container");
 
         // Phase 3: restore from the GCM fixture (latest snapshot has both files).
         // The restore auto-detects magic bytes, so both CBC and GCM blobs are readable.
