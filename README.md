@@ -17,6 +17,12 @@ Principles:
 * Tests is where the human attention goes to - so coverage is inherently high
 * Like [Peter Steinberger](https://youtube.com/watch?v=YFjfBk8HI5o&t=4437), the ClawdBot creator, I never revert, only fix forward
 
+## Demo
+
+Archive and restore at a glance:
+
+<img src="docs/demo.svg" />
+
 ## Installation
 
 Download the binary for your platform from the
