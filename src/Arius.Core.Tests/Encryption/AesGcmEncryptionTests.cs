@@ -168,7 +168,7 @@ public class AesGcmEncryptionTests
         var plainMs = new MemoryStream();
         await using var dec = svc.WrapForDecryption(truncMs);
 
-        await Should.ThrowAsync<Exception>(
+        await Should.ThrowAsync<EndOfStreamException>(
             async () => await dec.CopyToAsync(plainMs));
     }
 
