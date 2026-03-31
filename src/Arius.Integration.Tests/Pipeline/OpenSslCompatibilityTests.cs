@@ -9,22 +9,59 @@ using System.IO.Compression;
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
-/// OpenSSL compatibility tests: archive encrypted content → download raw blob →
-/// decrypt with openssl CLI → verify.
+/// Recovery script compatibility tests: archive encrypted content → download raw blob →
+/// decrypt with <c>recover-chunk.sh</c> → verify the output is byte-identical.
 ///
-/// Skipped when openssl is not on PATH (runs in CI only).
-/// Covers tasks 15.4 and 15.5.
+/// Requires Python3 with the 'cryptography' package and gunzip on PATH.
+/// Skipped when those prerequisites are unavailable.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class OpenSslCompatibilityTests(AzuriteFixture azurite)
 {
     private const string Passphrase = "openssl-compat-test";
 
-    private static bool OpenSslAvailable()
+    /// <summary>Absolute path to recover-chunk.sh in the repo root.</summary>
+    private static string RecoverScript
+    {
+        get
+        {
+            // Walk up from the test assembly to find the repo root (contains recover-chunk.sh)
+            var dir = AppContext.BaseDirectory;
+            while (dir is not null)
+            {
+                var candidate = Path.Combine(dir, "recover-chunk.sh");
+                if (File.Exists(candidate))
+                    return candidate;
+                dir = Path.GetDirectoryName(dir);
+            }
+            throw new FileNotFoundException("recover-chunk.sh not found in any ancestor of " + AppContext.BaseDirectory);
+        }
+    }
+
+    private static bool RecoverScriptAvailable()
     {
         try
         {
-            var p = Process.Start(new ProcessStartInfo("openssl", "version")
+            // Needs python3 + cryptography + gunzip
+            if (!CommandExists("python3") || !CommandExists("gunzip"))
+                return false;
+
+            var p = Process.Start(new ProcessStartInfo("python3", "-c \"from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"")
+            {
+                RedirectStandardError = true,
+                UseShellExecute       = false,
+            });
+            p?.WaitForExit(5000);
+            return p?.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    private static bool CommandExists(string cmd)
+    {
+        try
+        {
+            var p = Process.Start(new ProcessStartInfo("which", cmd)
             {
                 RedirectStandardOutput = true,
                 UseShellExecute        = false,
@@ -35,27 +72,32 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         catch { return false; }
     }
 
-    private static string RunOpenSsl(params string[] args)
+    private static (int exitCode, string stdout, string stderr) RunScript(params string[] args)
     {
-        var p = Process.Start(new ProcessStartInfo("openssl", string.Join(" ", args))
+        var psi = new ProcessStartInfo("bash")
         {
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
-        })!;
-        p.WaitForExit(30_000);
-        p.ExitCode.ShouldBe(0, $"openssl exited {p.ExitCode}: {p.StandardError.ReadToEnd()}");
-        return p.StandardOutput.ReadToEnd();
+        };
+        // bash <script> arg1 arg2 ...
+        psi.ArgumentList.Add(RecoverScript);
+        foreach (var a in args)
+            psi.ArgumentList.Add(a);
+
+        var p = Process.Start(psi)!;
+        p.WaitForExit(120_000);
+        return (p.ExitCode, p.StandardOutput.ReadToEnd(), p.StandardError.ReadToEnd());
     }
 
-    // ── 15.4: Large file encrypted → openssl decrypt → gunzip → byte-identical ─
+    // ── Large file encrypted → recover-chunk.sh decrypt → byte-identical ──────
 
     [Test]
-    public async Task Archive_EncryptedLargeFile_OpensslDecrypt_ByteIdentical()
+    public async Task Archive_EncryptedLargeFile_RecoverScript_ByteIdentical()
     {
-        if (!OpenSslAvailable())
+        if (!RecoverScriptAvailable())
         {
-            Skip.Unless(false, "openssl not on PATH — skipping");
+            Skip.Unless(false, "recover-chunk.sh prerequisites not available — skipping");
             return;
         }
 
@@ -76,10 +118,9 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-openssl-{Guid.NewGuid():N}");
+        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-{Guid.NewGuid():N}");
         var encryptedFile = Path.Combine(tempDir, "chunk.enc");
-        var decryptedFile = Path.Combine(tempDir, "chunk.dec");
-        var finalFile     = Path.Combine(tempDir, "original.bin");
+        var recoveredFile = Path.Combine(tempDir, "recovered.bin");
 
         Directory.CreateDirectory(tempDir);
 
@@ -92,22 +133,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 await downloadStream.CopyToAsync(fileStream);
             }
 
-            // Decrypt with openssl (AES-256-CBC, PBKDF2 SHA-256 10K iterations)
-            RunOpenSsl(
-                "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "10000",
-                "-md", "sha256",
-                "-pass", $"pass:{Passphrase}",
-                "-in",  encryptedFile,
-                "-out", decryptedFile);
+            // Decrypt + decompress using recover-chunk.sh
+            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, recoveredFile);
+            exitCode.ShouldBe(0, $"recover-chunk.sh failed: {stderr}");
 
-            // Gunzip
-            {
-                await using var gz   = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
-                await using var out_ = File.Create(finalFile);
-                await gz.CopyToAsync(out_);
-            }
-
-            File.ReadAllBytes(finalFile).ShouldBe(original);
+            File.ReadAllBytes(recoveredFile).ShouldBe(original);
         }
         finally
         {
@@ -116,14 +146,14 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         }
     }
 
-    // ── 15.5: Encrypted tar bundle → openssl decrypt → gunzip → tar extract ───
+    // ── Encrypted tar bundle → recover-chunk.sh decrypt → tar extract ─────────
 
     [Test]
-    public async Task Archive_EncryptedTarBundle_OpensslDecrypt_FilesCorrect()
+    public async Task Archive_EncryptedTarBundle_RecoverScript_FilesCorrect()
     {
-        if (!OpenSslAvailable())
+        if (!RecoverScriptAvailable())
         {
-            Skip.Unless(false, "openssl not on PATH — skipping");
+            Skip.Unless(false, "recover-chunk.sh prerequisites not available — skipping");
             return;
         }
 
@@ -138,7 +168,7 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
-        // Find tar chunk blob (large type = tar bundle, not thin)
+        // Find tar chunk blob
         var chunkBlobs = new List<string>();
         await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
         {
@@ -148,14 +178,11 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
         }
         chunkBlobs.Count.ShouldBe(1);
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-openssl-tar-{Guid.NewGuid():N}");
+        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-tar-{Guid.NewGuid():N}");
         var encryptedFile = Path.Combine(tempDir, "tar.enc");
-        var decryptedFile = Path.Combine(tempDir, "tar.dec.tar.gz");
         var tarFile       = Path.Combine(tempDir, "bundle.tar");
-        var extractDir    = Path.Combine(tempDir, "extracted");
 
         Directory.CreateDirectory(tempDir);
-        Directory.CreateDirectory(extractDir);
 
         try
         {
@@ -166,20 +193,9 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
                 await downloadStream.CopyToAsync(fileStream);
             }
 
-            // Decrypt
-            RunOpenSsl(
-                "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "10000",
-                "-md", "sha256",
-                "-pass", $"pass:{Passphrase}",
-                "-in",  encryptedFile,
-                "-out", decryptedFile);
-
-            // Gunzip
-            {
-                await using var gz    = new GZipStream(File.OpenRead(decryptedFile), CompressionMode.Decompress);
-                await using var tarFs = File.Create(tarFile);
-                await gz.CopyToAsync(tarFs);
-            }
+            // Decrypt + decompress to tar using recover-chunk.sh
+            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, tarFile);
+            exitCode.ShouldBe(0, $"recover-chunk.sh failed: {stderr}");
 
             // Read tar entries (named by content-hash)
             var extracted = new Dictionary<string, byte[]>();
@@ -197,8 +213,7 @@ public class OpenSslCompatibilityTests(AzuriteFixture azurite)
             }
 
             // Verify both files are in the tar (by content-hash lookup)
-            // Each entry is named by its content hash
-            var enc  = new PassphraseEncryptionService(Passphrase);
+            var enc   = new PassphraseEncryptionService(Passphrase);
             var hash1 = Convert.ToHexString(enc.ComputeHash(c1)).ToLowerInvariant();
             var hash2 = Convert.ToHexString(enc.ComputeHash(c2)).ToLowerInvariant();
 

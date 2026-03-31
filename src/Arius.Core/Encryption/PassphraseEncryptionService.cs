@@ -55,6 +55,16 @@ public sealed class PassphraseEncryptionService : IEncryptionService
         return new AesGcmEncryptingStream(inner, _passphraseBytes);
     }
 
+    /// <summary>
+    /// Test-only helper: wraps <paramref name="inner"/> with AES-256-CBC encryption (legacy format).
+    /// Used to manufacture CBC blobs for backwards-compatibility integration tests.
+    /// </summary>
+    internal Stream WrapForCbcEncryption(Stream inner)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        return new AesCbcEncryptingStream(inner, _passphraseBytes);
+    }
+
     /// <inheritdoc/>
     public Stream WrapForDecryption(Stream inner)
     {

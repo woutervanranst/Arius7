@@ -38,18 +38,18 @@
 
 ## 6. Integration Tests (Arius.Integration.Tests)
 
-- [ ] 6.1 End-to-end archive + restore roundtrip with GCM encryption (large file)
-- [ ] 6.2 End-to-end archive + restore roundtrip with GCM encryption (tar bundle)
-- [ ] 6.3 Mixed-archive test: archive some files with CBC build, archive more files with GCM build, restore all — verify all files restored correctly
+- [x] 6.1 End-to-end archive + restore roundtrip with GCM encryption (large file)
+- [x] 6.2 End-to-end archive + restore roundtrip with GCM encryption (tar bundle)
+- [x] 6.3 Mixed-archive test: archive some files with CBC build, archive more files with GCM build, restore all — verify all files restored correctly
 
 ## 7. Recovery Script
 
-- [ ] 7.1 Create `recover-chunk.sh` bash script: parse ArGCM1 header, derive key via `openssl kdf PBKDF2`, decrypt blocks with `openssl enc -d -aes-256-gcm`, pipe through `gunzip`
-- [ ] 7.2 Add OpenSSL 3.x version check at script startup
-- [ ] 7.3 Test script locally against a GCM-encrypted chunk (large file)
-- [ ] 7.4 Test script locally against a GCM-encrypted chunk (tar bundle)
+- [x] 7.1 Create `recover-chunk.sh` bash script: parse ArGCM1 header, derive key via `openssl kdf PBKDF2`, decrypt blocks with `openssl enc -d -aes-256-gcm`, pipe through `gunzip`
+- [x] 7.2 Add OpenSSL 3.x version check at script startup
+- [x] 7.3 Test script locally against a GCM-encrypted chunk (large file)
+- [x] 7.4 Test script locally against a GCM-encrypted chunk (tar bundle)
 
 ## 8. CI/CD Pipeline
 
-- [ ] 8.1 Add a recovery script test job to `release.yml`: encrypt a known file with the built Arius binary, run `recover-chunk.sh`, compare SHA256 of recovered output against original
-- [ ] 8.2 Ensure the job runs on `ubuntu-latest` (OpenSSL 3.x available)
+- [x] 8.1 Add a recovery script test job to `release.yml`: encrypt a known file with the built Arius binary, run `recover-chunk.sh`, compare SHA256 of recovered output against original
+- [x] 8.2 Ensure the job runs on `ubuntu-latest` (OpenSSL 3.x available)

@@ -50,6 +50,24 @@ public sealed class PipelineFixture : IAsyncDisposable
         return fixture;
     }
 
+    /// <summary>
+    /// Creates a fixture with an explicitly provided encryption service.
+    /// Used for tests that need a custom write-path (e.g. legacy CBC simulation).
+    /// If <paramref name="existingContainer"/> is supplied, the fixture reuses that
+    /// container rather than creating a new one.
+    /// </summary>
+    public static async Task<PipelineFixture> CreateAsyncWithEncryption(
+        AzuriteFixture   azurite,
+        IEncryptionService encryption,
+        BlobContainerClient? existingContainer = null,
+        CancellationToken ct = default)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-pipe-{Guid.NewGuid():N}");
+        var fixture  = new PipelineFixture(azurite, tempRoot);
+        await fixture.InitAsyncWithEncryption(encryption, existingContainer, ct);
+        return fixture;
+    }
+
     private async Task InitAsync(string? passphrase, CancellationToken ct)
     {
         var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
@@ -59,6 +77,33 @@ public sealed class PipelineFixture : IAsyncDisposable
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
         Index      = new ChunkIndexService(BlobStorage, Encryption, Account, container.Name);
+        Mediator   = Substitute.For<IMediator>();
+
+        LocalRoot   = Path.Combine(_tempRoot, "source");
+        RestoreRoot = Path.Combine(_tempRoot, "restore");
+        Directory.CreateDirectory(LocalRoot);
+        Directory.CreateDirectory(RestoreRoot);
+    }
+
+    private async Task InitAsyncWithEncryption(
+        IEncryptionService   encryption,
+        BlobContainerClient? existingContainer,
+        CancellationToken    ct)
+    {
+        if (existingContainer is not null)
+        {
+            Container   = existingContainer;
+            BlobStorage = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
+        }
+        else
+        {
+            var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
+            Container   = container;
+            BlobStorage = svc;
+        }
+
+        Encryption = encryption;
+        Index      = new ChunkIndexService(BlobStorage, Encryption, Account, Container.Name);
         Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
