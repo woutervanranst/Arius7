@@ -656,11 +656,13 @@ public sealed class PassphraseEncryptionService : IEncryptionService
             if (n > _peekBuf.Length)
                 throw new ArgumentOutOfRangeException(nameof(n));
 
-            // Read into peek buffer if we haven't yet
-            if (_peekBufLen < n)
+            // Loop until we have n bytes or the underlying stream signals EOF
+            while (_peekBufLen < n)
             {
                 var needed = n - _peekBufLen;
                 var read   = inner.Read(_peekBuf, _peekBufLen, needed);
+                if (read == 0)
+                    break; // EOF — return however many bytes we managed to read
                 _peekBufLen += read;
             }
 
