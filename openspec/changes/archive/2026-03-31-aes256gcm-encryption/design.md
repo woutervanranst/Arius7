@@ -11,7 +11,7 @@ The write path always uses one encryption scheme; the read path currently assume
 - Maintain full read-path compatibility with existing AES-256-CBC chunks
 - Stream-encrypt arbitrarily large data with bounded memory (no full-file buffering)
 - Keep zero external NuGet dependencies — use only `System.Security.Cryptography`
-- Provide a pure bash recovery script tested in CI/CD
+- Provide a pure Python recovery script tested in CI/CD
 - Rename classes to make the encryption scheme explicit
 
 **Non-Goals:**
@@ -121,36 +121,36 @@ This keeps the `IEncryptionService` interface unchanged. No caller modifications
 
 Non-chunk blobs (filetrees, snapshots, chunk-index) reuse `application/aes256gcm+gzip` — same as today's pattern where they share `application/aes256cbc+gzip`.
 
-The `ContentTypes` class gains `LargeGcmEncrypted`, `TarGcmEncrypted`, and corresponding entries for non-chunk types. The write-path selection changes from `_encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ...` to a scheme-aware selection. Add a property or method to `IEncryptionService` to expose the active write scheme's content type, or add a `ContentType` property per blob kind.
+The `ContentTypes` class gains `LargeGcmEncrypted`, `TarGcmEncrypted`, and corresponding entries for non-chunk types. The write-path selection changes from `_encryption.IsEncrypted ? ContentTypes.LargeEncrypted : ...` to a scheme-aware selection. The `IEncryptionService` interface is not changed — content type selection uses an `IsEncrypted` check combined with a compile-time constant for the GCM content type identifiers.
 
-### Decision 7: Pure bash recovery script
+### Decision 7: Pure Python recovery script
 
-The recovery script (`recover-chunk.sh`) uses only standard tools: `openssl` (3.x), `dd`, `xxd`, `gunzip`.
+The recovery script (`recover-chunk.py`) uses Python 3 with the `cryptography` package (`pip install cryptography`). All other operations use the stdlib: `hashlib`, `struct`, `gzip`, `sys`, `argparse`.
 
 **Structure**:
-1. Validate OpenSSL version ≥ 3.0
-2. Parse 38-byte header with `dd` + `xxd`
-3. Derive key via `openssl kdf -keylen 32 -kdfopt digest:SHA256 -kdfopt pass:<passphrase> -kdfopt hexsalt:<salt> -kdfopt iter:<N> PBKDF2`
-4. Loop: read 4-byte block length, read ciphertext+tag, split tag (last 16 bytes), compute nonce (XOR base with counter), decrypt via `openssl enc -d -aes-256-gcm`
-5. Pipe all decrypted blocks through `gunzip`
+1. Import `AESGCM` from `cryptography.hazmat.primitives.ciphers.aead`; exit with a clear error if unavailable
+2. Parse 38-byte header
+3. Derive key via `hashlib.pbkdf2_hmac("sha256", passphrase_bytes, salt, iterations, dklen=32)`
+4. Loop: read 4-byte block length, read ciphertext+tag, compute nonce (XOR base with counter), decrypt via `AESGCM.decrypt`
+5. Decompress the concatenated plaintext blocks with `gzip.decompress` and write to file or stdout
 
-**Why bash over Python**: Fewer dependencies in emergency recovery scenarios. A server may have `openssl` + coreutils but not Python with `cryptography` installed.
+**Why Python over bash**: `openssl enc` subcommand in OpenSSL 3.x explicitly refuses AEAD ciphers. Pure bash with only coreutils cannot perform GCM authentication. Python with the `cryptography` package is the minimal viable option that is both portable and correct.
 
-**OpenSSL 3.x requirement**: The `openssl kdf` subcommand and proper GCM tag handling in `openssl enc` require OpenSSL 3.0+. The script checks this at startup and fails with a clear message.
+**Dependency check**: The script imports `cryptography` inside a try/except at startup and exits non-zero with a clear install instruction if unavailable.
 
 ### Decision 8: CI/CD testing of recovery script
 
 The recovery script is tested in the `release.yml` GitHub Actions workflow. After building the platform binaries, a new job:
 
-1. Creates a test chunk using the built Arius binary (encrypt a known file with a known passphrase)
-2. Runs `recover-chunk.sh` against the chunk
-3. Compares the recovered output against the original file (SHA256)
+1. Installs Python 3 and the `cryptography` package (`pip install cryptography`)
+2. Runs `python3 recover-chunk.py <golden-chunk-file> <passphrase> <output-file>` against a pre-committed golden file
+3. Compares the recovered output against the known plaintext (SHA256 equality check)
 
-This runs on `ubuntu-latest` which has OpenSSL 3.x. The test validates the full format contract between the C# implementation and the bash script.
+This runs on `ubuntu-latest` which ships Python 3. The test validates the full format contract between the C# implementation and the Python script.
 
 ## Risks / Trade-offs
 
-**[Risk: OpenSSL version availability]** → The recovery script requires OpenSSL 3.0+. Mitigation: OpenSSL 3.0 shipped September 2021; most modern distributions include it. The script checks the version upfront and fails clearly. As a fallback, the C# binary itself can always decrypt.
+**[Risk: Python cryptography package availability]** → The recovery script requires Python 3 and the `cryptography` package. Mitigation: Python 3 ships with most modern Linux distributions; `pip install cryptography` is a one-liner. The script checks the import at startup and exits non-zero with a clear install instruction if unavailable. As a fallback, the C# binary itself can always decrypt.
 
 **[Risk: AES-GCM hardware requirement]** → `System.Security.Cryptography.AesGcm` requires AES-NI hardware support on some platforms. Mitigation: All x64 CPUs since ~2010 and Apple Silicon support AES-NI. The class throws `PlatformNotSupportedException` if unavailable — fail fast with a clear message.
 
