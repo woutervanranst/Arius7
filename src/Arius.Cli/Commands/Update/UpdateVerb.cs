@@ -1,5 +1,6 @@
 using Spectre.Console;
 using System.CommandLine;
+using System.Text.Json;
 
 namespace Arius.Cli.Commands.Update;
 
@@ -33,15 +34,19 @@ internal static class UpdateVerb
                 var json = await http.GetStringAsync(
                     $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest", ct);
 
-                var tagStart = json.IndexOf("\"tag_name\":\"", StringComparison.Ordinal);
-                if (tagStart < 0)
+                using var doc  = JsonDocument.Parse(json);
+                var root       = doc.RootElement;
+
+                var tag = root.TryGetProperty("tag_name", out var tagProp)
+                    ? tagProp.GetString()
+                    : null;
+
+                if (string.IsNullOrWhiteSpace(tag))
                 {
                     AnsiConsole.MarkupLine("[red]Could not determine latest version.[/]");
                     return 1;
                 }
-                tagStart += "\"tag_name\":\"".Length;
-                var tagEnd     = json.IndexOf('"', tagStart);
-                var tag        = json[tagStart..tagEnd];
+
                 var versionStr = tag.TrimStart('v');
 
                 if (!Version.TryParse(versionStr, out var latestVersion))
@@ -59,29 +64,44 @@ internal static class UpdateVerb
                 AnsiConsole.MarkupLine($"[blue]New version available: {versionStr}[/]");
 
                 var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
-                string assetName;
-                if (rid.Contains("win"))       assetName = "arius-win-x64.exe";
-                else if (rid.Contains("osx"))  assetName = "arius-osx-arm64";
-                else                           assetName = "arius-linux-x64";
+                var ridToAsset = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["win-x64"]   = "arius-win-x64.exe",
+                    ["osx-x64"]   = "arius-osx-x64",
+                    ["osx-arm64"] = "arius-osx-arm64",
+                    ["linux-x64"] = "arius-linux-x64",
+                };
 
-                var assetKey = $"\"name\":\"{assetName}\"";
-                var assetIdx = json.IndexOf(assetKey, StringComparison.Ordinal);
-                if (assetIdx < 0)
+                if (!ridToAsset.TryGetValue(rid, out var assetName))
+                {
+                    AnsiConsole.MarkupLine($"[red]Unsupported platform '{rid}'. Supported: {string.Join(", ", ridToAsset.Keys)}[/]");
+                    return 1;
+                }
+
+                if (!root.TryGetProperty("assets", out var assetsProp) ||
+                    assetsProp.ValueKind != JsonValueKind.Array)
+                {
+                    AnsiConsole.MarkupLine("[red]Could not read assets from release.[/]");
+                    return 1;
+                }
+
+                string? downloadUrl = null;
+                foreach (var asset in assetsProp.EnumerateArray())
+                {
+                    if (asset.TryGetProperty("name", out var nameProp) &&
+                        nameProp.GetString() == assetName &&
+                        asset.TryGetProperty("browser_download_url", out var urlProp))
+                    {
+                        downloadUrl = urlProp.GetString();
+                        break;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(downloadUrl))
                 {
                     AnsiConsole.MarkupLine($"[red]Asset '{assetName}' not found in release.[/]");
                     return 1;
                 }
-
-                var urlKey = "\"browser_download_url\":\"";
-                var urlIdx = json.IndexOf(urlKey, assetIdx, StringComparison.Ordinal);
-                if (urlIdx < 0)
-                {
-                    AnsiConsole.MarkupLine("[red]Could not find download URL.[/]");
-                    return 1;
-                }
-                urlIdx += urlKey.Length;
-                var urlEnd      = json.IndexOf('"', urlIdx);
-                var downloadUrl = json[urlIdx..urlEnd];
 
                 var tempDir  = Path.Combine(Path.GetTempPath(), $"arius-update-{versionStr}");
                 var tempFile = Path.Combine(tempDir, assetName);
