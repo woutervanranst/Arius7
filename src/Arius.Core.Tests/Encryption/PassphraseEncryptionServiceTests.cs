@@ -48,10 +48,10 @@ public class PassphraseEncryptionServiceTests
         plainMs.ToArray().ShouldBe(data);
     }
 
-    // ── 2.5 Salted__ prefix check ──────────────────────────────────────────────
+    // ── ArGCM1 magic prefix check ─────────────────────────────────────────────
 
     [Test]
-    public async Task Encrypt_OutputStartsWithSaltedMagic()
+    public async Task Encrypt_OutputStartsWithArGcm1Magic()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
         var data = "data"u8.ToArray();
@@ -61,64 +61,8 @@ public class PassphraseEncryptionServiceTests
             await enc.WriteAsync(data);
 
         var bytes = ms.ToArray();
-        bytes.Length.ShouldBeGreaterThanOrEqualTo(8);
-        Encoding.ASCII.GetString(bytes, 0, 8).ShouldBe("Salted__");
-    }
-
-    // ── 2.5 OpenSSL compatibility (shell out) ─────────────────────────────────
-
-    [Test]
-    public async Task Encrypt_IsDecryptableByOpenSslCli()
-    {
-        // Skip dynamically if openssl is not on PATH
-        var opensslAvailable = false;
-        try
-        {
-            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("openssl", "version")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute        = false,
-            });
-            p?.WaitForExit(3000);
-            opensslAvailable = p?.ExitCode == 0;
-        }
-        catch { }
-        Skip.Unless(opensslAvailable, "openssl not on PATH — skipping");
-
-        var svc      = new PassphraseEncryptionService(Passphrase);
-        var original = "OpenSSL compatibility check"u8.ToArray();
-
-        var cipherMs = new MemoryStream();
-        await using (var enc = svc.WrapForEncryption(cipherMs))
-            await enc.WriteAsync(original);
-
-        var cipherBytes = cipherMs.ToArray();
-
-        // Write cipher to temp file, decrypt with openssl
-        var tmpIn  = Path.GetTempFileName();
-        var tmpOut = Path.GetTempFileName();
-        try
-        {
-            await File.WriteAllBytesAsync(tmpIn, cipherBytes);
-
-            var psi = new System.Diagnostics.ProcessStartInfo("openssl",
-                $"enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass pass:{Passphrase} -in \"{tmpIn}\" -out \"{tmpOut}\"")
-            {
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using var proc = System.Diagnostics.Process.Start(psi)!;
-            await proc.WaitForExitAsync();
-            proc.ExitCode.ShouldBe(0, await proc.StandardError.ReadToEndAsync());
-
-            var decrypted = await File.ReadAllBytesAsync(tmpOut);
-            decrypted.ShouldBe(original);
-        }
-        finally
-        {
-            File.Delete(tmpIn);
-            File.Delete(tmpOut);
-        }
+        bytes.Length.ShouldBeGreaterThanOrEqualTo(6);
+        Encoding.ASCII.GetString(bytes, 0, 6).ShouldBe("ArGCM1");
     }
 
     // ── 2.5 Streaming large file — bounded memory ────────────────────────────
