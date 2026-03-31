@@ -165,7 +165,7 @@ public class ProgressStateThreadSafetyTests
         var state = new ProgressState();
         const int n = 10_000;
 
-        for (int i = 0; i < n; i++)
+        for (var i = 0; i < n; i++)
             state.AddFile($"file{i}", 100);
 
         await Parallel.ForEachAsync(
@@ -1522,7 +1522,7 @@ public class AddRestoreEventTests
     {
         var state = new ProgressState();
 
-        for (int i = 1; i <= 15; i++)
+        for (var i = 1; i <= 15; i++)
             state.AddRestoreEvent($"file{i}.txt", i * 100L, skipped: false);
 
         state.RecentRestoreEvents.Count.ShouldBe(10);
@@ -1539,7 +1539,7 @@ public class AddRestoreEventTests
     {
         var state = new ProgressState();
 
-        for (int i = 1; i <= 5; i++)
+        for (var i = 1; i <= 5; i++)
             state.AddRestoreEvent($"file{i}.txt", 100L, skipped: i % 2 == 0);
 
         state.RecentRestoreEvents.Count.ShouldBe(5);

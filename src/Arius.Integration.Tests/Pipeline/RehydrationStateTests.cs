@@ -306,8 +306,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // Now run restore again — all files are identical, nothing to restore.
         // But the cleanup prompt should still appear because there is a rehydrated blob.
-        bool cleanupInvoked = false;
-        int  cleanupCount   = 0;
+        var cleanupInvoked = false;
+        var  cleanupCount   = 0;
 
         var secondResult = await MakeRestoreHandler(sim, fix)
             .Handle(new RestoreCommand(new RestoreOptions
@@ -377,8 +377,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Mark the original chunk as Archive tier so restore uses the rehydrated copy
         sim.ArchiveTierBlobs.Add(chunkBlobName);
 
-        bool cleanupInvoked = false;
-        int  cleanupCount   = 0;
+        var cleanupInvoked = false;
+        var  cleanupCount   = 0;
         long cleanupBytes   = 0;
 
         var restoreOpts = new RestoreOptions

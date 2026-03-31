@@ -151,7 +151,7 @@ public sealed class SnapshotService
             new MemoryStream(bytes),
             new Dictionary<string, string>(),
             BlobTier.Cool,
-            _encryption.IsEncrypted ? ContentTypes.SnapshotEncrypted : ContentTypes.SnapshotPlaintext,
+            _encryption.IsEncrypted ? ContentTypes.SnapshotGcmEncrypted : ContentTypes.SnapshotPlaintext,
             overwrite: false,
             cancellationToken: cancellationToken);
 

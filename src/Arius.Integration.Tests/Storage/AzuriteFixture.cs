@@ -24,8 +24,7 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        _azurite = new AzuriteBuilder()
-            .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+        _azurite = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
             .WithCommand("--skipApiVersionCheck")
             .Build();
         await _azurite.StartAsync();
@@ -44,6 +43,13 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
         await client.CreateAsync(cancellationToken: cancellationToken);
         return (client, new AzureBlobStorageService(client));
     }
+
+    /// <summary>
+    /// Returns an <see cref="AzureBlobStorageService"/> backed by an existing container.
+    /// Used to attach a second fixture to an already-populated container (e.g. mixed-archive test).
+    /// </summary>
+    public AzureBlobStorageService CreateTestServiceFromExistingContainer(BlobContainerClient container)
+        => new(container);
 
     public async ValueTask DisposeAsync()
     {

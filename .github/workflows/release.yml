@@ -69,9 +69,51 @@ jobs:
           name: binary-${{ matrix.rid }}
           path: arius-${{ matrix.rid }}*
 
+  verify-recovery-script:
+    name: 🔓 Verify recovery script
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v6
+
+      - name: 🐍 Install Python cryptography package
+        run: pip install cryptography
+
+      - name: 🔑 Decrypt GCM golden file and verify output
+        run: |
+          GOLDEN="src/Arius.Core.Tests/Encryption/GoldenFiles/2594868716c414b39895e10299bc609a1d1602a65b8576599d149f911aa33be8"
+          PASSPHRASE="wouter"
+          EXPECTED="Hello, ArGCM1 golden file!"
+
+          ACTUAL=$(python3 recover-chunk.py "$GOLDEN" "$PASSPHRASE")
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "❌ Recovery mismatch!" >&2
+            echo "  expected: $EXPECTED" >&2
+            echo "  actual:   $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✅ GCM recovery script output matches expected plaintext."
+
+      - name: 🔑 Decrypt CBC golden file and verify output
+        run: |
+          GOLDEN="src/Arius.Core.Tests/Encryption/GoldenFiles/680ccc692b5c2b058a0d9964ae08f9343350f8873dd900bb62742ba0a0b313de"
+          PASSPHRASE="wouter"
+          EXPECTED="Hello, Salted__ CBC golden file!"
+
+          ACTUAL=$(python3 recover-chunk.py "$GOLDEN" "$PASSPHRASE")
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "❌ CBC recovery mismatch!" >&2
+            echo "  expected: $EXPECTED" >&2
+            echo "  actual:   $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✅ CBC recovery script output matches expected plaintext."
+
   release:
     name: 🎉 Publish Release
-    needs: build
+    needs: [build, verify-recovery-script]
     runs-on: ubuntu-latest
 
     steps:

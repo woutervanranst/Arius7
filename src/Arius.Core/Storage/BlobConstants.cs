@@ -31,9 +31,13 @@ public static class BlobMetadataKeys
 /// </summary>
 public static class ContentTypes
 {
-    // ── Chunk content types (encrypted) ────────────────────────────────────────
-    public const string LargeEncrypted = "application/aes256cbc+gzip";
-    public const string TarEncrypted   = "application/aes256cbc+tar+gzip";
+    // ── Chunk content types (GCM encrypted — new default) ──────────────────────
+    public const string LargeGcmEncrypted = "application/aes256gcm+gzip";
+    public const string TarGcmEncrypted   = "application/aes256gcm+tar+gzip";
+
+    // ── Chunk content types (CBC encrypted — legacy) ────────────────────────────
+    public const string LargeCbcEncrypted = "application/aes256cbc+gzip";
+    public const string TarCbcEncrypted   = "application/aes256cbc+tar+gzip";
 
     // ── Chunk content types (plaintext) ────────────────────────────────────────
     public const string LargePlaintext = "application/gzip";
@@ -43,16 +47,19 @@ public static class ContentTypes
     public const string Thin           = "text/plain; charset=utf-8";
 
     // ── File tree ──────────────────────────────────────────────────────────────
-    public const string FileTreeEncrypted = "application/aes256cbc+gzip";
-    public const string FileTreePlaintext = "application/gzip";
+    public const string FileTreeGcmEncrypted = "application/aes256gcm+gzip";
+    public const string FileTreeCbcEncrypted = "application/aes256cbc+gzip";
+    public const string FileTreePlaintext    = "application/gzip";
 
     // ── Snapshot manifest ──────────────────────────────────────────────────────
-    public const string SnapshotEncrypted = "application/aes256cbc+gzip";
-    public const string SnapshotPlaintext = "application/gzip";
+    public const string SnapshotGcmEncrypted = "application/aes256gcm+gzip";
+    public const string SnapshotCbcEncrypted = "application/aes256cbc+gzip";
+    public const string SnapshotPlaintext    = "application/gzip";
 
     // ── Chunk index shard ──────────────────────────────────────────────────────
-    public const string ChunkIndexEncrypted = "application/aes256cbc+gzip";
-    public const string ChunkIndexPlaintext = "application/gzip";
+    public const string ChunkIndexGcmEncrypted = "application/aes256gcm+gzip";
+    public const string ChunkIndexCbcEncrypted = "application/aes256cbc+gzip";
+    public const string ChunkIndexPlaintext    = "application/gzip";
 }
 
 /// <summary>

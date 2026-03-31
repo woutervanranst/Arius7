@@ -234,16 +234,16 @@ public class TreeBlobSerializerStorageTests
     }
 
     [Test]
-    public async Task SerializeForStorage_WithPassphrase_StartsWithSaltedPrefix()
+    public async Task SerializeForStorage_WithPassphrase_StartsWithArGcm1Magic()
     {
         var enc   = new PassphraseEncryptionService("test-passphrase");
         var blob  = MakeBlob();
 
         var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
 
-        // AES-256-CBC openssl-compatible format: first 8 bytes are "Salted__"
-        var prefix = System.Text.Encoding.ASCII.GetString(bytes[..8]);
-        prefix.ShouldBe("Salted__");
+        // AES-256-GCM ArGCM1 format: first 6 bytes are "ArGCM1"
+        var prefix = System.Text.Encoding.ASCII.GetString(bytes[..6]);
+        prefix.ShouldBe("ArGCM1");
     }
 
     [Test]

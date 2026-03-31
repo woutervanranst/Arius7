@@ -170,7 +170,7 @@ public sealed class ChunkIndexService : IDisposable
                 metadata: new Dictionary<string, string>(),
                 tier: BlobTier.Cool,
                 contentType: _encryption.IsEncrypted
-                    ? ContentTypes.ChunkIndexEncrypted
+                    ? ContentTypes.ChunkIndexGcmEncrypted
                     : ContentTypes.ChunkIndexPlaintext,
                 overwrite: true,
                 cancellationToken: cancellationToken);

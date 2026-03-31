@@ -358,7 +358,7 @@ public sealed class TreeBuilder
         // Serialize for storage: gzip + optional encryption
         var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
         var contentType  = _encryption.IsEncrypted
-            ? ContentTypes.FileTreeEncrypted
+            ? ContentTypes.FileTreeGcmEncrypted
             : ContentTypes.FileTreePlaintext;
 
         // Upload new blob
