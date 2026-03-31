@@ -94,7 +94,22 @@ jobs:
             echo "  actual:   $ACTUAL" >&2
             exit 1
           fi
-          echo "✅ Recovery script output matches expected plaintext."
+          echo "✅ GCM recovery script output matches expected plaintext."
+
+      - name: 🔑 Decrypt CBC golden file and verify output
+        run: |
+          GOLDEN="src/Arius.Core.Tests/Encryption/GoldenFiles/680ccc692b5c2b058a0d9964ae08f9343350f8873dd900bb62742ba0a0b313de"
+          PASSPHRASE="wouter"
+          EXPECTED="Hello, Salted__ CBC golden file!"
+
+          ACTUAL=$(python3 recover-chunk.py "$GOLDEN" "$PASSPHRASE")
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "❌ CBC recovery mismatch!" >&2
+            echo "  expected: $EXPECTED" >&2
+            echo "  actual:   $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✅ CBC recovery script output matches expected plaintext."
 
   release:
     name: 🎉 Publish Release
