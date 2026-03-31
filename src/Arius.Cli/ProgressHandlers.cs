@@ -115,7 +115,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
     {
         // Find the tar by matching the TarHash (which may have just been assigned)
         // or fall back to the highest-numbered tar in Accumulating/Sealing state
-        TrackedTar? tar = state.TrackedTars.Values
+        var tar = state.TrackedTars.Values
             .Where(t => t.State == TarState.Accumulating || t.State == TarState.Sealing)
             .OrderByDescending(t => t.BundleNumber)
             .FirstOrDefault();
