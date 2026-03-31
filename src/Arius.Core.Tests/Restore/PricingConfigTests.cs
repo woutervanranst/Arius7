@@ -1,6 +1,5 @@
 using Arius.Core.Restore;
 using Shouldly;
-using System.Text.Json;
 
 namespace Arius.Core.Tests.Restore;
 
