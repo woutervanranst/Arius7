@@ -98,12 +98,16 @@ internal static class RestoreVerb
                     ConfirmRehydration = async (estimate, cancellationToken) =>
                     {
                         questionTcs.TrySetResult(estimate);
+                        using var reg = cancellationToken.Register(
+                            () => answerTcs.TrySetCanceled(cancellationToken));
                         return await answerTcs.Task.ConfigureAwait(false);
                     },
 
                     ConfirmCleanup = async (count, bytes, cancellationToken) =>
                     {
                         cleanupQuestionTcs.TrySetResult((count, bytes));
+                        using var reg = cancellationToken.Register(
+                            () => cleanupAnswerTcs.TrySetCanceled(cancellationToken));
                         return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                     },
 
