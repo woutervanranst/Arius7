@@ -148,6 +148,31 @@ public class AesGcmEncryptionTests
             async () => await dec.CopyToAsync(plainMs));
     }
 
+    // ── 5.6b Tampered sentinel tag ────────────────────────────────────────────
+
+    [Test]
+    public async Task GcmDecrypt_TamperedSentinelTag_ThrowsAuthenticationException()
+    {
+        var svc  = new PassphraseEncryptionService(Passphrase);
+        var data = RandomNumberGenerator.GetBytes(100);
+
+        var cipherMs = new MemoryStream();
+        await using (var enc = svc.WrapForEncryption(cipherMs))
+            await enc.WriteAsync(data);
+
+        var bytes = cipherMs.ToArray();
+
+        // Flip a byte in the sentinel tag (last 16 bytes of the stream)
+        bytes[^8] ^= 0xFF;
+
+        var tampered = new MemoryStream(bytes);
+        var plainMs  = new MemoryStream();
+        await using var dec = svc.WrapForDecryption(tampered);
+
+        await Should.ThrowAsync<AuthenticationTagMismatchException>(
+            async () => await dec.CopyToAsync(plainMs));
+    }
+
     // ── 5.7 Truncation detection ─────────────────────────────────────────────────
 
     [Test]
