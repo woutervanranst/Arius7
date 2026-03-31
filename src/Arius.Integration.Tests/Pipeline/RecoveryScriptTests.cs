@@ -88,7 +88,65 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         return (p.ExitCode, p.StandardOutput.ReadToEnd(), p.StandardError.ReadToEnd());
     }
 
-    // ── Large file encrypted → recover-chunk.py → byte-identical ────────────────
+    // ── CBC large file encrypted → recover-chunk.py → byte-identical ────────────
+
+    [Test]
+    public async Task Archive_CbcEncryptedLargeFile_RecoverScript_ByteIdentical()
+    {
+        if (!RecoverScriptAvailable())
+        {
+            Skip.Unless(false, "recover-chunk.py prerequisites not available — skipping");
+            return;
+        }
+
+        await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
+            azurite,
+            new CbcEncryptionServiceAdapter(Passphrase));
+
+        // 2 MB > threshold → large pipeline
+        var original = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(original);
+        fix.WriteFile("cbc-large.bin", original);
+
+        var ar = await fix.ArchiveAsync();
+        ar.Success.ShouldBeTrue(ar.ErrorMessage);
+
+        // Find the chunk blob name — list chunks/ prefix
+        var chunkBlobs = new List<string>();
+        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+            chunkBlobs.Add(blob);
+        chunkBlobs.Count.ShouldBe(1);
+        var chunkBlobName = chunkBlobs[0];
+
+        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-cbc-{Guid.NewGuid():N}");
+        var encryptedFile = Path.Combine(tempDir, "chunk.enc");
+        var recoveredFile = Path.Combine(tempDir, "recovered.bin");
+
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Download the raw CBC-encrypted+gzipped blob
+            {
+                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobName);
+                await using var fileStream     = File.Create(encryptedFile);
+                await downloadStream.CopyToAsync(fileStream);
+            }
+
+            // Decrypt + decompress using recover-chunk.py (auto-detects Salted__ magic)
+            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, recoveredFile);
+            exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
+
+            File.ReadAllBytes(recoveredFile).ShouldBe(original);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    // ── GCM large file encrypted → recover-chunk.py → byte-identical ────────────
 
     [Test]
     public async Task Archive_EncryptedLargeFile_RecoverScript_ByteIdentical()

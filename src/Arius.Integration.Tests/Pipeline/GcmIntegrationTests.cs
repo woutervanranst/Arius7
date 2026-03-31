@@ -138,29 +138,5 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         gcmFix.ReadRestored("cbc-large.bin").ShouldBe(cbcLargeContent);
     }
 
-    // ── Helper: adapter that writes CBC but reads/hashes via real service ─────
-
-    /// <summary>
-    /// Wraps <see cref="PassphraseEncryptionService"/> so that <see cref="WrapForEncryption"/>
-    /// produces CBC instead of GCM output. Used to simulate a legacy archive run.
-    /// All other members delegate unchanged so the chunk index and restore path work correctly.
-    /// </summary>
-    private sealed class CbcEncryptionServiceAdapter(string passphrase) : IEncryptionService
-    {
-        private readonly PassphraseEncryptionService _inner = new(passphrase);
-
-        public bool IsEncrypted => _inner.IsEncrypted;
-
-        /// <summary>Writes CBC (legacy) instead of GCM.</summary>
-        public Stream WrapForEncryption(Stream inner) => _inner.WrapForCbcEncryption(inner);
-
-        /// <summary>Auto-detects magic bytes — handles both CBC and GCM on read.</summary>
-        public Stream WrapForDecryption(Stream inner) => _inner.WrapForDecryption(inner);
-
-        public byte[] ComputeHash(byte[] data) => _inner.ComputeHash(data);
-
-        public Task<byte[]> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
-            _inner.ComputeHashAsync(data, ct);
-    }
 }
 
