@@ -55,9 +55,9 @@
 
 ## 8. Explorer Tests
 
-- [ ] 8.1 Convert `Arius.Explorer.Tests.csproj` from xUnit v3 to TUnit + Shouldly + NSubstitute (match Arius.Core.Tests patterns).
-- [ ] 8.2 Rewrite ChooseRepository VM tests against new `ContainerNamesQuery` streaming API.
-- [ ] 8.3 Rewrite Settings tests using TUnit conventions.
+- [x] 8.1 Convert `Arius.Explorer.Tests.csproj` from xUnit v3 to TUnit + Shouldly + NSubstitute (match Arius.Core.Tests patterns).
+- [x] 8.2 Rewrite ChooseRepository VM tests against new `ContainerNamesQuery` streaming API.
+- [x] 8.3 Rewrite Settings tests using TUnit conventions.
 
 ## 9. ServiceCollectionExtensions
 
