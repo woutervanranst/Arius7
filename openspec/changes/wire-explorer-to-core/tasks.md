@@ -1,17 +1,17 @@
 ## 1. Streaming LsCommand Models
 
-- [ ] 1.1 Replace `LsCommand : ICommand<LsResult>` with `LsCommand : IStreamQuery<RepositoryEntry>` in `LsModels.cs`. Add `Recursive` (default true) and `LocalPath` (optional string) properties to `LsOptions`.
-- [ ] 1.2 Replace `LsEntry` with discriminated union: abstract `RepositoryEntry(string RelativePath)`, `RepositoryFileEntry(...)`, `RepositoryDirectoryEntry(...)`. Include cloud/local merge fields (`ExistsInCloud`, `ExistsLocally`, `HasPointerFile?`, `BinaryExists?`).
-- [ ] 1.3 Remove `LsResult` record entirely (error handling via exceptions instead of `Success`/`ErrorMessage` pattern).
+- [x] 1.1 Replace `LsCommand : ICommand<LsResult>` with `LsCommand : IStreamQuery<RepositoryEntry>` in `LsModels.cs`. Add `Recursive` (default true) and `LocalPath` (optional string) properties to `LsOptions`.
+- [x] 1.2 Replace `LsEntry` with discriminated union: abstract `RepositoryEntry(string RelativePath)`, `RepositoryFileEntry(...)`, `RepositoryDirectoryEntry(...)`. Include cloud/local merge fields (`ExistsInCloud`, `ExistsLocally`, `HasPointerFile?`, `BinaryExists?`).
+- [x] 1.3 Remove `LsResult` record entirely (error handling via exceptions instead of `Success`/`ErrorMessage` pattern).
 
 ## 2. Streaming LsHandler
 
-- [ ] 2.1 Rewrite `LsHandler` from `ICommandHandler<LsCommand, LsResult>` to `IStreamQueryHandler<LsCommand, RepositoryEntry>`. The `Handle` method returns `IAsyncEnumerable<RepositoryEntry>` with `[EnumeratorCancellation]`.
-- [ ] 2.2 Implement prefix navigation: descend through tree blobs along the prefix path to reach the target directory, downloading only tree blobs on that path.
-- [ ] 2.3 Implement cloud-only tree walk (`WalkTreeStreamingAsync`): for a given tree hash, download and deserialize the tree blob, yield directory and file entries. If `Recursive=true`, recurse into child directories. Apply filename substring filter to file entries.
-- [ ] 2.4 Implement per-directory batch size lookup: collect all file content hashes in one directory, call `ChunkIndexService.LookupAsync` once, then yield `RepositoryFileEntry` records with sizes populated.
-- [ ] 2.5 Implement two-phase merge (`WalkMergedAsync`): Phase 1 — iterate cloud entries, check local existence via `File.Exists`/`Directory.Exists`, yield cloud+local or cloud-only, track yielded names in `HashSet`. Phase 2 — iterate local filesystem entries, skip already-yielded, yield local-only. Use `LocalFileEnumerator` pointer-file pairing logic for local file entries.
-- [ ] 2.6 Implement recursive descent for merged walk: cloud+local dir → recurse(childHash, childLocalPath), cloud-only dir → recurse(childHash, null), local-only dir → recurse(null, childLocalPath).
+- [x] 2.1 Rewrite `LsHandler` from `ICommandHandler<LsCommand, LsResult>` to `IStreamQueryHandler<LsCommand, RepositoryEntry>`. The `Handle` method returns `IAsyncEnumerable<RepositoryEntry>` with `[EnumeratorCancellation]`.
+- [x] 2.2 Implement prefix navigation: descend through tree blobs along the prefix path to reach the target directory, downloading only tree blobs on that path.
+- [x] 2.3 Implement cloud-only tree walk (`WalkTreeStreamingAsync`): for a given tree hash, download and deserialize the tree blob, yield directory and file entries. If `Recursive=true`, recurse into child directories. Apply filename substring filter to file entries.
+- [x] 2.4 Implement per-directory batch size lookup: collect all file content hashes in one directory, call `ChunkIndexService.LookupAsync` once, then yield `RepositoryFileEntry` records with sizes populated.
+- [x] 2.5 Implement two-phase merge (`WalkMergedAsync`): Phase 1 — iterate cloud entries, check local existence via `File.Exists`/`Directory.Exists`, yield cloud+local or cloud-only, track yielded names in `HashSet`. Phase 2 — iterate local filesystem entries, skip already-yielded, yield local-only. Use `LocalFileEnumerator` pointer-file pairing logic for local file entries.
+- [x] 2.6 Implement recursive descent for merged walk: cloud+local dir → recurse(childHash, childLocalPath), cloud-only dir → recurse(childHash, null), local-only dir → recurse(null, childLocalPath).
 
 ## 3. LsHandler Unit Tests
 

@@ -1,4 +1,5 @@
 using Arius.Core.Features.Archive;
+using Arius.Core.Features.ContainerNames;
 using Arius.Core.Features.Hydration;
 using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
@@ -33,6 +34,10 @@ public static class ServiceCollectionExtensions
     {
         // Storage
         services.AddSingleton(blobContainer);
+        if (!services.Any(service => service.ServiceType == typeof(IBlobServiceFactory)))
+        {
+            services.AddSingleton<IBlobServiceFactory, NullBlobServiceFactory>();
+        }
 
         // Encryption
         IEncryptionService encryption = passphrase is not null
@@ -86,6 +91,10 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
+        services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>>(sp =>
+            new ContainerNamesQueryHandler(
+                sp));
+
         services.AddSingleton<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>(sp =>
             new ResolveFileHydrationStatusesHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -93,5 +102,28 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ILogger<ResolveFileHydrationStatusesHandler>>()));
 
         return services;
+    }
+
+    private sealed class NullBlobServiceFactory : IBlobServiceFactory
+    {
+        public Task<IBlobService> CreateAsync(
+            string accountName,
+            string? accountKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IBlobService>(new NullBlobService());
+    }
+
+    private sealed class NullBlobService : IBlobService
+    {
+        public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield break;
+        }
+
+        public Task<IBlobContainerService> GetContainerServiceAsync(
+            string containerName,
+            PreflightMode preflightMode,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

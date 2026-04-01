@@ -1,10 +1,7 @@
-using Arius.Core.Shared.Storage;
-
-namespace Arius.AzureBlob;
+namespace Arius.Core.Shared.Storage;
 
 /// <summary>
 /// Creates account-scoped blob services from an account name and optional shared key.
-/// When <paramref name="accountKey"/> is null or whitespace, Azure CLI authentication is used.
 /// </summary>
 public interface IBlobServiceFactory
 {

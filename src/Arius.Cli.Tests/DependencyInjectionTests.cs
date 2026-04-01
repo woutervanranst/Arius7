@@ -1,5 +1,6 @@
 using Arius.Core;
 using Arius.Core.Features.Archive;
+using Arius.Core.Features.ContainerNames;
 using Arius.Core.Features.Hydration;
 using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
@@ -27,9 +28,11 @@ public class AddAriusRegistrationTests
             accountName: "test",
             containerName: "test",
             cacheBudgetBytes: 0);
+        services.AddSingleton(Substitute.For<IBlobServiceFactory>());
 
         using var serviceProvider = services.BuildServiceProvider();
 
+        serviceProvider.GetRequiredService<IStreamQueryHandler<ContainerNamesQuery, string>>().ShouldBeOfType<ContainerNamesQueryHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>().ShouldBeOfType<ListRepositoryEntriesHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>().ShouldBeOfType<ResolveFileHydrationStatusesHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchivePipelineHandler>();

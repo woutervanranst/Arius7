@@ -1,8 +1,9 @@
-using Arius.AzureBlob;
+using Arius.Core.Features.ContainerNames;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Mediator;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,7 @@ namespace Arius.Explorer.ChooseRepository;
 
 public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 {
-    private readonly IBlobServiceFactory    blobServiceFactory;
+    private readonly IMediator              mediator;
     private readonly Subject<Unit>          credentialsChangedSubject = new();
     private readonly IDisposable            debounceSubscription;
     private readonly TimeSpan               debounceTimeSpan;
@@ -29,10 +30,10 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
     private string windowName = "Choose Repository";
 
     public ChooseRepositoryViewModel(
-        IBlobServiceFactory    blobServiceFactory,
+        IMediator              mediator,
         TimeSpan?              debounceTimeSpan = null)
     {
-        this.blobServiceFactory = blobServiceFactory;
+        this.mediator = mediator;
         this.debounceTimeSpan  = debounceTimeSpan ?? TimeSpan.FromMilliseconds(500);
         synchronizationContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
@@ -132,11 +133,9 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
             synchronizationContext.Post(_ => IsLoading = true, null);
             synchronizationContext.Post(_ => StorageAccountError = false, null);
 
-            var blobService = await blobServiceFactory.CreateAsync(AccountName, AccountKey, cancellationToken);
-
             var containers = new List<string>();
 
-            await foreach (var container in blobService.GetContainerNamesAsync(cancellationToken))
+            await foreach (var container in mediator.CreateStream<string>(new ContainerNamesQuery(AccountName, AccountKey), cancellationToken))
             {
                 containers.Add(container);
             }

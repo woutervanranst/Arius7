@@ -72,6 +72,26 @@ public class DependencyTests
             $"Arius.Core must not depend on Arius.AzureBlob. Violations: {DescribeViolations(rule)}");
     }
 
+    [Test]
+    public void Mediator_Command_And_Stream_Handlers_Should_Live_In_Core_Only()
+    {
+        var nonCoreHandlerTypes = new[]
+        {
+            typeof(AzureBlob.AssemblyMarker).Assembly,
+            typeof(Cli.AssemblyMarker).Assembly,
+        }
+        .SelectMany(assembly => assembly.GetTypes())
+        .Where(type => type is { IsClass: true, IsAbstract: false })
+        .Where(type => type.GetInterfaces().Any(i =>
+            i.FullName is "Mediator.ICommandHandler`2"
+                or "Mediator.IStreamQueryHandler`2"))
+        .Select(type => $"{type.Assembly.GetName().Name}:{type.FullName}")
+        .ToList();
+
+        nonCoreHandlerTypes.ShouldBeEmpty(
+            $"Mediator command/query handlers must live in Arius.Core. Violations: {string.Join(", ", nonCoreHandlerTypes)}");
+    }
+
     // Helper: produce a human-readable summary of rule violations for failure messages
     private static string DescribeViolations(IArchRule rule)
     {
