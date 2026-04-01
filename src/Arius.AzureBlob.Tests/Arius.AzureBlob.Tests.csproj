@@ -4,17 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Azure.Storage.Blobs" />
-    <PackageReference Include="Humanizer.Core" />
-    <PackageReference Include="Mediator.Abstractions" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="TUnit" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+    <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
   </ItemGroup>
 
 </Project>
