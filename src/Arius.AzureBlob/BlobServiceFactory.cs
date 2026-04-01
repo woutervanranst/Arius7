@@ -6,10 +6,14 @@ using Azure.Storage.Blobs;
 namespace Arius.AzureBlob;
 
 /// <summary>
-/// Creates account-scoped blob services from caller-supplied credentials.
+/// Creates account-scoped blob services from an account name and optional shared key.
 /// </summary>
 public sealed class BlobServiceFactory : IBlobServiceFactory
 {
+    /// <summary>
+    /// Creates an <see cref="IBlobService"/> for <paramref name="accountName"/>.
+    /// Uses the shared key when provided; otherwise falls back to Azure CLI authentication.
+    /// </summary>
     public Task<IBlobService> CreateAsync(
         string accountName,
         string? accountKey,
