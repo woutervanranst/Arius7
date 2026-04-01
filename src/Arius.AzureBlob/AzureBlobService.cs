@@ -13,7 +13,6 @@ namespace Arius.AzureBlob;
 public sealed class AzureBlobService(BlobServiceClient serviceClient, string accountName, string authMode) : IBlobService
 {
     private const string PreflightProbeBlobName = ".arius-preflight-probe";
-    private const string SnapshotsPrefix = "snapshots/";
 
     public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -24,10 +23,16 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             var containerClient = serviceClient.GetBlobContainerClient(container.Name);
             var hasSnapshot = false;
 
-            await foreach (var _ in containerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, SnapshotsPrefix, cancellationToken).ConfigureAwait(false))
+            await foreach (var page in containerClient
+                               .GetBlobsByHierarchyAsync(BlobTraits.None, BlobStates.None, "/", BlobPaths.Snapshots, cancellationToken)
+                               .AsPages(pageSizeHint: 1)
+                               .ConfigureAwait(false))
             {
-                hasSnapshot = true;
-                break;
+                if (page.Values.Any(item => item.IsBlob))
+                {
+                    hasSnapshot = true;
+                    break;
+                }
             }
 
             if (hasSnapshot)

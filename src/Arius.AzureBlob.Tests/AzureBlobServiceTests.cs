@@ -114,6 +114,57 @@ public class AzureBlobServiceTests
         public override Task<Response<bool>> ExistsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<Response<bool>>(Response.FromValue(container.Exists, FakeResponse.Instance));
 
+        public override AsyncPageable<BlobHierarchyItem> GetBlobsByHierarchyAsync(
+            BlobTraits traits = BlobTraits.None,
+            BlobStates states = BlobStates.None,
+            string delimiter = default!,
+            string prefix = default!,
+            CancellationToken cancellationToken = default)
+        {
+            var items = container.BlobNames
+                .Where(name => string.IsNullOrEmpty(prefix) || name.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(name => BlobsModelFactory.BlobHierarchyItem(prefix: null, blob: BlobsModelFactory.BlobItem(
+                    name,
+                    false,
+                    BlobsModelFactory.BlobItemProperties(
+                        true,
+                        new Uri("https://example.test/blob"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        1L,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        default,
+                        null,
+                        null,
+                        null,
+                        null),
+                    null,
+                    new Dictionary<string, string>())))
+                .ToArray();
+
+            return AsyncPageable<BlobHierarchyItem>.FromPages([Page<BlobHierarchyItem>.FromValues(items, continuationToken: null, FakeResponse.Instance)]);
+        }
+
         public override AsyncPageable<BlobItem> GetBlobsAsync(
             BlobTraits traits = BlobTraits.None,
             BlobStates states = BlobStates.None,

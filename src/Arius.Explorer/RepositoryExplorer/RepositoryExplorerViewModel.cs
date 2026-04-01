@@ -90,15 +90,13 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenRepositoryAsync(RepositoryOptions repository, CancellationToken cancellationToken = default)
     {
-        // Use the new service to update recent repositories
-        recentRepositoryManager.TouchOrAdd(repository);
-
         Repository = repository;
 
         // Load repository data asynchronously
         if (repository != null)
         {
             await LoadRepositoryAsync();
+            recentRepositoryManager.TouchOrAdd(repository);
         }
     }
 
