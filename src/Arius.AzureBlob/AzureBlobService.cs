@@ -1,5 +1,6 @@
 using Arius.Core.Storage;
 using Azure;
+using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 
@@ -65,6 +66,15 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
                         statusCode: 404);
                 }
             }
+        }
+        catch (CredentialUnavailableException ex)
+        {
+            throw new PreflightException(
+                PreflightErrorKind.CredentialUnavailable,
+                authMode,
+                accountName,
+                containerName,
+                inner: ex);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
