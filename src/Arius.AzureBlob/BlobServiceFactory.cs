@@ -7,143 +7,31 @@ using Arius.Core.Storage;
 namespace Arius.AzureBlob;
 
 /// <summary>
-/// Constructs a preflight-validated <see cref="IBlobContainerService"/> from caller-supplied
-/// credentials.  This is a static factory — it has no instance state and runs before the
-/// DI container is built.
+/// Creates account-scoped blob services from caller-supplied credentials.
 /// </summary>
-public static class BlobServiceFactory
+public sealed class BlobServiceFactory : IBlobServiceFactory
 {
-    private const string PreflightProbeBlobName = ".arius-preflight-probe";
-
-    /// <summary>
-    /// Creates an Azure CLI token credential as an opaque <see cref="object"/>.
-    /// Callers (e.g. the CLI host) use this so they do not need to reference
-    /// <c>Azure.Identity</c> directly.
-    /// </summary>
-    public static object CreateAzureCliCredential() => new AzureCliCredential();
-
-    /// <summary>
-    /// Creates a shared-key credential as an opaque <see cref="object"/>.
-    /// Callers (e.g. the CLI host) use this so they do not need to reference
-    /// <c>Azure.Storage</c> directly.
-    /// </summary>
-    public static object CreateSharedKeyCredential(string accountName, string accountKey)
-        => new StorageSharedKeyCredential(accountName, accountKey);
-
-    /// <summary>
-    /// Creates a <see cref="BlobServiceClient"/>, runs a preflight connectivity probe,
-    /// and returns a validated <see cref="IBlobContainerService"/>.
-    /// </summary>
-    /// <param name="credential">
-    /// Either a <see cref="StorageSharedKeyCredential"/> or a <see cref="TokenCredential"/>.
-    /// Any other type throws <see cref="ArgumentException"/>.
-    /// </param>
-    /// <param name="accountName">Azure Storage account name.</param>
-    /// <param name="containerName">Blob container name.</param>
-    /// <param name="preflightMode">Controls the type of preflight probe executed.</param>
-    /// <returns>A validated <see cref="IBlobContainerService"/>.</returns>
-    /// <exception cref="ArgumentException">Thrown if <paramref name="credential"/> is not a supported type.</exception>
-    /// <exception cref="PreflightException">Thrown if the preflight probe fails due to connectivity or auth errors.</exception>
-    public static async Task<IBlobContainerService> CreateAsync(
-        object        credential,
-        string        accountName,
-        string        containerName,
-        PreflightMode preflightMode)
+    public Task<IBlobService> CreateAsync(
+        string accountName,
+        string? accountKey,
+        CancellationToken cancellationToken = default)
     {
         var serviceUri = new Uri($"https://{accountName}.blob.core.windows.net");
 
-        // ── Credential type check and client construction ─────────────────────
         BlobServiceClient blobServiceClient;
         string authMode;
 
-        switch (credential)
+        if (!string.IsNullOrWhiteSpace(accountKey))
         {
-            case StorageSharedKeyCredential keyCredential:
-                blobServiceClient = new BlobServiceClient(serviceUri, keyCredential);
-                authMode = "key";
-                break;
-
-            case TokenCredential tokenCredential:
-                blobServiceClient = new BlobServiceClient(serviceUri, tokenCredential);
-                authMode = "token";
-                break;
-
-            default:
-                throw new ArgumentException(
-                    $"Unsupported credential type '{credential?.GetType().FullName}'. " +
-                    $"Must be {nameof(StorageSharedKeyCredential)} or {nameof(TokenCredential)}.",
-                    nameof(credential));
+            blobServiceClient = new BlobServiceClient(serviceUri, new StorageSharedKeyCredential(accountName, accountKey));
+            authMode = "key";
+        }
+        else
+        {
+            blobServiceClient = new BlobServiceClient(serviceUri, new AzureCliCredential());
+            authMode = "token";
         }
 
-        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-
-        // ── Preflight probe ───────────────────────────────────────────────────
-        try
-        {
-            if (preflightMode == PreflightMode.ReadWrite)
-            {
-                var probeBlob = containerClient.GetBlobClient(PreflightProbeBlobName);
-                using var emptyStream = new MemoryStream();
-                await probeBlob.UploadAsync(emptyStream, overwrite: true).ConfigureAwait(false);
-                await probeBlob.DeleteAsync().ConfigureAwait(false);
-            }
-            else
-            {
-                var exists = await containerClient.ExistsAsync().ConfigureAwait(false);
-                if (!exists.Value)
-                    throw new PreflightException(
-                        PreflightErrorKind.ContainerNotFound,
-                        authMode,
-                        accountName,
-                        containerName,
-                        statusCode: 404);
-            }
-        }
-        catch (CredentialUnavailableException ex)
-        {
-            throw new PreflightException(
-                PreflightErrorKind.CredentialUnavailable,
-                authMode,
-                accountName,
-                containerName,
-                inner: ex);
-        }
-        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
-        {
-            throw new PreflightException(
-                PreflightErrorKind.ContainerNotFound,
-                authMode,
-                accountName,
-                containerName,
-                statusCode: 404,
-                inner: ex);
-        }
-        catch (Azure.RequestFailedException ex) when (ex.Status == 403)
-        {
-            throw new PreflightException(
-                PreflightErrorKind.AccessDenied,
-                authMode,
-                accountName,
-                containerName,
-                statusCode: 403,
-                inner: ex);
-        }
-        catch (Azure.RequestFailedException ex)
-        {
-            throw new PreflightException(
-                PreflightErrorKind.Other,
-                authMode,
-                accountName,
-                containerName,
-                statusCode: ex.Status,
-                inner: ex);
-        }
-        catch (PreflightException)
-        {
-            throw; // don't re-wrap our own exceptions
-        }
-
-        // ── Return validated service ──────────────────────────────────────────
-        return new AzureBlobContainerService(containerClient);
+        return Task.FromResult<IBlobService>(new AzureBlobService(blobServiceClient, accountName, authMode));
     }
 }

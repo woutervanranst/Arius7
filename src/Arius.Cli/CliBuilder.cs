@@ -5,6 +5,7 @@ using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.ChunkIndex;
+using Arius.Core.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -114,18 +115,9 @@ public static class CliBuilder
         string        containerName,
         PreflightMode preflightMode)
     {
-        // ── Credential resolution ─────────────────────────────────────────────
-        // Key sources (flag → env var → user secrets) win over AzureCliCredential.
-        object credential = accountKey is not null
-            ? BlobServiceFactory.CreateSharedKeyCredential(accountName, accountKey)
-            : BlobServiceFactory.CreateAzureCliCredential();
-
-        // ── Preflight check + service construction (delegated to factory) ─────
-        var blobStorage = await BlobServiceFactory.CreateAsync(
-            credential,
-            accountName,
-            containerName,
-            preflightMode).ConfigureAwait(false);
+        var blobServiceFactory = new BlobServiceFactory();
+        var blobService = await blobServiceFactory.CreateAsync(accountName, accountKey).ConfigureAwait(false);
+        var blobContainer = await blobService.GetContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
 
         // ── Build DI container ────────────────────────────────────────────────
         var services = new ServiceCollection();
@@ -138,7 +130,7 @@ public static class CliBuilder
         services.AddMediator();
 
         services.AddArius(
-            blobStorage,
+            blobContainer,
             passphrase,
             accountName,
             containerName);

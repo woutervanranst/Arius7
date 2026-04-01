@@ -10,7 +10,6 @@
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Humanizer.Core" />
-    <PackageReference Include="Mediator.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>

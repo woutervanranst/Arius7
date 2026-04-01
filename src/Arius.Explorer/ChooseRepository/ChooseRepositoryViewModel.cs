@@ -1,11 +1,9 @@
 using Arius.AzureBlob;
+using Arius.Core.Storage;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
-using Azure.Storage;
-using Azure.Storage.Blobs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Mediator;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
@@ -22,7 +20,7 @@ namespace Arius.Explorer.ChooseRepository;
 
 public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 {
-    private readonly IMediator              mediator;
+    private readonly IBlobServiceFactory    blobServiceFactory;
     private readonly Subject<Unit>          credentialsChangedSubject = new();
     private readonly IDisposable            debounceSubscription;
     private readonly TimeSpan               debounceTimeSpan;
@@ -32,10 +30,10 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
     private string windowName = "Choose Repository";
 
     public ChooseRepositoryViewModel(
-        IMediator              mediator,
+        IBlobServiceFactory    blobServiceFactory,
         TimeSpan?              debounceTimeSpan = null)
     {
-        this.mediator          = mediator;
+        this.blobServiceFactory = blobServiceFactory;
         this.debounceTimeSpan  = debounceTimeSpan ?? TimeSpan.FromMilliseconds(500);
         synchronizationContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
@@ -135,13 +133,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
             synchronizationContext.Post(_ => IsLoading = true, null);
             synchronizationContext.Post(_ => StorageAccountError = false, null);
 
-            var credential = new StorageSharedKeyCredential(AccountName, AccountKey);
-            var serviceClient = new BlobServiceClient(new Uri($"https://{AccountName}.blob.core.windows.net"), credential);
-            var query = new ContainerNamesQuery(serviceClient);
+            var blobService = await blobServiceFactory.CreateAsync(AccountName, AccountKey, cancellationToken);
 
             var containers = new List<string>();
 
-            await foreach (var container in mediator.CreateStream(query, cancellationToken))
+            await foreach (var container in blobService.GetContainerNamesAsync(cancellationToken))
             {
                 containers.Add(container);
             }

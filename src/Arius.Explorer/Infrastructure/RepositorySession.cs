@@ -22,6 +22,7 @@ public interface IRepositorySession : IDisposable
 
 public sealed class RepositorySession(IServiceProvider rootProvider) : IRepositorySession
 {
+    private readonly IBlobServiceFactory blobServiceFactory = rootProvider.GetRequiredService<IBlobServiceFactory>();
     private ServiceProvider? serviceProvider;
 
     public IMediator? Mediator { get; private set; }
@@ -31,15 +32,8 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
     {
         DisposeCurrentProvider();
 
-        var credential = string.IsNullOrWhiteSpace(repository.AccountKey)
-            ? BlobServiceFactory.CreateAzureCliCredential()
-            : BlobServiceFactory.CreateSharedKeyCredential(repository.AccountName, repository.AccountKey);
-
-        var blobStorage = await BlobServiceFactory.CreateAsync(
-            credential,
-            repository.AccountName,
-            repository.ContainerName,
-            PreflightMode.ReadOnly).ConfigureAwait(false);
+        var blobService = await blobServiceFactory.CreateAsync(repository.AccountName, repository.AccountKey, cancellationToken).ConfigureAwait(false);
+        var blobContainer = await blobService.GetContainerServiceAsync(repository.ContainerName, PreflightMode.ReadOnly, cancellationToken).ConfigureAwait(false);
 
         var services = new ServiceCollection();
         services.AddLogging(builder =>
@@ -48,7 +42,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
             builder.Services.AddSingleton(factory);
         });
         services.AddMediator();
-        services.AddArius(blobStorage, repository.Passphrase, repository.AccountName, repository.ContainerName);
+        services.AddArius(blobContainer, repository.Passphrase, repository.AccountName, repository.ContainerName);
 
         serviceProvider = services.BuildServiceProvider();
         Mediator = serviceProvider.GetRequiredService<IMediator>();

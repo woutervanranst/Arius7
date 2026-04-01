@@ -1,8 +1,8 @@
 using Arius.AzureBlob;
+using Arius.Core.Storage;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
-using Mediator;
 using NSubstitute;
 using Shouldly;
 using System;
@@ -17,9 +17,9 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public void Defaults_AreEmptyAndIdle()
     {
-        var mediator = Substitute.For<IMediator>();
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         viewModel.Repository.ShouldBeNull();
         viewModel.LocalDirectoryPath.ShouldBe(string.Empty);
@@ -35,8 +35,8 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public void SettingRepository_PopulatesViewModelFields()
     {
-        var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         var repository = new RepositoryOptions
         {
@@ -59,13 +59,18 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst()
     {
-        var mediator = Substitute.For<IMediator>();
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
+        var blobService = Substitute.For<IBlobService>();
 
-        mediator
-            .CreateStream(Arg.Any<ContainerNamesQuery>(), Arg.Any<CancellationToken>())
+        blobServiceFactory
+            .CreateAsync("account", "key", Arg.Any<CancellationToken>())
+            .Returns(blobService);
+
+        blobService
+            .GetContainerNamesAsync(Arg.Any<CancellationToken>())
             .Returns(_ => new[] { "container-a", "container-b" }.ToAsyncEnumerable());
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
@@ -77,19 +82,19 @@ public class ChooseRepositoryViewModelTests
         viewModel.ContainerNames.Select(x => x).ShouldBe(["container-a", "container-b"]);
         viewModel.ContainerName.ShouldBe("container-a");
 
-        mediator.Received(1).CreateStream(Arg.Any<ContainerNamesQuery>(), Arg.Any<CancellationToken>());
+        await blobServiceFactory.Received(1).CreateAsync("account", "key", Arg.Any<CancellationToken>());
     }
 
     [Test]
-    public async Task AccountCredentials_WhenMediatorThrows_SetsErrorAndClearsContainers()
+    public async Task AccountCredentials_WhenFactoryThrows_SetsErrorAndClearsContainers()
     {
-        var mediator = Substitute.For<IMediator>();
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
 
-        mediator
-            .CreateStream(Arg.Any<ContainerNamesQuery>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new InvalidOperationException("boom"));
+        blobServiceFactory
+            .CreateAsync("account", "key", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<IBlobService>(new InvalidOperationException("boom")));
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
@@ -105,8 +110,8 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public void OpenRepositoryCommand_WhenConfigurationIsInvalid_IsDisabled()
     {
-        var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
@@ -120,8 +125,8 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public void OpenRepositoryCommand_WhenAllFieldsAreValid_IsEnabledAndBuildsRepository()
     {
-        var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var blobServiceFactory = Substitute.For<IBlobServiceFactory>();
+        using var viewModel = new ChooseRepositoryViewModel(blobServiceFactory, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
