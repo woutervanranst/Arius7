@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Restore;
 using Arius.Core;
 using Arius.Core.Features.Archive;
-using Arius.Core.Restore;
+using Arius.Core.Features.Restore;
 using Arius.Core.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -1793,8 +1793,8 @@ public class BuildRestoreDisplayTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(10, 7_000_000L);
         state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
         state.SetChunkResolution(3, 1, 2);
         state.IncrementFilesRestored(1024L);
         state.AddRestoreEvent("foo/bar.txt", 1024L, skipped: false);
@@ -1826,8 +1826,8 @@ public class BuildRestoreDisplayTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(2, 800L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
         state.SetChunkResolution(1, 1, 0);
         state.IncrementFilesRestored(500L);
         state.IncrementFilesRestored(300L);
@@ -1880,12 +1880,12 @@ public class TrackedDownloadLifecycleTests
 
         // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
         // Key is RelativePath (the identifier passed from RestorePipelineHandler for large files)
-        var td = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
+        var td = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
         state.TrackedDownloads["photos/sunset.jpg"].DisplayName.ShouldBe("photos/sunset.jpg");
-        state.TrackedDownloads["photos/sunset.jpg"].Kind.ShouldBe(Core.Restore.DownloadKind.LargeFile);
+        state.TrackedDownloads["photos/sunset.jpg"].Kind.ShouldBe(DownloadKind.LargeFile);
 
         // Simulate byte-level progress updates
         td.SetBytesDownloaded(12_300_000);
@@ -1896,7 +1896,7 @@ public class TrackedDownloadLifecycleTests
 
         // FileRestoredHandler should remove the TrackedDownload by direct key lookup on RelativePath
         var handler = new FileRestoredHandler(state);
-        await handler.Handle(new Core.Restore.FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
         state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
@@ -1910,11 +1910,11 @@ public class TrackedDownloadLifecycleTests
         var state = new ProgressState();
 
         // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
-        var td = new TrackedDownload("ab12cd34", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
+        var td = new TrackedDownload("ab12cd34", DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
         state.TrackedDownloads.TryAdd("ab12cd34", td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
-        state.TrackedDownloads["ab12cd34"].Kind.ShouldBe(Core.Restore.DownloadKind.TarBundle);
+        state.TrackedDownloads["ab12cd34"].Kind.ShouldBe(DownloadKind.TarBundle);
 
         // Simulate byte-level progress
         td.SetBytesDownloaded(4_800_000);
@@ -1922,7 +1922,7 @@ public class TrackedDownloadLifecycleTests
 
         // ChunkDownloadCompletedHandler should remove the TrackedDownload
         var handler = new ChunkDownloadCompletedHandler(state);
-        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("ab12cd34", 3, 15_200_000), CancellationToken.None);
+        await handler.Handle(new ChunkDownloadCompletedEvent("ab12cd34", 3, 15_200_000), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("ab12cd34").ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
         state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
@@ -1931,7 +1931,7 @@ public class TrackedDownloadLifecycleTests
     [Test]
     public void TrackedDownload_BytesDownloaded_InterlockedUpdate()
     {
-        var td = new TrackedDownload("key1", Core.Restore.DownloadKind.LargeFile, "file.bin", 1_000_000, 2_000_000);
+        var td = new TrackedDownload("key1", DownloadKind.LargeFile, "file.bin", 1_000_000, 2_000_000);
 
         td.BytesDownloaded.ShouldBe(0L);
         td.SetBytesDownloaded(500_000);
@@ -1947,7 +1947,7 @@ public class TrackedDownloadLifecycleTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new Core.Restore.FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(1024L);
@@ -1969,7 +1969,7 @@ public class TreeTraversalProgressHandlerTests
         var state   = new ProgressState();
         var handler = new TreeTraversalProgressHandler(state);
 
-        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+        await handler.Handle(new TreeTraversalProgressEvent(523), CancellationToken.None);
 
         state.RestoreFilesDiscovered.ShouldBe(523L);
     }
@@ -1980,13 +1980,13 @@ public class TreeTraversalProgressHandlerTests
         var state   = new ProgressState();
         var handler = new TreeTraversalProgressHandler(state);
 
-        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(100), CancellationToken.None);
+        await handler.Handle(new TreeTraversalProgressEvent(100), CancellationToken.None);
         state.RestoreFilesDiscovered.ShouldBe(100L);
 
-        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(523), CancellationToken.None);
+        await handler.Handle(new TreeTraversalProgressEvent(523), CancellationToken.None);
         state.RestoreFilesDiscovered.ShouldBe(523L);
 
-        await handler.Handle(new Core.Restore.TreeTraversalProgressEvent(1247), CancellationToken.None);
+        await handler.Handle(new TreeTraversalProgressEvent(1247), CancellationToken.None);
         state.RestoreFilesDiscovered.ShouldBe(1247L);
     }
 }
@@ -2002,11 +2002,11 @@ public class ChunkDownloadCompletedHandlerTests
     public async Task ChunkDownloadCompletedHandler_RemovesTrackedDownloadAndIncrementsBytesDownloaded()
     {
         var state = new ProgressState();
-        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (5 files, 1.2 MB)", 8_000_000, 1_200_000);
+        var td = new TrackedDownload("tar_hash", DownloadKind.TarBundle, "TAR bundle (5 files, 1.2 MB)", 8_000_000, 1_200_000);
         state.TrackedDownloads.TryAdd("tar_hash", td);
 
         var handler = new ChunkDownloadCompletedHandler(state);
-        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("tar_hash", 5, 8_000_000), CancellationToken.None);
+        await handler.Handle(new ChunkDownloadCompletedEvent("tar_hash", 5, 8_000_000), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeFalse();
         state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
@@ -2016,12 +2016,12 @@ public class ChunkDownloadCompletedHandlerTests
     public async Task ChunkDownloadCompletedHandler_AccumulatesAcrossMultipleChunks()
     {
         var state = new ProgressState();
-        state.TrackedDownloads.TryAdd("h1", new TrackedDownload("h1", Core.Restore.DownloadKind.TarBundle, "TAR 1", 5_000_000, 1_000_000));
-        state.TrackedDownloads.TryAdd("h2", new TrackedDownload("h2", Core.Restore.DownloadKind.TarBundle, "TAR 2", 3_000_000, 800_000));
+        state.TrackedDownloads.TryAdd("h1", new TrackedDownload("h1", DownloadKind.TarBundle, "TAR 1", 5_000_000, 1_000_000));
+        state.TrackedDownloads.TryAdd("h2", new TrackedDownload("h2", DownloadKind.TarBundle, "TAR 2", 3_000_000, 800_000));
 
         var handler = new ChunkDownloadCompletedHandler(state);
-        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h1", 3, 5_000_000), CancellationToken.None);
-        await handler.Handle(new Core.Restore.ChunkDownloadCompletedEvent("h2", 2, 3_000_000), CancellationToken.None);
+        await handler.Handle(new ChunkDownloadCompletedEvent("h1", 3, 5_000_000), CancellationToken.None);
+        await handler.Handle(new ChunkDownloadCompletedEvent("h2", 2, 3_000_000), CancellationToken.None);
 
         state.TrackedDownloads.Count.ShouldBe(0);
         state.RestoreBytesDownloaded.ShouldBe(8_000_000L);
@@ -2040,11 +2040,11 @@ public class FileRestoredHandlerTrackedDownloadTests
     {
         var state = new ProgressState();
         // Key is RelativePath for large files (matching production behavior)
-        var td = new TrackedDownload("videos/movie.mp4", Core.Restore.DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
+        var td = new TrackedDownload("videos/movie.mp4", DownloadKind.LargeFile, "videos/movie.mp4", 100_000_000, 200_000_000);
         state.TrackedDownloads.TryAdd("videos/movie.mp4", td);
 
         var handler = new FileRestoredHandler(state);
-        await handler.Handle(new Core.Restore.FileRestoredEvent("videos/movie.mp4", 200_000_000L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent("videos/movie.mp4", 200_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("videos/movie.mp4").ShouldBeFalse("Large file TrackedDownload should be removed");
         state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add CompressedSize to RestoreBytesDownloaded");
@@ -2055,12 +2055,12 @@ public class FileRestoredHandlerTrackedDownloadTests
     {
         // Tar bundle downloads are removed by ChunkDownloadCompletedHandler, not FileRestoredHandler
         var state = new ProgressState();
-        var td = new TrackedDownload("tar_hash", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 500 KB)", 5_000_000, 500_000);
+        var td = new TrackedDownload("tar_hash", DownloadKind.TarBundle, "TAR bundle (3 files, 500 KB)", 5_000_000, 500_000);
         state.TrackedDownloads.TryAdd("tar_hash", td);
 
         var handler = new FileRestoredHandler(state);
         // This file is from inside the tar bundle — handler should not remove the tar's TrackedDownload
-        await handler.Handle(new Core.Restore.FileRestoredEvent("docs/readme.txt", 1024L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent("docs/readme.txt", 1024L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("tar_hash").ShouldBeTrue("Tar TrackedDownload should NOT be removed by FileRestoredHandler");
         state.RestoreBytesDownloaded.ShouldBe(0L, "No compressed bytes should be added for tar bundle files");
@@ -2082,7 +2082,7 @@ public class ChunkResolutionCompleteHandlerByteTotalsTests
         var handler = new ChunkResolutionCompleteHandler(state);
 
         await handler.Handle(
-            new Core.Restore.ChunkResolutionCompleteEvent(10, 5, 5, TotalOriginalBytes: 500_000_000, TotalCompressedBytes: 200_000_000),
+            new ChunkResolutionCompleteEvent(10, 5, 5, TotalOriginalBytes: 500_000_000, TotalCompressedBytes: 200_000_000),
             CancellationToken.None);
 
         state.ChunkGroups.ShouldBe(10);
@@ -2112,7 +2112,7 @@ public class TrackedDownloadThreadSafetyTests
             (i, ct) =>
             {
                 var key = $"file_{i}.bin"; // Key is RelativePath for large files
-                var td = new TrackedDownload(key, Core.Restore.DownloadKind.LargeFile, $"file_{i}.bin", 1_000_000, 2_000_000);
+                var td = new TrackedDownload(key, DownloadKind.LargeFile, $"file_{i}.bin", 1_000_000, 2_000_000);
                 state.TrackedDownloads.TryAdd(key, td);
 
                 // Simulate byte-level progress
@@ -2211,12 +2211,12 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetRestoreTotalCompressedBytes(50_000_000);
 
         // Add a large file download in progress (key is RelativePath for large files)
-        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        var td1 = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
         td1.SetBytesDownloaded(18_300_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
 
         // Add a tar bundle download in progress (key is chunk hash for tar bundles)
-        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        var td2 = new TrackedDownload("chunk2", DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
         td2.SetBytesDownloaded(4_800_000);
         state.TrackedDownloads.TryAdd("chunk2", td2);
 
@@ -2259,11 +2259,11 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetRestoreTotalCompressedBytes(50_000_000);
 
         // Two downloads with different-length names and sizes
-        var td1 = new TrackedDownload("photos/sunset.jpg", Core.Restore.DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
+        var td1 = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
         td1.SetBytesDownloaded(18_300_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td1);
 
-        var td2 = new TrackedDownload("chunk2", Core.Restore.DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
+        var td2 = new TrackedDownload("chunk2", DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", 15_200_000, 847_000);
         td2.SetBytesDownloaded(4_800_000);
         state.TrackedDownloads.TryAdd("chunk2", td2);
 
@@ -2310,7 +2310,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(847, 14_200_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
         state.SetChunkResolution(10, 5, 5);
         state.SetRestoreTotalCompressedBytes(8_310_000_000);
         state.AddRestoreBytesDownloaded(3_170_000_000);
@@ -2360,7 +2360,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         state.SetRestoreTotalFiles(4612);
         state.SetTreeTraversalComplete(4612, 5_260_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.New);
         state.SetChunkResolution(100, 50, 50);
         state.SetRestoreTotalCompressedBytes(4_920_000_000);
         state.AddRestoreBytesDownloaded(10_000_000); // small progress so far
@@ -2410,10 +2410,10 @@ public class BuildRestoreDisplayDispositionTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(4, 4000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.New);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.SkipIdentical);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.Overwrite);
-        state.IncrementDisposition(Core.Restore.RestoreDisposition.KeepLocalDiffers);
+        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementDisposition(RestoreDisposition.SkipIdentical);
+        state.IncrementDisposition(RestoreDisposition.Overwrite);
+        state.IncrementDisposition(RestoreDisposition.KeepLocalDiffers);
 
         var output = RenderToString(RestoreVerb.BuildDisplay(state));
 

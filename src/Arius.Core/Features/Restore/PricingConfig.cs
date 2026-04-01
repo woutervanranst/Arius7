@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Arius.Core.Restore;
+namespace Arius.Core.Features.Restore;
 
 /// <summary>
 /// Pricing rates for archive-tier read operations.

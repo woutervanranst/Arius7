@@ -1,3 +1,4 @@
+using Arius.Core.Features.Restore;
 using System.Collections.Concurrent;
 
 namespace Arius.Cli;
@@ -179,7 +180,7 @@ public sealed class TrackedDownload
     /// <param name="displayName">Human-readable label for display (file path or "TAR bundle (N files, X)").</param>
     /// <param name="compressedSize">Total compressed download size in bytes.</param>
     /// <param name="originalSize">Sum of original file sizes for this chunk.</param>
-    public TrackedDownload(string key, Core.Restore.DownloadKind kind, string displayName, long compressedSize, long originalSize)
+    public TrackedDownload(string key, DownloadKind kind, string displayName, long compressedSize, long originalSize)
     {
         Key            = key;
         Kind           = kind;
@@ -192,7 +193,7 @@ public sealed class TrackedDownload
     public string Key { get; }
 
     /// <summary>Whether this is a large file or tar bundle download.</summary>
-    public Core.Restore.DownloadKind Kind { get; }
+    public DownloadKind Kind { get; }
 
     /// <summary>Human-readable label: file relative path for large files, "TAR bundle (N files, X)" for tar bundles.</summary>
     public string DisplayName { get; }
@@ -529,20 +530,20 @@ public sealed class ProgressState
     private long _dispositionKeepLocalDiffers;
 
     /// <summary>Increments the disposition tally for the specified disposition.</summary>
-    public void IncrementDisposition(Core.Restore.RestoreDisposition disposition)
+    public void IncrementDisposition(RestoreDisposition disposition)
     {
         switch (disposition)
         {
-            case Core.Restore.RestoreDisposition.New:
+            case RestoreDisposition.New:
                 Interlocked.Increment(ref _dispositionNew);
                 break;
-            case Core.Restore.RestoreDisposition.SkipIdentical:
+            case RestoreDisposition.SkipIdentical:
                 Interlocked.Increment(ref _dispositionSkipIdentical);
                 break;
-            case Core.Restore.RestoreDisposition.Overwrite:
+            case RestoreDisposition.Overwrite:
                 Interlocked.Increment(ref _dispositionOverwrite);
                 break;
-            case Core.Restore.RestoreDisposition.KeepLocalDiffers:
+            case RestoreDisposition.KeepLocalDiffers:
                 Interlocked.Increment(ref _dispositionKeepLocalDiffers);
                 break;
         }

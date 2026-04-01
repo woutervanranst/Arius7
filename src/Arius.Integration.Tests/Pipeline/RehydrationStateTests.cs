@@ -1,6 +1,6 @@
 using Arius.Core.ChunkIndex;
 using Arius.Core.Features.Archive;
-using Arius.Core.Restore;
+using Arius.Core.Features.Restore;
 using Arius.Core.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
