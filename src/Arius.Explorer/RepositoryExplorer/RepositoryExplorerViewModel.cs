@@ -27,6 +27,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     private readonly IDialogService                       dialogService;
     private readonly IRepositorySession                   repositorySession;
     private readonly ILogger<RepositoryExplorerViewModel> logger;
+    private CancellationTokenSource? nodeLoadCancellation;
     private CancellationTokenSource? hydrationLoadCancellation;
 
     // -- INITIALIZATION & GENERAL WINDOW
@@ -153,6 +154,11 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
     private async Task LoadNodeContentAsync(TreeNodeViewModel node)
     {
+        var cancellationTokenSource = new CancellationTokenSource();
+        CancelNodeLoad();
+        nodeLoadCancellation = cancellationTokenSource;
+        var cancellationToken = cancellationTokenSource.Token;
+
         try
         {
             CancelHydrationLoad();
@@ -181,10 +187,12 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             try
             {
-                var results = repositorySession.Mediator.CreateStream(query);
+                var results = repositorySession.Mediator.CreateStream(query, cancellationToken);
 
                 await foreach (var result in results)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     switch (result)
                     {
                         case RepositoryDirectoryEntry directory:
@@ -208,15 +216,26 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                     }
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // Final count update (in case there were only directories)
                 OnPropertyChanged(nameof(SelectedItemsText));
                 _ = LoadHydrationStatusesAsync(node);
             }
             finally
             {
-                IsLoading         = false;
-                ArchiveStatistics = ""; // STATISTICS TODO
+                if (ReferenceEquals(nodeLoadCancellation, cancellationTokenSource))
+                {
+                    nodeLoadCancellation = null;
+                    IsLoading            = false;
+                    ArchiveStatistics    = ""; // STATISTICS TODO
+                }
+
+                cancellationTokenSource.Dispose();
             }
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
@@ -462,6 +481,13 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         hydrationLoadCancellation?.Cancel();
         hydrationLoadCancellation?.Dispose();
         hydrationLoadCancellation = null;
+    }
+
+    private void CancelNodeLoad()
+    {
+        nodeLoadCancellation?.Cancel();
+        nodeLoadCancellation?.Dispose();
+        nodeLoadCancellation = null;
     }
 
     private static string ExtractDirectoryName(string relativeName) // TODO move this logic to the TreeNodeViewModel, just like FileItemViewModel
