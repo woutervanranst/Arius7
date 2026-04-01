@@ -13,7 +13,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Threading.Channels;
 
-namespace Arius.Core.Archive;
+namespace Arius.Core.Features.Archive;
 
 /// <summary>
 /// Implements the full archive pipeline as a Mediator command handler.

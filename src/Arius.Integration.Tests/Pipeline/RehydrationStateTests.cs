@@ -1,5 +1,5 @@
-using Arius.Core.Archive;
 using Arius.Core.ChunkIndex;
+using Arius.Core.Features.Archive;
 using Arius.Core.Restore;
 using Arius.Core.Storage;
 using Arius.Integration.Tests.Storage;

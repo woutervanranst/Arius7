@@ -1,7 +1,7 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Restore;
 using Arius.Core;
-using Arius.Core.Archive;
+using Arius.Core.Features.Archive;
 using Arius.Core.Restore;
 using Arius.Core.Storage;
 using Mediator;

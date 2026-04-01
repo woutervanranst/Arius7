@@ -1,4 +1,4 @@
-using Arius.Core.Archive;
+using Arius.Core.Features.Archive;
 using Mediator;
 
 namespace Arius.Cli.Commands.Archive;

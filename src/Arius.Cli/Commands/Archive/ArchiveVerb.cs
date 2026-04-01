@@ -1,5 +1,5 @@
 using Arius.AzureBlob;
-using Arius.Core.Archive;
+using Arius.Core.Features.Archive;
 using Arius.Core.Storage;
 using Humanizer;
 using Mediator;
