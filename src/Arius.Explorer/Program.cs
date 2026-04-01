@@ -1,4 +1,5 @@
 using Arius.Core;
+using Arius.Explorer.Infrastructure;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.RepositoryExplorer;
 using Arius.Explorer.Settings;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using System;
 using System.IO;
 
 namespace Arius.Explorer;
@@ -75,6 +77,7 @@ internal static class Program
 
                 // Register services
                 services.AddTransient<IDialogService, DialogService>();
+                services.AddSingleton<IRepositorySession, RepositorySession>();
 
                 // Register windows and viewmodels
                 services.AddTransient<RepositoryExplorerWindow>();
@@ -82,10 +85,7 @@ internal static class Program
                 services.AddTransient<ChooseRepositoryWindow>();
                 services.AddTransient<ChooseRepositoryViewModel>();
 
-                // Register Arius Core services
-                services.AddArius(c =>
-                {
-                    c.MaxTokens = context.Configuration.GetValue<int>("Arius:MaxTokens", 5);
-                });
+                services.AddMediator();
+                RepositorySession.AddRootCorePlaceholders(services);
             });
 }

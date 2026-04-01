@@ -1,16 +1,20 @@
-using Arius.Core.Features.Commands.Restore;
-using Arius.Core.Features.Queries.PointerFileEntries;
+using Arius.Core.Ls;
+using Arius.Core.Restore;
+using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Humanizer;
-using Mediator;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace Arius.Explorer.RepositoryExplorer;
@@ -20,17 +24,17 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     private readonly IApplicationSettings                 settings;
     private readonly IRecentRepositoryManager             recentRepositoryManager;
     private readonly IDialogService                       dialogService;
-    private readonly IMediator                            mediator;
+    private readonly IRepositorySession                   repositorySession;
     private readonly ILogger<RepositoryExplorerViewModel> logger;
 
     // -- INITIALIZATION & GENERAL WINDOW
 
-    public RepositoryExplorerViewModel(IApplicationSettings settings, IRecentRepositoryManager recentRepositoryManager, IDialogService dialogService, IMediator mediator, ILogger<RepositoryExplorerViewModel> logger)
+    public RepositoryExplorerViewModel(IApplicationSettings settings, IRecentRepositoryManager recentRepositoryManager, IDialogService dialogService, IRepositorySession repositorySession, ILogger<RepositoryExplorerViewModel> logger)
     {
         this.settings                = settings;
         this.recentRepositoryManager = recentRepositoryManager;
         this.dialogService           = dialogService;
-        this.mediator                = mediator;
+        this.repositorySession       = repositorySession;
         this.logger                  = logger;
 
         // Load recent repositories from settings
@@ -46,7 +50,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     }
 
     [RelayCommand] // triggered by View's Loaded event
-    private async Task ViewLoaded()
+    private async Task ViewLoadedAsync()
     {
         // If the Explorer window is shown but no Repository is selected, open the ChooseRepository window
         if (Repository == null)
@@ -67,13 +71,13 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
     //      File > Open...
     [RelayCommand] 
-    private async Task OpenChooseRepositoryDialogAsync()
+    private async Task OpenChooseRepositoryDialogAsync(CancellationToken cancellationToken = default)
     {
         // Show dialog and handle result
         var openedRepository = dialogService.ShowChooseRepositoryDialog(Repository);
         if (openedRepository != null)
         {
-            await OpenRepositoryAsync(openedRepository);
+            await OpenRepositoryAsync(openedRepository, cancellationToken);
         }
     }
 
@@ -82,7 +86,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     private ObservableCollection<RepositoryOptions> recentRepositories = [];
 
     [RelayCommand]
-    private async Task OpenRepositoryAsync(RepositoryOptions repository)
+    private async Task OpenRepositoryAsync(RepositoryOptions repository, CancellationToken cancellationToken = default)
     {
         // Use the new service to update recent repositories
         recentRepositoryManager.TouchOrAdd(repository);
@@ -114,12 +118,17 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         }
         else
         {
+            if (!Equals(repositorySession.Repository, Repository))
+            {
+                await repositorySession.ConnectAsync(Repository);
+            }
+
             WindowName = $"{App.Name}: {Repository}";
 
             // NOTE no loading indicators here bc this is super quick; the actual loading happens in LoadNodeContentAsync
 
             // Create root node
-            var rootNode = new TreeNodeViewModel("/", OnNodeSelected)
+            var rootNode = new TreeNodeViewModel(string.Empty, OnNodeSelected)
             {
                 Name       = "Root",
                 IsSelected = true,
@@ -149,15 +158,15 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             if (Repository == null)
                 return;
 
-            var query = new PointerFileEntriesQuery
+            if (repositorySession.Mediator is null)
+                throw new InvalidOperationException("Repository session is not connected.");
+
+            var query = new LsCommand(new LsOptions
             {
-                AccountName   = Repository.AccountName,
-                AccountKey    = Repository.AccountKey,
-                ContainerName = Repository.ContainerName,
-                Passphrase    = Repository.Passphrase,
-                LocalPath     = new DirectoryInfo(Repository.LocalDirectoryPath),
-                Prefix        = node.Prefix
-            };
+                Prefix = string.IsNullOrWhiteSpace(node.Prefix) ? null : node.Prefix,
+                Recursive = false,
+                LocalPath = Repository.LocalDirectoryPath,
+            });
 
             // Initialize collections for streaming updates
             node.Folders = [];
@@ -170,15 +179,15 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             try
             {
-                var results = mediator.CreateStream(query);
+                var results = repositorySession.Mediator.CreateStream(query);
 
                 await foreach (var result in results)
                 {
                     switch (result)
                     {
-                        case PointerFileEntriesQueryDirectoryResult directory:
-                            var dirName = ExtractDirectoryName(directory.RelativeName);
-                            var childNode = new TreeNodeViewModel(directory.RelativeName, OnNodeSelected)
+                        case RepositoryDirectoryEntry directory:
+                            var dirName = ExtractDirectoryName(directory.RelativePath);
+                            var childNode = new TreeNodeViewModel(directory.RelativePath, OnNodeSelected)
                             {
                                 Name = dirName
                             };
@@ -187,7 +196,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
                             break;
 
-                        case PointerFileEntriesQueryFileResult file:
+                        case RepositoryFileEntry file:
                             var fileItem = new FileItemViewModel(file);
 
                             node.Items.Add(fileItem);
@@ -226,7 +235,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         var explorerClickOnceVersion = Environment.GetEnvironmentVariable("ClickOnce_CurrentVersion") ?? "unknown"; // https://stackoverflow.com/a/75263211/1582323  //System.Deployment. System.Reflection.Assembly.GetEntryAssembly().GetName().Version; doesnt work
         var explorerVersion          = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version ?? "unknown";
         var x                        = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown";
-        var coreVersion              = typeof(Arius.Core.Bootstrapper).Assembly.GetName().Version;
+        var coreVersion              = typeof(Arius.Core.AssemblyMarker).Assembly.GetName().Version;
 
         MessageBox.Show($"""
                          Arius Explorer v{explorerVersion}, ClickOnce v{explorerClickOnceVersion}, Assembly v{x}
@@ -298,7 +307,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     // RESTORE
 
     [RelayCommand]
-    private async Task Restore()
+    private async Task RestoreAsync()
     {
         // Validate prerequisites
         if (Repository == null || !SelectedFiles.Any())
@@ -311,7 +320,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (itemsToHydrate.Any())
             msg.AppendLine($"This will start hydration on {itemsToHydrate.Count()} item(s) ({itemsToHydrate.Sum(item => item.OriginalLength).Bytes().Humanize()}). This may incur a significant cost.");
 
-        var itemsToRestore = SelectedFiles.Where(item => item.File.Hydrated == true);
+        var itemsToRestore = SelectedFiles.Where(item => item.File.Hydrated != false);
         msg.AppendLine($"This will download {itemsToRestore.Count()} item(s) ({itemsToRestore.Sum(item => item.OriginalLength).Bytes().Humanize()}).");
         msg.AppendLine();
         msg.AppendLine("Proceed?");
@@ -319,35 +328,30 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (MessageBox.Show(msg.ToString(), App.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.No)
             return;
 
-        // Extract the relative paths from selected items
-        var targets = SelectedFiles
-            .Select(f => $".{f.File.PointerFileEntry ?? f.File.BinaryFileName ?? f.File.PointerFileName}")
-            .Where(path => !string.IsNullOrEmpty(path))
-            .ToArray();
-
-        if (!targets.Any())
+        if (repositorySession.Mediator is null)
             return;
-
-        // Create the RestoreCommand
-        var command = new RestoreCommand
-        {
-            AccountName     = Repository.AccountName,
-            AccountKey      = Repository.AccountKey,
-            ContainerName   = Repository.ContainerName,
-            Passphrase      = Repository.Passphrase,
-            LocalRoot       = new DirectoryInfo(Repository.LocalDirectoryPath),
-            Targets         = targets,
-            Download        = true,
-            IncludePointers = false
-        };
 
         // Execute the restore
         try
         {
             IsLoading = true;
-            var result = await mediator.Send(command);
 
-            // TODO handle REsult if (result)
+            foreach (var selectedFile in SelectedFiles)
+            {
+                var command = new RestoreCommand(new RestoreOptions
+                {
+                    RootDirectory = Repository.LocalDirectoryPath,
+                    TargetPath = selectedFile.File.RelativePath,
+                    Overwrite = true,
+                    NoPointers = false,
+                });
+
+                var result = await repositorySession.Mediator.Send(command);
+                if (!result.Success)
+                {
+                    throw new InvalidOperationException(result.ErrorMessage ?? $"Restore failed for {selectedFile.File.RelativePath}.");
+                }
+            }
             
             SelectedFiles.Clear();
 

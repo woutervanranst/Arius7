@@ -41,17 +41,17 @@
 ## 6. ContainerNamesQuery
 
 - [x] 6.1 Create `ContainerNamesQuery : IStreamQuery<string>` and `ContainerNamesQueryHandler : IStreamQueryHandler<ContainerNamesQuery, string>` in `Arius.AzureBlob`. Accept `BlobServiceClient` (or account connection params). List containers, filter by checking for `snapshots/` prefix blob.
-- [ ] 6.2 Register handler in DI (verify Mediator source generator picks it up, or add manual registration).
+- [x] 6.2 Register handler in DI (verify Mediator source generator picks it up, or add manual registration).
 - [x] 6.3 Write unit test for `ContainerNamesQueryHandler` with mocked `BlobServiceClient`.
 
 ## 7. Wire Explorer
 
-- [ ] 7.1 Update `Arius.Explorer.csproj` — ensure project references to new Arius.Core and Arius.AzureBlob compile. Verify Mediator packages are aligned.
-- [ ] 7.2 Update `Program.cs` DI setup — replace old `services.AddArius()` with new signature. Implement per-repository `ServiceProvider` rebuild pattern.
-- [ ] 7.3 Update `ChooseRepositoryViewModel.cs` — replace old `ContainerNamesQuery` usage with new `IStreamQuery<string>` via `mediator.CreateStream(...)`.
-- [ ] 7.4 Update `RepositoryExplorerViewModel.cs` — replace old `PointerFileEntriesQuery` with new `LsCommand` (streaming). Use `Prefix` for current directory, `Recursive=false` for tree expand.
-- [ ] 7.5 Update `FileItemViewModel.cs` and `TreeNodeViewModel.cs` — adapt to new `RepositoryFileEntry` / `RepositoryDirectoryEntry` types instead of old `PointerFileEntriesQueryFileResult` / `PointerFileEntriesQueryDirectoryResult`.
-- [ ] 7.6 Wire Archive and Restore commands in Explorer to new Arius.Core `ArchiveCommand` and `RestoreCommand`.
+- [x] 7.1 Update `Arius.Explorer.csproj` — ensure project references to new Arius.Core and Arius.AzureBlob compile. Verify Mediator packages are aligned.
+- [x] 7.2 Update `Program.cs` DI setup — replace old `services.AddArius()` with new signature. Implement per-repository `ServiceProvider` rebuild pattern.
+- [x] 7.3 Update `ChooseRepositoryViewModel.cs` — replace old `ContainerNamesQuery` usage with new `IStreamQuery<string>` via `mediator.CreateStream(...)`.
+- [x] 7.4 Update `RepositoryExplorerViewModel.cs` — replace old `PointerFileEntriesQuery` with new `LsCommand` (streaming). Use `Prefix` for current directory, `Recursive=false` for tree expand.
+- [x] 7.5 Update `FileItemViewModel.cs` and `TreeNodeViewModel.cs` — adapt to new `RepositoryFileEntry` / `RepositoryDirectoryEntry` types instead of old `PointerFileEntriesQueryFileResult` / `PointerFileEntriesQueryDirectoryResult`.
+- [x] 7.6 Wire Archive and Restore commands in Explorer to new Arius.Core `ArchiveCommand` and `RestoreCommand`.
 
 ## 8. Explorer Tests
 

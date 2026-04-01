@@ -40,6 +40,11 @@
         </PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Mediator.Abstractions" />
+		<PackageReference Include="Mediator.SourceGenerator">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
 		<PackageReference Include="Microsoft.Extensions.Hosting" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
@@ -55,6 +60,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+		<ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
 	</ItemGroup>
 
 </Project>

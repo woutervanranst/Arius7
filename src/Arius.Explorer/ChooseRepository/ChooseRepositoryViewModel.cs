@@ -1,13 +1,20 @@
-using Arius.Core.Features.Queries.ContainerNames;
+using Arius.AzureBlob;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
+using Azure.Storage;
+using Azure.Storage.Blobs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mediator;
 using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Unit = System.Reactive.Unit;
 
@@ -128,11 +135,9 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
             synchronizationContext.Post(_ => IsLoading = true, null);
             synchronizationContext.Post(_ => StorageAccountError = false, null);
 
-            var query = new ContainerNamesQuery
-            {
-                AccountName = AccountName,
-                AccountKey  = AccountKey
-            };
+            var credential = new StorageSharedKeyCredential(AccountName, AccountKey);
+            var serviceClient = new BlobServiceClient(new Uri($"https://{AccountName}.blob.core.windows.net"), credential);
+            var query = new ContainerNamesQuery(serviceClient);
 
             var containers = new List<string>();
 
