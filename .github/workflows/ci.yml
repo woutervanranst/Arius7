@@ -33,22 +33,11 @@ jobs:
         run: dotnet tool install --global dotnet-coverage
 
       - name: 🧪 Run tests
-        shell: bash
-        run: |
-          dotnet-coverage collect \
-            --output coverage.cobertura.xml \
-            --output-format cobertura \
-            -- \
-            bash -lc '
-              shopt -s nullglob
-              for project in src/*Tests/*.csproj; do
-                if [[ "$project" == "src/Arius.Explorer.Tests/Arius.Explorer.Tests.csproj" ]]; then
-                  continue
-                fi
-
-                dotnet test --project "$project" --no-build -c Release || exit 1
-              done
-            '
+        run: >
+          dotnet-coverage collect
+          --output coverage.cobertura.xml
+          --output-format cobertura
+          "dotnet test --solution src/Arius.slnx --no-build -c Release"
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
@@ -59,25 +48,3 @@ jobs:
         with:
           files: coverage.cobertura.xml
           token: ${{ secrets.CODECOV_TOKEN }}
-
-  explorer-tests:
-    name: 🪟 Explorer Tests
-    runs-on: windows-latest
-
-    steps:
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v6
-
-      - name: ⚙️ Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: 📦 Restore dependencies
-        run: dotnet restore src/Arius.slnx
-
-      - name: 🔨 Build
-        run: dotnet build src/Arius.slnx --no-restore -c Release
-
-      - name: 🧪 Run Arius.Explorer.Tests
-        run: dotnet test --project src/Arius.Explorer.Tests/Arius.Explorer.Tests.csproj --no-build -c Release

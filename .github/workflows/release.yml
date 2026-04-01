@@ -54,10 +54,6 @@ jobs:
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=none
 
-      - name: 🔨 Build Arius.Explorer
-        if: matrix.os == 'windows-latest'
-        run: dotnet build src/Arius.Explorer/Arius.Explorer.csproj -c Release
-
       - name: ✏️ Rename binary
         shell: bash
         run: |
