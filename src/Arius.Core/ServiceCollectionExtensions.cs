@@ -85,6 +85,12 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
+        services.AddSingleton<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>(sp =>
+            new ResolveFileHydrationStatusesHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<ILogger<ResolveFileHydrationStatusesHandler>>()));
+
         return services;
     }
 }

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Features.List;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -246,45 +247,29 @@ public sealed class RestorePipelineHandler
 
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
-                // Check chunks-rehydrated/ first
-                var rehydratedName = BlobPaths.ChunkRehydrated(chunkHash);
-                var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedName, cancellationToken);
-
-                if (rehydratedMeta.Exists)
-                {
-                    if (rehydratedMeta.Tier != BlobTier.Archive)
-                    {
-                        // Copy completed — blob is ready to download (Hot/Cool/Cold).
-                        rehydrated.Add(chunkHash);
-                    }
-                    else
-                    {
-                        // Copy is still in progress: Azure creates the destination in Archive
-                        // tier while the copy is pending. The blob is not yet downloadable.
-                        rehydrationPending.Add(chunkHash);
-                    }
-                    continue;
-                }
-
-                // Check chunks/ tier
-                var chunkName = BlobPaths.Chunk(chunkHash);
-                var chunkMeta = await _blobs.GetMetadataAsync(chunkName, cancellationToken);
-                if (!chunkMeta.Exists)
+                var hydrationStatus = await FileHydrationStatusResolver.ResolveAsync(_blobs, chunkHash, cancellationToken);
+                if (hydrationStatus == FileHydrationStatus.Unknown)
                 {
                     _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
                     continue;
                 }
 
-                if (chunkMeta.Tier == BlobTier.Archive)
+                switch (hydrationStatus)
                 {
-                    if (chunkMeta.IsRehydrating)
+                    case FileHydrationStatus.RehydrationPending:
                         rehydrationPending.Add(chunkHash);
-                    else
+                        break;
+                    case FileHydrationStatus.NeedsRehydration:
                         needsRehydration.Add(chunkHash);
-                }
-                else
-                {
-                    available.Add(chunkHash);
+                        break;
+                    case FileHydrationStatus.Available:
+                        var rehydratedName = BlobPaths.ChunkRehydrated(chunkHash);
+                        var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedName, cancellationToken);
+                        if (rehydratedMeta.Exists && rehydratedMeta.Tier != BlobTier.Archive)
+                            rehydrated.Add(chunkHash);
+                        else
+                            available.Add(chunkHash);
+                        break;
                 }
             }
 
