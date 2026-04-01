@@ -3,6 +3,7 @@ using Arius.Core.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
@@ -13,7 +14,7 @@ namespace Arius.Cli.Commands.Archive;
 internal static class ArchiveVerb
 {
     internal static Command Build(
-        Func<string, string, string?, string, IServiceProvider> serviceProviderFactory)
+        Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>> serviceProviderFactory)
     {
         var accountOption    = CliBuilder.AccountOption();
         var keyOption        = CliBuilder.KeyOption();
@@ -74,11 +75,6 @@ internal static class ArchiveVerb
             }
 
             var resolvedKey = CliBuilder.ResolveKey(key, resolvedAccount);
-            if (resolvedKey is null)
-            {
-                AnsiConsole.MarkupLine("[red]Error:[/] No account key provided. Use --key / -k or set ARIUS_KEY.");
-                return 1;
-            }
 
             CliBuilder.ConfigureAuditLogging(resolvedAccount, container, "archive");
             var recorder = AnsiConsole.Console.CreateRecorder();
@@ -87,7 +83,18 @@ internal static class ArchiveVerb
 
             try
             {
-                var services      = serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container);
+                IServiceProvider services;
+                try
+                {
+                    services = await serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container, PreflightMode.ReadWrite).ConfigureAwait(false);
+                }
+                catch (PreflightException ex)
+                {
+                    Log.Error(ex, "Preflight check failed");
+                    AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+                    return 1;
+                }
+
                 var mediator      = services.GetRequiredService<IMediator>();
                 var progressState = services.GetRequiredService<ProgressState>();
 
