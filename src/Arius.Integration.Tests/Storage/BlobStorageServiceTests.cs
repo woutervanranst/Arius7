@@ -1,7 +1,7 @@
+using Arius.AzureBlob;
 using Arius.Core.Storage;
 using Shouldly;
 using System.Text;
-using Arius.AzureBlob;
 
 namespace Arius.Integration.Tests.Storage;
 

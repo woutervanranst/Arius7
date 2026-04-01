@@ -4,7 +4,6 @@ using Arius.Integration.Tests.Storage;
 using Shouldly;
 using System.Diagnostics;
 using System.Formats.Tar;
-using System.IO.Compression;
 
 namespace Arius.Integration.Tests.Pipeline;
 
