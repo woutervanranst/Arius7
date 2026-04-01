@@ -18,10 +18,15 @@ jobs:
         include:
           - os: ubuntu-latest
             runner: linux
+            collect_coverage: true
           - os: macos-latest
             runner: macos
+            # GitHub-hosted macOS runners are arm64, and dotnet-coverage
+            # dynamic instrumentation does not produce usable coverage there.
+            collect_coverage: false
           - os: windows-latest
             runner: windows
+            collect_coverage: true
 
     runs-on: ${{ matrix.os }}
 
@@ -56,9 +61,11 @@ jobs:
           }
 
       - name: 📊 Install dotnet-coverage
+        if: ${{ matrix.collect_coverage }}
         run: dotnet tool install --global dotnet-coverage
 
-      - name: 🧪 Run tests
+      - name: 🧪 Run tests with coverage
+        if: ${{ matrix.collect_coverage }}
         shell: pwsh
         run: |
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
@@ -70,8 +77,20 @@ jobs:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
 
+      - name: 🧪 Run tests
+        if: ${{ !matrix.collect_coverage }}
+        shell: pwsh
+        run: |
+          $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
+          foreach ($project in $projects) {
+            dotnet test --project $project --no-build -c Release
+          }
+        env:
+          ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
+          ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
+
       - name: 📈 Upload coverage to Codecov
-        if: always()
+        if: ${{ always() && matrix.collect_coverage }}
         uses: codecov/codecov-action@v6
         with:
           files: '*.coverage.cobertura.xml'
