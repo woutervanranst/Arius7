@@ -1,4 +1,4 @@
-namespace Arius.Core.Streaming;
+namespace Arius.Core.Shared.Streaming;
 
 /// <summary>
 /// Write-mode stream wrapper that tracks the total bytes written via <see cref="BytesWritten"/>.

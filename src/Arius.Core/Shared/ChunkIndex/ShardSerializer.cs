@@ -1,7 +1,7 @@
-using Arius.Core.Encryption;
+using Arius.Core.Shared.Encryption;
 using System.IO.Compression;
 
-namespace Arius.Core.ChunkIndex;
+namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
 /// Handles shard serialization with gzip compression and optional encryption.

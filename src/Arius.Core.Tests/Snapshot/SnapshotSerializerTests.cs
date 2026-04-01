@@ -1,5 +1,5 @@
-using Arius.Core.Encryption;
-using Arius.Core.Snapshot;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Snapshot;
 using Shouldly;
 
 namespace Arius.Core.Tests.Snapshot;

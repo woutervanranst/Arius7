@@ -1,6 +1,6 @@
 using Arius.AzureBlob;
 using Arius.Core;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Arius.Explorer.Settings;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;

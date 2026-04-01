@@ -1,4 +1,5 @@
-using Arius.Core.LocalFile;
+using Arius.Core.Shared.LocalFile;
+using Arius.Core.Shared.Storage;
 using Mediator;
 
 namespace Arius.Core.Features.Archive;
@@ -6,7 +7,7 @@ namespace Arius.Core.Features.Archive;
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 
 /// <summary>
-/// A <see cref="LocalFile.FilePair"/> after content hash has been computed.
+/// A <see cref="Shared.LocalFile.FilePair"/> after content hash has been computed.
 /// Used between Hash stage and Dedup stage.
 /// </summary>
 public sealed record HashedFilePair(
@@ -78,7 +79,7 @@ public sealed record ArchiveOptions
     public long TarTargetSize { get; init; } = 64L * 1024 * 1024; // 64 MB
 
     /// <summary>Upload tier for chunk blobs. Default: Archive.</summary>
-    public Storage.BlobTier UploadTier { get; init; } = Storage.BlobTier.Archive;
+    public BlobTier UploadTier { get; init; } = BlobTier.Archive;
 
     /// <summary>If <c>true</c>, delete local binary files after a successful snapshot.</summary>
     public bool RemoveLocal { get; init; } = false;

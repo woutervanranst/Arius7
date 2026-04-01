@@ -1,5 +1,5 @@
 using Arius.AzureBlob;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;

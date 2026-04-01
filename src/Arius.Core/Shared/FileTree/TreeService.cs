@@ -1,7 +1,8 @@
-using Arius.Core.Encryption;
-using Arius.Core.Storage;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 
-namespace Arius.Core.FileTree;
+namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
 /// One entry written to the manifest temp file during the archive pipeline.
@@ -168,7 +169,7 @@ public sealed class TreeBuilder
     public static string GetDiskCacheDirectory(string accountName, string containerName)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", ChunkIndex.ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
+        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────

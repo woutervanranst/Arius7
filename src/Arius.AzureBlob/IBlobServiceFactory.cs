@@ -1,4 +1,4 @@
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.AzureBlob;
 

@@ -1,6 +1,6 @@
-using Arius.Core.Encryption;
-using Arius.Core.FileTree;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 

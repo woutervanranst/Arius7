@@ -1,4 +1,4 @@
-namespace Arius.Core.Streaming;
+namespace Arius.Core.Shared.Streaming;
 
 /// <summary>
 /// Read-mode stream wrapper that reports cumulative bytes read via <see cref="IProgress{T}"/>.

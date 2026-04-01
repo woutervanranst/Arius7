@@ -1,4 +1,4 @@
-namespace Arius.Core.Storage;
+namespace Arius.Core.Shared.Storage;
 
 /// <summary>
 /// Controls which preflight probe is executed before returning a container-scoped blob service.

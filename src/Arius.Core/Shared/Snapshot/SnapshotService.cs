@@ -1,12 +1,12 @@
-using Arius.Core.Encryption;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Arius.Core.Snapshot;
+namespace Arius.Core.Shared.Snapshot;
 
 /// <summary>
 /// Snapshot manifest: the root of a complete archive state.

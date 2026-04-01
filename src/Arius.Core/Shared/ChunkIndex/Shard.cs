@@ -1,4 +1,4 @@
-namespace Arius.Core.ChunkIndex;
+namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
 /// One line in a chunk index shard file.

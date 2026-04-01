@@ -1,7 +1,7 @@
 using Arius.AzureBlob;
-using Arius.Core.ChunkIndex;
 using Arius.Core.Features.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Storage;
 using Shouldly;
 using System.Formats.Tar;
 using System.IO.Compression;

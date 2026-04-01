@@ -1,4 +1,4 @@
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Mediator;
 
 namespace Arius.Core.Features.Restore;

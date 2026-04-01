@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace Arius.Core.Encryption;
+namespace Arius.Core.Shared.Encryption;
 
 /// <summary>
 /// No-op encryption service for plaintext (unencrypted) repositories.

@@ -1,6 +1,6 @@
 using Arius.Core.Features.Archive;
 using Arius.Core.Features.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 

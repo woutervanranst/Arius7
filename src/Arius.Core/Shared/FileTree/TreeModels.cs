@@ -1,4 +1,4 @@
-namespace Arius.Core.FileTree;
+namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
 /// Type discriminator for entries in a tree blob.

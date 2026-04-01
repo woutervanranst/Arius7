@@ -1,10 +1,10 @@
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
 using AzureRehydratePriority = Azure.Storage.Blobs.Models.RehydratePriority;
-using CoreRehydratePriority = Arius.Core.Storage.RehydratePriority;
+using CoreRehydratePriority = Arius.Core.Shared.Storage.RehydratePriority;
 
 namespace Arius.AzureBlob;
 

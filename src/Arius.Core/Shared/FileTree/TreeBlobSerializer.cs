@@ -1,8 +1,8 @@
-using Arius.Core.Encryption;
+using Arius.Core.Shared.Encryption;
 using System.IO.Compression;
 using System.Text;
 
-namespace Arius.Core.FileTree;
+namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
 /// Serializes and deserializes <see cref="TreeBlob"/> instances to/from a compact text format.

@@ -1,7 +1,7 @@
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
 using Arius.Core.Features.Archive;
-using Arius.Core.Storage;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;

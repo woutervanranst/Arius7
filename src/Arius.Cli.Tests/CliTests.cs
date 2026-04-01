@@ -1,6 +1,7 @@
 using Arius.Core.Features.Archive;
 using Arius.Core.Features.Ls;
 using Arius.Core.Features.Restore;
+using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -113,7 +114,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Hot);
+        cmd.Options.UploadTier.ShouldBe(BlobTier.Hot);
         cmd.Options.RemoveLocal.ShouldBeTrue();
         cmd.Options.NoPointers.ShouldBeFalse();
     }
@@ -128,7 +129,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Archive);
+        cmd.Options.UploadTier.ShouldBe(BlobTier.Archive);
         cmd.Options.RemoveLocal.ShouldBeFalse();
         cmd.Options.NoPointers.ShouldBeFalse();
     }

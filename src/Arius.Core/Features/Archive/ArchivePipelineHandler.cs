@@ -1,10 +1,10 @@
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
-using Arius.Core.FileTree;
-using Arius.Core.LocalFile;
-using Arius.Core.Snapshot;
-using Arius.Core.Storage;
-using Arius.Core.Streaming;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.LocalFile;
+using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.Streaming;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;

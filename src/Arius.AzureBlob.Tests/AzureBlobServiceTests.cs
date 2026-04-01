@@ -1,4 +1,4 @@
-using Arius.Core.Storage;
+using Arius.Core.Shared.Storage;
 using Azure;
 using Azure.Core;
 using Azure.Storage.Blobs;

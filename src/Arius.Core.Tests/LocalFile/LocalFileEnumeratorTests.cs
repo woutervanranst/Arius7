@@ -1,4 +1,4 @@
-using Arius.Core.LocalFile;
+using Arius.Core.Shared.LocalFile;
 using Shouldly;
 
 namespace Arius.Core.Tests.LocalFile;

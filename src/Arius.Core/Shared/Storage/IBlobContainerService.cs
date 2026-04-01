@@ -1,4 +1,4 @@
-namespace Arius.Core.Storage;
+namespace Arius.Core.Shared.Storage;
 
 /// <summary>
 /// Thrown when an upload is attempted against a blob that already exists,

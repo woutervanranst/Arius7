@@ -1,4 +1,4 @@
-namespace Arius.Core.Encryption;
+namespace Arius.Core.Shared.Encryption;
 
 /// <summary>
 /// Pluggable encryption and hashing service.

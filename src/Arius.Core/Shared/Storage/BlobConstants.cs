@@ -1,4 +1,4 @@
-namespace Arius.Core.Storage;
+namespace Arius.Core.Shared.Storage;
 
 /// <summary>
 /// Well-known blob metadata key names used across the system.

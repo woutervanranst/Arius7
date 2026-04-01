@@ -1,8 +1,8 @@
-using Arius.Core.Encryption;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using System.Collections.Concurrent;
 
-namespace Arius.Core.ChunkIndex;
+namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
 /// Three-tier chunk index cache.

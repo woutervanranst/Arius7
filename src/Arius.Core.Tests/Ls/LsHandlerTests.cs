@@ -1,9 +1,9 @@
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
 using Arius.Core.Features.Ls;
-using Arius.Core.FileTree;
-using Arius.Core.Snapshot;
-using Arius.Core.Storage;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 

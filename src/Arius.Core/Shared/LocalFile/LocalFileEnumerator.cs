@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.LocalFile;
+namespace Arius.Core.Shared.LocalFile;
 
 // ── Task 7.1: FilePair model ───────────────────────────────────────────────────
 

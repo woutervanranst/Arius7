@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Arius.Core.Encryption;
+namespace Arius.Core.Shared.Encryption;
 
 /// <summary>
 /// Encryption service that writes AES-256-GCM (ArGCM1 format) and reads both
