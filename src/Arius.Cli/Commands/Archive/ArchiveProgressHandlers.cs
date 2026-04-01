@@ -107,7 +107,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
 {
     public ValueTask Handle(TarBundleSealingEvent notification, CancellationToken cancellationToken)
     {
-        TrackedTar? tar = state.TrackedTars.Values
+        var tar = state.TrackedTars.Values
             .Where(t => t.State == TarState.Accumulating || t.State == TarState.Sealing)
             .OrderByDescending(t => t.BundleNumber)
             .FirstOrDefault();

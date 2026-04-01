@@ -175,7 +175,7 @@ public sealed class ListRepositoryEntriesHandler : IStreamQueryHandler<ListRepos
 
             var relativePath = CombineRelativePath(currentRelativeDirectory, candidate.Entry.Name);
             var localFile = candidate.LocalFile;
-            long? originalSize = sizeLookup.TryGetValue(candidate.Entry.Hash, out var shardEntry)
+            var originalSize = sizeLookup.TryGetValue(candidate.Entry.Hash, out var shardEntry)
                 ? shardEntry.OriginalSize
                 : localFile?.FileSize;
 

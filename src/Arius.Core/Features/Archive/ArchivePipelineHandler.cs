@@ -299,7 +299,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                             await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
                             await using (var fs = File.OpenRead(fullPath))
                             {
-                                IProgress<long> uploadProgress = opts.CreateUploadProgress is not null
+                                var uploadProgress = opts.CreateUploadProgress is not null
                                     ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
                                     : new Progress<long>();
                                 await using var ps = new ProgressStream(fs, uploadProgress);
@@ -465,7 +465,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
                                 await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
                                 await using (var fs = File.OpenRead(sealed_.TarFilePath))
                                 {
-                                    IProgress<long> tarProgress = opts.CreateUploadProgress is not null
+                                    var tarProgress = opts.CreateUploadProgress is not null
                                         ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
                                         : new Progress<long>();
                                     await using var ps = new ProgressStream(fs, tarProgress);
@@ -590,7 +590,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
 
             string?        snapshotRootHash = null;
-            DateTimeOffset snapshotTime     = DateTimeOffset.UtcNow;
+            var snapshotTime     = DateTimeOffset.UtcNow;
 
             if (rootHash is not null)
             {
