@@ -1,5 +1,5 @@
 using Arius.AzureBlob;
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -105,7 +105,7 @@ internal static class LsVerb
 
                 var mediator = services.GetRequiredService<IMediator>();
 
-                var opts = new LsOptions
+                var opts = new ListRepositoryEntriesCommandOptions
                 {
                     Version = version,
                     Prefix  = prefix,
@@ -121,7 +121,7 @@ internal static class LsVerb
                 var fileCount = 0;
                 try
                 {
-                    await foreach (var entry in mediator.CreateStream(new LsCommand(opts), ct))
+                    await foreach (var entry in mediator.CreateStream(new ListRepositoryEntriesCommand(opts), ct))
                     {
                         if (entry is not RepositoryFileEntry file)
                         {

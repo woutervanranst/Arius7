@@ -7,27 +7,27 @@ using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 
-namespace Arius.Core.Features.Ls;
+namespace Arius.Core.Features.List;
 
 /// <summary>
 /// Streams repository entries from a snapshot with optional local filesystem merge.
 /// </summary>
-public sealed class LsHandler : IStreamQueryHandler<LsCommand, RepositoryEntry>
+public sealed class ListRepositoryEntriesHandler : IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>
 {
     private const string PointerSuffix = ".pointer.arius";
 
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
-    private readonly ILogger<LsHandler> _logger;
+    private readonly ILogger<ListRepositoryEntriesHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
 
-    public LsHandler(
+    public ListRepositoryEntriesHandler(
         IBlobContainerService blobs,
         IEncryptionService encryption,
         ChunkIndexService index,
-        ILogger<LsHandler> logger,
+        ILogger<ListRepositoryEntriesHandler> logger,
         string accountName,
         string containerName)
     {
@@ -40,7 +40,7 @@ public sealed class LsHandler : IStreamQueryHandler<LsCommand, RepositoryEntry>
     }
 
     public async IAsyncEnumerable<RepositoryEntry> Handle(
-        LsCommand command,
+        ListRepositoryEntriesCommand command,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var opts = command.Options;

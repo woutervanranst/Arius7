@@ -1,5 +1,5 @@
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -22,7 +22,7 @@ internal sealed class CliHarness
 {
     public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
     public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
-    public IStreamQueryHandler<LsCommand, RepositoryEntry>     LsHandler      { get; }
+    public IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>     LsHandler      { get; }
 
     /// <summary>
     /// Account name resolved and passed to the factory (set on first invocation).
@@ -40,7 +40,7 @@ internal sealed class CliHarness
     {
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
-        var lsHandler      = Substitute.For<IStreamQueryHandler<LsCommand, RepositoryEntry>>();
+        var lsHandler      = Substitute.For<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -66,7 +66,7 @@ internal sealed class CliHarness
             });
 
         lsHandler
-            .Handle(Arg.Any<LsCommand>(), Arg.Any<CancellationToken>())
+            .Handle(Arg.Any<ListRepositoryEntriesCommand>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
         ArchiveHandler = archiveHandler;
@@ -234,7 +234,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListRepositoryEntriesCommand)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBe("2026-01-01");
         cmd.Options.Prefix.ShouldBe("docs/");
         cmd.Options.Filter.ShouldBe(".pdf");
@@ -249,7 +249,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListRepositoryEntriesCommand)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBeNull();
         cmd.Options.Prefix.ShouldBeNull();
         cmd.Options.Filter.ShouldBeNull();
@@ -264,7 +264,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListRepositoryEntriesCommand)call.GetArguments()[0]!;
         cmd.Options.Prefix.ShouldBe("photos/");
         cmd.Options.Filter.ShouldBe(".jpg");
     }

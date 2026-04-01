@@ -1,4 +1,4 @@
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
@@ -160,7 +160,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             if (repositorySession.Mediator is null)
                 throw new InvalidOperationException("Repository session is not connected.");
 
-            var query = new LsCommand(new LsOptions
+            var query = new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions
             {
                 Prefix = string.IsNullOrWhiteSpace(node.Prefix) ? null : node.Prefix,
                 Recursive = false,

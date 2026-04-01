@@ -1,6 +1,6 @@
 using Arius.Core;
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -29,7 +29,7 @@ public class AddAriusRegistrationTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        serviceProvider.GetRequiredService<IStreamQueryHandler<LsCommand, RepositoryEntry>>().ShouldBeOfType<LsHandler>();
+        serviceProvider.GetRequiredService<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>().ShouldBeOfType<ListRepositoryEntriesHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchivePipelineHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<RestoreCommand, RestoreResult>>().ShouldBeOfType<RestorePipelineHandler>();
     }

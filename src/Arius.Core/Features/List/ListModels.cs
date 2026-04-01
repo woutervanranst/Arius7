@@ -1,11 +1,11 @@
 using Mediator;
 
-namespace Arius.Core.Features.Ls;
+namespace Arius.Core.Features.List;
 
 /// <summary>
 /// Options for the ls command.
 /// </summary>
-public sealed record LsOptions
+public sealed record ListRepositoryEntriesCommandOptions
 {
     /// <summary>Snapshot version (partial match). <c>null</c> = latest.</summary>
     public string? Version { get; init; }
@@ -36,7 +36,7 @@ public sealed record LsOptions
 /// <summary>
 /// Mediator stream query: list repository entries in a snapshot.
 /// </summary>
-public sealed record LsCommand(LsOptions Options)
+public sealed record ListRepositoryEntriesCommand(ListRepositoryEntriesCommandOptions Options)
     : IStreamQuery<RepositoryEntry>;
 
 /// <summary>

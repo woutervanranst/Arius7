@@ -1,5 +1,5 @@
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -124,9 +124,9 @@ public sealed class PipelineFixture : IAsyncDisposable
             NullLogger<RestorePipelineHandler>.Instance,
             Account, Container.Name);
 
-    public LsHandler CreateLsHandler() =>
+    public ListRepositoryEntriesHandler CreateLsHandler() =>
         new(BlobContainer, Encryption, Index,
-            NullLogger<LsHandler>.Instance,
+            NullLogger<ListRepositoryEntriesHandler>.Instance,
             Account, Container.Name);
 
     /// <summary>
@@ -160,12 +160,12 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     /// <summary>Runs the ls command and collects all file entries.</summary>
     public async Task<List<RepositoryFileEntry>> LsAsync(
-        LsOptions? opts = null,
+        ListRepositoryEntriesCommandOptions? opts = null,
         CancellationToken ct = default)
     {
-        opts ??= new LsOptions();
+        opts ??= new ListRepositoryEntriesCommandOptions();
         var results = new List<RepositoryFileEntry>();
-        await foreach (var entry in CreateLsHandler().Handle(new LsCommand(opts), ct))
+        await foreach (var entry in CreateLsHandler().Handle(new ListRepositoryEntriesCommand(opts), ct))
         {
             if (entry is RepositoryFileEntry file)
                 results.Add(file);

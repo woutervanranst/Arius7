@@ -1,5 +1,5 @@
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.Ls;
+using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -76,12 +76,12 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
-        services.AddSingleton<IStreamQueryHandler<LsCommand, RepositoryEntry>>(sp =>
-            new LsHandler(
+        services.AddSingleton<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>(sp =>
+            new ListRepositoryEntriesHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<ILogger<LsHandler>>(),
+                sp.GetRequiredService<ILogger<ListRepositoryEntriesHandler>>(),
                 accountName,
                 containerName));
 
