@@ -529,7 +529,7 @@ public class LsHandlerTests
 
     private static string HashFor(string label) => Convert.ToHexString(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label))).ToLowerInvariant();
 
-    private sealed class FakeBlobService : IBlobStorageService
+    private sealed class FakeBlobService : IBlobContainerService
     {
         private readonly Dictionary<string, byte[]> _blobs = new(StringComparer.Ordinal);
 

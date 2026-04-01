@@ -30,7 +30,7 @@ namespace Arius.Core.Restore;
 public sealed class RestorePipelineHandler
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
-    private readonly IBlobStorageService              _blobs;
+    private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
     private readonly IMediator                        _mediator;
@@ -39,7 +39,7 @@ public sealed class RestorePipelineHandler
     private readonly string                           _containerName;
 
     public RestorePipelineHandler(
-        IBlobStorageService            blobs,
+        IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
         IMediator                      mediator,

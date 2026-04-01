@@ -88,7 +88,7 @@ public static class SnapshotSerializer
 /// </summary>
 public sealed class SnapshotService
 {
-    private readonly IBlobStorageService _blobs;
+    private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
 
     /// <summary>
@@ -97,7 +97,7 @@ public sealed class SnapshotService
     /// </summary>
     public const string TimestampFormat = "yyyy-MM-ddTHHmmss.fffZ";
 
-    public SnapshotService(IBlobStorageService blobs, IEncryptionService encryption)
+    public SnapshotService(IBlobContainerService blobs, IEncryptionService encryption)
     {
         _blobs      = blobs;
         _encryption = encryption;

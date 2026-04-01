@@ -36,7 +36,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobStorageService             _blobs;
+    private readonly IBlobContainerService             _blobs;
     private readonly IEncryptionService              _encryption;
     private readonly ChunkIndexService               _index;
     private readonly IMediator                       _mediator;
@@ -45,7 +45,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     private readonly string                          _containerName;
 
     public ArchivePipelineHandler(
-        IBlobStorageService             blobs,
+        IBlobContainerService             blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
         IMediator                       mediator,

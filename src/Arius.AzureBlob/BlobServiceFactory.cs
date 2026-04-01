@@ -7,7 +7,7 @@ using Arius.Core.Storage;
 namespace Arius.AzureBlob;
 
 /// <summary>
-/// Constructs a preflight-validated <see cref="IBlobStorageService"/> from caller-supplied
+/// Constructs a preflight-validated <see cref="IBlobContainerService"/> from caller-supplied
 /// credentials.  This is a static factory — it has no instance state and runs before the
 /// DI container is built.
 /// </summary>
@@ -32,7 +32,7 @@ public static class BlobServiceFactory
 
     /// <summary>
     /// Creates a <see cref="BlobServiceClient"/>, runs a preflight connectivity probe,
-    /// and returns a validated <see cref="IBlobStorageService"/>.
+    /// and returns a validated <see cref="IBlobContainerService"/>.
     /// </summary>
     /// <param name="credential">
     /// Either a <see cref="StorageSharedKeyCredential"/> or a <see cref="TokenCredential"/>.
@@ -41,10 +41,10 @@ public static class BlobServiceFactory
     /// <param name="accountName">Azure Storage account name.</param>
     /// <param name="containerName">Blob container name.</param>
     /// <param name="preflightMode">Controls the type of preflight probe executed.</param>
-    /// <returns>A validated <see cref="IBlobStorageService"/>.</returns>
+    /// <returns>A validated <see cref="IBlobContainerService"/>.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="credential"/> is not a supported type.</exception>
     /// <exception cref="PreflightException">Thrown if the preflight probe fails due to connectivity or auth errors.</exception>
-    public static async Task<IBlobStorageService> CreateAsync(
+    public static async Task<IBlobContainerService> CreateAsync(
         object        credential,
         string        accountName,
         string        containerName,
@@ -144,6 +144,6 @@ public static class BlobServiceFactory
         }
 
         // ── Return validated service ──────────────────────────────────────────
-        return new AzureBlobStorageService(containerClient);
+        return new AzureBlobContainerService(containerClient);
     }
 }

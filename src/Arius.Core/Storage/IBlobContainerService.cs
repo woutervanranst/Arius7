@@ -53,7 +53,7 @@ public sealed class BlobMetadata
 /// Abstracts all blob storage I/O. Arius.Core depends on this interface only —
 /// no Azure-specific types cross this boundary.
 /// </summary>
-public interface IBlobStorageService
+public interface IBlobContainerService
 {
     // ── Container ─────────────────────────────────────────────────────────────
 

@@ -1010,7 +1010,7 @@ public class MediatorEventRoutingIntegrationTests
 
         // Provide stub Core services so the source-generated Mediator can initialize.
         services.AddArius(
-            blobStorage:      Substitute.For<IBlobStorageService>(),
+            blobContainer:      Substitute.For<IBlobContainerService>(),
             passphrase:       null,
             accountName:      "test",
             containerName:    "test",

@@ -9,14 +9,14 @@ using CoreRehydratePriority = Arius.Core.Storage.RehydratePriority;
 namespace Arius.AzureBlob;
 
 /// <summary>
-/// Azure Blob Storage implementation of <see cref="IBlobStorageService"/>.
+/// Azure Blob Storage implementation of <see cref="IBlobContainerService"/>.
 /// Operates against a single Azure Blob container.
 /// </summary>
-public sealed class AzureBlobStorageService : IBlobStorageService
+public sealed class AzureBlobContainerService : IBlobContainerService
 {
     private readonly BlobContainerClient _container;
 
-    public AzureBlobStorageService(BlobContainerClient container)
+    public AzureBlobContainerService(BlobContainerClient container)
     {
         ArgumentNullException.ThrowIfNull(container);
         _container = container;

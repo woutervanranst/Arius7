@@ -1,11 +1,12 @@
 using Arius.Core.Storage;
 using Shouldly;
 using System.Text;
+using Arius.AzureBlob;
 
 namespace Arius.Integration.Tests.Storage;
 
 /// <summary>
-/// Integration tests for <see cref="Arius.AzureBlob.AzureBlobStorageService"/> against Azurite.
+/// Integration tests for <see cref="AzureBlobContainerService"/> against Azurite.
 /// Covers upload/download roundtrip, HEAD with metadata, tier setting, and list by prefix.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]

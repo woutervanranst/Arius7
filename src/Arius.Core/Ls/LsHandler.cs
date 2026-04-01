@@ -16,7 +16,7 @@ public sealed class LsHandler : IStreamQueryHandler<LsCommand, RepositoryEntry>
 {
     private const string PointerSuffix = ".pointer.arius";
 
-    private readonly IBlobStorageService _blobs;
+    private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
     private readonly ILogger<LsHandler> _logger;
@@ -24,7 +24,7 @@ public sealed class LsHandler : IStreamQueryHandler<LsCommand, RepositoryEntry>
     private readonly string _containerName;
 
     public LsHandler(
-        IBlobStorageService blobs,
+        IBlobContainerService blobs,
         IEncryptionService encryption,
         ChunkIndexService index,
         ILogger<LsHandler> logger,

@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
     /// Registers Arius core services and mediator handler interfaces into the provided <see cref="IServiceCollection"/>.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="blobStorage">The blob storage implementation to use for persisted data.</param>
+    /// <param name="blobContainer">The blob storage implementation to use for persisted data.</param>
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
@@ -24,14 +24,14 @@ public static class ServiceCollectionExtensions
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
-        IBlobStorageService     blobStorage,
+        IBlobContainerService     blobContainer,
         string?                 passphrase,
         string                  accountName,
         string                  containerName,
         long                    cacheBudgetBytes = ChunkIndexService.DefaultCacheBudgetBytes)
     {
         // Storage
-        services.AddSingleton(blobStorage);
+        services.AddSingleton(blobContainer);
 
         // Encryption
         IEncryptionService encryption = passphrase is not null
@@ -42,7 +42,7 @@ public static class ServiceCollectionExtensions
         // Chunk index
         services.AddSingleton(sp =>
             new ChunkIndexService(
-                sp.GetRequiredService<IBlobStorageService>(),
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
                 containerName,
@@ -58,7 +58,7 @@ public static class ServiceCollectionExtensions
         // account/container constructor arguments without explicit factories here.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>>(sp =>
             new ArchivePipelineHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
@@ -68,7 +68,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
             new RestorePipelineHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
@@ -78,7 +78,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IStreamQueryHandler<LsCommand, RepositoryEntry>>(sp =>
             new LsHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<ILogger<LsHandler>>(),

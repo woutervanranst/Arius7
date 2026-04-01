@@ -138,12 +138,12 @@ public static class ManifestSorter
 /// </summary>
 public sealed class TreeBuilder
 {
-    private readonly IBlobStorageService _blobs;
+    private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
     private readonly string              _diskCacheDir;
 
     public TreeBuilder(
-        IBlobStorageService blobs,
+        IBlobContainerService blobs,
         IEncryptionService  encryption,
         string              accountName,
         string              containerName)

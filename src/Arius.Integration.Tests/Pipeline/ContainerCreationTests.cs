@@ -36,7 +36,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         // Verify the container does not yet exist
         (await containerClient.ExistsAsync()).Value.ShouldBeFalse();
 
-        var svc        = new AzureBlobStorageService(containerClient);
+        var svc        = new AzureBlobContainerService(containerClient);
         var encryption = new PlaintextPassthroughService();
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();

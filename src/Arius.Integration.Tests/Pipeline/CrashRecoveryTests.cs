@@ -13,11 +13,11 @@ namespace Arius.Integration.Tests.Pipeline;
 // ── Fault-injection blob service wrapper ──────────────────────────────────────
 
 /// <summary>
-/// Wraps an <see cref="IBlobStorageService"/> and throws after <paramref name="throwAfterN"/>
+/// Wraps an <see cref="IBlobContainerService"/> and throws after <paramref name="throwAfterN"/>
 /// successful upload calls. Used to simulate crashes mid-pipeline.
 /// </summary>
-internal sealed class FaultingBlobService(IBlobStorageService inner, int throwAfterN)
-    : IBlobStorageService
+internal sealed class FaultingBlobService(IBlobContainerService inner, int throwAfterN)
+    : IBlobContainerService
 {
     private int _uploadCount;
 
@@ -81,7 +81,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
     /// Uses the same encryption and index as the fixture.
     /// </summary>
     private static ArchivePipelineHandler MakeArchiveHandler(
-        IBlobStorageService blobService,
+        IBlobContainerService blobService,
         IEncryptionService  encryption,
         ChunkIndexService   index,
         string              containerName)
@@ -107,8 +107,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("file2.bin", content2);
 
         // ── Run 1: crash after 1 upload (partial — uploads only one chunk)
-        var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
+        var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
+        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveOptions
@@ -123,10 +123,10 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
 
         // After the crash, the first blob should be present with arius-type set (crash-recovery signal)
         var blobs = new List<string>();
-        await foreach (var name in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
             blobs.Add(name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
-        var firstMeta = await fix.BlobStorage.GetMetadataAsync(blobs[0]);
+        var firstMeta = await fix.BlobContainer.GetMetadataAsync(blobs[0]);
         firstMeta.Exists.ShouldBeTrue();
         firstMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType).ShouldBeTrue("arius-type is the crash-recovery signal");
 
@@ -160,8 +160,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
 
         // Crash after the tar blob upload (upload #1) but before thin chunks (uploads #2, #3, #4)
         // throwAfterN=1 means: first upload (tar blob) succeeds, then crash
-        var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
+        var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
+        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveOptions
@@ -205,8 +205,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         //   upload #2 = index shard (FlushAsync)  ← crash here
         //   upload #3 = snapshot (if reached)
         // throwAfterN=1 → thin chunk succeeds, crashes on index shard upload
-        var faultingService = new FaultingBlobService(fix.BlobStorage, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(fix.BlobStorage, fix.Encryption, Account, fix.Container.Name);
+        var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
+        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveOptions

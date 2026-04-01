@@ -22,7 +22,7 @@ public sealed class ChunkIndexService : IDisposable
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobStorageService _blobs;
+    private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
     private readonly string              _l2Dir;
 
@@ -57,7 +57,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <remarks>
     /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
     /// </remarks>
-    public ChunkIndexService(IBlobStorageService blobs, IEncryptionService encryption, string accountName, string containerName, long cacheBudgetBytes = DefaultCacheBudgetBytes)
+    public ChunkIndexService(IBlobContainerService blobs, IEncryptionService encryption, string accountName, string containerName, long cacheBudgetBytes = DefaultCacheBudgetBytes)
     {
         _blobs         = blobs;
         _encryption    = encryption;

@@ -353,8 +353,8 @@ public class TreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    // Minimal stub IBlobStorageService that records uploads
-    private sealed class FakeBlobService : Storage.IBlobStorageService
+    // Minimal stub IBlobContainerService that records uploads
+    private sealed class FakeBlobService : Storage.IBlobContainerService
     {
         public readonly HashSet<string> Uploaded = new();
         public readonly HashSet<string> HeadChecked = new();

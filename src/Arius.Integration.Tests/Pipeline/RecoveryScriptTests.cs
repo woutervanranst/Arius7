@@ -113,7 +113,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find the chunk blob name — list chunks/ prefix
         var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
             chunkBlobs.Add(blob);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -128,7 +128,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download the raw CBC-encrypted+gzipped blob
             {
-                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobName);
+                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobName);
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -169,7 +169,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find the chunk blob name — list chunks/ prefix
         var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
             chunkBlobs.Add(blob);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -184,7 +184,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download the raw encrypted+gzipped blob
             {
-                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobName);
+                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobName);
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -228,9 +228,9 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find tar chunk blob
         var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
         {
-            var meta = await fix.BlobStorage.GetMetadataAsync(blob);
+            var meta = await fix.BlobContainer.GetMetadataAsync(blob);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
                 chunkBlobs.Add(blob);
         }
@@ -246,7 +246,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download raw blob
             {
-                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobs[0]);
+                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -311,9 +311,9 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find tar chunk blob
         var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
         {
-            var meta = await fix.BlobStorage.GetMetadataAsync(blob);
+            var meta = await fix.BlobContainer.GetMetadataAsync(blob);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
                 chunkBlobs.Add(blob);
         }
@@ -329,7 +329,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download raw blob
             {
-                await using var downloadStream = await fix.BlobStorage.DownloadAsync(chunkBlobs[0]);
+                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }

@@ -57,8 +57,8 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
 
     public static void AddRootCorePlaceholders(IServiceCollection services)
     {
-        services.AddSingleton<IBlobStorageService, NullBlobStorageService>();
-        services.AddArius(new NullBlobStorageService(), passphrase: null, accountName: "root", containerName: "root");
+        services.AddSingleton<IBlobContainerService, NullBlobContainerService>();
+        services.AddArius(new NullBlobContainerService(), passphrase: null, accountName: "root", containerName: "root");
     }
 
     public void Dispose() => DisposeCurrentProvider();
@@ -71,7 +71,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
         serviceProvider = null;
     }
 
-    private sealed class NullBlobStorageService : IBlobStorageService
+    private sealed class NullBlobContainerService : IBlobContainerService
     {
         public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();

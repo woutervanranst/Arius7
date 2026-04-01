@@ -135,9 +135,9 @@ public class E2ETests(AzureFixture azure)
 
             // Verify at least one chunk blob has Archive tier
             var foundArchiveTierBlob = false;
-            await foreach (var blobName in fix.BlobStorage.ListAsync(BlobPaths.Chunks))
+            await foreach (var blobName in fix.BlobContainer.ListAsync(BlobPaths.Chunks))
             {
-                var meta = await fix.BlobStorage.GetMetadataAsync(blobName);
+                var meta = await fix.BlobContainer.GetMetadataAsync(blobName);
                 if (meta.Tier == BlobTier.Archive)
                 {
                     foundArchiveTierBlob = true;
@@ -188,7 +188,7 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly string               _tempRoot;
     private readonly BlobTier             _defaultTier;
 
-    public IBlobStorageService BlobStorage  { get; }
+    public IBlobContainerService BlobContainer  { get; }
     public IEncryptionService  Encryption   { get; }
     public ChunkIndexService   Index        { get; }
     public string              LocalRoot    { get; }
@@ -199,7 +199,7 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly IMediator _mediator;
 
     private E2EFixture(
-        IBlobStorageService blobStorage,
+        IBlobContainerService blobContainer,
         IEncryptionService  encryption,
         ChunkIndexService   index,
         string              tempRoot,
@@ -209,7 +209,7 @@ public sealed class E2EFixture : IAsyncDisposable
         string              containerName,
         BlobTier            defaultTier)
     {
-        BlobStorage  = blobStorage;
+        BlobContainer  = blobContainer;
         Encryption   = encryption;
         Index        = index;
         _tempRoot    = tempRoot;
@@ -223,7 +223,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static async Task<E2EFixture> CreateAsync(
         BlobContainerClient   container,
-        AzureBlobStorageService svc,
+        AzureBlobContainerService svc,
         BlobTier              defaultTier,
         string?               passphrase = null,
         CancellationToken     ct = default)
@@ -263,12 +263,12 @@ public sealed class E2EFixture : IAsyncDisposable
             Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
     private ArchivePipelineHandler CreateArchiveHandler() =>
-        new(BlobStorage, Encryption, Index, _mediator,
+        new(BlobContainer, Encryption, Index, _mediator,
             NullLogger<ArchivePipelineHandler>.Instance,
             _account, _container);
 
     private RestorePipelineHandler CreateRestoreHandler() =>
-        new(BlobStorage, Encryption, Index, _mediator,
+        new(BlobContainer, Encryption, Index, _mediator,
             NullLogger<RestorePipelineHandler>.Instance,
             _account, _container);
 

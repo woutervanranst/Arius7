@@ -21,7 +21,7 @@ public class AddAriusRegistrationTests
         services.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));
         services.AddMediator();
         services.AddArius(
-            blobStorage: Substitute.For<IBlobStorageService>(),
+            blobContainer: Substitute.For<IBlobContainerService>(),
             passphrase: null,
             accountName: "test",
             containerName: "test",

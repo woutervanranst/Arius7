@@ -22,7 +22,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     private readonly string          _tempRoot;
     public           BlobContainerClient Container { get; private set; } = null!;
 
-    public  IBlobStorageService BlobStorage   { get; private set; } = null!;
+    public  IBlobContainerService BlobContainer   { get; private set; } = null!;
     public  IEncryptionService  Encryption    { get; private set; } = null!;
     public  ChunkIndexService   Index         { get; private set; } = null!;
     public  IMediator           Mediator      { get; private set; } = null!;
@@ -72,11 +72,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
         Container   = container;
-        BlobStorage = svc;
+        BlobContainer = svc;
         Encryption  = passphrase is not null
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
-        Index      = new ChunkIndexService(BlobStorage, Encryption, Account, container.Name);
+        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, container.Name);
         Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
@@ -93,17 +93,17 @@ public sealed class PipelineFixture : IAsyncDisposable
         if (existingContainer is not null)
         {
             Container   = existingContainer;
-            BlobStorage = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
+            BlobContainer = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
         }
         else
         {
             var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
             Container   = container;
-            BlobStorage = svc;
+            BlobContainer = svc;
         }
 
         Encryption = encryption;
-        Index      = new ChunkIndexService(BlobStorage, Encryption, Account, Container.Name);
+        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, Container.Name);
         Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
@@ -115,17 +115,17 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchivePipelineHandler CreateArchiveHandler() =>
-        new(BlobStorage, Encryption, Index, Mediator,
+        new(BlobContainer, Encryption, Index, Mediator,
             NullLogger<ArchivePipelineHandler>.Instance,
             Account, Container.Name);
 
     public RestorePipelineHandler CreateRestoreHandler() =>
-        new(BlobStorage, Encryption, Index, Mediator,
+        new(BlobContainer, Encryption, Index, Mediator,
             NullLogger<RestorePipelineHandler>.Instance,
             Account, Container.Name);
 
     public LsHandler CreateLsHandler() =>
-        new(BlobStorage, Encryption, Index,
+        new(BlobContainer, Encryption, Index,
             NullLogger<LsHandler>.Instance,
             Account, Container.Name);
 
