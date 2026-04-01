@@ -89,14 +89,16 @@ public static class BlobServiceFactory
             }
             else
             {
-                var exists = await containerClient.ExistsAsync().ConfigureAwait(false);
-                if (!exists.Value)
-                    throw new PreflightException(
-                        PreflightErrorKind.ContainerNotFound,
-                        authMode,
-                        accountName,
-                        containerName,
-                        statusCode: 404);
+                // Use GetBlobsAsync (one-item page) rather than ExistsAsync so that
+                // we exercise the ListBlobs permission, not just the container-metadata
+                // permission.  ExistsAsync only requires Read on the container resource,
+                // but listing blobs requires Storage Blob Data Reader — which is exactly
+                // what restore/ls need in practice.
+                var page = containerClient
+                    .GetBlobsAsync()
+                    .AsPages(pageSizeHint: 1);
+                await foreach (var _ in page.ConfigureAwait(false))
+                    break; // one page is enough; an empty container is fine too
             }
         }
         catch (CredentialUnavailableException ex)
