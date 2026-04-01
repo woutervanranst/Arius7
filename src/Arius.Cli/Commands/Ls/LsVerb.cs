@@ -1,3 +1,4 @@
+using Arius.AzureBlob;
 using Arius.Core.Ls;
 using Humanizer;
 using Mediator;
@@ -74,7 +75,30 @@ internal static class LsVerb
                 catch (PreflightException ex)
                 {
                     Log.Error(ex, "Preflight check failed");
-                    AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+                    var msg = ex.ErrorKind switch
+                    {
+                        PreflightErrorKind.ContainerNotFound =>
+                            $"Container [bold]{Markup.Escape(ex.ContainerName)}[/] not found on storage account [bold]{Markup.Escape(ex.AccountName)}[/].",
+                        PreflightErrorKind.AccessDenied when ex.AuthMode == "key" =>
+                            $"Access denied. Verify the account key is correct for storage account [bold]{Markup.Escape(ex.AccountName)}[/].",
+                        PreflightErrorKind.AccessDenied =>
+                            $"Authenticated via Azure CLI but access was denied on storage account [bold]{Markup.Escape(ex.AccountName)}[/].\n\n" +
+                            $"Assign the required RBAC role:\n" +
+                            $"  Storage Blob Data Reader\n\n" +
+                            $"  az role assignment create --assignee <your-email> --role \"Storage Blob Data Reader\" " +
+                            $"--scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/{Markup.Escape(ex.AccountName)}",
+                        PreflightErrorKind.CredentialUnavailable =>
+                            $"No account key found and Azure CLI is not logged in.\n\n" +
+                            $"Provide a key via:\n" +
+                            $"  --key / -k\n" +
+                            $"  ARIUS_KEY environment variable\n" +
+                            $"  dotnet user-secrets\n\n" +
+                            $"Or log in via Azure CLI:\n" +
+                            $"  az login",
+                        _ =>
+                            $"Could not connect to storage account [bold]{Markup.Escape(ex.AccountName)}[/]: {Markup.Escape(ex.InnerException?.Message ?? ex.Message)}",
+                    };
+                    AnsiConsole.MarkupLine($"[red]Error:[/] {msg}");
                     return 1;
                 }
 

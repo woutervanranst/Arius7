@@ -5,12 +5,6 @@ using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.ChunkIndex;
-using Azure;
-using Azure.Core;
-using Azure.Identity;
-using Azure.Storage;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -19,35 +13,6 @@ using Spectre.Console;
 using System.CommandLine;
 
 namespace Arius.Cli;
-
-/// <summary>
-/// Controls which preflight probe is executed against Azure Storage before the
-/// DI container is built.  Verbs pass this to the service-provider factory.
-/// </summary>
-public enum PreflightMode
-{
-    /// <summary>
-    /// Calls <c>container.ExistsAsync()</c>.  Used by restore and ls.
-    /// </summary>
-    ReadOnly,
-
-    /// <summary>
-    /// Uploads and deletes a probe blob.  Used by archive.
-    /// </summary>
-    ReadWrite,
-}
-
-/// <summary>
-/// Thrown by <see cref="CliBuilder.BuildProductionServices"/> when a known
-/// connectivity or auth failure is detected during the preflight check.
-/// The <see cref="Exception.Message"/> is user-friendly (no stack trace);
-/// the inner exception carries the original SDK exception for logging.
-/// </summary>
-public sealed class PreflightException : Exception
-{
-    public PreflightException(string userMessage, Exception? inner = null)
-        : base(userMessage, inner) { }
-}
 
 /// <summary>
 /// Builds the System.CommandLine root command with all verbs, options, and DI wiring.
@@ -134,15 +99,13 @@ public static class CliBuilder
         if (!string.IsNullOrWhiteSpace(env)) return env;
 
         var config = new ConfigurationBuilder()
-            .AddUserSecrets<AssemblyMarker>(optional: true)
+            .AddUserSecrets<Arius.Cli.AssemblyMarker>(optional: true)
             .Build();
 
         return config[$"arius:{accountName}:key"] ?? config["arius:key"];
     }
 
     // ── Production DI ─────────────────────────────────────────────────────────
-
-    private const string PreflightProbeBlobName = ".arius-preflight-probe";
 
     private static async Task<IServiceProvider> BuildProductionServices(
         string        accountName,
@@ -151,100 +114,20 @@ public static class CliBuilder
         string        containerName,
         PreflightMode preflightMode)
     {
-        var serviceUri = new Uri($"https://{accountName}.blob.core.windows.net");
-
         // ── Credential resolution ─────────────────────────────────────────────
         // Key sources (flag → env var → user secrets) win over AzureCliCredential.
-        BlobServiceClient blobServiceClient;
-        bool usingKey;
+        object credential = accountKey is not null
+            ? BlobServiceFactory.CreateSharedKeyCredential(accountName, accountKey)
+            : BlobServiceFactory.CreateAzureCliCredential();
 
-        if (accountKey is not null)
-        {
-            var credential = new StorageSharedKeyCredential(accountName, accountKey);
-            blobServiceClient = new BlobServiceClient(serviceUri, credential);
-            usingKey = true;
-        }
-        else
-        {
-            var credential = new AzureCliCredential();
-            blobServiceClient = new BlobServiceClient(serviceUri, credential);
-            usingKey = false;
-        }
-
-        var blobContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
-
-        // ── Preflight check ───────────────────────────────────────────────────
-        try
-        {
-            if (preflightMode == PreflightMode.ReadWrite)
-            {
-                var probeBlob = blobContainerClient.GetBlobClient(PreflightProbeBlobName);
-                using var emptyStream = new MemoryStream();
-                await probeBlob.UploadAsync(emptyStream, overwrite: true).ConfigureAwait(false);
-                await probeBlob.DeleteAsync().ConfigureAwait(false);
-            }
-            else
-            {
-                var exists = await blobContainerClient.ExistsAsync().ConfigureAwait(false);
-                if (!exists.Value)
-                    throw new PreflightException(
-                        $"Container '{containerName}' not found on storage account '{accountName}'.");
-            }
-        }
-        catch (CredentialUnavailableException ex)
-        {
-            throw new PreflightException(
-                $"No account key found and Azure CLI is not logged in.\n\n" +
-                $"Provide a key via:\n" +
-                $"  --key / -k\n" +
-                $"  ARIUS_KEY environment variable\n" +
-                $"  dotnet user-secrets\n\n" +
-                $"Or log in via Azure CLI:\n" +
-                $"  az login",
-                ex);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            throw new PreflightException(
-                $"Container '{containerName}' not found on storage account '{accountName}'.",
-                ex);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 403)
-        {
-            if (usingKey)
-            {
-                throw new PreflightException(
-                    $"Access denied. Verify the account key is correct for storage account '{accountName}'.",
-                    ex);
-            }
-            else
-            {
-                var role = preflightMode == PreflightMode.ReadWrite
-                    ? "Storage Blob Data Contributor"
-                    : "Storage Blob Data Reader";
-                throw new PreflightException(
-                    $"Authenticated via Azure CLI but access was denied on storage account '{accountName}'.\n\n" +
-                    $"Assign the required RBAC role:\n" +
-                    $"  {role}\n\n" +
-                    $"  az role assignment create --assignee <your-email> --role \"{role}\" " +
-                    $"--scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/{accountName}",
-                    ex);
-            }
-        }
-        catch (RequestFailedException ex)
-        {
-            throw new PreflightException(
-                $"Could not connect to storage account '{accountName}': {ex.Message}",
-                ex);
-        }
-        catch (PreflightException)
-        {
-            throw; // don't re-wrap our own exceptions
-        }
+        // ── Preflight check + service construction (delegated to factory) ─────
+        var blobStorage = await BlobServiceFactory.CreateAsync(
+            credential,
+            accountName,
+            containerName,
+            preflightMode).ConfigureAwait(false);
 
         // ── Build DI container ────────────────────────────────────────────────
-        var blobStorage = new AzureBlobStorageService(blobContainerClient);
-
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddSerilog(dispose: true));
         services.AddSingleton<ProgressState>();
