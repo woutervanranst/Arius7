@@ -7,7 +7,7 @@ Defines the command-line interface for Arius, including verbs, options, option r
 ## Requirements
 
 ### Requirement: CLI verbs
-The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `restore`, `ls`, `update`. Each verb (except `update`) SHALL accept common options: `--account` / `-a` (account name), `--key` / `-k` (account key), `--passphrase` / `-p` (optional, for encryption), `--container` / `-c` (blob container name). The `--account` option SHALL NOT be marked as required by System.CommandLine (it MAY be resolved from environment variables).
+The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `restore`, `ls`, `update`. Each verb (except `update`) SHALL accept common options: `--account` / `-a` (account name), `--key` / `-k` (account key, optional — omit to use Azure CLI login), `--passphrase` / `-p` (optional, for encryption), `--container` / `-c` (blob container name). The `--account` option SHALL NOT be marked as required by System.CommandLine (it MAY be resolved from environment variables). The `--key` option SHALL NOT be marked as required (it MAY be omitted to fall back to Azure CLI identity-based authentication).
 
 #### Scenario: Archive verb
 - **WHEN** `arius archive /path/to/folder -a myaccount -k *** -c backup`
@@ -24,6 +24,14 @@ The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `re
 #### Scenario: Long-form options accepted
 - **WHEN** `arius ls --account myaccount --key *** --container backup`
 - **THEN** the system SHALL invoke the ls Mediator command identically to the short-form equivalent
+
+#### Scenario: Archive verb without key (az login)
+- **WHEN** `arius archive /path/to/folder -a myaccount -c backup` (no `--key`) and user is logged in via `az login` with appropriate RBAC
+- **THEN** the system SHALL authenticate via `AzureCliCredential` and invoke the archive Mediator command
+
+#### Scenario: Ls verb without key (az login)
+- **WHEN** `arius ls -a myaccount -c backup` (no `--key`) and user is logged in via `az login` with appropriate RBAC
+- **THEN** the system SHALL authenticate via `AzureCliCredential` and invoke the ls Mediator command
 
 ### Requirement: Archive-specific CLI options
 The archive verb SHALL accept: `--tier` / `-t` (Hot/Cool/Cold/Archive, default Archive), `--remove-local` (delete binaries after archive), `--no-pointers` (skip pointer files). The tuning options `--small-file-threshold`, `--tar-target-size`, and `--dedup-cache-mb` SHALL NOT be exposed on the CLI; their defaults (1 MB, 64 MB, 512 MB respectively) SHALL be hardcoded internally.
@@ -59,23 +67,23 @@ The ls verb SHALL accept: `-v` / `--version` (snapshot version, default latest),
 - **THEN** the system SHALL list files under `photos/` whose filename contains `.jpg`
 
 ### Requirement: Account key resolution
-The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL NOT mention user secrets.
+The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). If no key is found from any source, the system SHALL NOT report an error; instead, credential resolution SHALL fall back to `AzureCliCredential` (see `azure-cli-auth` spec). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL be `"Azure Storage account key (omit to use Azure CLI login)"` and SHALL NOT mention user secrets.
 
 #### Scenario: Key from CLI parameter
 - **WHEN** `-k` is provided on the command line
-- **THEN** the system SHALL use that key for authentication
+- **THEN** the system SHALL use that key for `StorageSharedKeyCredential` authentication
 
 #### Scenario: Key from environment variable
 - **WHEN** `-k` is not provided but `ARIUS_KEY` environment variable is set
-- **THEN** the system SHALL use the environment variable value for authentication
+- **THEN** the system SHALL use the environment variable value for `StorageSharedKeyCredential` authentication
 
 #### Scenario: Key from user secrets
 - **WHEN** neither `-k` nor `ARIUS_KEY` is available but a user secret is configured
-- **THEN** the system SHALL resolve the key from user secrets
+- **THEN** the system SHALL resolve the key from user secrets for `StorageSharedKeyCredential` authentication
 
-#### Scenario: Key not found
-- **WHEN** no key is available from any source
-- **THEN** the system SHALL report an error and exit with exit code 1
+#### Scenario: Key not found — fallback to AzureCliCredential
+- **WHEN** no key is available from any source (CLI flag, env var, or user secrets)
+- **THEN** the system SHALL fall back to `AzureCliCredential` instead of reporting an error
 
 ### Requirement: Account name resolution
 The CLI SHALL resolve the account name in the following order: (1) `--account` / `-a` CLI parameter, (2) `ARIUS_ACCOUNT` environment variable. If neither is available, the system SHALL report an error and exit.
@@ -97,15 +105,46 @@ The CLI SHALL resolve the account name in the following order: (1) `--account` /
 - **THEN** the system SHALL use `override` as the storage account name
 
 ### Requirement: DI handler registration
-The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations.
+The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations. The service provider factory delegate SHALL be `Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>>` (account name, optional key, optional passphrase, container name, preflight mode) and SHALL be awaited by the calling verb.
 
-#### Scenario: Successful DI resolution
-- **WHEN** `AddArius()` is called with valid account, key, passphrase, and container
+#### Scenario: Successful DI resolution with key
+- **WHEN** the factory is called with valid account, key, passphrase, and container
+- **THEN** resolving `IMediator` and sending any command SHALL NOT throw a DI resolution exception
+
+#### Scenario: Successful DI resolution without key (az login)
+- **WHEN** the factory is called with valid account, null key, passphrase, and container, and the user is logged in via `az login` with appropriate RBAC
 - **THEN** resolving `IMediator` and sending any command SHALL NOT throw a DI resolution exception
 
 #### Scenario: Handler receives string parameters
-- **WHEN** `AddArius("myaccount", "mykey", null, "mycontainer")` is called
+- **WHEN** the factory is called with `accountName="myaccount"` and `containerName="mycontainer"`
 - **THEN** the `ArchivePipelineHandler` SHALL be constructed with `accountName="myaccount"` and `containerName="mycontainer"`
+
+### Requirement: CLI formats PreflightException from structured fields
+The CLI verb catch blocks SHALL format user-facing error messages by switching on `PreflightException.ErrorKind` and using the structured fields (`AccountName`, `ContainerName`, `AuthMode`, `StatusCode`) rather than displaying `PreflightException.Message` directly. Each verb SHALL format messages appropriate to its preflight mode (e.g., archive suggests "Storage Blob Data Contributor" role, restore/ls suggest "Storage Blob Data Reader" role). The CLI SHALL NOT have direct dependencies on Azure SDK namespaces (`Azure.Storage`, `Azure.Identity`, `Azure.Core`, `Azure`); all Azure interactions SHALL be mediated through `Arius.AzureBlob` types.
+
+#### Scenario: ContainerNotFound error formatted
+- **WHEN** a verb catches `PreflightException` with `ErrorKind = ContainerNotFound`
+- **THEN** the CLI SHALL display a message including the container name and account name from the structured fields
+
+#### Scenario: AccessDenied with key auth formatted
+- **WHEN** a verb catches `PreflightException` with `ErrorKind = AccessDenied` and `AuthMode = "key"`
+- **THEN** the CLI SHALL display a message suggesting the account key may be incorrect
+
+#### Scenario: AccessDenied with token auth formatted for archive
+- **WHEN** the archive verb catches `PreflightException` with `ErrorKind = AccessDenied` and `AuthMode = "token"`
+- **THEN** the CLI SHALL display a message suggesting the "Storage Blob Data Contributor" RBAC role
+
+#### Scenario: AccessDenied with token auth formatted for restore
+- **WHEN** the restore verb catches `PreflightException` with `ErrorKind = AccessDenied` and `AuthMode = "token"`
+- **THEN** the CLI SHALL display a message suggesting the "Storage Blob Data Reader" RBAC role
+
+#### Scenario: CredentialUnavailable error formatted
+- **WHEN** a verb catches `PreflightException` with `ErrorKind = CredentialUnavailable`
+- **THEN** the CLI SHALL display a message listing the credential resolution options (--key, ARIUS_KEY, user secrets, az login)
+
+#### Scenario: CLI has no direct Azure SDK dependencies
+- **WHEN** `Arius.Cli` is analyzed for type dependencies
+- **THEN** no class in `Arius.Cli` SHALL depend on types in `Azure.Storage`, `Azure.Identity`, or `Azure.Core` namespaces
 
 ### Requirement: Archive progress display with Spectre.Console Live
 The CLI SHALL use `AnsiConsole.Live(renderable).StartAsync(...)` for the archive progress display when the terminal is interactive. The display SHALL be rebuilt every tick (100ms) by calling a pure function `BuildArchiveDisplay(ProgressState) → IRenderable` and passing the result to `ctx.UpdateTarget(...)`.

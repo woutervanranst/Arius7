@@ -76,7 +76,7 @@ internal sealed class CliHarness
         RestoreHandler = restoreHandler;
         LsHandler      = lsHandler;
 
-        _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container) =>
+        _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container, _) =>
         {
             ResolvedAccount = account;
             ResolvedKey     = key;
@@ -88,7 +88,7 @@ internal sealed class CliHarness
             services.AddSingleton(archiveHandler);
             services.AddSingleton(restoreHandler);
             services.AddSingleton(lsHandler);
-            return services.BuildServiceProvider();
+            return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }
 
@@ -357,22 +357,12 @@ public class KeyResolutionTests
     }
 
     [Test]
-    public async Task Archive_MissingKeyFromAllSources_ReturnsExitCode1()
+    public void ResolveKey_ReturnsNullWhenNoSourceAvailable()
     {
-        // Ensure no env var and no CLI flag
+        // When no key is available from any source, ResolveKey returns null
+        // (the caller falls back to AzureCliCredential — no error is thrown here).
         Environment.SetEnvironmentVariable("ARIUS_KEY", null);
-        var harness  = new CliHarness();
-        // Provide account via env var to isolate the key-missing scenario
-        Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", "acct");
-        try
-        {
-            var exitCode = await harness.InvokeAsync("archive /data -c ctr");
-            exitCode.ShouldBe(1);
-            harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", null);
-        }
+        var resolved = CliBuilder.ResolveKey(null, "acct");
+        resolved.ShouldBeNull();
     }
 }

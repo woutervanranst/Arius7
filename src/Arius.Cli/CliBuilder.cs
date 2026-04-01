@@ -5,8 +5,6 @@ using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.ChunkIndex;
-using Azure.Storage;
-using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -35,7 +33,7 @@ public static class CliBuilder
     /// </summary>
     public static Option<string?> KeyOption() => new Option<string?>("--key", "-k")
     {
-        Description = "Azure Storage account key",
+        Description = "Azure Storage account key (omit to use Azure CLI login)",
     };
 
     /// <summary>
@@ -63,7 +61,7 @@ public static class CliBuilder
     /// </summary>
     /// <param name="serviceProviderFactory">Optional factory; if null, production services are used.</param>
     public static RootCommand BuildRootCommand(
-        Func<string, string, string?, string, IServiceProvider>? serviceProviderFactory = null)
+        Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>>? serviceProviderFactory = null)
     {
         serviceProviderFactory ??= BuildProductionServices;
 
@@ -101,7 +99,7 @@ public static class CliBuilder
         if (!string.IsNullOrWhiteSpace(env)) return env;
 
         var config = new ConfigurationBuilder()
-            .AddUserSecrets<AssemblyMarker>(optional: true)
+            .AddUserSecrets<Arius.Cli.AssemblyMarker>(optional: true)
             .Build();
 
         return config[$"arius:{accountName}:key"] ?? config["arius:key"];
@@ -109,12 +107,27 @@ public static class CliBuilder
 
     // ── Production DI ─────────────────────────────────────────────────────────
 
-    private static IServiceProvider BuildProductionServices(
-        string  accountName,
-        string  accountKey,
-        string? passphrase,
-        string  containerName)
+    private static async Task<IServiceProvider> BuildProductionServices(
+        string        accountName,
+        string?       accountKey,
+        string?       passphrase,
+        string        containerName,
+        PreflightMode preflightMode)
     {
+        // ── Credential resolution ─────────────────────────────────────────────
+        // Key sources (flag → env var → user secrets) win over AzureCliCredential.
+        object credential = accountKey is not null
+            ? BlobServiceFactory.CreateSharedKeyCredential(accountName, accountKey)
+            : BlobServiceFactory.CreateAzureCliCredential();
+
+        // ── Preflight check + service construction (delegated to factory) ─────
+        var blobStorage = await BlobServiceFactory.CreateAsync(
+            credential,
+            accountName,
+            containerName,
+            preflightMode).ConfigureAwait(false);
+
+        // ── Build DI container ────────────────────────────────────────────────
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddSerilog(dispose: true));
         services.AddSingleton<ProgressState>();
@@ -123,12 +136,6 @@ public static class CliBuilder
         // in the CLI assembly and discovers INotificationHandler<T> implementations in
         // both Arius.Core and Arius.Cli.
         services.AddMediator();
-
-        var credential          = new StorageSharedKeyCredential(accountName, accountKey);
-        var serviceUri          = new Uri($"https://{accountName}.blob.core.windows.net");
-        var blobServiceClient   = new BlobServiceClient(serviceUri, credential);
-        var blobContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
-        var blobStorage         = new AzureBlobStorageService(blobContainerClient);
 
         services.AddArius(
             blobStorage,

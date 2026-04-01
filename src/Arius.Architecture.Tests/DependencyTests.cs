@@ -24,13 +24,26 @@ public class DependencyTests
     [Test]
     public void Core_Should_Not_Reference_Azure()
     {
-        // Core must not depend on Azure.Storage namespace types
+        // Core must not depend on any Azure namespace types (Azure.Storage, Azure.Identity, Azure.Core, etc.)
         IArchRule rule = Classes().That().ResideInAssembly(
                 Architecture.Assemblies.First(a => a.FullName.Contains("Arius.Core")))
-            .Should().NotDependOnAnyTypesThat().ResideInNamespace("Azure.Storage");
+            .Should().NotDependOnAnyTypesThat().ResideInNamespace("Azure");
 
         rule.HasNoViolations(Architecture).ShouldBeTrue(
-            $"Arius.Core must not depend on Azure.Storage types. Violations: {DescribeViolations(rule)}");
+            $"Arius.Core must not depend on Azure types. Violations: {DescribeViolations(rule)}");
+    }
+
+    [Test]
+    public void Cli_Should_Not_Reference_Azure()
+    {
+        // CLI must not depend on any Azure namespace types directly;
+        // all Azure interactions are mediated through Arius.AzureBlob types.
+        IArchRule rule = Classes().That().ResideInAssembly(
+                Architecture.Assemblies.First(a => a.FullName.Contains("Arius.Cli") && !a.FullName.Contains("Tests")))
+            .Should().NotDependOnAnyTypesThat().ResideInNamespace("Azure");
+
+        rule.HasNoViolations(Architecture).ShouldBeTrue(
+            $"Arius.Cli must not depend on Azure types. Violations: {DescribeViolations(rule)}");
     }
 
     [Test]
