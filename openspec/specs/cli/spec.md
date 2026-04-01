@@ -7,7 +7,7 @@ Defines the command-line interface for Arius, including verbs, options, option r
 ## Requirements
 
 ### Requirement: CLI verbs
-The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `restore`, `ls`, `update`. Each verb (except `update`) SHALL accept common options: `--account` / `-a` (account name), `--key` / `-k` (account key), `--passphrase` / `-p` (optional, for encryption), `--container` / `-c` (blob container name). The `--account` option SHALL NOT be marked as required by System.CommandLine (it MAY be resolved from environment variables).
+The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `restore`, `ls`, `update`. Each verb (except `update`) SHALL accept common options: `--account` / `-a` (account name), `--key` / `-k` (account key, optional — omit to use Azure CLI login), `--passphrase` / `-p` (optional, for encryption), `--container` / `-c` (blob container name). The `--account` option SHALL NOT be marked as required by System.CommandLine (it MAY be resolved from environment variables). The `--key` option SHALL NOT be marked as required (it MAY be omitted to fall back to Azure CLI identity-based authentication).
 
 #### Scenario: Archive verb
 - **WHEN** `arius archive /path/to/folder -a myaccount -k *** -c backup`
@@ -24,6 +24,14 @@ The system SHALL provide four CLI verbs using System.CommandLine: `archive`, `re
 #### Scenario: Long-form options accepted
 - **WHEN** `arius ls --account myaccount --key *** --container backup`
 - **THEN** the system SHALL invoke the ls Mediator command identically to the short-form equivalent
+
+#### Scenario: Archive verb without key (az login)
+- **WHEN** `arius archive /path/to/folder -a myaccount -c backup` (no `--key`) and user is logged in via `az login` with appropriate RBAC
+- **THEN** the system SHALL authenticate via `AzureCliCredential` and invoke the archive Mediator command
+
+#### Scenario: Ls verb without key (az login)
+- **WHEN** `arius ls -a myaccount -c backup` (no `--key`) and user is logged in via `az login` with appropriate RBAC
+- **THEN** the system SHALL authenticate via `AzureCliCredential` and invoke the ls Mediator command
 
 ### Requirement: Archive-specific CLI options
 The archive verb SHALL accept: `--tier` / `-t` (Hot/Cool/Cold/Archive, default Archive), `--remove-local` (delete binaries after archive), `--no-pointers` (skip pointer files). The tuning options `--small-file-threshold`, `--tar-target-size`, and `--dedup-cache-mb` SHALL NOT be exposed on the CLI; their defaults (1 MB, 64 MB, 512 MB respectively) SHALL be hardcoded internally.
@@ -59,23 +67,23 @@ The ls verb SHALL accept: `-v` / `--version` (snapshot version, default latest),
 - **THEN** the system SHALL list files under `photos/` whose filename contains `.jpg`
 
 ### Requirement: Account key resolution
-The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL NOT mention user secrets. Credential resolution (key lookup and fallback to `AzureCliCredential`) SHALL remain in `Arius.Cli`. The resolved credential SHALL be passed to `BlobServiceFactory.CreateAsync` as either a `StorageSharedKeyCredential` or a `TokenCredential`.
+The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). If no key is found from any source, the system SHALL NOT report an error; instead, credential resolution SHALL fall back to `AzureCliCredential` (see `azure-cli-auth` spec). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL be `"Azure Storage account key (omit to use Azure CLI login)"` and SHALL NOT mention user secrets.
 
 #### Scenario: Key from CLI parameter
 - **WHEN** `-k` is provided on the command line
-- **THEN** the system SHALL create a `StorageSharedKeyCredential` and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL use that key for `StorageSharedKeyCredential` authentication
 
 #### Scenario: Key from environment variable
 - **WHEN** `-k` is not provided but `ARIUS_KEY` environment variable is set
-- **THEN** the system SHALL create a `StorageSharedKeyCredential` from the environment variable and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL use the environment variable value for `StorageSharedKeyCredential` authentication
 
 #### Scenario: Key from user secrets
 - **WHEN** neither `-k` nor `ARIUS_KEY` is available but a user secret is configured
-- **THEN** the system SHALL resolve the key from user secrets, create a `StorageSharedKeyCredential`, and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL resolve the key from user secrets for `StorageSharedKeyCredential` authentication
 
-#### Scenario: No key available — fallback to AzureCliCredential
-- **WHEN** no key is available from any source
-- **THEN** the system SHALL create an `AzureCliCredential` and pass it to `BlobServiceFactory.CreateAsync`
+#### Scenario: Key not found — fallback to AzureCliCredential
+- **WHEN** no key is available from any source (CLI flag, env var, or user secrets)
+- **THEN** the system SHALL fall back to `AzureCliCredential` instead of reporting an error
 
 ### Requirement: Account name resolution
 The CLI SHALL resolve the account name in the following order: (1) `--account` / `-a` CLI parameter, (2) `ARIUS_ACCOUNT` environment variable. If neither is available, the system SHALL report an error and exit.
@@ -97,18 +105,18 @@ The CLI SHALL resolve the account name in the following order: (1) `--account` /
 - **THEN** the system SHALL use `override` as the storage account name
 
 ### Requirement: DI handler registration
-The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations. `CliBuilder.BuildProductionServices` SHALL delegate blob service construction and preflight validation to `BlobServiceFactory.CreateAsync` and SHALL only be responsible for credential resolution, calling the factory, and wiring the DI container with the returned `IBlobStorageService`.
+The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations. The service provider factory delegate SHALL be `Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>>` (account name, optional key, optional passphrase, container name, preflight mode) and SHALL be awaited by the calling verb.
 
-#### Scenario: Successful DI resolution
-- **WHEN** `AddArius()` is called with a valid `IBlobStorageService` from `BlobServiceFactory.CreateAsync`
+#### Scenario: Successful DI resolution with key
+- **WHEN** the factory is called with valid account, key, passphrase, and container
 - **THEN** resolving `IMediator` and sending any command SHALL NOT throw a DI resolution exception
 
-#### Scenario: BuildProductionServices delegates to factory
-- **WHEN** `BuildProductionServices` is called with an account name, key, passphrase, container, and preflight mode
-- **THEN** it SHALL resolve the credential, call `BlobServiceFactory.CreateAsync`, and build the DI container with the returned service
+#### Scenario: Successful DI resolution without key (az login)
+- **WHEN** the factory is called with valid account, null key, passphrase, and container, and the user is logged in via `az login` with appropriate RBAC
+- **THEN** resolving `IMediator` and sending any command SHALL NOT throw a DI resolution exception
 
 #### Scenario: Handler receives string parameters
-- **WHEN** `AddArius("myaccount", "mykey", null, "mycontainer")` is called
+- **WHEN** the factory is called with `accountName="myaccount"` and `containerName="mycontainer"`
 - **THEN** the `ArchivePipelineHandler` SHALL be constructed with `accountName="myaccount"` and `containerName="mycontainer"`
 
 ### Requirement: CLI formats PreflightException from structured fields
