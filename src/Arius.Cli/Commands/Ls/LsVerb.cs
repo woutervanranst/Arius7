@@ -111,34 +111,41 @@ internal static class LsVerb
                     Filter  = filter,
                 };
 
-                var result = await mediator.Send(new LsCommand(opts), ct);
-
-                if (!result.Success)
-                {
-                    AnsiConsole.MarkupLine($"[red]Ls failed:[/] {result.ErrorMessage}");
-                    return 1;
-                }
-
                 var table = new Table();
                 table.AddColumn("Path");
                 table.AddColumn(new TableColumn("Size").RightAligned());
                 table.AddColumn("Created");
                 table.AddColumn("Modified");
 
-                foreach (var entry in result.Entries)
+                var fileCount = 0;
+                try
                 {
-                    var size = entry.OriginalSize.HasValue
-                        ? entry.OriginalSize.Value.Bytes().Humanize()
-                        : "?";
-                    table.AddRow(
-                        Markup.Escape(entry.RelativePath),
-                        size,
-                        entry.Created.ToString("yyyy-MM-dd HH:mm"),
-                        entry.Modified.ToString("yyyy-MM-dd HH:mm"));
+                    await foreach (var entry in mediator.CreateStream(new LsCommand(opts), ct))
+                    {
+                        if (entry is not RepositoryFileEntry file)
+                        {
+                            continue;
+                        }
+
+                        var size = file.OriginalSize.HasValue
+                            ? file.OriginalSize.Value.Bytes().Humanize()
+                            : "?";
+                        table.AddRow(
+                            Markup.Escape(file.RelativePath),
+                            size,
+                            file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-",
+                            file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-");
+                        fileCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]Ls failed:[/] {Markup.Escape(ex.Message)}");
+                    return 1;
                 }
 
                 AnsiConsole.Write(table);
-                AnsiConsole.MarkupLine($"[dim]{result.Entries.Count} file(s)[/]");
+                AnsiConsole.MarkupLine($"[dim]{fileCount} file(s)[/]");
                 return 0;
             }
             finally

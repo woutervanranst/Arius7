@@ -2,8 +2,6 @@ using Mediator;
 
 namespace Arius.Core.Ls;
 
-// ── Task 11.1: Mediator LsCommand ─────────────────────────────────────────────
-
 /// <summary>
 /// Options for the ls command.
 /// </summary>
@@ -23,31 +21,52 @@ public sealed record LsOptions
     /// <c>null</c> = no substring filter.
     /// </summary>
     public string? Filter { get; init; }
+
+    /// <summary>
+    /// Whether to recurse into child directories.
+    /// </summary>
+    public bool Recursive { get; init; } = true;
+
+    /// <summary>
+    /// Optional local directory used to merge local filesystem state with cloud state.
+    /// </summary>
+    public string? LocalPath { get; init; }
 }
 
 /// <summary>
-/// Mediator command: list files in a snapshot.
+/// Mediator stream query: list repository entries in a snapshot.
 /// </summary>
 public sealed record LsCommand(LsOptions Options)
-    : ICommand<LsResult>;
+    : IStreamQuery<RepositoryEntry>;
 
 /// <summary>
-/// Result returned by <see cref="LsCommand"/>.
+/// Base type for entries emitted by the streaming repository listing.
 /// </summary>
-public sealed record LsResult
-{
-    public required bool           Success { get; init; }
-    public required IReadOnlyList<LsEntry> Entries { get; init; }
-    public          string?        ErrorMessage { get; init; }
-}
+public abstract record RepositoryEntry(string RelativePath);
 
 /// <summary>
-/// One file entry in the ls output.
+/// A file entry emitted by the repository listing.
 /// </summary>
-public sealed record LsEntry(
-    string         RelativePath,   // forward-slash, relative to archive root
-    string         ContentHash,    // 64-char hex
-    long?          OriginalSize,   // bytes from chunk index; null if unavailable
-    DateTimeOffset Created,
-    DateTimeOffset Modified
-);
+public sealed record RepositoryFileEntry(
+    string          RelativePath,
+    string?         ContentHash,
+    long?           OriginalSize,
+    DateTimeOffset? Created,
+    DateTimeOffset? Modified,
+    bool            ExistsInCloud,
+    bool            ExistsLocally,
+    bool?           HasPointerFile,
+    bool?           BinaryExists,
+    bool?           Hydrated = null)
+    : RepositoryEntry(RelativePath);
+
+/// <summary>
+/// A directory entry emitted by the repository listing.
+/// Directory paths always end with a trailing slash.
+/// </summary>
+public sealed record RepositoryDirectoryEntry(
+    string RelativePath,
+    string? TreeHash,
+    bool ExistsInCloud,
+    bool ExistsLocally)
+    : RepositoryEntry(RelativePath);

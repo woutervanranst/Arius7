@@ -19,9 +19,9 @@ namespace Arius.Cli.Tests;
 /// </summary>
 internal sealed class CliHarness
 {
-    public ICommandHandler<ArchiveCommand, ArchiveResult> ArchiveHandler { get; }
-    public ICommandHandler<RestoreCommand, RestoreResult> RestoreHandler { get; }
-    public ICommandHandler<LsCommand, LsResult>           LsHandler      { get; }
+    public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
+    public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
+    public IStreamQueryHandler<LsCommand, RepositoryEntry>     LsHandler      { get; }
 
     /// <summary>
     /// Account name resolved and passed to the factory (set on first invocation).
@@ -39,7 +39,7 @@ internal sealed class CliHarness
     {
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
-        var lsHandler      = Substitute.For<ICommandHandler<LsCommand, LsResult>>();
+        var lsHandler      = Substitute.For<IStreamQueryHandler<LsCommand, RepositoryEntry>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -66,11 +66,7 @@ internal sealed class CliHarness
 
         lsHandler
             .Handle(Arg.Any<LsCommand>(), Arg.Any<CancellationToken>())
-            .Returns(new LsResult
-            {
-                Success = true,
-                Entries = Array.Empty<LsEntry>(),
-            });
+            .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

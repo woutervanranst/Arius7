@@ -94,7 +94,7 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
-        services.AddSingleton<ICommandHandler<LsCommand, LsResult>>(sp =>
+        services.AddSingleton<IStreamQueryHandler<LsCommand, RepositoryEntry>>(sp =>
             new LsHandler(
                 sp.GetRequiredService<IBlobStorageService>(),
                 sp.GetRequiredService<IEncryptionService>(),

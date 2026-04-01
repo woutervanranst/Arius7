@@ -158,13 +158,19 @@ public sealed class PipelineFixture : IAsyncDisposable
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();
     }
 
-    /// <summary>Runs the ls command.</summary>
-    public Task<LsResult> LsAsync(
+    /// <summary>Runs the ls command and collects all file entries.</summary>
+    public async Task<List<RepositoryFileEntry>> LsAsync(
         LsOptions? opts = null,
         CancellationToken ct = default)
     {
         opts ??= new LsOptions();
-        return CreateLsHandler().Handle(new LsCommand(opts), ct).AsTask();
+        var results = new List<RepositoryFileEntry>();
+        await foreach (var entry in CreateLsHandler().Handle(new LsCommand(opts), ct))
+        {
+            if (entry is RepositoryFileEntry file)
+                results.Add(file);
+        }
+        return results;
     }
 
     // ── File helpers ──────────────────────────────────────────────────────────
