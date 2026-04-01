@@ -1,3 +1,4 @@
+using Arius.Core.Features.Hydration;
 using Arius.Core.Features.List;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.IO;
@@ -56,7 +57,7 @@ public partial class FileItemViewModel : ObservableObject
     {
         ChunkStateColor = value switch
         {
-            FileHydrationStatus.Available => Brushes.DarkBlue,
+            FileHydrationStatus.Available => Brushes.Blue,
             FileHydrationStatus.NeedsRehydration => Brushes.LightBlue,
             FileHydrationStatus.RehydrationPending => Brushes.Purple,
             _ => Brushes.Transparent,

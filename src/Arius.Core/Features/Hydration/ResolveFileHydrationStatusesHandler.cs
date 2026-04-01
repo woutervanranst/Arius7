@@ -3,7 +3,7 @@ using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.Features.List;
+namespace Arius.Core.Features.Hydration;
 
 public sealed class ResolveFileHydrationStatusesHandler : IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>
 {
