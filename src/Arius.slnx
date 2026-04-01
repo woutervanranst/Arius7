@@ -5,8 +5,10 @@
     <Project Path="Arius.Core.Tests/Arius.Core.Tests.csproj" />
     <Project Path="Arius.E2E.Tests/Arius.E2E.Tests.csproj" />
     <Project Path="Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
+    <Project Path="Arius.Explorer.Tests/Arius.Explorer.Tests.csproj" />
   </Folder>
   <Project Path="Arius.AzureBlob/Arius.AzureBlob.csproj" />
   <Project Path="Arius.Cli/Arius.Cli.csproj" />
   <Project Path="Arius.Core/Arius.Core.csproj" />
+  <Project Path="Arius.Explorer/Arius.Explorer.csproj" />
 </Solution>

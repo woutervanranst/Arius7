@@ -1,0 +1,60 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+        <PropertyGroup>
+                <OutputType>WinExe</OutputType>
+                <TargetFramework>net10.0-windows</TargetFramework>
+                <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+                <UseWPF>true</UseWPF>
+
+		<ApplicationIcon>Resources\iceberg.ico</ApplicationIcon> <!--Windows Application icon-->
+		<!--<PackageIcon>Resources\iceberg.ico</PackageIcon> --><!--Nuget package icon-->
+
+		<UseWPF>true</UseWPF>
+		<!--<UseWindowsForms>True</UseWindowsForms>-->
+
+		<AssemblyName>Arius.Explorer</AssemblyName>
+		<Title>Arius Explorer</Title>
+		<!--<PackageId>Arius.Explorer</PackageId>-->
+                <Product>Arius Explorer</Product>
+                <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+
+		<!-- Strong name signing for ClickOnce settings persistence -->
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>Arius.Explorer.snk</AssemblyOriginatorKeyFile>
+        </PropertyGroup>
+
+        <!--
+        Version information
+        Keep the ClickOnce version aligned with the workflow run number just like Arius.Cli does.
+        When running inside GitHub Actions we use the automatically incrementing
+        GITHUB_RUN_NUMBER as the patch component. When building locally the variable is not
+        defined, so we fall back to a descriptive "local" suffix to make it obvious that the
+        build did not originate from CI.
+  -->
+        <PropertyGroup Condition="'$(GITHUB_RUN_NUMBER)' != ''">
+                <Version>5.0.$(GITHUB_RUN_NUMBER)</Version>
+        </PropertyGroup>
+        <PropertyGroup Condition="'$(GITHUB_RUN_NUMBER)' == ''">
+                <Version>5.0.0-local</Version>
+        </PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+		<PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+		<PackageReference Include="Serilog.Extensions.Hosting" />
+		<PackageReference Include="Serilog.Sinks.File" />
+		<PackageReference Include="Serilog.Enrichers.Thread" />
+		<PackageReference Include="CommunityToolkit.Mvvm" />
+		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
+		<PackageReference Include="System.Reactive" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+	</ItemGroup>
+
+</Project>
