@@ -61,4 +61,4 @@
 
 ## 9. ServiceCollectionExtensions
 
-- [ ] 9.1 Update `ServiceCollectionExtensions.cs` in Arius.Core — verify Mediator source generator auto-registers `LsHandler` as `IStreamQueryHandler`. Remove any manual handler registration for old batch `ICommandHandler<LsCommand, LsResult>` if present.
+- [x] 9.1 Update `ServiceCollectionExtensions.cs` in Arius.Core — verify Mediator source generator auto-registers `LsHandler` as `IStreamQueryHandler`. Remove any manual handler registration for old batch `ICommandHandler<LsCommand, LsResult>` if present.
