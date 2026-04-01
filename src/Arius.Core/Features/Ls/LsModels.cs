@@ -1,6 +1,6 @@
 using Mediator;
 
-namespace Arius.Core.Ls;
+namespace Arius.Core.Features.Ls;
 
 /// <summary>
 /// Options for the ls command.

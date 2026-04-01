@@ -7,7 +7,7 @@ using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 
-namespace Arius.Core.Ls;
+namespace Arius.Core.Features.Ls;
 
 /// <summary>
 /// Streams repository entries from a snapshot with optional local filesystem merge.

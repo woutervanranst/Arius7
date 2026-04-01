@@ -1,4 +1,4 @@
-using Arius.Core.Ls;
+using Arius.Core.Features.Ls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.IO;
 using System.Windows.Media;
