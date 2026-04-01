@@ -6,7 +6,7 @@ namespace Arius.Core.Shared.Storage;
 public enum PreflightMode
 {
     /// <summary>
-    /// Calls <c>container.ExistsAsync()</c>. Used by restore and ls.
+    /// Fetches one page of blobs to probe list permission. Used by restore and ls.
     /// </summary>
     ReadOnly,
 

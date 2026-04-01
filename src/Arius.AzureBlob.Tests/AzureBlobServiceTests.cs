@@ -171,6 +171,11 @@ public class AzureBlobServiceTests
             string prefix = default!,
             CancellationToken cancellationToken = default)
         {
+            if (!container.Exists)
+            {
+                throw new RequestFailedException(404, "Container not found");
+            }
+
             var items = container.BlobNames
                 .Where(name => string.IsNullOrEmpty(prefix) || name.StartsWith(prefix, StringComparison.Ordinal))
                 .Select(name => BlobsModelFactory.BlobItem(

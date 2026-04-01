@@ -2,7 +2,6 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.AzureBlob;
 
-/// <summary>
 /// Classifies the type of error encountered during the preflight connectivity check.
 /// </summary>
 public enum PreflightErrorKind

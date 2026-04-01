@@ -60,15 +60,14 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             }
             else
             {
-                var exists = await containerClient.ExistsAsync(cancellationToken).ConfigureAwait(false);
-                if (!exists.Value)
+                // Read-only callers need blob listing access, not just container metadata.
+                var pages = containerClient
+                    .GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix: default, cancellationToken)
+                    .AsPages(pageSizeHint: 1);
+
+                await foreach (var _ in pages.ConfigureAwait(false))
                 {
-                    throw new PreflightException(
-                        PreflightErrorKind.ContainerNotFound,
-                        authMode,
-                        accountName,
-                        containerName,
-                        statusCode: 404);
+                    break;
                 }
             }
         }
