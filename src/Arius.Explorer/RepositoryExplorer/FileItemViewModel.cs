@@ -30,6 +30,9 @@ public partial class FileItemViewModel : ObservableObject
     [ObservableProperty]
     private string stateTooltip = "File state unknown";
 
+    [ObservableProperty]
+    private FileHydrationStatus hydrationStatus = FileHydrationStatus.Unknown;
+
     public FileItemViewModel(RepositoryFileEntry file)
     {
         File = file;
@@ -39,26 +42,32 @@ public partial class FileItemViewModel : ObservableObject
         PointerFileStateColor      = file.HasPointerFile == true ? Brushes.Black : Brushes.Transparent;
         BinaryFileStateColor       = file.BinaryExists == true ? Brushes.Blue : Brushes.White;
         PointerFileEntryStateColor = file.ExistsInCloud ? Brushes.Black : Brushes.Transparent;
-        ChunkStateColor = file.Hydrated switch
+        HydrationStatus = file.Hydrated switch
         {
-            true  => Brushes.Blue,
-            false => Brushes.LightBlue,
-            null  => Brushes.Transparent,
+            true => FileHydrationStatus.Available,
+            false => FileHydrationStatus.NeedsRehydration,
+            null => FileHydrationStatus.Unknown,
         };
 
         OriginalLength = file.OriginalSize ?? 0;
+    }
 
-        //StateTooltip = "File is archived and available";
+    partial void OnHydrationStatusChanged(FileHydrationStatus value)
+    {
+        ChunkStateColor = value switch
+        {
+            FileHydrationStatus.Available => Brushes.DarkBlue,
+            FileHydrationStatus.NeedsRehydration => Brushes.LightBlue,
+            FileHydrationStatus.RehydrationPending => Brushes.Purple,
+            _ => Brushes.Transparent,
+        };
 
-
-        // TODO add support for HydrationState.Hydrating
-        //        return HydrationState switch
-        //        {
-        //            Core.Facade.HydrationState.Hydrated         => Brushes.Blue,
-        //            Core.Facade.HydrationState.NeedsToBeQueried => Brushes.Blue, // for chunked ones - graceful UI for now
-        //            Core.Facade.HydrationState.Hydrating        => Brushes.DeepSkyBlue,
-        //            Core.Facade.HydrationState.NotHydrated      => Brushes.LightBlue,
-        //            null                                        => Brushes.Transparent,
-        //            _                                           => throw new ArgumentOutOfRangeException()
+        StateTooltip = value switch
+        {
+            FileHydrationStatus.Available => "Cloud chunk is available for download",
+            FileHydrationStatus.NeedsRehydration => "Cloud chunk is archived and must be rehydrated first",
+            FileHydrationStatus.RehydrationPending => "Cloud chunk rehydration is already pending",
+            _ => "Cloud chunk status not loaded yet",
+        };
     }
 }

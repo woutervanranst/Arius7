@@ -9,6 +9,7 @@ using Humanizer;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -25,6 +26,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     private readonly IDialogService                       dialogService;
     private readonly IRepositorySession                   repositorySession;
     private readonly ILogger<RepositoryExplorerViewModel> logger;
+    private CancellationTokenSource? hydrationLoadCancellation;
 
     // -- INITIALIZATION & GENERAL WINDOW
 
@@ -154,6 +156,8 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     {
         try
         {
+            CancelHydrationLoad();
+
             if (Repository == null)
                 return;
 
@@ -207,6 +211,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
                 // Final count update (in case there were only directories)
                 OnPropertyChanged(nameof(SelectedItemsText));
+                _ = LoadHydrationStatusesAsync(node);
             }
             finally
             {
@@ -222,6 +227,60 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                 "Error Loading Repository",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+    }
+
+    private async Task LoadHydrationStatusesAsync(TreeNodeViewModel node)
+    {
+        if (repositorySession.Mediator is null || node.Items.Count == 0)
+            return;
+
+        var cancellationTokenSource = new CancellationTokenSource();
+        hydrationLoadCancellation = cancellationTokenSource;
+        var cancellationToken = cancellationTokenSource.Token;
+
+        try
+        {
+            var cloudFiles = node.Items
+                .Where(item => item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+                .Select(item => item.File)
+                .ToList();
+
+            if (cloudFiles.Count == 0)
+                return;
+
+            var lookup = node.Items.ToDictionary(
+                item => item.File.RelativePath,
+                item => item,
+                StringComparer.OrdinalIgnoreCase);
+
+            await foreach (var status in repositorySession.Mediator.CreateStream(new ResolveFileHydrationStatusesCommand(cloudFiles), cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (SelectedTreeNode != node)
+                    return;
+
+                if (lookup.TryGetValue(status.RelativePath, out var item))
+                {
+                    item.HydrationStatus = status.Status;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to lazily load hydration statuses for {Prefix}", node.Prefix);
+        }
+        finally
+        {
+            if (ReferenceEquals(hydrationLoadCancellation, cancellationTokenSource))
+            {
+                hydrationLoadCancellation = null;
+            }
+            cancellationTokenSource.Dispose();
         }
     }
 
@@ -312,14 +371,20 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (Repository == null || !SelectedFiles.Any())
             return;
 
+        await EnsureHydrationStatusesAsync(SelectedFiles, CancellationToken.None);
+
         // Show confirmation dialog
         var msg = new StringBuilder();
 
-        var itemsToHydrate = SelectedFiles.Where(item => item.File.Hydrated == false);
+        var itemsToHydrate = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.NeedsRehydration);
         if (itemsToHydrate.Any())
             msg.AppendLine($"This will start hydration on {itemsToHydrate.Count()} item(s) ({itemsToHydrate.Sum(item => item.OriginalLength).Bytes().Humanize()}). This may incur a significant cost.");
 
-        var itemsToRestore = SelectedFiles.Where(item => item.File.Hydrated != false);
+        var itemsPending = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.RehydrationPending);
+        if (itemsPending.Any())
+            msg.AppendLine($"{itemsPending.Count()} item(s) ({itemsPending.Sum(item => item.OriginalLength).Bytes().Humanize()}) are already rehydrating in the cloud.");
+
+        var itemsToRestore = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.Available || item.HydrationStatus == FileHydrationStatus.Unknown);
         msg.AppendLine($"This will download {itemsToRestore.Count()} item(s) ({itemsToRestore.Sum(item => item.OriginalLength).Bytes().Humanize()}).");
         msg.AppendLine();
         msg.AppendLine("Proceed?");
@@ -367,6 +432,37 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    private async Task EnsureHydrationStatusesAsync(IEnumerable<FileItemViewModel> items, CancellationToken cancellationToken)
+    {
+        if (repositorySession.Mediator is null)
+            return;
+
+        var unresolved = items
+            .Where(item => item.HydrationStatus == FileHydrationStatus.Unknown && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+            .Select(item => item.File)
+            .ToList();
+
+        if (unresolved.Count == 0)
+            return;
+
+        var lookup = items.ToDictionary(item => item.File.RelativePath, item => item, StringComparer.OrdinalIgnoreCase);
+
+        await foreach (var status in repositorySession.Mediator.CreateStream(new ResolveFileHydrationStatusesCommand(unresolved), cancellationToken))
+        {
+            if (lookup.TryGetValue(status.RelativePath, out var item))
+            {
+                item.HydrationStatus = status.Status;
+            }
+        }
+    }
+
+    private void CancelHydrationLoad()
+    {
+        hydrationLoadCancellation?.Cancel();
+        hydrationLoadCancellation?.Dispose();
+        hydrationLoadCancellation = null;
     }
 
     private static string ExtractDirectoryName(string relativeName) // TODO move this logic to the TreeNodeViewModel, just like FileItemViewModel

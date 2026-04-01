@@ -23,6 +23,7 @@ internal sealed class CliHarness
     public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
     public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
     public IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>     LsHandler      { get; }
+    public IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult> HydrationHandler { get; }
 
     /// <summary>
     /// Account name resolved and passed to the factory (set on first invocation).
@@ -41,6 +42,7 @@ internal sealed class CliHarness
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
         var lsHandler      = Substitute.For<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>();
+        var hydrationHandler = Substitute.For<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -69,9 +71,14 @@ internal sealed class CliHarness
             .Handle(Arg.Any<ListRepositoryEntriesCommand>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
+        hydrationHandler
+            .Handle(Arg.Any<ResolveFileHydrationStatusesCommand>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<FileHydrationStatusResult>());
+
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
         LsHandler      = lsHandler;
+        HydrationHandler = hydrationHandler;
 
         _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container, _) =>
         {
@@ -81,10 +88,11 @@ internal sealed class CliHarness
             var services = new ServiceCollection();
             services.AddMediator();
             services.AddSingleton<ProgressState>();
-            // Override all three handlers with mocks
+            // Override all stream/command handlers with mocks
             services.AddSingleton(archiveHandler);
             services.AddSingleton(restoreHandler);
             services.AddSingleton(lsHandler);
+            services.AddSingleton(hydrationHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }

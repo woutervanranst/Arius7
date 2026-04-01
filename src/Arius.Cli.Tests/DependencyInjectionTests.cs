@@ -30,6 +30,7 @@ public class AddAriusRegistrationTests
         using var serviceProvider = services.BuildServiceProvider();
 
         serviceProvider.GetRequiredService<IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>>().ShouldBeOfType<ListRepositoryEntriesHandler>();
+        serviceProvider.GetRequiredService<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>().ShouldBeOfType<ResolveFileHydrationStatusesHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchivePipelineHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<RestoreCommand, RestoreResult>>().ShouldBeOfType<RestorePipelineHandler>();
     }
