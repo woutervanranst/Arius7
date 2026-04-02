@@ -36,20 +36,20 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobContainerService             _blobs;
-    private readonly IEncryptionService              _encryption;
-    private readonly ChunkIndexService               _index;
-    private readonly IMediator                       _mediator;
+    private readonly IBlobContainerService          _blobs;
+    private readonly IEncryptionService             _encryption;
+    private readonly ChunkIndexService              _index;
+    private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
-    private readonly string                          _accountName;
-    private readonly string                          _containerName;
+    private readonly string                         _accountName;
+    private readonly string                         _containerName;
 
     public ArchiveCommandHandler(
-        IBlobContainerService             blobs,
+        IBlobContainerService           blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
         IMediator                       mediator,
-        ILogger<ArchiveCommandHandler> logger,
+        ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName)
     {
