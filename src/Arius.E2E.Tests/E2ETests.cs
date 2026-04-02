@@ -274,7 +274,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) =>
         CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = LocalRoot,
                 UploadTier    = _defaultTier,

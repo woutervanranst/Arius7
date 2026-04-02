@@ -246,7 +246,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // First archive with --remove-local
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -261,7 +261,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Second archive: only pointer file present (thin archive)
         var r2 = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -452,7 +452,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Use a threshold of exactly the file size so it routes to large
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory      = fix.LocalRoot,
                 UploadTier         = BlobTier.Hot,
@@ -543,7 +543,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -566,7 +566,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,

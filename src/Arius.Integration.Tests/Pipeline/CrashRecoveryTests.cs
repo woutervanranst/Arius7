@@ -111,7 +111,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
-        var opts = new ArchiveOptions
+        var opts = new ArchiveCommandOptions
         {
             RootDirectory = fix.LocalRoot,
             UploadTier    = BlobTier.Hot,
@@ -164,7 +164,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
-        var opts = new ArchiveOptions
+        var opts = new ArchiveCommandOptions
         {
             RootDirectory = fix.LocalRoot,
             UploadTier    = BlobTier.Hot,
@@ -209,7 +209,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
-        var opts = new ArchiveOptions
+        var opts = new ArchiveCommandOptions
         {
             RootDirectory = fix.LocalRoot,
             UploadTier    = BlobTier.Hot,

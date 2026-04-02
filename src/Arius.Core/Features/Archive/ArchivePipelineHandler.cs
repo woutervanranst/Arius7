@@ -84,7 +84,7 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     /// <returns>An <see cref="ArchiveResult"/> with operation outcome and metrics: on success contains scanned/uploaded/deduped counts, total size, optional snapshot root hash and snapshot time; on failure contains collected counters so far and an error message.</returns>
     public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
-        var opts = command.Options;
+        var opts = command.CommandOptions;
 
         // ── Operation start marker (task 3.10) ───────────────────────────────
         _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);

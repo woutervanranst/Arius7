@@ -1,9 +1,9 @@
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
-using System.Runtime.CompilerServices;
 
-namespace Arius.Core.Features.ContainerNames;
+namespace Arius.Core.Features.ContainerNamesQuery;
 
 public sealed record ContainerNamesQuery(string AccountName, string? AccountKey) : IStreamQuery<string>;
 

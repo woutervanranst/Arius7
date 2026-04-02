@@ -1,6 +1,5 @@
 using Arius.Core.Features.Archive;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
-using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -8,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
 using System.CommandLine;
+using Arius.Core.Features.ListQuery;
 
 namespace Arius.Cli.Tests;
 
@@ -123,9 +123,9 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(BlobTier.Hot);
-        cmd.Options.RemoveLocal.ShouldBeTrue();
-        cmd.Options.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Hot);
+        cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
+        cmd.CommandOptions.NoPointers.ShouldBeFalse();
     }
 
     [Test]
@@ -138,9 +138,9 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(BlobTier.Archive);
-        cmd.Options.RemoveLocal.ShouldBeFalse();
-        cmd.Options.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Archive);
+        cmd.CommandOptions.RemoveLocal.ShouldBeFalse();
+        cmd.CommandOptions.NoPointers.ShouldBeFalse();
     }
 
     [Test]
@@ -164,7 +164,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.RootDirectory.ShouldEndWith("tmp");
+        cmd.CommandOptions.RootDirectory.ShouldEndWith("tmp");
     }
 }
 

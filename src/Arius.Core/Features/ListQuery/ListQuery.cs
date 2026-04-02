@@ -1,6 +1,6 @@
 using Mediator;
 
-namespace Arius.Core.Features.List;
+namespace Arius.Core.Features.ListQuery;
 
 /// <summary>
 /// Mediator stream query: list repository entries in a snapshot.

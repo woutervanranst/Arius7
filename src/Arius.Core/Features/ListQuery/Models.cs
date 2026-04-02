@@ -1,4 +1,4 @@
-namespace Arius.Core.Features.List;
+namespace Arius.Core.Features.ListQuery;
 
 /// <summary>
 /// Base type for entries emitted by the streaming repository listing.

@@ -1,4 +1,4 @@
-using Arius.Core.Features.List;
+using Arius.Core.Features.ListQuery;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 

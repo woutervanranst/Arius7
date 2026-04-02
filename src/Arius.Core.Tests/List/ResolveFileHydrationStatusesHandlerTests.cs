@@ -1,5 +1,5 @@
 using Arius.Core.Features.ChunkHydrationStatusQuery;
-using Arius.Core.Features.List;
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;

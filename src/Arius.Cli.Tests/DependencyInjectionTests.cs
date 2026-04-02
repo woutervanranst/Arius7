@@ -1,8 +1,8 @@
 using Arius.Core;
 using Arius.Core.Features.Archive;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
-using Arius.Core.Features.ContainerNames;
-using Arius.Core.Features.List;
+using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.Storage;
 using Mediator;

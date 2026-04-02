@@ -122,7 +122,7 @@ internal static class ArchiveVerb
                 var mediator      = services.GetRequiredService<IMediator>();
                 var progressState = services.GetRequiredService<ProgressState>();
 
-                var opts = new ArchiveOptions
+                var opts = new ArchiveCommandOptions
                 {
                     RootDirectory      = Path.GetFullPath(path),
                     UploadTier         = tier,

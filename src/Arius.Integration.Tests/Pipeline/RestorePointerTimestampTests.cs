@@ -46,7 +46,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         }
 
         // ── Act ───────────────────────────────────────────────────────────
-        var archiveResult = await fix.ArchiveAsync(new ArchiveOptions
+        var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
             RootDirectory      = fix.LocalRoot,
             UploadTier         = BlobTier.Hot,
@@ -119,7 +119,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         File.SetLastWriteTimeUtc(sourcePath, expectedModified);
 
         // ── Act ───────────────────────────────────────────────────────────
-        var archiveResult = await fix.ArchiveAsync(new ArchiveOptions
+        var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
             RootDirectory      = fix.LocalRoot,
             UploadTier         = BlobTier.Hot,

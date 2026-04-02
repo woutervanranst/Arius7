@@ -131,7 +131,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         fix.WriteFile("test.bin", content);
 
         // Archive with Hot tier (Azurite) so blobs are accessible
-        var archiveOpts = new ArchiveOptions
+        var archiveOpts = new ArchiveCommandOptions
         {
             RootDirectory = fix.LocalRoot,
             UploadTier    = BlobTier.Hot,

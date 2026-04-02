@@ -1,5 +1,4 @@
 using Arius.Core.Features.ChunkHydrationStatusQuery;
-using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
@@ -17,6 +16,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Arius.Core.Features.ListQuery;
 
 namespace Arius.Explorer.RepositoryExplorer;
 

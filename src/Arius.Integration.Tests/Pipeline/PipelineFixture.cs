@@ -1,5 +1,5 @@
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.List;
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -134,10 +134,10 @@ public sealed class PipelineFixture : IAsyncDisposable
     /// (so restore works without rehydration in tests).
     /// </summary>
     public Task<ArchiveResult> ArchiveAsync(
-        ArchiveOptions? opts = null,
+        ArchiveCommandOptions? opts = null,
         CancellationToken ct = default)
     {
-        opts ??= new ArchiveOptions
+        opts ??= new ArchiveCommandOptions
         {
             RootDirectory = LocalRoot,
             UploadTier    = BlobTier.Hot,
