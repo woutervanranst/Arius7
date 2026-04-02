@@ -26,7 +26,7 @@ namespace Arius.Core.Features.Archive;
 /// End-of-pipeline: Index Flush → External Sort → Tree Build → Snapshot → Pointer Write → Remove Local
 /// </code>
 /// </summary>
-public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
+public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
     // ── Concurrency knobs ─────────────────────────────────────────────────────
 
@@ -40,16 +40,16 @@ public sealed class ArchivePipelineHandler : ICommandHandler<ArchiveCommand, Arc
     private readonly IEncryptionService              _encryption;
     private readonly ChunkIndexService               _index;
     private readonly IMediator                       _mediator;
-    private readonly ILogger<ArchivePipelineHandler> _logger;
+    private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                          _accountName;
     private readonly string                          _containerName;
 
-    public ArchivePipelineHandler(
+    public ArchiveCommandHandler(
         IBlobContainerService             blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
         IMediator                       mediator,
-        ILogger<ArchivePipelineHandler> logger,
+        ILogger<ArchiveCommandHandler> logger,
         string                          accountName,
         string                          containerName)
     {

@@ -35,7 +35,7 @@ public class AddAriusRegistrationTests
         serviceProvider.GetRequiredService<IStreamQueryHandler<ContainerNamesQuery, string>>().ShouldBeOfType<ContainerNamesQueryHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ListQuery, RepositoryEntry>>().ShouldBeOfType<ListQueryHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>().ShouldBeOfType<ChunkHydrationStatusQueryHandler>();
-        serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchivePipelineHandler>();
+        serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchiveCommandHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<RestoreCommand, RestoreResult>>().ShouldBeOfType<RestorePipelineHandler>();
     }
 }

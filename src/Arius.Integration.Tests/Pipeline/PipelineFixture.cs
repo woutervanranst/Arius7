@@ -114,9 +114,9 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
-    public ArchivePipelineHandler CreateArchiveHandler() =>
+    public ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index, Mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+            NullLogger<ArchiveCommandHandler>.Instance,
             Account, Container.Name);
 
     public RestorePipelineHandler CreateRestoreHandler() =>

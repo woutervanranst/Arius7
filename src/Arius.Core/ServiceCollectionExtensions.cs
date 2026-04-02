@@ -63,12 +63,12 @@ public static class ServiceCollectionExtensions
         // The source generator can see these handlers, but DI cannot supply the per-repository
         // account/container constructor arguments without explicit factories here.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>>(sp =>
-            new ArchivePipelineHandler(
+            new ArchiveCommandHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
-                sp.GetRequiredService<ILogger<ArchivePipelineHandler>>(),
+                sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 accountName,
                 containerName));
 

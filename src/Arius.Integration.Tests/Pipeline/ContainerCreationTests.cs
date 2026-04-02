@@ -40,9 +40,9 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var encryption = new PlaintextPassthroughService();
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
-        var handler    = new ArchivePipelineHandler(
+        var handler    = new ArchiveCommandHandler(
             svc, encryption, index, mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+            NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);
 
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-cc-{Guid.NewGuid():N}");

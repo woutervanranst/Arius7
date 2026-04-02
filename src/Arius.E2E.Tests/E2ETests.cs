@@ -262,9 +262,9 @@ public sealed class E2EFixture : IAsyncDisposable
         => File.Exists(
             Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
-    private ArchivePipelineHandler CreateArchiveHandler() =>
+    private ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index, _mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+            NullLogger<ArchiveCommandHandler>.Instance,
             _account, _container);
 
     private RestorePipelineHandler CreateRestoreHandler() =>

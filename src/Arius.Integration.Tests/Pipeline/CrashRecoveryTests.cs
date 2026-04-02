@@ -80,16 +80,16 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
     /// Creates a handler with the given (possibly faulting) blob service.
     /// Uses the same encryption and index as the fixture.
     /// </summary>
-    private static ArchivePipelineHandler MakeArchiveHandler(
+    private static ArchiveCommandHandler MakeArchiveHandler(
         IBlobContainerService blobService,
         IEncryptionService  encryption,
         ChunkIndexService   index,
         string              containerName)
     {
         var mediator = Substitute.For<IMediator>();
-        return new ArchivePipelineHandler(
+        return new ArchiveCommandHandler(
             blobService, encryption, index, mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+            NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);
     }
 
