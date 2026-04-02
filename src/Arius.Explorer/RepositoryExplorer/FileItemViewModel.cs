@@ -1,4 +1,4 @@
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.List;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.IO;
@@ -32,7 +32,7 @@ public partial class FileItemViewModel : ObservableObject
     private string stateTooltip = "File state unknown";
 
     [ObservableProperty]
-    private FileHydrationStatus hydrationStatus = FileHydrationStatus.Unknown;
+    private ChunkHydrationStatus hydrationStatus = ChunkHydrationStatus.Unknown;
 
     public FileItemViewModel(RepositoryFileEntry file)
     {
@@ -45,29 +45,29 @@ public partial class FileItemViewModel : ObservableObject
         PointerFileEntryStateColor = file.ExistsInCloud ? Brushes.Black : Brushes.Transparent;
         HydrationStatus = file.Hydrated switch
         {
-            true => FileHydrationStatus.Available,
-            false => FileHydrationStatus.NeedsRehydration,
-            null => FileHydrationStatus.Unknown,
+            true => ChunkHydrationStatus.Available,
+            false => ChunkHydrationStatus.NeedsRehydration,
+            null => ChunkHydrationStatus.Unknown,
         };
 
         OriginalLength = file.OriginalSize ?? 0;
     }
 
-    partial void OnHydrationStatusChanged(FileHydrationStatus value)
+    partial void OnHydrationStatusChanged(ChunkHydrationStatus value)
     {
         ChunkStateColor = value switch
         {
-            FileHydrationStatus.Available => Brushes.Blue,
-            FileHydrationStatus.NeedsRehydration => Brushes.LightBlue,
-            FileHydrationStatus.RehydrationPending => Brushes.Purple,
+            ChunkHydrationStatus.Available => Brushes.Blue,
+            ChunkHydrationStatus.NeedsRehydration => Brushes.LightBlue,
+            ChunkHydrationStatus.RehydrationPending => Brushes.Purple,
             _ => Brushes.Transparent,
         };
 
         StateTooltip = value switch
         {
-            FileHydrationStatus.Available => "Cloud chunk is available for download",
-            FileHydrationStatus.NeedsRehydration => "Cloud chunk is archived and must be rehydrated first",
-            FileHydrationStatus.RehydrationPending => "Cloud chunk rehydration is already pending",
+            ChunkHydrationStatus.Available => "Cloud chunk is available for download",
+            ChunkHydrationStatus.NeedsRehydration => "Cloud chunk is archived and must be rehydrated first",
+            ChunkHydrationStatus.RehydrationPending => "Cloud chunk rehydration is already pending",
             _ => "Cloud chunk status not loaded yet",
         };
     }

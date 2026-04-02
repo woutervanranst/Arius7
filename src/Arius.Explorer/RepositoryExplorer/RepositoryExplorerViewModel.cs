@@ -1,4 +1,4 @@
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Explorer.Infrastructure;
@@ -272,7 +272,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                 item => item,
                 StringComparer.OrdinalIgnoreCase);
 
-            await foreach (var status in repositorySession.Mediator.CreateStream(new ResolveFileHydrationStatusesCommand(cloudFiles), cancellationToken))
+            await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(cloudFiles), cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -394,15 +394,15 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         // Show confirmation dialog
         var msg = new StringBuilder();
 
-        var itemsToHydrate = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.NeedsRehydration);
+        var itemsToHydrate = SelectedFiles.Where(item => item.HydrationStatus == ChunkHydrationStatus.NeedsRehydration);
         if (itemsToHydrate.Any())
             msg.AppendLine($"This will start hydration on {itemsToHydrate.Count()} item(s) ({itemsToHydrate.Sum(item => item.OriginalLength).Bytes().Humanize()}). This may incur a significant cost.");
 
-        var itemsPending = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.RehydrationPending);
+        var itemsPending = SelectedFiles.Where(item => item.HydrationStatus == ChunkHydrationStatus.RehydrationPending);
         if (itemsPending.Any())
             msg.AppendLine($"{itemsPending.Count()} item(s) ({itemsPending.Sum(item => item.OriginalLength).Bytes().Humanize()}) are already rehydrating in the cloud.");
 
-        var itemsToRestore = SelectedFiles.Where(item => item.HydrationStatus == FileHydrationStatus.Available || item.HydrationStatus == FileHydrationStatus.Unknown);
+        var itemsToRestore = SelectedFiles.Where(item => item.HydrationStatus == ChunkHydrationStatus.Available || item.HydrationStatus == ChunkHydrationStatus.Unknown);
         msg.AppendLine($"This will download {itemsToRestore.Count()} item(s) ({itemsToRestore.Sum(item => item.OriginalLength).Bytes().Humanize()}).");
         msg.AppendLine();
         msg.AppendLine("Proceed?");
@@ -458,7 +458,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             return;
 
         var unresolved = items
-            .Where(item => item.HydrationStatus == FileHydrationStatus.Unknown && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
             .Select(item => item.File)
             .ToList();
 
@@ -467,7 +467,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
         var lookup = items.ToDictionary(item => item.File.RelativePath, item => item, StringComparer.OrdinalIgnoreCase);
 
-        await foreach (var status in repositorySession.Mediator.CreateStream(new ResolveFileHydrationStatusesCommand(unresolved), cancellationToken))
+        await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(unresolved), cancellationToken))
         {
             if (lookup.TryGetValue(status.RelativePath, out var item))
             {

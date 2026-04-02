@@ -1,4 +1,4 @@
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.List;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -44,18 +44,18 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
         index.RecordEntry(entry);
 
-        var handler = new ResolveFileHydrationStatusesHandler(
+        var handler = new ChunkHydrationStatusQueryHandler(
             blobs,
             index,
-            NullLogger<ResolveFileHydrationStatusesHandler>.Instance);
+            NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
 
         var files = new[]
         {
             new RepositoryFileEntry($"{chunkType}.bin", contentHash, 100, null, null, true, false, null, null)
         };
 
-        var results = new List<FileHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ResolveFileHydrationStatusesCommand(files), CancellationToken.None))
+        var results = new List<ChunkHydrationStatusResult>();
+        await foreach (var result in handler.Handle(new ChunkHydrationStatusQuery(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(1);
@@ -88,10 +88,10 @@ public class ResolveFileHydrationStatusesHandlerTests
         index.RecordEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
         index.RecordEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
 
-        var handler = new ResolveFileHydrationStatusesHandler(
+        var handler = new ChunkHydrationStatusQueryHandler(
             blobs,
             index,
-            NullLogger<ResolveFileHydrationStatusesHandler>.Instance);
+            NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
 
         var files = new[]
         {
@@ -99,13 +99,13 @@ public class ResolveFileHydrationStatusesHandlerTests
             new RepositoryFileEntry("tar.bin", tarContentHash, 75, null, null, true, false, null, null)
         };
 
-        var results = new List<FileHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ResolveFileHydrationStatusesCommand(files), CancellationToken.None))
+        var results = new List<ChunkHydrationStatusResult>();
+        await foreach (var result in handler.Handle(new ChunkHydrationStatusQuery(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(2);
-        results.ShouldContain(result => result.RelativePath == "thin.bin" && result.Status == FileHydrationStatus.NeedsRehydration);
-        results.ShouldContain(result => result.RelativePath == "tar.bin" && result.Status == FileHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == "thin.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == "tar.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.Chunk(thinContentHash));
         blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
     }
@@ -116,7 +116,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         {
             HydrationBlobState.NonArchive => new HydrationStatusCase(
                 "non-archive",
-                FileHydrationStatus.Available,
+                ChunkHydrationStatus.Available,
                 (blobs, chunkHash, chunkType) =>
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
@@ -128,7 +128,7 @@ public class ResolveFileHydrationStatusesHandlerTests
                 }),
             HydrationBlobState.Archive => new HydrationStatusCase(
                 "archive",
-                FileHydrationStatus.NeedsRehydration,
+                ChunkHydrationStatus.NeedsRehydration,
                 (blobs, chunkHash, chunkType) =>
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
@@ -141,7 +141,7 @@ public class ResolveFileHydrationStatusesHandlerTests
                 }),
             HydrationBlobState.Rehydrating => new HydrationStatusCase(
                 "rehydrating",
-                FileHydrationStatus.RehydrationPending,
+                ChunkHydrationStatus.RehydrationPending,
                 (blobs, chunkHash, chunkType) =>
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
@@ -161,7 +161,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
     private sealed record HydrationStatusCase(
         string Name,
-        FileHydrationStatus ExpectedStatus,
+        ChunkHydrationStatus ExpectedStatus,
         Action<FakeBlobContainerService, string, string> ConfigureChunk);
 
     public enum HydrationBlobState

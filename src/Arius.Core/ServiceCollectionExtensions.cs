@@ -1,6 +1,6 @@
 using Arius.Core.Features.Archive;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNames;
-using Arius.Core.Features.Hydration;
 using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.ChunkIndex;
@@ -95,11 +95,11 @@ public static class ServiceCollectionExtensions
             new ContainerNamesQueryHandler(
                 sp));
 
-        services.AddSingleton<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>(sp =>
-            new ResolveFileHydrationStatusesHandler(
+        services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>(sp =>
+            new ChunkHydrationStatusQueryHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<ILogger<ResolveFileHydrationStatusesHandler>>()));
+                sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));
 
         return services;
     }

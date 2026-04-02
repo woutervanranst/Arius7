@@ -1,5 +1,5 @@
 using Arius.Core.Features.Archive;
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.List;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.Storage;
@@ -24,7 +24,7 @@ internal sealed class CliHarness
     public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
     public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
     public IStreamQueryHandler<ListQuery, RepositoryEntry>     LsHandler      { get; }
-    public IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult> HydrationHandler { get; }
+    public IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult> HydrationHandler { get; }
 
     /// <summary>
     /// Account name resolved and passed to the factory (set on first invocation).
@@ -43,7 +43,7 @@ internal sealed class CliHarness
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
         var lsHandler      = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
-        var hydrationHandler = Substitute.For<IStreamQueryHandler<ResolveFileHydrationStatusesCommand, FileHydrationStatusResult>>();
+        var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -73,8 +73,8 @@ internal sealed class CliHarness
             .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
         hydrationHandler
-            .Handle(Arg.Any<ResolveFileHydrationStatusesCommand>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerable.Empty<FileHydrationStatusResult>());
+            .Handle(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<ChunkHydrationStatusResult>());
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

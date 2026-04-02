@@ -1,4 +1,4 @@
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Shared.Storage;
 using Shouldly;
 
@@ -12,9 +12,9 @@ public class FileHydrationStatusResolverTests
         var blobs = new FakeBlobContainerService();
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.Available);
+        status.ShouldBe(ChunkHydrationStatus.Available);
         blobs.RequestedBlobNames.ShouldBe(["chunks/abc"]);
     }
 
@@ -25,9 +25,9 @@ public class FileHydrationStatusResolverTests
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
         blobs.Metadata["chunks-rehydrated/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Cool };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.Available);
+        status.ShouldBe(ChunkHydrationStatus.Available);
         blobs.RequestedBlobNames.ShouldBe(["chunks/abc", "chunks-rehydrated/abc"]);
     }
 
@@ -38,9 +38,9 @@ public class FileHydrationStatusResolverTests
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
         blobs.Metadata["chunks-rehydrated/abc"] = new BlobMetadata { Exists = false };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.RehydrationPending);
+        status.ShouldBe(ChunkHydrationStatus.RehydrationPending);
     }
 
     [Test]
@@ -50,9 +50,9 @@ public class FileHydrationStatusResolverTests
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
         blobs.Metadata["chunks-rehydrated/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.RehydrationPending);
+        status.ShouldBe(ChunkHydrationStatus.RehydrationPending);
     }
 
     [Test]
@@ -62,9 +62,9 @@ public class FileHydrationStatusResolverTests
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
         blobs.Metadata["chunks-rehydrated/abc"] = new BlobMetadata { Exists = false };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.NeedsRehydration);
+        status.ShouldBe(ChunkHydrationStatus.NeedsRehydration);
     }
 
     [Test]
@@ -73,9 +73,9 @@ public class FileHydrationStatusResolverTests
         var blobs = new FakeBlobContainerService();
         blobs.Metadata["chunks/abc"] = new BlobMetadata { Exists = false };
 
-        var status = await FileHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
+        var status = await ChunkHydrationStatusResolver.ResolveAsync(blobs, "abc", CancellationToken.None);
 
-        status.ShouldBe(FileHydrationStatus.Unknown);
+        status.ShouldBe(ChunkHydrationStatus.Unknown);
         blobs.RequestedBlobNames.ShouldBe(["chunks/abc"]);
     }
 

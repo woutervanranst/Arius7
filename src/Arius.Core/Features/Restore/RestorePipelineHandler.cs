@@ -1,4 +1,4 @@
-using Arius.Core.Features.Hydration;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -247,8 +247,8 @@ public sealed class RestorePipelineHandler
 
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
-                var hydrationStatus = await FileHydrationStatusResolver.ResolveAsync(_blobs, chunkHash, cancellationToken);
-                if (hydrationStatus == FileHydrationStatus.Unknown)
+                var hydrationStatus = await ChunkHydrationStatusResolver.ResolveAsync(_blobs, chunkHash, cancellationToken);
+                if (hydrationStatus == ChunkHydrationStatus.Unknown)
                 {
                     _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
                     continue;
@@ -256,13 +256,13 @@ public sealed class RestorePipelineHandler
 
                 switch (hydrationStatus)
                 {
-                    case FileHydrationStatus.RehydrationPending:
+                    case ChunkHydrationStatus.RehydrationPending:
                         rehydrationPending.Add(chunkHash);
                         break;
-                    case FileHydrationStatus.NeedsRehydration:
+                    case ChunkHydrationStatus.NeedsRehydration:
                         needsRehydration.Add(chunkHash);
                         break;
-                    case FileHydrationStatus.Available:
+                    case ChunkHydrationStatus.Available:
                         var rehydratedName = BlobPaths.ChunkRehydrated(chunkHash);
                         var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedName, cancellationToken);
                         if (rehydratedMeta.Exists && rehydratedMeta.Tier != BlobTier.Archive)
