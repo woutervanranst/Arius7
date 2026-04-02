@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -23,7 +24,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
 
     public async IAsyncEnumerable<ChunkHydrationStatusResult> Handle(
         ChunkHydrationStatusQuery query,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cloudFiles = query.Files
             .Where(file => file.ExistsInCloud && !string.IsNullOrWhiteSpace(file.ContentHash))

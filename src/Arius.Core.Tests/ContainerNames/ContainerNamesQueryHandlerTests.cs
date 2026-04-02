@@ -1,4 +1,4 @@
-using Arius.Core.Features.ContainerNames;
+using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 using Shouldly;

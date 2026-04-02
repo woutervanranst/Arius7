@@ -1,4 +1,3 @@
-using Arius.Core.Features.ContainerNames;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,6 +13,7 @@ using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Arius.Core.Features.ContainerNamesQuery;
 using Unit = System.Reactive.Unit;
 
 namespace Arius.Explorer.ChooseRepository;
