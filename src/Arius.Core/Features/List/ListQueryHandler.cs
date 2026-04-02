@@ -12,22 +12,22 @@ namespace Arius.Core.Features.List;
 /// <summary>
 /// Streams repository entries from a snapshot with optional local filesystem merge.
 /// </summary>
-public sealed class ListRepositoryEntriesHandler : IStreamQueryHandler<ListRepositoryEntriesCommand, RepositoryEntry>
+public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
     private const string PointerSuffix = ".pointer.arius";
 
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
-    private readonly ILogger<ListRepositoryEntriesHandler> _logger;
+    private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
 
-    public ListRepositoryEntriesHandler(
+    public ListQueryHandler(
         IBlobContainerService blobs,
         IEncryptionService encryption,
         ChunkIndexService index,
-        ILogger<ListRepositoryEntriesHandler> logger,
+        ILogger<ListQueryHandler> logger,
         string accountName,
         string containerName)
     {
@@ -40,7 +40,7 @@ public sealed class ListRepositoryEntriesHandler : IStreamQueryHandler<ListRepos
     }
 
     public async IAsyncEnumerable<RepositoryEntry> Handle(
-        ListRepositoryEntriesCommand command,
+        ListQuery command,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var opts = command.Options;

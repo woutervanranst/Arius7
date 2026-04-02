@@ -9,7 +9,7 @@ using Shouldly;
 
 namespace Arius.Core.Tests.Ls;
 
-public class LsHandlerTests
+public class ListHandlerTests
 {
     private static readonly PlaintextPassthroughService s_encryption = new();
     private static readonly DateTimeOffset s_created = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -44,16 +44,16 @@ public class LsHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
-        var handler = new ListRepositoryEntriesHandler(
+        var handler = new ListQueryHandler(
             blobs,
             s_encryption,
             index,
-            NullLogger<ListRepositoryEntriesHandler>.Instance,
+            NullLogger<ListQueryHandler>.Instance,
             "account",
             "container");
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQuery(new ListCommandOptions { Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }
@@ -118,16 +118,16 @@ public class LsHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
-        var handler = new ListRepositoryEntriesHandler(
+        var handler = new ListQueryHandler(
             blobs,
             s_encryption,
             index,
-            NullLogger<ListRepositoryEntriesHandler>.Instance,
+            NullLogger<ListQueryHandler>.Instance,
             "account",
             "container");
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQuery(new ListCommandOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }
@@ -176,16 +176,16 @@ public class LsHandlerTests
             index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
             index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
-            var handler = new ListRepositoryEntriesHandler(
+            var handler = new ListQueryHandler(
                 blobs,
                 s_encryption,
                 index,
-                NullLogger<ListRepositoryEntriesHandler>.Instance,
+                NullLogger<ListQueryHandler>.Instance,
                 "account",
                 "container");
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQuery(new ListCommandOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -257,7 +257,7 @@ public class LsHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index);
 
-        var nonRecursive = await CollectAsync(handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = false }), CancellationToken.None));
+        var nonRecursive = await CollectAsync(handler.Handle(new ListQuery(new ListCommandOptions { Recursive = false }), CancellationToken.None));
         nonRecursive.Count.ShouldBe(2);
         nonRecursive.ShouldContain(e => e.RelativePath == "child/");
         nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
@@ -266,7 +266,7 @@ public class LsHandlerTests
         using var index2 = new ChunkIndexService(blobs, s_encryption, "acct-33-r", "ctr-33-r", cacheBudgetBytes: 1024 * 1024);
         var handler2 = MakeHandler(blobs, index2);
 
-        var recursive = await CollectAsync(handler2.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = true }), CancellationToken.None));
+        var recursive = await CollectAsync(handler2.Handle(new ListQuery(new ListCommandOptions { Recursive = true }), CancellationToken.None));
         recursive.ShouldContain(e => e.RelativePath == "child/");
         recursive.ShouldContain(e => e.RelativePath == "root.txt");
         recursive.ShouldContain(e => e.RelativePath == "child/deep.txt");
@@ -298,7 +298,7 @@ public class LsHandlerTests
         var handler = MakeHandler(blobs, index);
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
-        var results = await CollectAsync(handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
+        var results = await CollectAsync(handler.Handle(new ListQuery(new ListCommandOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
 
         // Directories are NOT filtered — Photos/ should still appear
         results.ShouldContain(e => e.RelativePath == "Photos/");
@@ -344,7 +344,7 @@ public class LsHandlerTests
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
             var handler = MakeHandler(blobs, index);
 
-            var results = await CollectAsync(handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
+            var results = await CollectAsync(handler.Handle(new ListQuery(new ListCommandOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
             var dirs = results.OfType<RepositoryDirectoryEntry>().ToList();
 
             dirs.Count.ShouldBe(3);
@@ -403,7 +403,7 @@ public class LsHandlerTests
         index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
         var handler = MakeHandler(blobs, index);
-        var results = await CollectAsync(handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = true }), CancellationToken.None));
+        var results = await CollectAsync(handler.Handle(new ListQuery(new ListCommandOptions { Recursive = true }), CancellationToken.None));
         var files = results.OfType<RepositoryFileEntry>().ToList();
 
         var known   = files.Single(f => f.RelativePath == "known.txt");
@@ -426,7 +426,7 @@ public class LsHandlerTests
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions()), CancellationToken.None)) { }
+            await foreach (var _ in handler.Handle(new ListQuery(new ListCommandOptions()), CancellationToken.None)) { }
         });
         ex.Message.ShouldContain("snapshot", Case.Insensitive);
     }
@@ -447,7 +447,7 @@ public class LsHandlerTests
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Version = "9999-not-found" }), CancellationToken.None)) { }
+            await foreach (var _ in handler.Handle(new ListQuery(new ListCommandOptions { Version = "9999-not-found" }), CancellationToken.None)) { }
         });
         ex.Message.ShouldContain("9999-not-found");
     }
@@ -493,7 +493,7 @@ public class LsHandlerTests
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
         {
-            await foreach (var entry in handler.Handle(new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions { Recursive = true }), cts.Token))
+            await foreach (var entry in handler.Handle(new ListQuery(new ListCommandOptions { Recursive = true }), cts.Token))
             {
                 collected.Add(entry);
                 if (collected.Count >= 2)
@@ -516,8 +516,8 @@ public class LsHandlerTests
         AriusVersion = "test"
     };
 
-    private ListRepositoryEntriesHandler MakeHandler(FakeBlobService blobs, ChunkIndexService index) =>
-        new(blobs, s_encryption, index, NullLogger<ListRepositoryEntriesHandler>.Instance, "account", "container");
+    private ListQueryHandler MakeHandler(FakeBlobService blobs, ChunkIndexService index) =>
+        new(blobs, s_encryption, index, NullLogger<ListQueryHandler>.Instance, "account", "container");
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {

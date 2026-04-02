@@ -1,7 +1,6 @@
 using Arius.Core.Features.List;
 using Arius.Core.Shared.Storage;
 using Mediator;
-using System.Collections.Generic;
 
 namespace Arius.Core.Features.Hydration;
 

@@ -105,7 +105,7 @@ internal static class LsVerb
 
                 var mediator = services.GetRequiredService<IMediator>();
 
-                var opts = new ListRepositoryEntriesCommandOptions
+                var opts = new ListQueryOptions
                 {
                     Version = version,
                     Prefix  = prefix,
@@ -121,7 +121,7 @@ internal static class LsVerb
                 var fileCount = 0;
                 try
                 {
-                    await foreach (var entry in mediator.CreateStream(new ListRepositoryEntriesCommand(opts), ct))
+                    await foreach (var entry in mediator.CreateStream(new ListQuery(opts), ct))
                     {
                         if (entry is not RepositoryFileEntry file)
                         {

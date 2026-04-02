@@ -55,7 +55,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.LsAsync(new ListRepositoryEntriesCommandOptions { Prefix = "photos" });
+        var entries = await fix.LsAsync(new ListQueryOptions { Prefix = "photos" });
         entries.Count.ShouldBe(2);
         entries.All(e => e.RelativePath.StartsWith("photos")).ShouldBeTrue();
     }
@@ -74,7 +74,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.LsAsync(new ListRepositoryEntriesCommandOptions { Filter = "vacation" });
+        var entries = await fix.LsAsync(new ListQueryOptions { Filter = "vacation" });
         entries.Count.ShouldBe(1);
         entries[0].RelativePath.ShouldContain("VACATION");
     }
@@ -120,7 +120,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         lsLatest.Count.ShouldBe(2);
 
         // ls version 1 → only v1-only
-        var lsV1 = await fix.LsAsync(new ListRepositoryEntriesCommandOptions { Version = snapshot1 });
+        var lsV1 = await fix.LsAsync(new ListQueryOptions { Version = snapshot1 });
         lsV1.Count.ShouldBe(1);
         lsV1[0].RelativePath.ShouldBe("v1-only.txt");
     }

@@ -124,9 +124,9 @@ public sealed class PipelineFixture : IAsyncDisposable
             NullLogger<RestorePipelineHandler>.Instance,
             Account, Container.Name);
 
-    public ListRepositoryEntriesHandler CreateLsHandler() =>
+    public ListQueryHandler CreateLsHandler() =>
         new(BlobContainer, Encryption, Index,
-            NullLogger<ListRepositoryEntriesHandler>.Instance,
+            NullLogger<ListQueryHandler>.Instance,
             Account, Container.Name);
 
     /// <summary>
@@ -160,12 +160,12 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     /// <summary>Runs the ls command and collects all file entries.</summary>
     public async Task<List<RepositoryFileEntry>> LsAsync(
-        ListRepositoryEntriesCommandOptions? opts = null,
+        ListQueryOptions? opts = null,
         CancellationToken ct = default)
     {
-        opts ??= new ListRepositoryEntriesCommandOptions();
+        opts ??= new ListQueryOptions();
         var results = new List<RepositoryFileEntry>();
-        await foreach (var entry in CreateLsHandler().Handle(new ListRepositoryEntriesCommand(opts), ct))
+        await foreach (var entry in CreateLsHandler().Handle(new ListQuery(opts), ct))
         {
             if (entry is RepositoryFileEntry file)
                 results.Add(file);

@@ -9,8 +9,8 @@ using CommunityToolkit.Mvvm.Input;
 using Humanizer;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -169,7 +169,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             if (repositorySession.Mediator is null)
                 throw new InvalidOperationException("Repository session is not connected.");
 
-            var query = new ListRepositoryEntriesCommand(new ListRepositoryEntriesCommandOptions
+            var query = new ListQuery(new ListQueryOptions
             {
                 Prefix = string.IsNullOrWhiteSpace(node.Prefix) ? null : node.Prefix,
                 Recursive = false,
