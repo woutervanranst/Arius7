@@ -160,7 +160,10 @@ internal static class UpdateVerb
                     return 0;
                 }
 
-                File.Move(tempFile, currentExe, true);
+                // File.Move throws IOException across filesystem boundaries (e.g. /tmp → /usr/local/bin on Linux).
+                // Use Copy + overwrite instead, which works across devices, then remove the temp file.
+                File.Copy(tempFile, currentExe, overwrite: true);
+                try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
                 File.SetUnixFileMode(currentExe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
                 try
