@@ -1,4 +1,4 @@
-using Arius.Core.Features.Restore;
+using Arius.Core.Features.RestoreCommand;
 using System.Collections.Concurrent;
 
 namespace Arius.Cli;

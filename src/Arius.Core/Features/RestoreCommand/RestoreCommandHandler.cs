@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 using System.Formats.Tar;
 using System.IO.Compression;
 
-namespace Arius.Core.Features.Restore;
+namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
 /// Implements the full restore pipeline as a Mediator command handler.

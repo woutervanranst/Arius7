@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Restore;
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Features.Restore;
+using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;

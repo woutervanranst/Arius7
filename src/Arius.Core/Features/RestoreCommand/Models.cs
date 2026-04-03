@@ -1,4 +1,4 @@
-namespace Arius.Core.Features.Restore;
+namespace Arius.Core.Features.RestoreCommand;
 
 // ── Internal pipeline models ──────────────────────────────────────────────────
 

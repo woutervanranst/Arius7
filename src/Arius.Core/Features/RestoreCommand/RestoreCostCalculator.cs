@@ -1,4 +1,4 @@
-namespace Arius.Core.Features.Restore;
+namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
 /// Static helpers for computing the 4-component restore cost estimate.

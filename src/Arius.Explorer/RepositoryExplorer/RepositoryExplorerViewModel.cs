@@ -1,6 +1,6 @@
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
-using Arius.Core.Features.Restore;
+using Arius.Core.Features.RestoreCommand;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Services;

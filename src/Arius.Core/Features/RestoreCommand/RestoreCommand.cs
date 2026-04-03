@@ -1,7 +1,7 @@
 ﻿using Arius.Core.Shared.Storage;
 using Mediator;
 
-namespace Arius.Core.Features.Restore;
+namespace Arius.Core.Features.RestoreCommand;
 
 // ── Task 10.1: Mediator RestoreCommand ────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 ﻿using Mediator;
 
-namespace Arius.Core.Features.Restore;
+namespace Arius.Core.Features.RestoreCommand;
 
 // ── Progress events ───────────────────────────────────────────────────────────
 
