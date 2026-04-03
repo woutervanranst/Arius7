@@ -1,3 +1,4 @@
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -6,10 +7,23 @@ using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 
+public enum ChunkHydrationStatus
+{
+    Unknown,
+    Available,
+    NeedsRehydration,
+    RehydrationPending,
+}
+
+public sealed record ChunkHydrationStatusQuery(IReadOnlyList<RepositoryFileEntry> Files) : IStreamQuery<ChunkHydrationStatusResult>;
+
+public sealed record ChunkHydrationStatusResult(string RelativePath, string? ContentHash, ChunkHydrationStatus Status);
+
+
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
 {
-    private readonly IBlobContainerService                     _blobs;
-    private readonly ChunkIndexService                         _index;
+    private readonly IBlobContainerService _blobs;
+    private readonly ChunkIndexService _index;
     private readonly ILogger<ChunkHydrationStatusQueryHandler> _logger;
 
     public ChunkHydrationStatusQueryHandler(
@@ -17,8 +31,8 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         ChunkIndexService index,
         ILogger<ChunkHydrationStatusQueryHandler> logger)
     {
-        _blobs  = blobs;
-        _index  = index;
+        _blobs = blobs;
+        _index = index;
         _logger = logger;
     }
 
