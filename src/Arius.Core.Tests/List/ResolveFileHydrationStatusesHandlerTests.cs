@@ -32,7 +32,7 @@ public class ResolveFileHydrationStatusesHandlerTests
             _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
 
-        var blobs = new MetadataOnlyBlobContainerService();
+        var blobs = new FakeMetadataOnlyBlobContainerService();
         testCase.ConfigureChunk(blobs, resolvedChunkHash, chunkType);
 
         using var index = new ChunkIndexService(blobs, s_encryption, $"acct-hydration-{key}", $"ctr-hydration-{key}", cacheBudgetBytes: 1024 * 1024);
@@ -70,7 +70,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         var tarChunkHash    = HashFor("tar-chunk-special-case");
         var tarContentHash  = HashFor("tar-content-special-case");
 
-        var blobs = new MetadataOnlyBlobContainerService();
+        var blobs = new FakeMetadataOnlyBlobContainerService();
         blobs.Metadata[BlobPaths.Chunk(thinContentHash)] = new BlobMetadata
         {
             Exists = true,
@@ -163,7 +163,7 @@ public class ResolveFileHydrationStatusesHandlerTests
     private sealed record HydrationStatusCase(
         string Name,
         ChunkHydrationStatus ExpectedStatus,
-        Action<MetadataOnlyBlobContainerService, string, string> ConfigureChunk);
+        Action<FakeMetadataOnlyBlobContainerService, string, string> ConfigureChunk);
 
     public enum HydrationBlobState
     {

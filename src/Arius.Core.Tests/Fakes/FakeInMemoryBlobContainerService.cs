@@ -10,7 +10,7 @@ namespace Arius.Core.Tests.Fakes;
 /// metadata-only reads, optimistic concurrency conflicts, and rerun recovery flows
 /// without depending on Azurite or real Azure-specific error behavior.
 /// </summary>
-internal sealed class InMemoryBlobContainerService : IBlobContainerService
+internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 {
     private readonly ConcurrentDictionary<string, StoredBlob> _blobs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> _openWriteAlreadyExists = new(StringComparer.Ordinal);

@@ -88,11 +88,11 @@ public class ArchiveRecoveryMatrixTests
             Directory.CreateDirectory(_rootDirectory);
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
             Directory.CreateDirectory(TreeBuilder.GetDiskCacheDirectory(AccountName, _containerName));
-            Blobs = new InMemoryBlobContainerService();
+            Blobs = new FakeInMemoryBlobContainerService();
             _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
         }
 
-        public InMemoryBlobContainerService Blobs { get; }
+        public FakeInMemoryBlobContainerService Blobs { get; }
 
         public byte[] WriteRandomFile(string relativePath, int sizeBytes)
         {

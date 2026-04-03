@@ -1,6 +1,7 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Fakes;
 using Shouldly;
 
 namespace Arius.Core.Tests.FileTree;
@@ -354,51 +355,6 @@ public class TreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    // Minimal stub IBlobContainerService that records uploads
-    private sealed class FakeBlobService : IBlobContainerService
-    {
-        public readonly HashSet<string> Uploaded = new();
-        public readonly HashSet<string> HeadChecked = new();
-
-        public Task CreateContainerIfNotExistsAsync(CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata,
-            BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken ct = default)
-        {
-            Uploaded.Add(blobName);
-            return Task.CompletedTask;
-        }
-
-        public Task<Stream> DownloadAsync(string blobName, CancellationToken ct = default) =>
-            Task.FromResult<Stream>(new MemoryStream());
-
-        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken ct = default)
-        {
-            HeadChecked.Add(blobName);
-            return Task.FromResult(new BlobMetadata { Exists = false });
-        }
-
-        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken ct = default) =>
-            AsyncEnumerable.Empty<string>();
-
-        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task CopyAsync(string src, string dst, BlobTier tier, RehydratePriority? priority = null, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task DeleteAsync(string blobName, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
-            CancellationToken ct = default) =>
-            Task.FromResult<Stream>(new MemoryStream());
-    }
-
     [Test]
     public async Task BuildAsync_EmptyManifest_ReturnsNull()
     {
@@ -407,7 +363,7 @@ public class TreeBuilderTests
         {
             await File.WriteAllTextAsync(manifestPath, "");
 
-            var blobs   = new FakeBlobService();
+            var blobs   = new FakeRecordingBlobContainerService();
             var builder = new TreeBuilder(blobs, s_enc, "account", "container");
             var root    = await builder.BuildAsync(manifestPath);
 
@@ -437,7 +393,7 @@ public class TreeBuilderTests
             var entry = new ManifestEntry("readme.txt", "aabbccdd", now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
-            var blobs   = new FakeBlobService();
+            var blobs   = new FakeRecordingBlobContainerService();
             var builder = new TreeBuilder(blobs, s_enc, acct, cont);
             var root    = await builder.BuildAsync(manifestPath);
 
@@ -477,8 +433,8 @@ public class TreeBuilderTests
             await File.WriteAllTextAsync(manifestPath1, content);
             await File.WriteAllTextAsync(manifestPath2, content);
 
-            var blobs1   = new FakeBlobService();
-            var blobs2   = new FakeBlobService();
+            var blobs1   = new FakeRecordingBlobContainerService();
+            var blobs2   = new FakeRecordingBlobContainerService();
             var builder1 = new TreeBuilder(blobs1, s_enc, acct1, cont1);
             var builder2 = new TreeBuilder(blobs2, s_enc, acct2, cont2); // different repo-id, but same enc
             var root1    = await builder1.BuildAsync(manifestPath1);
@@ -514,8 +470,8 @@ public class TreeBuilderTests
             await File.WriteAllTextAsync(manifestPath2,
                 new ManifestEntry("file.txt", "hash1", now1, now2).Serialize() + "\n");
 
-            var blobs1 = new FakeBlobService();
-            var blobs2 = new FakeBlobService();
+            var blobs1 = new FakeRecordingBlobContainerService();
+            var blobs2 = new FakeRecordingBlobContainerService();
             var root1  = await new TreeBuilder(blobs1, s_enc, acct, cont).BuildAsync(manifestPath1);
             // Clean cache between runs to force independent computation
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
@@ -542,7 +498,7 @@ public class TreeBuilderTests
             var entry = new ManifestEntry("file.txt", "hash1", now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
-            var blobs   = new FakeBlobService();
+            var blobs   = new FakeRecordingBlobContainerService();
             var builder = new TreeBuilder(blobs, s_enc, "acc", "con");
 
             // First run → should upload
@@ -551,7 +507,7 @@ public class TreeBuilderTests
             uploadCount1.ShouldBeGreaterThan(0);
 
             // Second run (same builder instance, disk cache still populated)
-            var blobs2   = new FakeBlobService();
+            var blobs2   = new FakeRecordingBlobContainerService();
             // Same disk cache dir (same account/container)
             var builder2 = new TreeBuilder(blobs2, s_enc, "acc", "con");
             var root2    = await builder2.BuildAsync(manifestPath);
