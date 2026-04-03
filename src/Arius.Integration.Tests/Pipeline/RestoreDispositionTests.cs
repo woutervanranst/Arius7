@@ -1,4 +1,4 @@
-using Arius.Core.Restore;
+using Arius.Core.Features.RestoreCommand;
 using Arius.Integration.Tests.Storage;
 using NSubstitute;
 using Shouldly;

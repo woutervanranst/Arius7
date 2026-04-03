@@ -1,7 +1,7 @@
 using Arius.AzureBlob;
-using Arius.Core.ChunkIndex;
-using Arius.Core.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Storage;
 using Shouldly;
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -74,7 +74,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             // Track copy calls to verify exactly one rehydration request per chunk
             var trackingSvc = new CopyTrackingBlobService(svc);
             var restoreFixture = await E2EFixture.CreateAsync(container,
-                new AzureBlobStorageService(container), BlobTier.Archive);
+                new AzureBlobContainerService(container), BlobTier.Archive);
 
             var restoreOpts1 = new RestoreOptions
             {
@@ -89,10 +89,10 @@ public class RehydrationE2ETests(AzureFixture azure)
                 },
             };
 
-            var restoreHandler1 = new RestorePipelineHandler(
+            var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
 
             var result1 = await restoreHandler1.Handle(new RestoreCommand(restoreOpts1), ct).AsTask();
@@ -110,10 +110,10 @@ public class RehydrationE2ETests(AzureFixture azure)
             // ── Task 3.2: Re-run restore — verify pending rehydration detected ─
 
             var trackingSvc2 = new CopyTrackingBlobService(svc);
-            var restoreHandler2 = new RestorePipelineHandler(
+            var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
 
             var restoreOpts2 = new RestoreOptions
@@ -156,10 +156,10 @@ public class RehydrationE2ETests(AzureFixture azure)
             Directory.CreateDirectory(restoreRoot3);
             try
             {
-                var restoreHandler3 = new RestorePipelineHandler(
+                var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                     container.AccountName, container.Name);
 
                 var restoreOpts3 = new RestoreOptions
@@ -203,7 +203,7 @@ public class RehydrationE2ETests(AzureFixture azure)
     /// Returns the name of the first Archive-tier blob found, or null if none transition.
     /// </summary>
     private static async Task<string?> PollForArchiveTierAsync(
-        AzureBlobStorageService svc,
+        AzureBlobContainerService svc,
         string                  prefix,
         CancellationToken       ct)
     {
@@ -227,11 +227,11 @@ public class RehydrationE2ETests(AzureFixture azure)
     /// Reconstructs each tar bundle from raw content bytes and uploads it to
     /// <c>chunks-rehydrated/&lt;tarHash&gt;</c> in Hot tier, simulating completed rehydration.
     ///
-    /// Archive-tier blobs cannot be downloaded via <see cref="AzureBlobStorageService.DownloadAsync"/>;
+    /// Archive-tier blobs cannot be downloaded via <see cref="AzureBlobContainerService.DownloadAsync"/>;
     /// instead we rebuild the PAX tar + gzip bundle entirely from the known raw bytes.
     /// </summary>
     private static async Task SideloadRehydratedChunksAsync(
-        AzureBlobStorageService          svc,
+        AzureBlobContainerService          svc,
         Dictionary<string, byte[]>       contentHashToBytes,
         ChunkIndexService                index,
         CancellationToken                ct)
@@ -298,10 +298,10 @@ public class RehydrationE2ETests(AzureFixture azure)
 }
 
 /// <summary>
-/// Wraps <see cref="AzureBlobStorageService"/> and records all <see cref="CopyAsync"/> calls.
+/// Wraps <see cref="AzureBlobContainerService"/> and records all <see cref="CopyAsync"/> calls.
 /// Used to verify the restore pipeline does not issue duplicate rehydration requests.
 /// </summary>
-internal sealed class CopyTrackingBlobService(AzureBlobStorageService inner) : IBlobStorageService
+internal sealed class CopyTrackingBlobService(AzureBlobContainerService inner) : IBlobContainerService
 {
     public List<(string Source, string Destination)> CopyCalls { get; } = new();
 

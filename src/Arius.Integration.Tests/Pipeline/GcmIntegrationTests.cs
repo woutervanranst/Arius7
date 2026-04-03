@@ -1,5 +1,5 @@
-using Arius.Core.Encryption;
-using Arius.Core.Storage;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 
@@ -33,16 +33,16 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         // Verify exactly one chunk was uploaded
         var blobs = new List<string>();
-        await foreach (var b in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var b in fix.BlobContainer.ListAsync("chunks/"))
             blobs.Add(b);
         blobs.Count.ShouldBe(1);
 
-        var meta = await fix.BlobStorage.GetMetadataAsync(blobs[0]);
+        var meta = await fix.BlobContainer.GetMetadataAsync(blobs[0]);
         meta.Exists.ShouldBeTrue();
         meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
 
         // Verify the blob was GCM-encrypted: first 6 bytes must be the ArGCM1 magic
-        await using (var blobStream = await fix.BlobStorage.DownloadAsync(blobs[0]))
+        await using (var blobStream = await fix.BlobContainer.DownloadAsync(blobs[0]))
         {
             var magic = new byte[6];
             await blobStream.ReadExactlyAsync(magic);
@@ -77,9 +77,9 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         // Verify tar chunk was uploaded
         var tarBlobs = new List<string>();
-        await foreach (var b in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var b in fix.BlobContainer.ListAsync("chunks/"))
         {
-            var m = await fix.BlobStorage.GetMetadataAsync(b);
+            var m = await fix.BlobContainer.GetMetadataAsync(b);
             if (m.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
                 tarBlobs.Add(b);
         }
@@ -144,10 +144,10 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // confirming the mixed-format scenario before restore exercises auto-detection.
         var hasCbc = false;
         var hasGcm = false;
-        await foreach (var blobName in gcmFix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var blobName in gcmFix.BlobContainer.ListAsync("chunks/"))
         {
             var header = new byte[8];
-            await using var s = await gcmFix.BlobStorage.DownloadAsync(blobName);
+            await using var s = await gcmFix.BlobContainer.DownloadAsync(blobName);
             _ = await s.ReadAsync(header);
 
             if (System.Text.Encoding.ASCII.GetString(header, 0, 8) == "Salted__") hasCbc = true;

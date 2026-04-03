@@ -1,6 +1,6 @@
 using Arius.AzureBlob;
-using Arius.Core.Archive;
-using Arius.Core.Storage;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -122,7 +122,7 @@ internal static class ArchiveVerb
                 var mediator      = services.GetRequiredService<IMediator>();
                 var progressState = services.GetRequiredService<ProgressState>();
 
-                var opts = new ArchiveOptions
+                var opts = new ArchiveCommandOptions
                 {
                     RootDirectory      = Path.GetFullPath(path),
                     UploadTier         = tier,

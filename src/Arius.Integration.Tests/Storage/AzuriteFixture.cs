@@ -32,23 +32,23 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
 
     /// <summary>
     /// Creates a new, uniquely-named blob container and returns
-    /// an <see cref="AzureBlobStorageService"/> backed by that container.
+    /// an <see cref="AzureBlobContainerService"/> backed by that container.
     /// </summary>
-    public async Task<(BlobContainerClient Container, AzureBlobStorageService Service)>
+    public async Task<(BlobContainerClient Container, AzureBlobContainerService Service)>
         CreateTestServiceAsync(CancellationToken cancellationToken = default)
     {
         var containerName = $"test-{Guid.NewGuid():N}";
         var client = new BlobServiceClient(ConnectionString)
             .GetBlobContainerClient(containerName);
         await client.CreateAsync(cancellationToken: cancellationToken);
-        return (client, new AzureBlobStorageService(client));
+        return (client, new AzureBlobContainerService(client));
     }
 
     /// <summary>
-    /// Returns an <see cref="AzureBlobStorageService"/> backed by an existing container.
+    /// Returns an <see cref="AzureBlobContainerService"/> backed by an existing container.
     /// Used to attach a second fixture to an already-populated container (e.g. mixed-archive test).
     /// </summary>
-    public AzureBlobStorageService CreateTestServiceFromExistingContainer(BlobContainerClient container)
+    public AzureBlobContainerService CreateTestServiceFromExistingContainer(BlobContainerClient container)
         => new(container);
 
     public async ValueTask DisposeAsync()

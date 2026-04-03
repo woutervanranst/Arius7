@@ -1,6 +1,6 @@
-using Arius.Core.Archive;
-using Arius.Core.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 
@@ -246,7 +246,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // First archive with --remove-local
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -261,7 +261,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Second archive: only pointer file present (thin archive)
         var r2 = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -452,7 +452,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Use a threshold of exactly the file size so it routes to large
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory      = fix.LocalRoot,
                 UploadTier         = BlobTier.Hot,
@@ -543,7 +543,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -566,7 +566,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
-            new ArchiveCommand(new ArchiveOptions
+            new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
@@ -600,11 +600,11 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Find the chunk blob and verify chunk-size metadata was set by the streaming chain
         var blobs = new List<string>();
-        await foreach (var name in fix.BlobStorage.ListAsync("chunks/"))
+        await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
             blobs.Add(name);
         blobs.Count.ShouldBe(1);
 
-        var meta = await fix.BlobStorage.GetMetadataAsync(blobs[0]);
+        var meta = await fix.BlobContainer.GetMetadataAsync(blobs[0]);
         meta.Exists.ShouldBeTrue();
         meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType).ShouldBeTrue();
         meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);

@@ -1,6 +1,8 @@
-using Arius.Core.Archive;
-using Arius.Core.Ls;
-using Arius.Core.Restore;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
+using Arius.Core.Features.ListQuery;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -20,9 +22,10 @@ namespace Arius.Cli.Tests;
 /// </summary>
 internal sealed class CliHarness
 {
-    public ICommandHandler<ArchiveCommand, ArchiveResult> ArchiveHandler { get; }
-    public ICommandHandler<RestoreCommand, RestoreResult> RestoreHandler { get; }
-    public ICommandHandler<LsCommand, LsResult>           LsHandler      { get; }
+    public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
+    public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
+    public IStreamQueryHandler<ListQuery, RepositoryEntry>     LsHandler      { get; }
+    public IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult> HydrationHandler { get; }
 
     /// <summary>
     /// Account name resolved and passed to the factory (set on first invocation).
@@ -40,7 +43,8 @@ internal sealed class CliHarness
     {
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
-        var lsHandler      = Substitute.For<ICommandHandler<LsCommand, LsResult>>();
+        var lsHandler      = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
+        var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -66,16 +70,17 @@ internal sealed class CliHarness
             });
 
         lsHandler
-            .Handle(Arg.Any<LsCommand>(), Arg.Any<CancellationToken>())
-            .Returns(new LsResult
-            {
-                Success = true,
-                Entries = Array.Empty<LsEntry>(),
-            });
+            .Handle(Arg.Any<ListQuery>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
+
+        hydrationHandler
+            .Handle(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<ChunkHydrationStatusResult>());
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
         LsHandler      = lsHandler;
+        HydrationHandler = hydrationHandler;
 
         _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container, _) =>
         {
@@ -85,10 +90,11 @@ internal sealed class CliHarness
             var services = new ServiceCollection();
             services.AddMediator();
             services.AddSingleton<ProgressState>();
-            // Override all three handlers with mocks
+            // Override all stream/command handlers with mocks
             services.AddSingleton(archiveHandler);
             services.AddSingleton(restoreHandler);
             services.AddSingleton(lsHandler);
+            services.AddSingleton(hydrationHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }
@@ -118,9 +124,9 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Hot);
-        cmd.Options.RemoveLocal.ShouldBeTrue();
-        cmd.Options.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Hot);
+        cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
+        cmd.CommandOptions.NoPointers.ShouldBeFalse();
     }
 
     [Test]
@@ -133,9 +139,9 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.UploadTier.ShouldBe(Core.Storage.BlobTier.Archive);
-        cmd.Options.RemoveLocal.ShouldBeFalse();
-        cmd.Options.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Archive);
+        cmd.CommandOptions.RemoveLocal.ShouldBeFalse();
+        cmd.CommandOptions.NoPointers.ShouldBeFalse();
     }
 
     [Test]
@@ -159,7 +165,7 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd  = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.Options.RootDirectory.ShouldEndWith("tmp");
+        cmd.CommandOptions.RootDirectory.ShouldEndWith("tmp");
     }
 }
 
@@ -238,7 +244,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBe("2026-01-01");
         cmd.Options.Prefix.ShouldBe("docs/");
         cmd.Options.Filter.ShouldBe(".pdf");
@@ -253,7 +259,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBeNull();
         cmd.Options.Prefix.ShouldBeNull();
         cmd.Options.Filter.ShouldBeNull();
@@ -268,7 +274,7 @@ public class LsCommandTests
         exitCode.ShouldBe(0);
 
         var call = harness.LsHandler.ReceivedCalls().Single();
-        var cmd  = (LsCommand)call.GetArguments()[0]!;
+        var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Prefix.ShouldBe("photos/");
         cmd.Options.Filter.ShouldBe(".jpg");
     }
@@ -367,7 +373,6 @@ public class KeyResolutionTests
         resolved.ShouldBeNull();
     }
 }
-
 [NotInParallel("AnsiConsoleRecorder")]
 public class CrashLoggingTests
 {

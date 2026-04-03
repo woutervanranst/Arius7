@@ -1,5 +1,6 @@
-using Arius.Core.Encryption;
-using Arius.Core.FileTree;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Storage;
 using Shouldly;
 
 namespace Arius.Core.Tests.FileTree;
@@ -353,8 +354,8 @@ public class TreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    // Minimal stub IBlobStorageService that records uploads
-    private sealed class FakeBlobService : Storage.IBlobStorageService
+    // Minimal stub IBlobContainerService that records uploads
+    private sealed class FakeBlobService : IBlobContainerService
     {
         public readonly HashSet<string> Uploaded = new();
         public readonly HashSet<string> HeadChecked = new();
@@ -363,7 +364,7 @@ public class TreeBuilderTests
             Task.CompletedTask;
 
         public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata,
-            Storage.BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken ct = default)
+            BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         {
             Uploaded.Add(blobName);
             return Task.CompletedTask;
@@ -372,10 +373,10 @@ public class TreeBuilderTests
         public Task<Stream> DownloadAsync(string blobName, CancellationToken ct = default) =>
             Task.FromResult<Stream>(new MemoryStream());
 
-        public Task<Storage.BlobMetadata> GetMetadataAsync(string blobName, CancellationToken ct = default)
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken ct = default)
         {
             HeadChecked.Add(blobName);
-            return Task.FromResult(new Storage.BlobMetadata { Exists = false });
+            return Task.FromResult(new BlobMetadata { Exists = false });
         }
 
         public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken ct = default) =>
@@ -384,10 +385,10 @@ public class TreeBuilderTests
         public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task SetTierAsync(string blobName, Storage.BlobTier tier, CancellationToken ct = default) =>
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task CopyAsync(string src, string dst, Storage.BlobTier tier, Storage.RehydratePriority? priority = null, CancellationToken ct = default) =>
+        public Task CopyAsync(string src, string dst, BlobTier tier, RehydratePriority? priority = null, CancellationToken ct = default) =>
             Task.CompletedTask;
 
         public Task DeleteAsync(string blobName, CancellationToken ct = default) =>

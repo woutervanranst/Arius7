@@ -1,8 +1,8 @@
 using Arius.AzureBlob;
-using Arius.Core.Archive;
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
-using Arius.Core.Storage;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -36,13 +36,13 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         // Verify the container does not yet exist
         (await containerClient.ExistsAsync()).Value.ShouldBeFalse();
 
-        var svc        = new AzureBlobStorageService(containerClient);
+        var svc        = new AzureBlobContainerService(containerClient);
         var encryption = new PlaintextPassthroughService();
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
-        var handler    = new ArchivePipelineHandler(
+        var handler    = new ArchiveCommandHandler(
             svc, encryption, index, mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+            NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);
 
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-cc-{Guid.NewGuid():N}");
@@ -51,7 +51,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         {
             File.WriteAllText(Path.Combine(tempRoot, "hello.txt"), "hello");
 
-            var opts   = new ArchiveOptions { RootDirectory = tempRoot, UploadTier = BlobTier.Hot };
+            var opts   = new ArchiveCommandOptions { RootDirectory = tempRoot, UploadTier = BlobTier.Hot };
             var result = await handler.Handle(new ArchiveCommand(opts), CancellationToken.None);
 
             result.Success.ShouldBeTrue(result.ErrorMessage);

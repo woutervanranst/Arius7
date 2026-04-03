@@ -1,4 +1,4 @@
-using Arius.Core.Encryption;
+using Arius.Core.Shared.Encryption;
 using Shouldly;
 using System.Buffers.Binary;
 using System.IO.Compression;

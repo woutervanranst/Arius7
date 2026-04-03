@@ -1,4 +1,4 @@
-using Arius.Core.Encryption;
+using Arius.Core.Shared.Encryption;
 
 namespace Arius.Integration.Tests.Pipeline;
 

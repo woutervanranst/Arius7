@@ -51,7 +51,7 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
     /// Creates a unique container for a test run and returns the service backed by it.
     /// The container is automatically deleted when the returned disposable is disposed.
     /// </summary>
-    public async Task<(BlobContainerClient Container, AzureBlobStorageService Service, Func<Task> Cleanup)>
+    public async Task<(BlobContainerClient Container, AzureBlobContainerService Service, Func<Task> Cleanup)>
         CreateTestContainerAsync(CancellationToken ct = default)
     {
         if (_serviceClient is null)
@@ -61,7 +61,7 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
         var container     = _serviceClient.GetBlobContainerClient(containerName);
         await container.CreateIfNotExistsAsync(cancellationToken: ct);
 
-        var svc = new AzureBlobStorageService(container);
+        var svc = new AzureBlobContainerService(container);
 
         async Task Cleanup()
         {

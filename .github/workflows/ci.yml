@@ -11,8 +11,24 @@ permissions:
 
 jobs:
   test:
-    name: 🧪 Test & Coverage
-    runs-on: ubuntu-latest
+    name: 🧪 Test & Coverage (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runner: linux
+            collect_coverage: true
+          - os: macos-latest
+            runner: macos
+            # GitHub-hosted macOS runners are arm64, and dotnet-coverage
+            # dynamic instrumentation does not produce usable coverage there.
+            collect_coverage: false
+          - os: windows-latest
+            runner: windows
+            collect_coverage: true
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: 🛎️ Checkout
@@ -23,28 +39,61 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: 🔎 Discover test projects
+        id: discover
+        shell: pwsh
+        run: ./.github/scripts/Get-DotNetProjectMatrix.ps1 -RunnerOs '${{ matrix.runner }}' -Mode test
+
       - name: 📦 Restore dependencies
-        run: dotnet restore src/Arius.slnx
+        shell: pwsh
+        run: |
+          $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
+          foreach ($project in $projects) {
+            dotnet restore $project
+          }
 
       - name: 🔨 Build
-        run: dotnet build src/Arius.slnx --no-restore -c Release
+        shell: pwsh
+        run: |
+          $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
+          foreach ($project in $projects) {
+            dotnet build $project --no-restore -c Release
+          }
 
       - name: 📊 Install dotnet-coverage
+        if: ${{ matrix.collect_coverage }}
         run: dotnet tool install --global dotnet-coverage
 
+      - name: 🧪 Run tests with coverage
+        if: ${{ matrix.collect_coverage }}
+        shell: pwsh
+        run: |
+          $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
+          foreach ($project in $projects) {
+            $coverageFile = [System.IO.Path]::GetFileNameWithoutExtension($project) + '.coverage.cobertura.xml'
+            dotnet-coverage collect --output $coverageFile --output-format cobertura "dotnet test --project $project --no-build -c Release"
+          }
+        env:
+          ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
+          ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
+
       - name: 🧪 Run tests
-        run: >
-          dotnet-coverage collect
-          --output coverage.cobertura.xml
-          --output-format cobertura
-          "dotnet test --solution src/Arius.slnx --no-build -c Release"
+        if: ${{ !matrix.collect_coverage }}
+        shell: pwsh
+        run: |
+          $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
+          foreach ($project in $projects) {
+            dotnet test --project $project --no-build -c Release
+          }
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
           ARIUS_E2E_KEY: ${{ secrets.ARIUS_E2E_KEY }}
 
       - name: 📈 Upload coverage to Codecov
-        if: always()
+        if: ${{ always() && matrix.collect_coverage }}
         uses: codecov/codecov-action@v6
         with:
-          files: coverage.cobertura.xml
+          files: '*.coverage.cobertura.xml'
+          flags: ${{ matrix.runner }}
+          name: coverage-${{ matrix.runner }}
           token: ${{ secrets.CODECOV_TOKEN }}

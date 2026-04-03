@@ -1,9 +1,11 @@
-using Arius.Core.Archive;
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
-using Arius.Core.Ls;
-using Arius.Core.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.ChunkHydrationStatusQuery;
+using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Core.Features.ListQuery;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,43 +15,29 @@ namespace Arius.Core;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers all Arius.Core services and command handlers.
-    ///
-    /// The Mediator source generator auto-registers handlers by concrete type, but cannot
-    /// resolve their <c>string accountName</c> / <c>containerName</c> constructor parameters.
-    /// This method calls <see cref="MediatorExtensions.AddMediator"/> first (required for the
-    /// generated <c>Mediator</c> class), then re-registers each handler by its
-    /// <c>ICommandHandler&lt;,&gt;</c> interface using explicit factory delegates — MS DI's
-    /// "last registration wins" behaviour ensures these factories are what Mediator resolves.
-    /// <summary>
-    /// Registers Arius core services and command handlers into the provided <see cref="IServiceCollection"/>.
+    /// Registers Arius core services and mediator handler interfaces into the provided <see cref="IServiceCollection"/>.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="blobStorage">The blob storage implementation to use for persisted data.</param>
+    /// <param name="blobContainer">The blob storage implementation to use for persisted data.</param>
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
     /// <param name="cacheBudgetBytes">Maximum cache budget, in bytes, for the chunk index service.</param>
-    /// <summary>
-    /// Registers Arius Core services into the provided service collection, including the supplied blob storage, an encryption service (passphrase-based or plaintext), a chunk index service configured with the specified account/container and cache budget, and command handler factories that receive the account and container names.
-    /// </summary>
-    /// <param name="services">The service collection to register services into.</param>
-    /// <param name="blobStorage">The blob storage implementation to register as a singleton.</param>
-    /// <param name="passphrase">Optional passphrase; when non-null a passphrase-based encryption service is registered, otherwise a plaintext passthrough encryption service is registered.</param>
-    /// <param name="accountName">The storage account name used by the chunk index service and handlers.</param>
-    /// <param name="containerName">The storage container name used by the chunk index service and handlers.</param>
-    /// <param name="cacheBudgetBytes">Cache budget in bytes to configure the chunk index service.</param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
-        IBlobStorageService     blobStorage,
+        IBlobContainerService     blobContainer,
         string?                 passphrase,
         string                  accountName,
         string                  containerName,
         long                    cacheBudgetBytes = ChunkIndexService.DefaultCacheBudgetBytes)
     {
         // Storage
-        services.AddSingleton(blobStorage);
+        services.AddSingleton(blobContainer);
+        if (!services.Any(service => service.ServiceType == typeof(IBlobServiceFactory)))
+        {
+            services.AddSingleton<IBlobServiceFactory, NullBlobServiceFactory>();
+        }
 
         // Encryption
         IEncryptionService encryption = passphrase is not null
@@ -60,7 +48,7 @@ public static class ServiceCollectionExtensions
         // Chunk index
         services.AddSingleton(sp =>
             new ChunkIndexService(
-                sp.GetRequiredService<IBlobStorageService>(),
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
                 containerName,
@@ -71,38 +59,71 @@ public static class ServiceCollectionExtensions
         // so it can discover INotificationHandler<T> implementations in both Core and CLI.
         // The caller (CLI startup or test harness) is responsible for calling AddMediator().
 
-        // Re-register handlers by ICommandHandler<,> interface with factory delegates.
-        // MS DI "last registration wins" — these override Mediator's concrete-type registrations
-        // and correctly pass accountName/containerName which DI cannot otherwise resolve.
+        // Re-register the handler interfaces that Arius resolves through IMediator.
+        // The source generator can see these handlers, but DI cannot supply the per-repository
+        // account/container constructor arguments without explicit factories here.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>>(sp =>
-            new ArchivePipelineHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+            new ArchiveCommandHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
-                sp.GetRequiredService<ILogger<ArchivePipelineHandler>>(),
+                sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 accountName,
                 containerName));
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
-            new RestorePipelineHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+            new RestoreCommandHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
-                sp.GetRequiredService<ILogger<RestorePipelineHandler>>(),
+                sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
                 containerName));
 
-        services.AddSingleton<ICommandHandler<LsCommand, LsResult>>(sp =>
-            new LsHandler(
-                sp.GetRequiredService<IBlobStorageService>(),
+        services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>>(sp =>
+            new ListQueryHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<ILogger<LsHandler>>(),
+                sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,
                 containerName));
 
+        services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>>(sp =>
+            new ContainerNamesQueryHandler(
+                sp));
+
+        services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>(sp =>
+            new ChunkHydrationStatusQueryHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));
+
         return services;
+    }
+
+    private sealed class NullBlobServiceFactory : IBlobServiceFactory
+    {
+        public Task<IBlobService> CreateAsync(
+            string accountName,
+            string? accountKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IBlobService>(new NullBlobService());
+    }
+
+    private sealed class NullBlobService : IBlobService
+    {
+        public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield break;
+        }
+
+        public Task<IBlobContainerService> GetContainerServiceAsync(
+            string containerName,
+            PreflightMode preflightMode,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

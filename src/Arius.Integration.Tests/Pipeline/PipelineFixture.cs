@@ -1,9 +1,9 @@
-using Arius.Core.Archive;
-using Arius.Core.ChunkIndex;
-using Arius.Core.Encryption;
-using Arius.Core.Ls;
-using Arius.Core.Restore;
-using Arius.Core.Storage;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.ListQuery;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -22,7 +22,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     private readonly string          _tempRoot;
     public           BlobContainerClient Container { get; private set; } = null!;
 
-    public  IBlobStorageService BlobStorage   { get; private set; } = null!;
+    public  IBlobContainerService BlobContainer   { get; private set; } = null!;
     public  IEncryptionService  Encryption    { get; private set; } = null!;
     public  ChunkIndexService   Index         { get; private set; } = null!;
     public  IMediator           Mediator      { get; private set; } = null!;
@@ -72,11 +72,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
         Container   = container;
-        BlobStorage = svc;
+        BlobContainer = svc;
         Encryption  = passphrase is not null
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
-        Index      = new ChunkIndexService(BlobStorage, Encryption, Account, container.Name);
+        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, container.Name);
         Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
@@ -93,17 +93,17 @@ public sealed class PipelineFixture : IAsyncDisposable
         if (existingContainer is not null)
         {
             Container   = existingContainer;
-            BlobStorage = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
+            BlobContainer = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
         }
         else
         {
             var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
             Container   = container;
-            BlobStorage = svc;
+            BlobContainer = svc;
         }
 
         Encryption = encryption;
-        Index      = new ChunkIndexService(BlobStorage, Encryption, Account, Container.Name);
+        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, Container.Name);
         Mediator   = Substitute.For<IMediator>();
 
         LocalRoot   = Path.Combine(_tempRoot, "source");
@@ -114,19 +114,19 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
-    public ArchivePipelineHandler CreateArchiveHandler() =>
-        new(BlobStorage, Encryption, Index, Mediator,
-            NullLogger<ArchivePipelineHandler>.Instance,
+    public ArchiveCommandHandler CreateArchiveHandler() =>
+        new(BlobContainer, Encryption, Index, Mediator,
+            NullLogger<ArchiveCommandHandler>.Instance,
             Account, Container.Name);
 
-    public RestorePipelineHandler CreateRestoreHandler() =>
-        new(BlobStorage, Encryption, Index, Mediator,
-            NullLogger<RestorePipelineHandler>.Instance,
+    public RestoreCommandHandler CreateRestoreHandler() =>
+        new(BlobContainer, Encryption, Index, Mediator,
+            NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 
-    public LsHandler CreateLsHandler() =>
-        new(BlobStorage, Encryption, Index,
-            NullLogger<LsHandler>.Instance,
+    public ListQueryHandler CreateLsHandler() =>
+        new(BlobContainer, Encryption, Index,
+            NullLogger<ListQueryHandler>.Instance,
             Account, Container.Name);
 
     /// <summary>
@@ -134,10 +134,10 @@ public sealed class PipelineFixture : IAsyncDisposable
     /// (so restore works without rehydration in tests).
     /// </summary>
     public Task<ArchiveResult> ArchiveAsync(
-        ArchiveOptions? opts = null,
+        ArchiveCommandOptions? opts = null,
         CancellationToken ct = default)
     {
-        opts ??= new ArchiveOptions
+        opts ??= new ArchiveCommandOptions
         {
             RootDirectory = LocalRoot,
             UploadTier    = BlobTier.Hot,
@@ -158,13 +158,19 @@ public sealed class PipelineFixture : IAsyncDisposable
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();
     }
 
-    /// <summary>Runs the ls command.</summary>
-    public Task<LsResult> LsAsync(
-        LsOptions? opts = null,
+    /// <summary>Runs the ls command and collects all file entries.</summary>
+    public async Task<List<RepositoryFileEntry>> LsAsync(
+        ListQueryOptions? opts = null,
         CancellationToken ct = default)
     {
-        opts ??= new LsOptions();
-        return CreateLsHandler().Handle(new LsCommand(opts), ct).AsTask();
+        opts ??= new ListQueryOptions();
+        var results = new List<RepositoryFileEntry>();
+        await foreach (var entry in CreateLsHandler().Handle(new ListQuery(opts), ct))
+        {
+            if (entry is RepositoryFileEntry file)
+                results.Add(file);
+        }
+        return results;
     }
 
     // ── File helpers ──────────────────────────────────────────────────────────

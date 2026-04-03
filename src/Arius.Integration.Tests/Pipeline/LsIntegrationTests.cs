@@ -1,3 +1,4 @@
+using Arius.Core.Features.ListQuery;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 
@@ -30,11 +31,10 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
-        var result = await fix.LsAsync();
-        result.Success.ShouldBeTrue(result.ErrorMessage);
-        result.Entries.Count.ShouldBe(4);
+        var entries = await fix.LsAsync();
+        entries.Count.ShouldBe(4);
 
-        var paths = result.Entries.Select(e => e.RelativePath).ToHashSet();
+        var paths = entries.Select(e => e.RelativePath).ToHashSet();
         paths.ShouldContain("photos/vacation.jpg");
         paths.ShouldContain("photos/sunset.jpg");
         paths.ShouldContain("docs/readme.txt");
@@ -55,10 +55,9 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var result = await fix.LsAsync(new Core.Ls.LsOptions { Prefix = "photos" });
-        result.Success.ShouldBeTrue();
-        result.Entries.Count.ShouldBe(2);
-        result.Entries.All(e => e.RelativePath.StartsWith("photos")).ShouldBeTrue();
+        var entries = await fix.LsAsync(new ListQueryOptions { Prefix = "photos" });
+        entries.Count.ShouldBe(2);
+        entries.All(e => e.RelativePath.StartsWith("photos")).ShouldBeTrue();
     }
 
     // ── 11.7c: filename substring filter ──────────────────────────────────────
@@ -75,10 +74,9 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var result = await fix.LsAsync(new Core.Ls.LsOptions { Filter = "vacation" });
-        result.Success.ShouldBeTrue();
-        result.Entries.Count.ShouldBe(1);
-        result.Entries[0].RelativePath.ShouldContain("VACATION");
+        var entries = await fix.LsAsync(new ListQueryOptions { Filter = "vacation" });
+        entries.Count.ShouldBe(1);
+        entries[0].RelativePath.ShouldContain("VACATION");
     }
 
     // ── 11.7d: size field populated from chunk index ───────────────────────────
@@ -94,10 +92,9 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var result = await fix.LsAsync();
-        result.Success.ShouldBeTrue();
-        result.Entries.Count.ShouldBe(1);
-        result.Entries[0].OriginalSize.ShouldBe(1234);
+        var entries = await fix.LsAsync();
+        entries.Count.ShouldBe(1);
+        entries[0].OriginalSize.ShouldBe(1234);
     }
 
     // ── 11.7e: ls with snapshot version ──────────────────────────────────────
@@ -120,12 +117,11 @@ public class LsIntegrationTests(AzuriteFixture azurite)
 
         // ls latest → both files
         var lsLatest = await fix.LsAsync();
-        lsLatest.Entries.Count.ShouldBe(2);
+        lsLatest.Count.ShouldBe(2);
 
         // ls version 1 → only v1-only
-        var lsV1 = await fix.LsAsync(new Core.Ls.LsOptions { Version = snapshot1 });
-        lsV1.Success.ShouldBeTrue();
-        lsV1.Entries.Count.ShouldBe(1);
-        lsV1.Entries[0].RelativePath.ShouldBe("v1-only.txt");
+        var lsV1 = await fix.LsAsync(new ListQueryOptions { Version = snapshot1 });
+        lsV1.Count.ShouldBe(1);
+        lsV1[0].RelativePath.ShouldBe("v1-only.txt");
     }
 }
