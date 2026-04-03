@@ -236,11 +236,12 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     /// Returns true for any RequestFailedException that means "the blob already exists".
     /// <para>
     /// Azure Storage returns 412 ConditionNotMet when <c>IfNoneMatch=*</c> is set and the blob exists.
-    /// Azurite (the local emulator) returns 409 BlobAlreadyExists for the same condition on
-    /// <see cref="BlockBlobClient.OpenWriteAsync"/>. Both are treated identically.
-    /// </para>
-    /// </summary>
+     /// Azurite (the local emulator) returns 409 BlobAlreadyExists for the same condition on
+     /// <see cref="BlockBlobClient.OpenWriteAsync"/>. Real Azure can also return 409 BlobArchived
+     /// when the target blob already exists in Archive tier. All are treated identically.
+     /// </para>
+     /// </summary>
     private static bool IsAlreadyExistsError(RequestFailedException ex) =>
         (ex.Status == 412 && ex.ErrorCode == "ConditionNotMet") ||
-        (ex.Status == 409 && ex.ErrorCode == "BlobAlreadyExists");
+        (ex.Status == 409 && ex.ErrorCode is "BlobAlreadyExists" or "BlobArchived");
 }
