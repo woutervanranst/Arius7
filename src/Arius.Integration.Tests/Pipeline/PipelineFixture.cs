@@ -119,9 +119,9 @@ public sealed class PipelineFixture : IAsyncDisposable
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, Container.Name);
 
-    public RestorePipelineHandler CreateRestoreHandler() =>
+    public RestoreCommandHandler CreateRestoreHandler() =>
         new(BlobContainer, Encryption, Index, Mediator,
-            NullLogger<RestorePipelineHandler>.Instance,
+            NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 
     public ListQueryHandler CreateLsHandler() =>

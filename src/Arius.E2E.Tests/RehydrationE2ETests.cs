@@ -89,10 +89,10 @@ public class RehydrationE2ETests(AzureFixture azure)
                 },
             };
 
-            var restoreHandler1 = new RestorePipelineHandler(
+            var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
 
             var result1 = await restoreHandler1.Handle(new RestoreCommand(restoreOpts1), ct).AsTask();
@@ -110,10 +110,10 @@ public class RehydrationE2ETests(AzureFixture azure)
             // ── Task 3.2: Re-run restore — verify pending rehydration detected ─
 
             var trackingSvc2 = new CopyTrackingBlobService(svc);
-            var restoreHandler2 = new RestorePipelineHandler(
+            var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
 
             var restoreOpts2 = new RestoreOptions
@@ -156,10 +156,10 @@ public class RehydrationE2ETests(AzureFixture azure)
             Directory.CreateDirectory(restoreRoot3);
             try
             {
-                var restoreHandler3 = new RestorePipelineHandler(
+                var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<RestorePipelineHandler>.Instance,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                     container.AccountName, container.Name);
 
                 var restoreOpts3 = new RestoreOptions

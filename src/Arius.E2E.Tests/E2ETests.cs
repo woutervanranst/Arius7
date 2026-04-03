@@ -267,9 +267,9 @@ public sealed class E2EFixture : IAsyncDisposable
             NullLogger<ArchiveCommandHandler>.Instance,
             _account, _container);
 
-    private RestorePipelineHandler CreateRestoreHandler() =>
+    private RestoreCommandHandler CreateRestoreHandler() =>
         new(BlobContainer, Encryption, Index, _mediator,
-            NullLogger<RestorePipelineHandler>.Instance,
+            NullLogger<RestoreCommandHandler>.Instance,
             _account, _container);
 
     public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) =>

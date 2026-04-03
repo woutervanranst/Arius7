@@ -28,23 +28,23 @@ namespace Arius.Core.Features.Restore;
 /// 9. Pointer file creation (task 10.11)
 /// 10. Progress event emission (task 10.12)
 /// </summary>
-public sealed class RestorePipelineHandler
+public sealed class RestoreCommandHandler
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
     private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
     private readonly IMediator                        _mediator;
-    private readonly ILogger<RestorePipelineHandler>  _logger;
+    private readonly ILogger<RestoreCommandHandler>  _logger;
     private readonly string                           _accountName;
     private readonly string                           _containerName;
 
-    public RestorePipelineHandler(
+    public RestoreCommandHandler(
         IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
         IMediator                      mediator,
-        ILogger<RestorePipelineHandler> logger,
+        ILogger<RestoreCommandHandler> logger,
         string                         accountName,
         string                         containerName)
     {

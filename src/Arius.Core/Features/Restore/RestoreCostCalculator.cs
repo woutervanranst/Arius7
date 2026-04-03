@@ -4,7 +4,7 @@ namespace Arius.Core.Features.Restore;
 /// Static helpers for computing the 4-component restore cost estimate.
 /// Extracted for unit testability.
 /// </summary>
-public static class RestoreCostCalculator
+internal static class RestoreCostCalculator
 {
     /// <summary>
     /// Computes a <see cref="RestoreCostEstimate"/> from raw inputs.

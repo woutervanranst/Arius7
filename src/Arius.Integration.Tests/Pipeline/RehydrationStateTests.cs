@@ -157,12 +157,12 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         return (fix, sim, chunkBlobName);
     }
 
-    private static RestorePipelineHandler MakeRestoreHandler(
+    private static RestoreCommandHandler MakeRestoreHandler(
         RehydrationSimulatingBlobService sim, PipelineFixture fix) =>
         new(sim, fix.Encryption,
             new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
-            NullLogger<RestorePipelineHandler>.Instance,
+            NullLogger<RestoreCommandHandler>.Instance,
             Account, fix.Container.Name);
 
     // ── 1.2: chunk needs rehydration — verify pipeline initiates copy-to-rehydrate ──

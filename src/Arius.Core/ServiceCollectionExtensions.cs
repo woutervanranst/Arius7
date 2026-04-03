@@ -73,12 +73,12 @@ public static class ServiceCollectionExtensions
                 containerName));
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
-            new RestorePipelineHandler(
+            new RestoreCommandHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IMediator>(),
-                sp.GetRequiredService<ILogger<RestorePipelineHandler>>(),
+                sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
                 containerName));
 
