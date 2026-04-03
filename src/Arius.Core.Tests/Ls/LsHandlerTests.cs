@@ -1,4 +1,5 @@
 using Arius.Core.Features.ListQuery;
+using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -37,7 +38,7 @@ public class ListHandlerTests
             AriusVersion = "test"
         };
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
@@ -110,7 +111,7 @@ public class ListHandlerTests
             AriusVersion = "test"
         };
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(BlobPaths.FileTree(docsHash), await TreeBlobSerializer.SerializeForStorageAsync(docsTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
@@ -168,7 +169,7 @@ public class ListHandlerTests
                 AriusVersion = "test"
             };
 
-            var blobs = new FakeBlobService();
+            var blobs = new FakeSeededBlobContainerService();
             blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
@@ -249,7 +250,7 @@ public class ListHandlerTests
         var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(BlobPaths.FileTree(childHash), await TreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
@@ -290,7 +291,7 @@ public class ListHandlerTests
         var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
@@ -335,7 +336,7 @@ public class ListHandlerTests
             var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
             var snapshot = MakeSnapshot(rootHash);
 
-            var blobs = new FakeBlobService();
+            var blobs = new FakeSeededBlobContainerService();
             blobs.AddBlob(BlobPaths.FileTree(rootHash),       await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
             blobs.AddBlob(BlobPaths.FileTree(cloudLocalHash), await TreeBlobSerializer.SerializeForStorageAsync(cloudLocalTree, s_encryption));
             blobs.AddBlob(BlobPaths.FileTree(cloudOnlyHash),  await TreeBlobSerializer.SerializeForStorageAsync(cloudOnlyTree, s_encryption));
@@ -393,7 +394,7 @@ public class ListHandlerTests
         var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash),  await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(BlobPaths.FileTree(childHash), await TreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
@@ -420,7 +421,7 @@ public class ListHandlerTests
     [Test]
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
-        var blobs = new FakeBlobService(); // empty — no snapshot blob
+        var blobs = new FakeSeededBlobContainerService(); // empty — no snapshot blob
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-310", "ctr-310", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index);
 
@@ -438,7 +439,7 @@ public class ListHandlerTests
         var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
@@ -465,7 +466,7 @@ public class ListHandlerTests
 
         // Build chain: level10 → level9 → … → level1 → root
         var currentHash  = leafHash;
-        var blobs = new FakeBlobService();
+        var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(leafHash), await TreeBlobSerializer.SerializeForStorageAsync(leafTree, s_encryption));
 
         for (var i = 10; i >= 1; i--)
@@ -516,7 +517,7 @@ public class ListHandlerTests
         AriusVersion = "test"
     };
 
-    private ListQueryHandler MakeHandler(FakeBlobService blobs, ChunkIndexService index) =>
+    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index) =>
         new(blobs, s_encryption, index, NullLogger<ListQueryHandler>.Instance, "account", "container");
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
@@ -529,53 +530,4 @@ public class ListHandlerTests
 
     private static string HashFor(string label) => Convert.ToHexString(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label))).ToLowerInvariant();
 
-    private sealed class FakeBlobService : IBlobContainerService
-    {
-        private readonly Dictionary<string, byte[]> _blobs = new(StringComparer.Ordinal);
-
-        public void AddBlob(string blobName, byte[] content) => _blobs[blobName] = content;
-
-        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
-        {
-            if (!_blobs.TryGetValue(blobName, out var content))
-            {
-                throw new FileNotFoundException(blobName);
-            }
-
-            return Task.FromResult<Stream>(new MemoryStream(content, writable: false));
-        }
-
-        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName) });
-
-        public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            foreach (var name in _blobs.Keys.Where(name => name.StartsWith(prefix, StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return name;
-                await Task.Yield();
-            }
-        }
-
-        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-    }
 }
