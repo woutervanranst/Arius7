@@ -167,7 +167,6 @@ public static class CliBuilder
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .Enrich.WithThreadId()
-            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning)
             .WriteTo.File(logFile, outputTemplate: outputTemplate, restrictedToMinimumLevel: LogEventLevel.Information)
             .CreateLogger();
 

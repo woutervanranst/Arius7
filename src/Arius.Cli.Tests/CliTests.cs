@@ -410,4 +410,40 @@ public class CrashLoggingTests
 
         File.Delete(logFile);
     }
+
+    [Test]
+    public void ConfigureAuditLogging_DoesNotWriteToConsole()
+    {
+#pragma warning disable TUnit0055
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdOut = new StringWriter();
+        using var stdErr = new StringWriter();
+
+        Console.SetOut(stdOut);
+        Console.SetError(stdErr);
+
+        var logFile = CliBuilder.ConfigureAuditLogging("acct", "ctr", "test");
+
+        try
+        {
+            Log.Warning("Visible warning");
+            Log.Fatal(new InvalidOperationException("top level failure"), "Unhandled exception");
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        var consoleOutput = stdOut.ToString() + stdErr.ToString();
+
+        consoleOutput.ShouldBeEmpty();
+        consoleOutput.ShouldNotContain("Unhandled exception");
+        consoleOutput.ShouldNotContain("top level failure");
+
+        File.Delete(logFile);
+#pragma warning restore TUnit0055
+    }
 }
