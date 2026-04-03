@@ -8,7 +8,7 @@ try
 }
 catch (Exception ex)
 {
-    AnsiConsole.WriteException(ex, ExceptionFormats.ShortenEverything | ExceptionFormats.ShowLinks);
+    AnsiConsole.MarkupLine(CliBuilder.FormatUnhandledExceptionMessage(ex));
     Log.Fatal(ex, "Unhandled exception");
     return 1;
 }

@@ -282,13 +282,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     await _mediator.Publish(new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), ct);
 
                     var blobName = BlobPaths.Chunk(upload.HashedPair.ContentHash);
+                    var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                     long compressedSize;
 
                     retry:
                     try
                     {
-                        var fullPath    = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
                         var contentType = _encryption.IsEncrypted ? ContentTypes.LargeGcmEncrypted : ContentTypes.LargePlaintext;
 
                         // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
@@ -336,6 +336,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _blobs.DeleteAsync(blobName, ct);
                             goto retry;
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "[upload] Failed: blob={BlobName} path={Path} hash={Hash} sizeBytes={SizeBytes}",
+                            blobName,
+                            upload.HashedPair.FilePair.RelativePath,
+                            upload.HashedPair.ContentHash,
+                            upload.FileSize);
+                        throw;
                     }
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
@@ -501,6 +511,17 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 await _blobs.DeleteAsync(blobName, ct);
                                 goto retry;
                             }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex,
+                                "[tar] Upload failed: blob={BlobName} tarHash={TarHash} tarPath={TarPath} sizeBytes={SizeBytes} entryCount={EntryCount}",
+                                blobName,
+                                sealed_.TarHash,
+                                sealed_.TarFilePath,
+                                sealed_.UncompressedSize,
+                                sealed_.Entries.Count);
+                            throw;
                         }
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
