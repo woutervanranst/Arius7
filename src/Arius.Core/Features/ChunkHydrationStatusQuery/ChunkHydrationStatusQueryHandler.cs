@@ -1,8 +1,8 @@
-using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 

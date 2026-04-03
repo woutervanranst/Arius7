@@ -1,6 +1,6 @@
 ﻿using Mediator;
 
-namespace Arius.Core.Features.Archive;
+namespace Arius.Core.Features.ArchiveCommand;
 
 // ── Task 8.14: Progress events ─────────────────────────────────────────────────
 

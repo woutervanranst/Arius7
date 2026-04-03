@@ -1,8 +1,6 @@
 using Arius.Core.Shared.LocalFile;
-using Arius.Core.Shared.Storage;
-using Mediator;
 
-namespace Arius.Core.Features.Archive;
+namespace Arius.Core.Features.ArchiveCommand;
 
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 

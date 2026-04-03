@@ -1,3 +1,4 @@
+using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
@@ -8,7 +9,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Arius.Core.Features.ContainerNamesQuery;
 
 namespace Arius.Explorer.Tests.ChooseRepository;
 

@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Storage;
 using Mediator;
 
-namespace Arius.Core.Features.Archive;
+namespace Arius.Core.Features.ArchiveCommand;
 
 /// <summary>
 /// Mediator command: archive a local directory to blob storage.

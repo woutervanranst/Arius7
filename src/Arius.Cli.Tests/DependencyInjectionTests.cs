@@ -1,5 +1,5 @@
 using Arius.Core;
-using Arius.Core.Features.Archive;
+using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;

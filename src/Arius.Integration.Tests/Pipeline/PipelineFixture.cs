@@ -1,4 +1,4 @@
-using Arius.Core.Features.Archive;
+using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.Restore;
 using Arius.Core.Shared.ChunkIndex;
