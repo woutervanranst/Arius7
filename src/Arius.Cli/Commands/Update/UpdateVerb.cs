@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Spectre.Console;
 using System.CommandLine;
 using System.Text.Json;
@@ -6,6 +7,7 @@ namespace Arius.Cli.Commands.Update;
 
 internal static class UpdateVerb
 {
+
     /// <summary>
     /// Builds the "update" command that checks GitHub for a newer release and, if available,
     /// downloads the appropriate platform asset and replaces the running executable.
@@ -137,12 +139,29 @@ internal static class UpdateVerb
                     });
 
                 var currentExe = Environment.ProcessPath!;
-                File.Move(tempFile, currentExe, true);
 
-                if (!OperatingSystem.IsWindows())
+                if (OperatingSystem.IsWindows())
                 {
-                    File.SetUnixFileMode(currentExe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                    var helperScriptPath = Path.Combine(tempDir, "windows-update-after-exit.ps1");
+                    File.WriteAllText(helperScriptPath, LoadEmbeddedWindowsUpdateScript());
+
+                    if (Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{helperScriptPath}\" -PidToWait {Environment.ProcessId} -SourcePath \"{tempFile}\" -DestinationPath \"{currentExe}\" -TempDir \"{tempDir}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    }) is null)
+                    {
+                        throw new InvalidOperationException("Could not launch the Windows update helper.");
+                    }
+
+                    AnsiConsole.MarkupLine($"[green]Downloaded {versionStr}. Restart arius in a moment.[/]");
+                    return 0;
                 }
+
+                File.Move(tempFile, currentExe, true);
+                File.SetUnixFileMode(currentExe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
                 try
                 {
@@ -163,5 +182,18 @@ internal static class UpdateVerb
         });
 
         return cmd;
+    }
+
+    private static string LoadEmbeddedWindowsUpdateScript()
+    {
+        var assembly = typeof(UpdateVerb).Assembly;
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(name => name.EndsWith("WindowsUpdateAfterExit.ps1", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Embedded Windows update script not found.");
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException("Could not open embedded Windows update script.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }

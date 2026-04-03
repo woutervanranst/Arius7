@@ -1,0 +1,163 @@
+name: 🔄 Verify Self-Update
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-self-update:
+    name: 🔄 Verify Self-Update (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            asset_name: arius-win-x64.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            asset_name: arius-linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+            asset_name: arius-osx-arm64
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ASSET_NAME: ${{ matrix.asset_name }}
+
+    steps:
+      - name: 🏷️ Resolve current and previous release tags
+        id: tags
+        shell: pwsh
+        run: |
+          $currentTag = '${{ github.event.release.tag_name }}'
+          if ([string]::IsNullOrWhiteSpace($currentTag)) {
+            $currentTag = gh api "repos/$env:REPO/releases/latest" --jq '.tag_name'
+          }
+
+          $releases = gh api "repos/$env:REPO/releases" | ConvertFrom-Json
+          $previousTag = $releases |
+            Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $currentTag } |
+            Select-Object -First 1 -ExpandProperty tag_name
+
+          "current_tag=$currentTag" >> $env:GITHUB_OUTPUT
+          "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
+
+      - name: ℹ️ Skip when there is no previous release
+        if: steps.tags.outputs.previous_tag == ''
+        shell: pwsh
+        run: |
+          Write-Host 'No previous release found; skipping self-update verification.'
+
+      - name: ⬇️ Download previous and current release assets
+        if: steps.tags.outputs.previous_tag != ''
+        shell: pwsh
+        env:
+          CURRENT_TAG: ${{ steps.tags.outputs.current_tag }}
+          PREVIOUS_TAG: ${{ steps.tags.outputs.previous_tag }}
+        run: |
+          New-Item -ItemType Directory -Force -Path previous, current | Out-Null
+
+          function Download-ReleaseAsset([string]$Tag, [string]$Destination) {
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+              try {
+                gh release download $Tag --repo $env:REPO --pattern $env:ASSET_NAME --dir $Destination --clobber
+                return
+              } catch {
+                if ($attempt -eq 5) {
+                  throw
+                }
+
+                Start-Sleep -Seconds 2
+              }
+            }
+          }
+
+          Download-ReleaseAsset $env:PREVIOUS_TAG 'previous'
+          Download-ReleaseAsset $env:CURRENT_TAG 'current'
+
+      - name: 🧪 Verify self-update from previous release
+        if: steps.tags.outputs.previous_tag != ''
+        shell: pwsh
+        env:
+          CURRENT_TAG: ${{ steps.tags.outputs.current_tag }}
+          PREVIOUS_TAG: ${{ steps.tags.outputs.previous_tag }}
+        run: |
+          $previousBinary = Join-Path (Get-Location) "previous/$env:ASSET_NAME"
+          $currentBinary = Join-Path (Get-Location) "current/$env:ASSET_NAME"
+
+          if (-not (Test-Path $previousBinary)) {
+            throw "Previous release asset not found: $previousBinary"
+          }
+
+          if (-not (Test-Path $currentBinary)) {
+            throw "Current release asset not found: $currentBinary"
+          }
+
+          if (-not $IsWindows) {
+            chmod +x $previousBinary
+          }
+
+          $expectedHash = (Get-FileHash -Algorithm SHA256 -Path $currentBinary).Hash
+          $originalHash = (Get-FileHash -Algorithm SHA256 -Path $previousBinary).Hash
+
+          if ($expectedHash -eq $originalHash) {
+            throw "Previous release asset already matches current release asset for $env:ASSET_NAME."
+          }
+
+          $firstOutput = & $previousBinary update 2>&1 | Out-String
+          $firstExitCode = $LASTEXITCODE
+          $firstOutput | Write-Host
+
+          if ($firstExitCode -ne 0) {
+            throw "First update invocation failed with exit code $firstExitCode."
+          }
+
+          $deadline = if ($IsWindows) {
+            (Get-Date).AddSeconds(20)
+          } else {
+            (Get-Date).AddSeconds(5)
+          }
+
+          $updated = $false
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+
+            try {
+              $actualHash = (Get-FileHash -Algorithm SHA256 -Path $previousBinary).Hash
+              if ($actualHash -eq $expectedHash) {
+                $updated = $true
+                break
+              }
+            } catch {
+              Start-Sleep -Milliseconds 500
+            }
+          }
+
+          if (-not $updated) {
+            throw "Updated binary hash never matched the current release asset for $env:ASSET_NAME."
+          }
+
+          if (-not $IsWindows) {
+            chmod +x $previousBinary
+          }
+
+          $secondOutput = & $previousBinary update 2>&1 | Out-String
+          $secondExitCode = $LASTEXITCODE
+          $secondOutput | Write-Host
+
+          if ($secondExitCode -ne 0) {
+            throw "Second update invocation failed with exit code $secondExitCode."
+          }
+
+          if ($secondOutput -notmatch 'latest version') {
+            throw 'Updated binary did not report that it is already on the latest version.'
+          }
