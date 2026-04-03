@@ -26,7 +26,7 @@ Tests SHALL register NSubstitute mock implementations of `ICommandHandler<TComma
 
 #### Scenario: Mock handler captures ls command
 - **WHEN** a test invokes the CLI with `ls -a acct -k key -c ctr --prefix photos/ -f .jpg`
-- **THEN** the mock `ICommandHandler<LsCommand, LsResult>` SHALL receive an `LsCommand` with `LsOptions.Prefix` equal to `photos/` and `LsOptions.Filter` equal to `.jpg`
+- **THEN** the mock `IStreamQueryHandler<ListQuery, RepositoryEntry>` SHALL receive a `ListQuery` with `ListQueryOptions.Prefix` equal to `photos/` and `ListQueryOptions.Filter` equal to `.jpg`
 
 ### Requirement: Archive command parsing tests
 Tests SHALL verify that the archive command correctly parses all options, applies defaults, and enforces validation rules.
@@ -54,16 +54,16 @@ Tests SHALL verify that the restore command correctly parses all options and app
 - **WHEN** `restore /data -a acct -k key -c ctr`
 - **THEN** the captured `RestoreOptions` SHALL have `Version=null`, `NoPointers=false`, `Overwrite=false`
 
-### Requirement: Ls command parsing tests
+### Requirement: List query parsing tests
 Tests SHALL verify that the ls command correctly parses all options and applies defaults.
 
 #### Scenario: Ls with all filters
 - **WHEN** `ls -a acct -k key -c ctr -v 2026-01-01 --prefix docs/ -f .pdf`
-- **THEN** the captured `LsOptions` SHALL have `Version="2026-01-01"`, `Prefix="docs/"`, `Filter=".pdf"`
+- **THEN** the captured `ListQueryOptions` SHALL have `Version="2026-01-01"`, `Prefix="docs/"`, `Filter=".pdf"`
 
 #### Scenario: Ls defaults
 - **WHEN** `ls -a acct -k key -c ctr`
-- **THEN** the captured `LsOptions` SHALL have `Version=null`, `Prefix=null`, `Filter=null`
+- **THEN** the captured `ListQueryOptions` SHALL have `Version=null`, `Prefix=null`, `Filter=null`
 
 ### Requirement: Account and key resolution tests
 Tests SHALL verify the environment variable fallback chain for account name and key resolution.

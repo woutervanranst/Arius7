@@ -1,4 +1,5 @@
 using Arius.Core.Features.ListQuery;
+using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -8,9 +9,9 @@ using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 
-namespace Arius.Core.Tests.Ls;
+namespace Arius.Core.Tests.ListQuery;
 
-public class ListHandlerTests
+public class ListQueryHandlerTests
 {
     private static readonly PlaintextPassthroughService s_encryption = new();
     private static readonly DateTimeOffset s_created = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -54,7 +55,7 @@ public class ListHandlerTests
             "container");
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListQuery(new ListQueryOptions { Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }
@@ -128,7 +129,7 @@ public class ListHandlerTests
             "container");
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListQuery(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }
@@ -186,7 +187,7 @@ public class ListHandlerTests
                 "container");
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListQuery(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -258,7 +259,7 @@ public class ListHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index);
 
-        var nonRecursive = await CollectAsync(handler.Handle(new ListQuery(new ListQueryOptions { Recursive = false }), CancellationToken.None));
+        var nonRecursive = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None));
         nonRecursive.Count.ShouldBe(2);
         nonRecursive.ShouldContain(e => e.RelativePath == "child/");
         nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
@@ -267,7 +268,7 @@ public class ListHandlerTests
         using var index2 = new ChunkIndexService(blobs, s_encryption, "acct-33-r", "ctr-33-r", cacheBudgetBytes: 1024 * 1024);
         var handler2 = MakeHandler(blobs, index2);
 
-        var recursive = await CollectAsync(handler2.Handle(new ListQuery(new ListQueryOptions { Recursive = true }), CancellationToken.None));
+        var recursive = await CollectAsync(handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
         recursive.ShouldContain(e => e.RelativePath == "child/");
         recursive.ShouldContain(e => e.RelativePath == "root.txt");
         recursive.ShouldContain(e => e.RelativePath == "child/deep.txt");
@@ -299,7 +300,7 @@ public class ListHandlerTests
         var handler = MakeHandler(blobs, index);
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
-        var results = await CollectAsync(handler.Handle(new ListQuery(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
+        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
 
         // Directories are NOT filtered — Photos/ should still appear
         results.ShouldContain(e => e.RelativePath == "Photos/");
@@ -345,7 +346,7 @@ public class ListHandlerTests
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
             var handler = MakeHandler(blobs, index);
 
-            var results = await CollectAsync(handler.Handle(new ListQuery(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
+            var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
             var dirs = results.OfType<RepositoryDirectoryEntry>().ToList();
 
             dirs.Count.ShouldBe(3);
@@ -404,7 +405,7 @@ public class ListHandlerTests
         index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
         var handler = MakeHandler(blobs, index);
-        var results = await CollectAsync(handler.Handle(new ListQuery(new ListQueryOptions { Recursive = true }), CancellationToken.None));
+        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
         var files = results.OfType<RepositoryFileEntry>().ToList();
 
         var known   = files.Single(f => f.RelativePath == "known.txt");
@@ -427,7 +428,7 @@ public class ListHandlerTests
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in handler.Handle(new ListQuery(new ListQueryOptions()), CancellationToken.None)) { }
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions()), CancellationToken.None)) { }
         });
         ex.Message.ShouldContain("snapshot", Case.Insensitive);
     }
@@ -448,7 +449,7 @@ public class ListHandlerTests
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in handler.Handle(new ListQuery(new ListQueryOptions { Version = "9999-not-found" }), CancellationToken.None)) { }
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions { Version = "9999-not-found" }), CancellationToken.None)) { }
         });
         ex.Message.ShouldContain("9999-not-found");
     }
@@ -494,7 +495,7 @@ public class ListHandlerTests
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
         {
-            await foreach (var entry in handler.Handle(new ListQuery(new ListQueryOptions { Recursive = true }), cts.Token))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), cts.Token))
             {
                 collected.Add(entry);
                 if (collected.Count >= 2)

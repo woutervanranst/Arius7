@@ -13,7 +13,7 @@ using NSubstitute;
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
-/// Per-test pipeline fixture: unique Azurite container, pre-wired archive/restore/ls handlers.
+/// Per-test pipeline fixture: unique Azurite container, pre-wired archive/restore/list query handlers.
 /// Uses NSubstitute for IMediator (event capture not needed for most tests).
 /// </summary>
 public sealed class PipelineFixture : IAsyncDisposable
@@ -124,7 +124,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 
-    public ListQueryHandler CreateLsHandler() =>
+    public ListQueryHandler CreateListQueryHandler() =>
         new(BlobContainer, Encryption, Index,
             NullLogger<ListQueryHandler>.Instance,
             Account, Container.Name);
@@ -158,14 +158,14 @@ public sealed class PipelineFixture : IAsyncDisposable
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();
     }
 
-    /// <summary>Runs the ls command and collects all file entries.</summary>
-    public async Task<List<RepositoryFileEntry>> LsAsync(
+    /// <summary>Runs the list query and collects all file entries.</summary>
+    public async Task<List<RepositoryFileEntry>> ListAsync(
         ListQueryOptions? opts = null,
         CancellationToken ct = default)
     {
         opts ??= new ListQueryOptions();
         var results = new List<RepositoryFileEntry>();
-        await foreach (var entry in CreateLsHandler().Handle(new ListQuery(opts), ct))
+        await foreach (var entry in CreateListQueryHandler().Handle(new ListQuery(opts), ct))
         {
             if (entry is RepositoryFileEntry file)
                 results.Add(file);

@@ -1,4 +1,4 @@
-# Ls Command Spec
+# List Query Spec
 
 ## Purpose
 
@@ -37,7 +37,7 @@ The system SHALL support filtering by path prefix to list entries within a speci
 - **THEN** the system SHALL only download tree blobs for `/`, `photos/`, `photos/2024/`, and (if recursive) its children — not unrelated directories
 
 #### Scenario: Prefix with non-recursive
-- **WHEN** `LsCommand` is executed with `Prefix=photos/2024/` and `Recursive=false`
+- **WHEN** `ListQuery` is executed with `Prefix=photos/2024/` and `Recursive=false`
 - **THEN** the system SHALL stream only the immediate children of `photos/2024/`
 
 ### Requirement: Filename substring filter
@@ -70,22 +70,22 @@ The system SHALL retrieve file sizes from the chunk index `original-size` field 
 - **THEN** the system SHALL set `OriginalSize` to `null` for that entry
 
 ### Requirement: Recursive flag
-The `LsCommand` SHALL accept a `Recursive` property (default `true`). When `Recursive=true`, the system SHALL perform a full depth-first tree walk, streaming all entries in all subdirectories. When `Recursive=false`, the system SHALL stream only the immediate children of the target directory (one level deep). `Recursive` and `Prefix` are orthogonal: `Prefix` navigates to the starting directory, `Recursive` controls depth.
+The `ListQuery` SHALL accept a `Recursive` property (default `true`). When `Recursive=true`, the system SHALL perform a full depth-first tree walk, streaming all entries in all subdirectories. When `Recursive=false`, the system SHALL stream only the immediate children of the target directory (one level deep). `Recursive` and `Prefix` are orthogonal: `Prefix` navigates to the starting directory, `Recursive` controls depth.
 
 #### Scenario: Recursive listing (default)
-- **WHEN** `LsCommand` is executed with `Recursive=true` (or default)
+- **WHEN** `ListQuery` is executed with `Recursive=true` (or default)
 - **THEN** the system SHALL stream entries from all directories recursively
 
 #### Scenario: Single-directory listing
-- **WHEN** `LsCommand` is executed with `Recursive=false`
+- **WHEN** `ListQuery` is executed with `Recursive=false`
 - **THEN** the system SHALL stream only the immediate children of the root directory
 
 #### Scenario: Single-directory listing with prefix
-- **WHEN** `LsCommand` is executed with `Recursive=false` and `Prefix=photos/2024/`
+- **WHEN** `ListQuery` is executed with `Recursive=false` and `Prefix=photos/2024/`
 - **THEN** the system SHALL stream only the immediate children of the `photos/2024/` directory
 
 ### Requirement: Local filesystem merge
-The `LsCommand` SHALL accept an optional `LocalPath` parameter. When provided, the handler SHALL merge Merkle tree (cloud) state with local filesystem state using a two-phase algorithm per directory, modeled after the `LocalFileEnumerator` pattern.
+The `ListQuery` SHALL accept an optional `LocalPath` parameter. When provided, the handler SHALL merge Merkle tree (cloud) state with local filesystem state using a two-phase algorithm per directory, modeled after the `LocalFileEnumerator` pattern.
 
 **Phase 1 - Cloud iteration**: Iterate over the Merkle tree entries for the current directory. For each entry, check whether it exists locally (via `File.Exists` / `Directory.Exists`). If the local counterpart exists, yield a combined cloud+local entry. If not, yield a cloud-only entry. Track which names have been yielded.
 
@@ -94,15 +94,15 @@ The `LsCommand` SHALL accept an optional `LocalPath` parameter. When provided, t
 For files that exist locally, the entry SHALL include `FilePair` information (pointer file presence, binary existence). The merge SHALL handle three directory recursion cases: cloud+local (recurse with both tree hash and local path), cloud-only (recurse with tree hash only, null local path), local-only (recurse with local path only, null tree hash).
 
 #### Scenario: File exists in both cloud and local
-- **WHEN** `LsCommand` is executed with `LocalPath` set and a file `photo.jpg` exists in both the Merkle tree and the local directory
+- **WHEN** `ListQuery` is executed with `LocalPath` set and a file `photo.jpg` exists in both the Merkle tree and the local directory
 - **THEN** the system SHALL yield a single `RepositoryFileEntry` for `photo.jpg` with both cloud metadata (hash, dates, size) and local state (pointer file presence) during Phase 1
 
 #### Scenario: File exists only in cloud
-- **WHEN** `LsCommand` is executed with `LocalPath` set and a file `old.jpg` exists only in the Merkle tree
+- **WHEN** `ListQuery` is executed with `LocalPath` set and a file `old.jpg` exists only in the Merkle tree
 - **THEN** the system SHALL yield a `RepositoryFileEntry` for `old.jpg` with cloud metadata and no local state during Phase 1
 
 #### Scenario: File exists only locally
-- **WHEN** `LsCommand` is executed with `LocalPath` set and a file `new.jpg` exists only in the local directory
+- **WHEN** `ListQuery` is executed with `LocalPath` set and a file `new.jpg` exists only in the local directory
 - **THEN** the system SHALL yield a `RepositoryFileEntry` for `new.jpg` with local state and no cloud metadata during Phase 2
 
 #### Scenario: Directory exists only in cloud
@@ -114,14 +114,14 @@ For files that exist locally, the entry SHALL include `FilePair` information (po
 - **THEN** the system SHALL yield a `RepositoryDirectoryEntry` for `drafts/` (local-only) and recurse with local path only
 
 #### Scenario: No local path provided
-- **WHEN** `LsCommand` is executed without `LocalPath`
+- **WHEN** `ListQuery` is executed without `LocalPath`
 - **THEN** the system SHALL list only cloud (Merkle tree) entries, with no local filesystem scanning
 
 ### Requirement: Streaming output via Mediator
-The `LsCommand` SHALL implement `IStreamQuery<RepositoryEntry>`. The handler SHALL implement `IStreamQueryHandler<LsCommand, RepositoryEntry>` and return `IAsyncEnumerable<RepositoryEntry>`. Consumers SHALL use `mediator.CreateStream(command)` to consume results. The handler SHALL NOT buffer all results before returning; each entry SHALL be yielded as soon as its directory is processed.
+The `ListQuery` SHALL implement `IStreamQuery<RepositoryEntry>`. The handler SHALL implement `IStreamQueryHandler<ListQuery, RepositoryEntry>` and return `IAsyncEnumerable<RepositoryEntry>`. Consumers SHALL use `mediator.CreateStream(command)` to consume results. The handler SHALL NOT buffer all results before returning; each entry SHALL be yielded as soon as its directory is processed.
 
 #### Scenario: Progressive streaming
-- **WHEN** the `LsCommand` is consumed via `mediator.CreateStream(command)`
+- **WHEN** the `ListQuery` is consumed via `mediator.CreateStream(command)`
 - **THEN** entries SHALL appear progressively as directories are processed, not after the full tree walk completes
 
 #### Scenario: Cancellation support

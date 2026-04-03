@@ -24,7 +24,7 @@ internal sealed class CliHarness
 {
     public ICommandHandler<ArchiveCommand, ArchiveResult>      ArchiveHandler { get; }
     public ICommandHandler<RestoreCommand, RestoreResult>      RestoreHandler { get; }
-    public IStreamQueryHandler<ListQuery, RepositoryEntry>     LsHandler      { get; }
+    public IStreamQueryHandler<ListQuery, RepositoryEntry>     ListQueryHandler      { get; }
     public IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult> HydrationHandler { get; }
 
     /// <summary>
@@ -43,7 +43,7 @@ internal sealed class CliHarness
     {
         var archiveHandler = Substitute.For<ICommandHandler<ArchiveCommand, ArchiveResult>>();
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
-        var lsHandler      = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
+        var listQueryHandler      = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
         var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
 
         archiveHandler
@@ -69,7 +69,7 @@ internal sealed class CliHarness
                 ChunksPendingRehydration = 0,
             });
 
-        lsHandler
+        listQueryHandler
             .Handle(Arg.Any<ListQuery>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
@@ -79,7 +79,7 @@ internal sealed class CliHarness
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
-        LsHandler      = lsHandler;
+        ListQueryHandler      = listQueryHandler;
         HydrationHandler = hydrationHandler;
 
         _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container, _) =>
@@ -93,7 +93,7 @@ internal sealed class CliHarness
             // Override all stream/command handlers with mocks
             services.AddSingleton(archiveHandler);
             services.AddSingleton(restoreHandler);
-            services.AddSingleton(lsHandler);
+            services.AddSingleton(listQueryHandler);
             services.AddSingleton(hydrationHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
@@ -230,20 +230,20 @@ public class RestoreCommandTests
     }
 }
 
-// ── 6.3 Ls command tests ──────────────────────────────────────────────────────
+// ── 6.3 List query parsing tests ──────────────────────────────────────────────
 
 [NotInParallel("AnsiConsoleRecorder")]
-public class LsCommandTests
+public class ListQueryParsingTests
 {
     [Test]
-    public async Task Ls_AllFilters_ParsedCorrectly()
+    public async Task ListQuery_AllFilters_ParsedCorrectly()
     {
         var harness  = new CliHarness();
         var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr -v 2026-01-01 --prefix docs/ -f .pdf");
 
         exitCode.ShouldBe(0);
 
-        var call = harness.LsHandler.ReceivedCalls().Single();
+        var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBe("2026-01-01");
         cmd.Options.Prefix.ShouldBe("docs/");
@@ -251,14 +251,13 @@ public class LsCommandTests
     }
 
     [Test]
-    public async Task Ls_Defaults_Applied()
-    {
+    public async Task ListQuery_Defaults_Applied()    {
         var harness  = new CliHarness();
         var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr");
 
         exitCode.ShouldBe(0);
 
-        var call = harness.LsHandler.ReceivedCalls().Single();
+        var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBeNull();
         cmd.Options.Prefix.ShouldBeNull();
@@ -266,14 +265,14 @@ public class LsCommandTests
     }
 
     [Test]
-    public async Task Ls_MockHandlerCaptures_PrefixAndFilter()
+    public async Task ListQuery_MockHandlerCaptures_PrefixAndFilter()
     {
         var harness  = new CliHarness();
         var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr --prefix photos/ -f .jpg");
 
         exitCode.ShouldBe(0);
 
-        var call = harness.LsHandler.ReceivedCalls().Single();
+        var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd  = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Prefix.ShouldBe("photos/");
         cmd.Options.Filter.ShouldBe(".jpg");
@@ -327,7 +326,7 @@ public class AccountResolutionTests
     }
 
     [Test]
-    public async Task Ls_EnvVarAccountUsedWhenCliFlagOmitted()
+    public async Task ListQuery_EnvVarAccountUsedWhenCliFlagOmitted()
     {
         Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", "envacct");
         try
