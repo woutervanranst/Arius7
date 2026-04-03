@@ -5,6 +5,8 @@ namespace Arius.Core.Tests.Fakes;
 /// <summary>
 /// Read-only seeded blob store for tests that only need to list, HEAD, and download known blobs.
 /// Used by list/query tests to model repository state without upload semantics.
+/// Use this fake when a test needs seeded downloadable content plus list/exists behavior, but no
+/// writes, metadata mutation, or conflict simulation.
 /// </summary>
 internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 {

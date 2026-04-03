@@ -6,6 +6,8 @@ namespace Arius.Core.Tests.Fakes;
 /// Lightweight metadata-focused <see cref="IBlobContainerService"/> fake used by list and
 /// hydration-status tests. It only models HEAD-style lookups and tracks which blob names were
 /// requested, keeping those tests explicit without carrying full upload/download behavior.
+/// Use this fake when a test only calls <c>GetMetadataAsync</c> and should fail fast if it starts
+/// depending on downloads, uploads, or other storage operations.
 /// </summary>
 internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerService
 {

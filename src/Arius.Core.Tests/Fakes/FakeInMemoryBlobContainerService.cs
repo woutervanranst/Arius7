@@ -9,6 +9,8 @@ namespace Arius.Core.Tests.Fakes;
 /// It is intentionally stateful and configurable so tests can model completed blobs,
 /// metadata-only reads, optimistic concurrency conflicts, and rerun recovery flows
 /// without depending on Azurite or real Azure-specific error behavior.
+/// Use this fake when a test needs full blob lifecycle behavior: uploads, open-write conflicts,
+/// metadata updates, deletes, copy/tier changes, or seeded blob contents.
 /// </summary>
 internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 {

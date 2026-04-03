@@ -5,6 +5,8 @@ namespace Arius.Core.Tests.Fakes;
 /// <summary>
 /// Minimal recording fake for tree-builder tests. It tracks uploads and HEAD checks while keeping
 /// all other blob operations inert so the tests can assert dedup/cache behavior without storage I/O.
+/// Use this fake when a test only needs to observe which blobs were uploaded or checked, not to
+/// persist or retrieve blob contents.
 /// </summary>
 internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 {
