@@ -162,7 +162,7 @@ public static class CliBuilder
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         var logFile   = Path.Combine(logDir, $"{timestamp}_{commandName}.txt");
 
-        const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}";
+        const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}{Exception}";
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -172,6 +172,15 @@ public static class CliBuilder
             .CreateLogger();
 
         return logFile;
+    }
+
+    internal static string FormatUnhandledExceptionMessage(Exception ex)
+    {
+        var message = string.IsNullOrWhiteSpace(ex.Message)
+            ? ex.GetType().Name
+            : ex.Message;
+
+        return $"[red]Error:[/] {Markup.Escape(message)}";
     }
 
     /// <summary>

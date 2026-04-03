@@ -4,6 +4,7 @@ using Arius.Core.Restore;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Serilog;
 using Shouldly;
 using System.CommandLine;
 
@@ -364,5 +365,49 @@ public class KeyResolutionTests
         Environment.SetEnvironmentVariable("ARIUS_KEY", null);
         var resolved = CliBuilder.ResolveKey(null, "acct");
         resolved.ShouldBeNull();
+    }
+}
+
+[NotInParallel("AnsiConsoleRecorder")]
+public class CrashLoggingTests
+{
+    [Test]
+    public void FormatUnhandledExceptionMessage_UsesOnlyEscapedMessage()
+    {
+        var message = CliBuilder.FormatUnhandledExceptionMessage(new InvalidOperationException("boom [x]"));
+
+        message.ShouldBe("[red]Error:[/] boom [[x]]");
+    }
+
+    [Test]
+    public void ConfigureAuditLogging_WritesFullExceptionDetailsToLogFile()
+    {
+        var logFile = CliBuilder.ConfigureAuditLogging("acct", "ctr", "test");
+
+        try
+        {
+            try
+            {
+                throw new InvalidOperationException("top level failure",
+                    new ArgumentException("inner failure"));
+            }
+            catch (InvalidOperationException exception)
+            {
+                Log.Fatal(exception, "Unhandled exception");
+            }
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
+
+        var logContents = File.ReadAllText(logFile);
+
+        logContents.ShouldContain("Unhandled exception");
+        logContents.ShouldContain("System.InvalidOperationException: top level failure");
+        logContents.ShouldContain("System.ArgumentException: inner failure");
+        logContents.ShouldContain(" at ");
+
+        File.Delete(logFile);
     }
 }
