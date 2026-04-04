@@ -84,7 +84,18 @@ public sealed class TreeCacheService
         {
             var cached = await File.ReadAllBytesAsync(diskPath, cancellationToken);
             if (cached.Length > 0)
-                return TreeBlobSerializer.Deserialize(cached);
+            {
+                try
+                {
+                    return TreeBlobSerializer.Deserialize(cached);
+                }
+                catch (Exception)
+                {
+                    // Corrupt cache file (e.g. partial write from a prior crash).
+                    // Delete and fall through to Azure download.
+                    try { File.Delete(diskPath); } catch { /* best-effort */ }
+                }
+            }
         }
 
         // Azure fallback
