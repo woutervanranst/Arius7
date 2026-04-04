@@ -46,13 +46,15 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
+        var treeCache = new TreeCacheService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
         var handler = new ListQueryHandler(
             blobs,
             s_encryption,
             index,
+            treeCache,
             NullLogger<ListQueryHandler>.Instance,
-            "account",
-            "container");
+            "acct-ls-test-1",
+            "ctr-ls-test-1");
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None))
@@ -120,13 +122,15 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
+        var treeCache2 = new TreeCacheService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
         var handler = new ListQueryHandler(
             blobs,
             s_encryption,
             index,
+            treeCache2,
             NullLogger<ListQueryHandler>.Instance,
-            "account",
-            "container");
+            "acct-ls-test-2",
+            "ctr-ls-test-2");
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
@@ -178,13 +182,15 @@ public class ListQueryHandlerTests
             index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
             index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
+            var treeCache3 = new TreeCacheService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
             var handler = new ListQueryHandler(
                 blobs,
                 s_encryption,
                 index,
+                treeCache3,
                 NullLogger<ListQueryHandler>.Instance,
-                "account",
-                "container");
+                "acct-ls-test-3",
+                "ctr-ls-test-3");
 
             var results = new List<RepositoryFileEntry>();
             await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
@@ -519,7 +525,7 @@ public class ListQueryHandlerTests
     };
 
     private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index) =>
-        new(blobs, s_encryption, index, NullLogger<ListQueryHandler>.Instance, "account", "container");
+        new(blobs, s_encryption, index, new TreeCacheService(blobs, s_encryption, "account", "container"), NullLogger<ListQueryHandler>.Instance, "account", "container");
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {

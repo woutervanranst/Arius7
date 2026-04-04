@@ -19,6 +19,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
+    private readonly TreeCacheService _treeCache;
     private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
@@ -27,6 +28,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         IBlobContainerService blobs,
         IEncryptionService encryption,
         ChunkIndexService index,
+        TreeCacheService treeCache,
         ILogger<ListQueryHandler> logger,
         string accountName,
         string containerName)
@@ -34,6 +36,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         _blobs = blobs;
         _encryption = encryption;
         _index = index;
+        _treeCache = treeCache;
         _logger = logger;
         _accountName = accountName;
         _containerName = containerName;
@@ -98,9 +101,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         TreeBlob? treeBlob = null;
         if (treeHash is not null)
         {
-            var blobName = BlobPaths.FileTree(treeHash);
-            await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-            treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+            treeBlob = await _treeCache.ReadAsync(treeHash, cancellationToken);
         }
 
         var localSnapshot = BuildLocalDirectorySnapshot(localDir, currentRelativeDirectory);
@@ -254,9 +255,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 break;
             }
 
-            var blobName = BlobPaths.FileTree(currentHash);
-            await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-            var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+            var treeBlob = await _treeCache.ReadAsync(currentHash, cancellationToken);
 
             var nextDirectory = treeBlob.Entries.FirstOrDefault(e =>
                 e.Type == TreeEntryType.Dir

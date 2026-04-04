@@ -381,7 +381,7 @@ public class TreeBuilderTests
     {
         const string acct = "acct-single";
         const string cont = "cont-single";
-        var cacheDir = TreeBuilder.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
 
         // Clean any stale disk cache from prior runs before the test
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
@@ -413,8 +413,8 @@ public class TreeBuilderTests
     {
         const string acct1 = "acc-identical-1", cont1 = "con-identical-1";
         const string acct2 = "acc-identical-2", cont2 = "con-identical-2";
-        var cache1 = TreeBuilder.GetDiskCacheDirectory(acct1, cont1);
-        var cache2 = TreeBuilder.GetDiskCacheDirectory(acct2, cont2);
+        var cache1 = TreeCacheService.GetDiskCacheDirectory(acct1, cont1);
+        var cache2 = TreeCacheService.GetDiskCacheDirectory(acct2, cont2);
         if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
         if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
 
@@ -456,7 +456,7 @@ public class TreeBuilderTests
     public async Task BuildAsync_MetadataChange_DifferentRootHash()
     {
         const string acct = "acc-meta", cont = "con-meta";
-        var cacheDir = TreeBuilder.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
 
         var manifestPath1 = Path.GetTempFileName();
@@ -520,7 +520,7 @@ public class TreeBuilderTests
         {
             File.Delete(manifestPath);
             // Clean up disk cache
-            var cacheDir = TreeBuilder.GetDiskCacheDirectory("acc", "con");
+            var cacheDir = TreeCacheService.GetDiskCacheDirectory("acc", "con");
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }

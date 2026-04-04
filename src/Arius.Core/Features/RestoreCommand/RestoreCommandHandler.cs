@@ -34,6 +34,7 @@ public sealed class RestoreCommandHandler
     private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
+    private readonly TreeCacheService                 _treeCache;
     private readonly IMediator                        _mediator;
     private readonly ILogger<RestoreCommandHandler>  _logger;
     private readonly string                           _accountName;
@@ -43,6 +44,7 @@ public sealed class RestoreCommandHandler
         IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
+        TreeCacheService               treeCache,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
         string                         accountName,
@@ -51,6 +53,7 @@ public sealed class RestoreCommandHandler
         _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
+        _treeCache     = treeCache;
         _mediator      = mediator;
         _logger        = logger;
         _accountName   = accountName;
@@ -110,8 +113,7 @@ public sealed class RestoreCommandHandler
 
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
-            var treeCache = new TreeBuilder(_blobs, _encryption, _accountName, _containerName);
-            var files     = await CollectFilesAsync(snapshot.RootHash, opts.TargetPath, treeCache, cancellationToken);
+            var files     = await CollectFilesAsync(snapshot.RootHash, opts.TargetPath, cancellationToken);
 
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
@@ -521,7 +523,7 @@ public sealed class RestoreCommandHandler
     /// that match <paramref name="targetPath"/> (or all files if <c>null</c>).
     /// Emits batched <see cref="TreeTraversalProgressEvent"/> during traversal.
     /// </summary>
-    private async Task<List<FileToRestore>> CollectFilesAsync(string rootHash, string? targetPath, TreeBuilder treeCache, CancellationToken cancellationToken)
+    private async Task<List<FileToRestore>> CollectFilesAsync(string rootHash, string? targetPath, CancellationToken cancellationToken)
     {
         var result = new List<FileToRestore>();
         var prefix = NormalizePath(targetPath);
@@ -564,10 +566,8 @@ public sealed class RestoreCommandHandler
         if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix))
             return;
 
-        // Load tree blob from cache/storage
-        var blobName = BlobPaths.FileTree(treeHash);
-        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+        // Load tree blob via cache
+        var treeBlob = await _treeCache.ReadAsync(treeHash, cancellationToken);
 
         foreach (var entry in treeBlob.Entries)
         {

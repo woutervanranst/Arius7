@@ -39,6 +39,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
     private readonly ChunkIndexService              _index;
+    private readonly TreeCacheService               _treeCache;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -48,6 +49,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
+        TreeCacheService                treeCache,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
@@ -56,6 +58,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
+        _treeCache     = treeCache;
         _mediator      = mediator;
         _logger        = logger;
         _accountName   = accountName;
@@ -598,6 +601,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
+            // Task 5.1: Validate tree cache before building tree (compare local/remote snapshot markers)
+            await _treeCache.ValidateAsync(cancellationToken);
+
             // Task 8.10: Index flush
             await _index.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
@@ -606,7 +612,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await manifestWriter.DisposeAsync();
             await ManifestSorter.SortAsync(manifestPath, cancellationToken);
 
-            var treeBuilder = new TreeBuilder(_blobs, _encryption, _accountName, _containerName);
+            var treeBuilder = new TreeBuilder(_encryption, _treeCache);
             var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
 
@@ -620,6 +626,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
                 _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+
+                // Task 5.2: Write local snapshot marker so next run recognises this machine's cache as current
+                var timestampStr = snapshot.Timestamp.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+                await _treeCache.WriteSnapshotMarkerAsync(timestampStr, cancellationToken);
 
                 await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
             }

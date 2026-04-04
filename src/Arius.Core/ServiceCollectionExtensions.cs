@@ -5,6 +5,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,6 +55,14 @@ public static class ServiceCollectionExtensions
                 containerName,
                 cacheBudgetBytes));
 
+        // Tree cache
+        services.AddSingleton(sp =>
+            new TreeCacheService(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IEncryptionService>(),
+                accountName,
+                containerName));
+
         // NOTE: AddMediator() is intentionally NOT called here.
         // The source generator must run in the outermost assembly (Arius.Cli or test project)
         // so it can discover INotificationHandler<T> implementations in both Core and CLI.
@@ -67,6 +76,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<TreeCacheService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 accountName,
@@ -77,6 +87,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<TreeCacheService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
@@ -87,6 +98,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<TreeCacheService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,
                 containerName));
