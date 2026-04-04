@@ -1,6 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
@@ -88,7 +89,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
     {
         var mediator = Substitute.For<IMediator>();
         return new ArchiveCommandHandler(
-            blobService, encryption, index, mediator,
+            blobService, encryption, index, new TreeCacheService(blobService, encryption, Account, containerName), mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);
     }

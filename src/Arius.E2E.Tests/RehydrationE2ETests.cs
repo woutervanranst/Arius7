@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Shouldly;
 using System.Formats.Tar;
@@ -91,6 +92,7 @@ public class RehydrationE2ETests(AzureFixture azure)
 
             var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
+                new TreeCacheService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
@@ -112,6 +114,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             var trackingSvc2 = new CopyTrackingBlobService(svc);
             var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
+                new TreeCacheService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
@@ -158,6 +161,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             {
                 var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
+                    new TreeCacheService(svc, fix.Encryption, container.AccountName, container.Name),
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                     container.AccountName, container.Name);
