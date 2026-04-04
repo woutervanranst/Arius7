@@ -4,6 +4,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Azure.Storage.Blobs;
@@ -116,17 +117,17 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
-        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name), Mediator,
+        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name), new SnapshotService(BlobContainer, Encryption, Account, Container.Name), Mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, Container.Name);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name), Mediator,
+        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name), new SnapshotService(BlobContainer, Encryption, Account, Container.Name), Mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 
     public ListQueryHandler CreateListQueryHandler() =>
-        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name),
+        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, Account, Container.Name), new SnapshotService(BlobContainer, Encryption, Account, Container.Name),
             NullLogger<ListQueryHandler>.Instance,
             Account, Container.Name);
 

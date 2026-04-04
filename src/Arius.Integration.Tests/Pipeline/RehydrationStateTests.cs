@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
@@ -163,6 +164,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         new(sim, fix.Encryption,
             new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name),
             new TreeCacheService(sim, fix.Encryption, Account, fix.Container.Name),
+            new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
             NullLogger<RestoreCommandHandler>.Instance,
             Account, fix.Container.Name);

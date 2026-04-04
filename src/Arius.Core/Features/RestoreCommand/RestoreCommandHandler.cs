@@ -35,6 +35,7 @@ public sealed class RestoreCommandHandler
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
     private readonly TreeCacheService                 _treeCache;
+    private readonly SnapshotService                  _snapshotSvc;
     private readonly IMediator                        _mediator;
     private readonly ILogger<RestoreCommandHandler>  _logger;
     private readonly string                           _accountName;
@@ -45,6 +46,7 @@ public sealed class RestoreCommandHandler
         IEncryptionService             encryption,
         ChunkIndexService              index,
         TreeCacheService               treeCache,
+        SnapshotService                snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
         string                         accountName,
@@ -54,6 +56,7 @@ public sealed class RestoreCommandHandler
         _encryption    = encryption;
         _index         = index;
         _treeCache     = treeCache;
+        _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
         _logger        = logger;
         _accountName   = accountName;
@@ -92,8 +95,7 @@ public sealed class RestoreCommandHandler
         {
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
 
-            var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
-            var snapshot    = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+            var snapshot    = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
 
             if (snapshot is null)
             {

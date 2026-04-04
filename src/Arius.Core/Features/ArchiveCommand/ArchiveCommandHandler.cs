@@ -40,6 +40,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly IEncryptionService             _encryption;
     private readonly ChunkIndexService              _index;
     private readonly TreeCacheService               _treeCache;
+    private readonly SnapshotService                _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -50,6 +51,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IEncryptionService              encryption,
         ChunkIndexService               index,
         TreeCacheService                treeCache,
+        SnapshotService                 snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
@@ -59,6 +61,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _encryption    = encryption;
         _index         = index;
         _treeCache     = treeCache;
+        _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
         _logger        = logger;
         _accountName   = accountName;
@@ -621,8 +624,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             if (rootHash is not null)
             {
-                var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
-                var snapshot = await snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
+                var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
                 _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);

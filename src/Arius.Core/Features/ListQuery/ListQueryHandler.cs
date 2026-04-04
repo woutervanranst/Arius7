@@ -20,6 +20,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
     private readonly TreeCacheService _treeCache;
+    private readonly SnapshotService _snapshotSvc;
     private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
@@ -29,6 +30,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         IEncryptionService encryption,
         ChunkIndexService index,
         TreeCacheService treeCache,
+        SnapshotService snapshotSvc,
         ILogger<ListQueryHandler> logger,
         string accountName,
         string containerName)
@@ -37,6 +39,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         _encryption = encryption;
         _index = index;
         _treeCache = treeCache;
+        _snapshotSvc = snapshotSvc;
         _logger = logger;
         _accountName = accountName;
         _containerName = containerName;
@@ -58,8 +61,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             opts.Recursive,
             opts.LocalPath ?? "(none)");
 
-        var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
-        var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+        var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
         {
             throw new InvalidOperationException(

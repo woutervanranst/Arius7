@@ -96,7 +96,7 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 ### Requirement: SnapshotService write-through disk cache
 After the archive pipeline successfully creates a new snapshot via `SnapshotService.CreateAsync`, `SnapshotService` SHALL write the full plain-JSON snapshot manifest to `~/.arius/{repo}/snapshots/<timestamp>` as a write-through (before returning from `CreateAsync`). The directory SHALL be created if it does not exist. `SnapshotService.GetDiskCacheDirectory(accountName, containerName)` SHALL return the path to the snapshots directory. `SnapshotService.ResolveAsync` SHALL be disk-first: read from local JSON if present, fall back to Azure download and cache locally on miss.
 
-`SnapshotService` SHALL accept `accountName` and `containerName` as constructor parameters alongside its existing dependencies.
+`SnapshotService` SHALL accept `accountName` and `containerName` as constructor parameters alongside its existing dependencies. `SnapshotService` SHALL be registered in the DI container as a singleton, consistent with `ChunkIndexService` and `TreeCacheService`, with its constructor accepting `IBlobContainerService`, `IEncryptionService`, `string accountName`, and `string containerName`.
 
 #### Scenario: Snapshot written to disk after archive
 - **WHEN** the archive pipeline creates snapshot `2026-03-22T150000.000Z`

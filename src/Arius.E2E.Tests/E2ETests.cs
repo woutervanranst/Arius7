@@ -4,6 +4,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -264,12 +265,18 @@ public sealed class E2EFixture : IAsyncDisposable
             Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
-        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, _account, _container), _mediator,
+        new(BlobContainer, Encryption, Index,
+            new TreeCacheService(BlobContainer, Encryption, _account, _container),
+            new SnapshotService(BlobContainer, Encryption, _account, _container),
+            _mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             _account, _container);
 
     private RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index, new TreeCacheService(BlobContainer, Encryption, _account, _container), _mediator,
+        new(BlobContainer, Encryption, Index,
+            new TreeCacheService(BlobContainer, Encryption, _account, _container),
+            new SnapshotService(BlobContainer, Encryption, _account, _container),
+            _mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             _account, _container);
 
