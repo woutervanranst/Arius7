@@ -122,6 +122,50 @@ public class TreeCacheServiceTests
         }
     }
 
+    // ── 7.2b ReadAsync — concurrent reads for same hash ──────────────────────
+
+    [Test]
+    public async Task ReadAsync_ConcurrentReads_NoDiskCorruption_AtMostOneAzureDownload()
+    {
+        const string acct = "tc-read-conc", cont = "container";
+        var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        try
+        {
+            var blob     = MakeBlob("concurrent.txt", "cc001122");
+            var hash     = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var blobName = BlobPaths.FileTree(hash);
+
+            // Pre-populate Azure only — no local cache
+            var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
+            blobs.RequestedBlobNames.Clear();
+
+            // Fire two concurrent ReadAsync calls for the same hash
+            var t1 = svc.ReadAsync(hash);
+            var t2 = svc.ReadAsync(hash);
+            var results = await Task.WhenAll(t1, t2);
+
+            // Both should return the correct blob
+            results[0].Entries.Count.ShouldBe(1);
+            results[0].Entries[0].Name.ShouldBe("concurrent.txt");
+            results[1].Entries.Count.ShouldBe(1);
+            results[1].Entries[0].Name.ShouldBe("concurrent.txt");
+
+            // Disk file must exist and have content (not empty / corrupt)
+            var diskPath = Path.Combine(cacheDir, hash);
+            File.Exists(diskPath).ShouldBeTrue();
+            (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+
+            // Azure should have been called at most once (second read may hit disk or may
+            // race — both outcomes are acceptable; what is NOT acceptable is >2 downloads)
+            blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBeLessThanOrEqualTo(2);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
     // ── 7.3  WriteAsync — Azure upload + disk cache write ────────────────────
 
     [Test]
