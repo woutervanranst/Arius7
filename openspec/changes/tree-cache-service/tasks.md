@@ -6,7 +6,7 @@
 - [x] 1.4 Implement `WriteAsync(string hash, TreeBlob, CancellationToken)`: serialize via `TreeBlobSerializer.SerializeForStorageAsync` → upload to Azure (`overwrite: false`, catch `BlobAlreadyExistsException`) → write plaintext to disk cache.
 - [x] 1.5 Implement `ValidateAsync(CancellationToken)`: enumerate `snapshots/` directory for timestamp-named marker files → sort → latest local timestamp. Call `ListAsync("snapshots/")` to find latest remote → compare. On mismatch: `ListAsync("filetrees/")` → create empty marker file on disk for each remote blob not already cached; delete chunk-index L2 directory files.
 - [x] 1.6 Implement `ExistsInRemote(string hash)`: always `File.Exists` on disk (works on both paths after `ValidateAsync`). Throw `InvalidOperationException` if called before `ValidateAsync`.
-- [x] 1.7 Implement `WriteSnapshotMarkerAsync(string timestamp, CancellationToken)`: create empty file at `~/.arius/{repo}/snapshots/{timestamp}`. Create directory if needed.
+- [x] 1.7 ~~Implement `WriteSnapshotMarkerAsync(string timestamp, CancellationToken)`: create empty file at `~/.arius/{repo}/snapshots/{timestamp}`. Create directory if needed.~~ **Superseded**: snapshot disk persistence is handled by `SnapshotService.CreateAsync` (write-through full JSON). No separate `WriteSnapshotMarkerAsync` method is needed on `TreeCacheService`.
 
 ## 2. Wire ListQueryHandler Through Cache
 
@@ -29,7 +29,7 @@
 ## 5. Archive Pipeline Integration
 
 - [x] 5.1 Call `TreeCacheService.ValidateAsync()` at the start of the end-of-pipeline phase in `ArchiveCommandHandler` (before `FlushAsync` and `BuildAsync`).
-- [x] 5.2 After `SnapshotService.CreateAsync` succeeds, call `TreeCacheService.WriteSnapshotMarkerAsync(timestamp)` to write the empty marker file.
+- [x] 5.2 ~~After `SnapshotService.CreateAsync` succeeds, call `TreeCacheService.WriteSnapshotMarkerAsync(timestamp)` to write the empty marker file.~~ **Superseded**: `SnapshotService.CreateAsync` performs write-through to disk itself; no pipeline-level marker step is needed.
 
 ## 6. DI Registration
 

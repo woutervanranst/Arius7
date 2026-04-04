@@ -49,7 +49,7 @@ Tree blob uploads and existence checks SHALL use `TreeCacheService` instead of a
 - **THEN** the tree hash SHALL be SHA256 of the UTF-8 encoded text bytes, optionally passphrase-seeded via `IEncryptionService.ComputeHash`
 
 ### Requirement: Snapshot creation
-The system SHALL create a snapshot manifest after tree construction completes. The snapshot SHALL be stored at `snapshots/<UTC-timestamp>` (e.g., `2026-03-22T150000.000Z`) and SHALL contain the root tree hash, timestamp, file count, total size, and Arius version. Snapshots SHALL NEVER be deleted. After successful snapshot creation, the pipeline SHALL write an empty marker file named by the snapshot timestamp to `~/.arius/{repo}/snapshots/` to enable fast-path cache validation on subsequent runs.
+The system SHALL create a snapshot manifest after tree construction completes. The snapshot SHALL be stored at `snapshots/<UTC-timestamp>` (e.g., `2026-03-22T150000.000Z`) and SHALL contain the root tree hash, timestamp, file count, total size, and Arius version. Snapshots SHALL NEVER be deleted. `SnapshotService.CreateAsync` is responsible for both uploading the snapshot manifest to Azure and writing the full JSON manifest to `~/.arius/{repo}/snapshots/<timestamp>` on disk (write-through), enabling fast-path cache validation on subsequent runs.
 
 #### Scenario: Successful snapshot creation
 - **WHEN** the archive pipeline completes successfully
@@ -59,9 +59,9 @@ The system SHALL create a snapshot manifest after tree construction completes. T
 - **WHEN** files have been added, modified, and deleted since the last archive
 - **THEN** the new snapshot SHALL only contain files that exist at archive time (no deleted files)
 
-#### Scenario: Marker file written after snapshot
+#### Scenario: Snapshot JSON written to disk after archive
 - **WHEN** the archive pipeline creates snapshot `2026-03-22T150000.000Z`
-- **THEN** an empty marker file `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z` SHALL be created
+- **THEN** `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z`
 
 #### Scenario: Cache validation runs before end-of-pipeline
 - **WHEN** the archive pipeline begins the end-of-pipeline phase

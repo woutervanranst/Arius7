@@ -87,17 +87,17 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 - **WHEN** a snapshot mismatch is detected
 - **THEN** all files in `~/.arius/{repo}/chunk-index/` SHALL be deleted to force `ChunkIndexService` to re-download from Azure on next access
 
-### Requirement: Snapshot marker file update
-After the archive pipeline successfully creates a new snapshot via `SnapshotService.CreateAsync`, the pipeline SHALL write an empty marker file named by the snapshot timestamp to `~/.arius/{repo}/snapshots/` (e.g., `2026-03-22T150000.000Z`), using the same `SnapshotService.TimestampFormat`. The directory `~/.arius/{repo}/snapshots/` SHALL be created if it does not exist.
+### Requirement: Snapshot disk cache update
+After the archive pipeline successfully creates a new snapshot, `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/` named by the snapshot timestamp (e.g., `2026-03-22T150000.000Z`), using the same `SnapshotService.TimestampFormat`. This is a write-through operation — the same content is uploaded to Azure and persisted locally. The directory `~/.arius/{repo}/snapshots/` SHALL be created if it does not exist.
 
-#### Scenario: Marker file written after archive
+#### Scenario: Snapshot JSON written after archive
 - **WHEN** the archive pipeline creates snapshot `2026-03-22T150000.000Z`
-- **THEN** an empty file `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z` SHALL be created
+- **THEN** `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z`
 
-#### Scenario: Marker file written on subsequent archive
+#### Scenario: Snapshot disk file written on subsequent archive
 - **WHEN** a second archive creates snapshot `2026-03-23T080000.000Z`
-- **THEN** an additional empty file `~/.arius/{repo}/snapshots/2026-03-23T080000.000Z` SHALL be created (previous markers remain)
+- **THEN** an additional JSON file `~/.arius/{repo}/snapshots/2026-03-23T080000.000Z` SHALL be created (previous files remain)
 
 #### Scenario: Snapshots directory created if missing
 - **WHEN** the `~/.arius/{repo}/snapshots/` directory does not exist
-- **THEN** the pipeline SHALL create it before writing the marker file
+- **THEN** `SnapshotService.CreateAsync` SHALL create it before writing the snapshot JSON file
