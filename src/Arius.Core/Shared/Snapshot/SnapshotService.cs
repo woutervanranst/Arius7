@@ -1,3 +1,4 @@
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using System.IO.Compression;
@@ -32,7 +33,7 @@ public sealed record SnapshotManifest
 
 /// <summary>
 /// Serialization/deserialization for <see cref="SnapshotManifest"/>.
-/// On-disk format: JSON → gzip → optional encrypt.
+/// On-disk (Azure) format: JSON → gzip → optional encrypt.
 /// </summary>
 public static class SnapshotSerializer
 {
@@ -84,26 +85,59 @@ public static class SnapshotSerializer
 }
 
 /// <summary>
-/// Creates, lists, and resolves snapshots in blob storage.
+/// Creates, lists, and resolves snapshots in blob storage, with a local plain-JSON disk cache.
+///
+/// Disk cache directory: <c>~/.arius/{accountName}-{containerName}/snapshots/</c>
+///
+/// Cache strategy:
+/// <list type="bullet">
+///   <item><see cref="CreateAsync"/>: write plain JSON to disk first, then upload (gzip + optional encrypt) to Azure.</item>
+///   <item><see cref="ResolveAsync"/>: check disk first; fall back to Azure and cache locally.</item>
+/// </list>
 /// </summary>
 public sealed class SnapshotService
 {
     private readonly IBlobContainerService _blobs;
-    private readonly IEncryptionService  _encryption;
+    private readonly IEncryptionService    _encryption;
+    private readonly string                _diskCacheDir;
 
     /// <summary>
-    /// Timestamp format used for snapshot blob names.
+    /// Timestamp format used for snapshot blob names and local cache filenames.
+    /// Lexicographic sort == chronological sort.
     /// e.g. <c>2026-03-22T150000.000Z</c>
     /// </summary>
     public const string TimestampFormat = "yyyy-MM-ddTHHmmss.fffZ";
 
-    public SnapshotService(IBlobContainerService blobs, IEncryptionService encryption)
+    private static readonly JsonSerializerOptions s_localJsonOptions = new()
     {
-        _blobs      = blobs;
-        _encryption = encryption;
+        WriteIndented          = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+    };
+
+    public SnapshotService(
+        IBlobContainerService blobs,
+        IEncryptionService    encryption,
+        string                accountName,
+        string                containerName)
+    {
+        _blobs        = blobs;
+        _encryption   = encryption;
+        _diskCacheDir = GetDiskCacheDirectory(accountName, containerName);
+        Directory.CreateDirectory(_diskCacheDir);
     }
 
-    // ── Snapshot name ─────────────────────────────────────────────────────────
+    // ── Directory helper ──────────────────────────────────────────────────────
+
+    /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
+    public static string GetDiskCacheDirectory(string accountName, string containerName)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "snapshots");
+    }
+
+    // ── Snapshot blob name ────────────────────────────────────────────────────
 
     /// <summary>Returns the blob name for a snapshot with the given UTC timestamp.</summary>
     public static string BlobName(DateTimeOffset timestamp) =>
@@ -120,11 +154,12 @@ public sealed class SnapshotService
             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal);
     }
 
-    // ── Task 6.2: Create ──────────────────────────────────────────────────────
+    // ── Create ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a new snapshot, serializes it, and uploads to <c>snapshots/&lt;timestamp&gt;</c>.
-    /// Returns the uploaded snapshot.
+    /// Creates a new snapshot: writes plain JSON to disk first (write-through),
+    /// then uploads (gzip + optional encrypt) to Azure.
+    /// Returns the created manifest.
     /// </summary>
     public async Task<SnapshotManifest> CreateAsync(
         string            rootHash,
@@ -143,6 +178,10 @@ public sealed class SnapshotService
             AriusVersion = GetAriusVersion()
         };
 
+        // Write-through: disk first (plain JSON)
+        await WriteToDiskAsync(manifest, cancellationToken);
+
+        // Then Azure (gzip + optional encrypt)
         var bytes    = await SnapshotSerializer.SerializeAsync(manifest, _encryption, cancellationToken);
         var blobName = BlobName(ts);
 
@@ -158,7 +197,7 @@ public sealed class SnapshotService
         return manifest;
     }
 
-    // ── Task 6.3: List ────────────────────────────────────────────────────────
+    // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Lists all snapshot blob names sorted by timestamp (oldest → newest).
@@ -170,21 +209,16 @@ public sealed class SnapshotService
         await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
             names.Add(name);
 
-        // Sort by the timestamp encoded in the blob name
-        names.Sort((a, b) =>
-        {
-            var ta = ParseTimestamp(a);
-            var tb = ParseTimestamp(b);
-            return ta.CompareTo(tb);
-        });
+        names.Sort((a, b) => ParseTimestamp(a).CompareTo(ParseTimestamp(b)));
 
         return names;
     }
 
-    // ── Task 6.4: Resolve ─────────────────────────────────────────────────────
+    // ── Resolve ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Resolves a snapshot: returns the latest if <paramref name="version"/> is <c>null</c>,
+    /// Resolves a snapshot: disk-first (reads plain JSON if cached locally), falls back to Azure.
+    /// Returns the latest if <paramref name="version"/> is <c>null</c>,
     /// otherwise returns the snapshot whose timestamp starts with the given version string.
     /// Returns <c>null</c> if no matching snapshot exists.
     /// </summary>
@@ -202,7 +236,6 @@ public sealed class SnapshotService
         }
         else
         {
-            // Find first blob name whose timestamp portion starts with the version string
             var match = names.LastOrDefault(n =>
             {
                 var ts = n.StartsWith(BlobPaths.Snapshots) ? n[BlobPaths.Snapshots.Length..] : n;
@@ -212,12 +245,33 @@ public sealed class SnapshotService
             blobName = match;
         }
 
-        return await LoadAsync(blobName, cancellationToken);
+        // Disk-first: check local plain-JSON cache
+        var localName = blobName.StartsWith(BlobPaths.Snapshots) ? blobName[BlobPaths.Snapshots.Length..] : blobName;
+        var localPath = Path.Combine(_diskCacheDir, localName);
+        if (File.Exists(localPath))
+        {
+            var json = await File.ReadAllBytesAsync(localPath, cancellationToken);
+            return JsonSerializer.Deserialize<SnapshotManifest>(json, s_localJsonOptions)
+                ?? throw new InvalidDataException($"Failed to deserialize local snapshot: {localPath}");
+        }
+
+        // Fall back to Azure and cache locally
+        var manifest = await LoadFromAzureAsync(blobName, cancellationToken);
+        await WriteToDiskAsync(manifest, cancellationToken);
+        return manifest;
     }
 
-    // ── Internal: download and deserialize ────────────────────────────────────
+    // ── Internal helpers ──────────────────────────────────────────────────────
 
-    private async Task<SnapshotManifest> LoadAsync(
+    private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
+    {
+        var fileName = manifest.Timestamp.UtcDateTime.ToString(TimestampFormat);
+        var path     = Path.Combine(_diskCacheDir, fileName);
+        var json     = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
+        await File.WriteAllBytesAsync(path, json, cancellationToken);
+    }
+
+    private async Task<SnapshotManifest> LoadFromAzureAsync(
         string blobName, CancellationToken cancellationToken)
     {
         await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
@@ -225,8 +279,6 @@ public sealed class SnapshotService
         await stream.CopyToAsync(ms, cancellationToken);
         return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, cancellationToken);
     }
-
-    // ── Version helper ────────────────────────────────────────────────────────
 
     private static string GetAriusVersion() =>
         Assembly.GetExecutingAssembly()

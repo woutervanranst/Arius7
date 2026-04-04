@@ -92,7 +92,7 @@ public sealed class RestoreCommandHandler
         {
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
 
-            var snapshotSvc = new SnapshotService(_blobs, _encryption);
+            var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
             var snapshot    = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
 
             if (snapshot is null)

@@ -40,10 +40,11 @@ public class TreeCacheServiceTests
     private static (TreeCacheService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)
     {
-        var blobs       = new FakeInMemoryBlobContainerService();
-        var svc         = new TreeCacheService(blobs, s_enc, acct, cont);
-        var cacheDir    = TreeCacheService.GetDiskCacheDirectory(acct, cont);
-        var snapshotsDir = TreeCacheService.GetSnapshotsDirectory(acct, cont);
+        var blobs        = new FakeInMemoryBlobContainerService();
+        var svc          = new TreeCacheService(blobs, s_enc, acct, cont);
+        var cacheDir     = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
     }
 
@@ -391,25 +392,35 @@ public class TreeCacheServiceTests
         }
     }
 
-    // ── 7.12  WriteSnapshotMarkerAsync ────────────────────────────────────────
+    // ── 7.12  SnapshotService.CreateAsync — write-through to disk ────────────
 
     [Test]
-    public async Task WriteSnapshotMarkerAsync_CreatesEmptyFileWithCorrectName()
+    public async Task SnapshotService_CreateAsync_WritesPlainJsonToDisk()
     {
         const string acct = "tc-marker", cont = "container";
-        var (svc, _, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var blobs        = new FakeInMemoryBlobContainerService();
+        var snapshotSvc  = new SnapshotService(blobs, s_enc, acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         try
         {
-            var timestamp = "2024-06-15T100000.000Z";
-            await svc.WriteSnapshotMarkerAsync(timestamp);
+            var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var rootHash = "aabbccdd" + new string('0', 56);
+            var manifest = await snapshotSvc.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
 
-            var markerPath = Path.Combine(snapshotsDir, timestamp);
-            File.Exists(markerPath).ShouldBeTrue();
-            (await File.ReadAllBytesAsync(markerPath)).Length.ShouldBe(0);
+            var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+            var localPath        = Path.Combine(snapshotsDir, expectedFileName);
+
+            // Disk file exists and is valid JSON
+            File.Exists(localPath).ShouldBeTrue();
+            var json = await File.ReadAllTextAsync(localPath);
+            json.ShouldContain(rootHash);
+
+            // Azure was also uploaded
+            blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts));
         }
         finally
         {
-            await CleanupAsync(cacheDir, snapshotsDir);
+            if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
         }
     }
 

@@ -621,15 +621,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             if (rootHash is not null)
             {
-                var snapshotSvc = new SnapshotService(_blobs, _encryption);
+                var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
                 var snapshot = await snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
                 snapshotRootHash = snapshot.RootHash;
                 snapshotTime     = snapshot.Timestamp;
                 _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
-
-                // Task 5.2: Write local snapshot marker so next run recognises this machine's cache as current
-                var timestampStr = snapshot.Timestamp.UtcDateTime.ToString(SnapshotService.TimestampFormat);
-                await _treeCache.WriteSnapshotMarkerAsync(timestampStr, cancellationToken);
 
                 await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
             }

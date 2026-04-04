@@ -9,15 +9,15 @@ namespace Arius.Core.Shared.FileTree;
 /// Two-tier cache for filetree blobs (disk → Azure).
 ///
 /// Disk cache directory: <c>~/.arius/{accountName}-{containerName}/filetrees/</c>
-/// Snapshot markers:     <c>~/.arius/{accountName}-{containerName}/snapshots/</c>
 ///
 /// Cache strategy:
 /// <list type="bullet">
 ///   <item>Filetree blobs are immutable (content-addressed). A cached file is never stale.</item>
-///   <item><see cref="ValidateAsync"/> compares the latest local snapshot marker with the latest
-///     remote snapshot. On mismatch, it lists all remote <c>filetrees/</c> blobs and materializes
-///     an empty marker file on disk for each one not already cached, so that
-///     <see cref="ExistsInRemote"/> is always a <c>File.Exists</c> check on both fast and slow paths.</item>
+///   <item><see cref="ValidateAsync"/> compares the latest local snapshot (via
+///     <see cref="SnapshotService.GetDiskCacheDirectory"/>) with the latest remote snapshot.
+///     On mismatch, it lists all remote <c>filetrees/</c> blobs and materializes an empty marker
+///     file on disk for each one not already cached, so that <see cref="ExistsInRemote"/> is
+///     always a <c>File.Exists</c> check on both fast and slow paths.</item>
 ///   <item>On snapshot mismatch the chunk-index L2 directory is also deleted so
 ///     <see cref="ChunkIndexService"/> is forced to re-download stale shards.</item>
 /// </list>
@@ -48,11 +48,11 @@ public sealed class TreeCacheService
         _blobs           = blobs;
         _encryption      = encryption;
         _diskCacheDir    = GetDiskCacheDirectory(accountName, containerName);
-        _snapshotsDir    = GetSnapshotsDirectory(accountName, containerName);
+        _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
         _chunkIndexL2Dir = ChunkIndexService.GetL2Directory(accountName, containerName);
 
         Directory.CreateDirectory(_diskCacheDir);
-        Directory.CreateDirectory(_snapshotsDir);
+        // Note: _snapshotsDir is created by SnapshotService; we only read it here.
     }
 
     // ── Directory helpers ──────────────────────────────────────────────────────
@@ -64,15 +64,6 @@ public sealed class TreeCacheService
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
-    }
-
-    /// <summary>
-    /// Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.
-    /// </summary>
-    public static string GetSnapshotsDirectory(string accountName, string containerName)
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "snapshots");
     }
 
     // ── 1.3 ReadAsync ─────────────────────────────────────────────────────────
@@ -147,12 +138,12 @@ public sealed class TreeCacheService
     // ── 1.5 ValidateAsync ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Compares the latest local snapshot marker with the latest remote snapshot.
-    /// Idempotent: calling it again after validation has already completed is a no-op.
+    /// Compares the latest local snapshot (from <see cref="SnapshotService"/>'s disk cache) with
+    /// the latest remote snapshot. Idempotent: a second call after validation is a no-op.
     ///
     /// <b>Fast path</b> (match): the disk cache is trusted; no listing performed.
     ///
-    /// <b>Slow path</b> (mismatch or no local markers):
+    /// <b>Slow path</b> (mismatch or no local snapshots):
     /// <list type="number">
     ///   <item>Lists all <c>filetrees/</c> blobs from Azure.</item>
     ///   <item>Creates an empty file on disk for each remote blob not already cached.</item>
@@ -164,12 +155,15 @@ public sealed class TreeCacheService
     public async Task ValidateAsync(CancellationToken cancellationToken = default)
     {
         if (_validated) return;
-        // Latest local snapshot marker (lexicographic sort = timestamp sort because of the format)
-        var latestLocal = Directory.EnumerateFiles(_snapshotsDir)
-            .Select(Path.GetFileName)
-            .Where(n => n is not null)
-            .OrderByDescending(n => n, StringComparer.Ordinal)
-            .FirstOrDefault();
+
+        // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
+        var latestLocal = Directory.Exists(_snapshotsDir)
+            ? Directory.EnumerateFiles(_snapshotsDir)
+                .Select(Path.GetFileName)
+                .Where(n => n is not null)
+                .OrderByDescending(n => n, StringComparer.Ordinal)
+                .FirstOrDefault()
+            : null;
 
         // Latest remote snapshot
         string? latestRemote = null;
@@ -194,7 +188,7 @@ public sealed class TreeCacheService
             return;
         }
 
-        // Slow path: snapshot mismatch (or no local marker at all).
+        // Slow path: snapshot mismatch (or no local snapshot at all).
         // Materialize empty marker files for all remote filetree blobs not yet cached.
         await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTrees, cancellationToken))
         {
@@ -236,18 +230,5 @@ public sealed class TreeCacheService
                 $"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
         return File.Exists(Path.Combine(_diskCacheDir, hash));
-    }
-
-    // ── 1.7 WriteSnapshotMarkerAsync ──────────────────────────────────────────
-
-    /// <summary>
-    /// Creates an empty marker file at <c>~/.arius/{repo}/snapshots/{timestamp}</c>.
-    /// Called after <see cref="SnapshotService.CreateAsync"/> succeeds.
-    /// </summary>
-    public async Task WriteSnapshotMarkerAsync(string timestamp, CancellationToken cancellationToken = default)
-    {
-        Directory.CreateDirectory(_snapshotsDir);
-        var path = Path.Combine(_snapshotsDir, timestamp);
-        await File.WriteAllBytesAsync(path, [], cancellationToken);
     }
 }

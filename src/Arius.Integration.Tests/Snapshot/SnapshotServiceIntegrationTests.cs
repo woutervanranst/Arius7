@@ -20,8 +20,8 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     [Test]
     public async Task CreateAsync_ThenResolveLatest_ReturnsCreatedSnapshot()
     {
-        var (_, blobs) = await azurite.CreateTestServiceAsync();
-        var svc        = new SnapshotService(blobs, s_enc);
+        var (container, blobs) = await azurite.CreateTestServiceAsync();
+        var svc = new SnapshotService(blobs, s_enc, container.AccountName, container.Name);
 
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var snapshot = await svc.CreateAsync(s_rootHash, fileCount: 10, totalSize: 1024, timestamp: ts);
@@ -40,8 +40,8 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     [Test]
     public async Task ListBlobNamesAsync_MultipeSnapshots_ReturnsSortedOldestFirst()
     {
-        var (_, blobs) = await azurite.CreateTestServiceAsync();
-        var svc        = new SnapshotService(blobs, s_enc);
+        var (container, blobs) = await azurite.CreateTestServiceAsync();
+        var svc = new SnapshotService(blobs, s_enc, container.AccountName, container.Name);
 
         var ts1 = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var ts2 = new DateTimeOffset(2025, 6, 15, 12, 0, 0, TimeSpan.Zero);
@@ -64,8 +64,8 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     [Test]
     public async Task ResolveAsync_WithVersion_ReturnsMatchingSnapshot()
     {
-        var (_, blobs) = await azurite.CreateTestServiceAsync();
-        var svc        = new SnapshotService(blobs, s_enc);
+        var (container, blobs) = await azurite.CreateTestServiceAsync();
+        var svc = new SnapshotService(blobs, s_enc, container.AccountName, container.Name);
 
         var ts1 = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var ts2 = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
@@ -84,8 +84,8 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     [Test]
     public async Task ResolveAsync_NoSnapshots_ReturnsNull()
     {
-        var (_, blobs) = await azurite.CreateTestServiceAsync();
-        var svc        = new SnapshotService(blobs, s_enc);
+        var (container, blobs) = await azurite.CreateTestServiceAsync();
+        var svc = new SnapshotService(blobs, s_enc, container.AccountName, container.Name);
 
         var result = await svc.ResolveAsync();
         result.ShouldBeNull();

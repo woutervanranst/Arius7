@@ -58,7 +58,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             opts.Recursive,
             opts.LocalPath ?? "(none)");
 
-        var snapshotSvc = new SnapshotService(_blobs, _encryption);
+        var snapshotSvc = new SnapshotService(_blobs, _encryption, _accountName, _containerName);
         var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
         {
