@@ -17,7 +17,7 @@ namespace Arius.Cli.Tests;
 public class AddAriusRegistrationTests
 {
     [Test]
-    public void AddArius_RegistersStreamingLsHandlerInterface()
+    public void AddArius_RegistersStreamingListQueryHandlerInterface()
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));

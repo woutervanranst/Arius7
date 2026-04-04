@@ -5,21 +5,21 @@ using Shouldly;
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
-/// Integration tests for the ls command: various filters, snapshot version resolution.
+/// Integration tests for the list query: various filters, snapshot version resolution.
 /// Covers task 11.7.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
-public class LsIntegrationTests(AzuriteFixture azurite)
+public class ListQueryIntegrationTests(AzuriteFixture azurite)
 {
     private static byte[] Rnd(int size)
     {
         var b = new byte[size]; Random.Shared.NextBytes(b); return b;
     }
 
-    // ── 11.7a: ls returns all files in snapshot ───────────────────────────────
+    // ── 11.7a: list query returns all files in snapshot ─────────────────────────
 
     [Test]
-    public async Task Ls_NoFilters_ReturnsAllFiles()
+    public async Task ListQuery_NoFilters_ReturnsAllFiles()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -31,7 +31,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
-        var entries = await fix.LsAsync();
+        var entries = await fix.ListAsync();
         entries.Count.ShouldBe(4);
 
         var paths = entries.Select(e => e.RelativePath).ToHashSet();
@@ -44,7 +44,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
     // ── 11.7b: prefix filter ──────────────────────────────────────────────────
 
     [Test]
-    public async Task Ls_WithPrefixFilter_ReturnsOnlyMatchingSubtree()
+    public async Task ListQuery_WithPrefixFilter_ReturnsOnlyMatchingSubtree()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -55,7 +55,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.LsAsync(new ListQueryOptions { Prefix = "photos" });
+        var entries = await fix.ListAsync(new ListQueryOptions { Prefix = "photos" });
         entries.Count.ShouldBe(2);
         entries.All(e => e.RelativePath.StartsWith("photos")).ShouldBeTrue();
     }
@@ -63,7 +63,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
     // ── 11.7c: filename substring filter ──────────────────────────────────────
 
     [Test]
-    public async Task Ls_WithFilenameFilter_ReturnsCaseInsensitiveMatches()
+    public async Task ListQuery_WithFilenameFilter_ReturnsCaseInsensitiveMatches()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -74,7 +74,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.LsAsync(new ListQueryOptions { Filter = "vacation" });
+        var entries = await fix.ListAsync(new ListQueryOptions { Filter = "vacation" });
         entries.Count.ShouldBe(1);
         entries[0].RelativePath.ShouldContain("VACATION");
     }
@@ -82,7 +82,7 @@ public class LsIntegrationTests(AzuriteFixture azurite)
     // ── 11.7d: size field populated from chunk index ───────────────────────────
 
     [Test]
-    public async Task Ls_Entries_HaveOriginalSizeFromIndex()
+    public async Task ListQuery_Entries_HaveOriginalSizeFromIndex()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -92,15 +92,15 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.LsAsync();
+        var entries = await fix.ListAsync();
         entries.Count.ShouldBe(1);
         entries[0].OriginalSize.ShouldBe(1234);
     }
 
-    // ── 11.7e: ls with snapshot version ──────────────────────────────────────
+    // ── 11.7e: list query with snapshot version ────────────────────────────────
 
     [Test]
-    public async Task Ls_WithVersion_ReturnsCorrectSnapshot()
+    public async Task ListQuery_WithVersion_ReturnsCorrectSnapshot()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -116,12 +116,12 @@ public class LsIntegrationTests(AzuriteFixture azurite)
         r2.Success.ShouldBeTrue();
 
         // ls latest → both files
-        var lsLatest = await fix.LsAsync();
-        lsLatest.Count.ShouldBe(2);
+        var listLatest = await fix.ListAsync();
+        listLatest.Count.ShouldBe(2);
 
         // ls version 1 → only v1-only
-        var lsV1 = await fix.LsAsync(new ListQueryOptions { Version = snapshot1 });
-        lsV1.Count.ShouldBe(1);
-        lsV1[0].RelativePath.ShouldBe("v1-only.txt");
+        var listV1 = await fix.ListAsync(new ListQueryOptions { Version = snapshot1 });
+        listV1.Count.ShouldBe(1);
+        listV1[0].RelativePath.ShouldBe("v1-only.txt");
     }
 }
