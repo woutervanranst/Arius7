@@ -107,8 +107,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>>(sp =>
             new ListQueryHandler(
-                sp.GetRequiredService<IBlobContainerService>(),
-                sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<TreeCacheService>(),
                 sp.GetRequiredService<SnapshotService>(),

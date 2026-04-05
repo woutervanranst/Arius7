@@ -1,8 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
-using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -16,8 +14,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 {
     private const string PointerSuffix = ".pointer.arius";
 
-    private readonly IBlobContainerService _blobs;
-    private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
     private readonly TreeCacheService _treeCache;
     private readonly SnapshotService _snapshotSvc;
@@ -26,8 +22,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private readonly string _containerName;
 
     public ListQueryHandler(
-        IBlobContainerService blobs,
-        IEncryptionService encryption,
         ChunkIndexService index,
         TreeCacheService treeCache,
         SnapshotService snapshotSvc,
@@ -35,8 +29,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         string accountName,
         string containerName)
     {
-        _blobs = blobs;
-        _encryption = encryption;
         _index = index;
         _treeCache = treeCache;
         _snapshotSvc = snapshotSvc;

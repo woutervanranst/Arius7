@@ -49,8 +49,6 @@ public class ListQueryHandlerTests
         var treeCache   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
         var handler = new ListQueryHandler(
-            blobs,
-            s_encryption,
             index,
             treeCache,
             snapshotSvc,
@@ -127,8 +125,6 @@ public class ListQueryHandlerTests
         var treeCache2   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
         var handler = new ListQueryHandler(
-            blobs,
-            s_encryption,
             index,
             treeCache2,
             snapshotSvc2,
@@ -189,8 +185,6 @@ public class ListQueryHandlerTests
             var treeCache3   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
             var handler = new ListQueryHandler(
-                blobs,
-                s_encryption,
                 index,
                 treeCache3,
                 snapshotSvc3,
@@ -531,7 +525,7 @@ public class ListQueryHandlerTests
     };
 
     private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
-        new(blobs, s_encryption, index, new TreeCacheService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
+        new(index, new TreeCacheService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {
