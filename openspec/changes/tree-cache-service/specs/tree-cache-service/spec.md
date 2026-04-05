@@ -61,7 +61,7 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 1. Enumerate `~/.arius/{repo}/snapshots/` to find timestamp-named marker files, sort lexicographically, and take the latest. If no markers exist, treat as mismatch.
 2. Call `ListAsync("snapshots/")` to enumerate remote snapshots and find the latest timestamp.
 3. Compare local latest vs remote latest: match = fast path, mismatch = slow path.
-4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also delete all files in the chunk-index L2 directory (`~/.arius/{repo}/chunk-index/`) to invalidate stale shards.
+4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also delete all files in `~/.arius/{repo}/chunk-index/` and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory.
 
 #### Scenario: Snapshot match — fast path
 - **WHEN** the latest local marker is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`
@@ -69,7 +69,7 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 
 #### Scenario: Snapshot mismatch — slow path
 - **WHEN** the latest local marker is `2026-03-21T100000.000Z` but the latest remote snapshot is `2026-03-22T150000.000Z`
-- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, and delete all files in the chunk-index L2 directory
+- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, delete all files in `~/.arius/{repo}/chunk-index/`, and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory
 
 #### Scenario: Slow path does not overwrite existing cache files
 - **WHEN** a snapshot mismatch triggers the slow path and `~/.arius/{repo}/filetrees/abc123` already exists with content
