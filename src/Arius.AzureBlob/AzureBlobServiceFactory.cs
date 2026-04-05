@@ -8,7 +8,7 @@ namespace Arius.AzureBlob;
 /// <summary>
 /// Creates account-scoped blob services from an account name and optional shared key.
 /// </summary>
-public sealed class BlobServiceFactory : IBlobServiceFactory
+public sealed class AzureBlobServiceFactory : IBlobServiceFactory
 {
     /// <summary>
     /// Creates an <see cref="IBlobService"/> for <paramref name="accountName"/>.
