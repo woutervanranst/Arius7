@@ -63,26 +63,26 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 - **THEN** the service SHALL throw `InvalidOperationException`
 
 ### Requirement: TreeCacheService.ValidateAsync
-`TreeCacheService.ValidateAsync(CancellationToken)` SHALL compare the latest local snapshot (from `SnapshotService.GetDiskCacheDirectory`) against the latest remote snapshot to determine the fast/slow path. The method SHALL:
-1. Enumerate the `SnapshotService` disk cache directory (`~/.arius/{repo}/snapshots/`) to find the latest snapshot file (by lexicographic sort on the filename). If no files exist, treat as mismatch.
+`TreeCacheService.ValidateAsync(CancellationToken)` SHALL compare the latest local snapshot marker against the latest remote snapshot to determine the fast/slow path. The method SHALL:
+1. Enumerate `~/.arius/{repo}/snapshots/` to find timestamp-named marker files, sort lexicographically, and take the latest. If no markers exist, treat as mismatch.
 2. Call `ListAsync("snapshots/")` to enumerate remote snapshots and find the latest timestamp.
 3. Compare local latest vs remote latest: match = fast path, mismatch = slow path.
-4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also delete all files in the chunk-index L2 directory (`~/.arius/{repo}/chunk-index/`) to invalidate stale shards.
+4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also delete all files in `~/.arius/{repo}/chunk-index/` and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory.
 
 #### Scenario: Snapshot match — fast path
-- **WHEN** the latest local snapshot file is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`
+- **WHEN** the latest local marker is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`
 - **THEN** `ValidateAsync` SHALL NOT call `ListAsync("filetrees/")`
 
 #### Scenario: Snapshot mismatch — slow path
-- **WHEN** the latest local snapshot file is `2026-03-21T100000.000Z` but the latest remote snapshot is `2026-03-22T150000.000Z`
-- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, and delete all files in the chunk-index L2 directory
+- **WHEN** the latest local marker is `2026-03-21T100000.000Z` but the latest remote snapshot is `2026-03-22T150000.000Z`
+- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, delete all files in `~/.arius/{repo}/chunk-index/`, and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory
 
 #### Scenario: Slow path does not overwrite existing cache files
 - **WHEN** a snapshot mismatch triggers the slow path and `~/.arius/{repo}/filetrees/abc123` already exists with content
 - **THEN** `ValidateAsync` SHALL NOT overwrite the existing file (it already satisfies the existence check)
 
-#### Scenario: No local snapshots — slow path
-- **WHEN** no snapshot files exist in `~/.arius/{repo}/snapshots/` (first archive on this machine, or directory is empty)
+#### Scenario: No local markers — slow path
+- **WHEN** no marker files exist in `~/.arius/{repo}/snapshots/` (first archive on this machine, or directory is empty)
 - **THEN** `ValidateAsync` SHALL treat this as a mismatch and take the slow path
 
 #### Scenario: No remote snapshots — fast path
@@ -93,16 +93,16 @@ The system SHALL provide a `TreeCacheService` in `Arius.Core/Shared/FileTree/` t
 - **WHEN** a snapshot mismatch is detected
 - **THEN** all files in `~/.arius/{repo}/chunk-index/` SHALL be deleted to force `ChunkIndexService` to re-download from Azure on next access
 
-### Requirement: SnapshotService write-through disk cache
-After the archive pipeline successfully creates a new snapshot via `SnapshotService.CreateAsync`, `SnapshotService` SHALL write the full plain-JSON snapshot manifest to `~/.arius/{repo}/snapshots/<timestamp>` as a write-through (before returning from `CreateAsync`). The directory SHALL be created if it does not exist. `SnapshotService.GetDiskCacheDirectory(accountName, containerName)` SHALL return the path to the snapshots directory. `SnapshotService.ResolveAsync` SHALL be disk-first: read from local JSON if present, fall back to Azure download and cache locally on miss.
+### Requirement: Snapshot disk cache update
+After the archive pipeline successfully creates a new snapshot, `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/` named by the snapshot timestamp (e.g., `2026-03-22T150000.000Z`), using the same `SnapshotService.TimestampFormat`. This is a write-through operation - the same content is uploaded to Azure and persisted locally. The directory `~/.arius/{repo}/snapshots/` SHALL be created if it does not exist.
 
-`SnapshotService` SHALL accept `accountName` and `containerName` as constructor parameters alongside its existing dependencies. `SnapshotService` SHALL be registered in the DI container as a singleton, consistent with `ChunkIndexService` and `TreeCacheService`, with its constructor accepting `IBlobContainerService`, `IEncryptionService`, `string accountName`, and `string containerName`.
+`SnapshotService.ResolveAsync` SHALL remain disk-first: read from local JSON if present, fall back to Azure download and cache locally on miss. `SnapshotService` SHALL accept `accountName` and `containerName` as constructor parameters alongside its existing dependencies, and it SHALL be registered in the DI container as a singleton, consistent with `ChunkIndexService` and `TreeCacheService`, with its constructor accepting `IBlobContainerService`, `IEncryptionService`, `string accountName`, and `string containerName`.
 
-#### Scenario: Snapshot written to disk after archive
+#### Scenario: Snapshot JSON written after archive
 - **WHEN** the archive pipeline creates snapshot `2026-03-22T150000.000Z`
-- **THEN** `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z` before returning
+- **THEN** `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z`
 
-#### Scenario: Snapshot file written on subsequent archive
+#### Scenario: Snapshot disk file written on subsequent archive
 - **WHEN** a second archive creates snapshot `2026-03-23T080000.000Z`
 - **THEN** an additional JSON file `~/.arius/{repo}/snapshots/2026-03-23T080000.000Z` SHALL be created (previous files remain)
 
