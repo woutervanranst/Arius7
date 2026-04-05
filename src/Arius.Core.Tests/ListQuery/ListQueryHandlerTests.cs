@@ -233,6 +233,26 @@ public class ListQueryHandlerTests
         }
     }
 
+    [Test]
+    public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
+    {
+        var blobs = new ThrowOnCreateBlobContainerService();
+        using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing", cacheBudgetBytes: 1024 * 1024);
+        var treeCache = new TreeCacheService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
+        var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
+        var handler = new ListQueryHandler(index, treeCache, snapshotSvc, NullLogger<ListQueryHandler>.Instance, "acct-ls-missing", "ctr-ls-missing");
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions()), CancellationToken.None))
+            {
+            }
+        });
+
+        ex.Message.ShouldBe("No snapshots found in this repository.");
+        blobs.CreateCalled.ShouldBeFalse();
+    }
+
     // ── 3.3: recursive vs non-recursive ──────────────────────────────────────
 
     [Test]
@@ -536,5 +556,29 @@ public class ListQueryHandlerTests
     }
 
     private static string HashFor(string label) => Convert.ToHexString(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label))).ToLowerInvariant();
+
+    private sealed class ThrowOnCreateBlobContainerService : IBlobContainerService
+    {
+        public bool CreateCalled { get; private set; }
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
+        {
+            CreateCalled = true;
+            throw new InvalidOperationException("CreateContainerIfNotExistsAsync should not be called by ls.");
+        }
+
+        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) => Task.FromResult(new BlobMetadata { Exists = false });
+        public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield break;
+        }
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 
 }

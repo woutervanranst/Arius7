@@ -1,4 +1,3 @@
-using Arius.AzureBlob;
 using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Ls;
 using Arius.Cli.Commands.Restore;
@@ -62,9 +61,15 @@ public static class CliBuilder
     /// </summary>
     /// <param name="serviceProviderFactory">Optional factory; if null, production services are used.</param>
     public static RootCommand BuildRootCommand(
+        IBlobServiceFactory? blobServiceFactory = null,
         Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>>? serviceProviderFactory = null)
     {
-        serviceProviderFactory ??= BuildProductionServices;
+        if (serviceProviderFactory is null)
+        {
+            ArgumentNullException.ThrowIfNull(blobServiceFactory);
+            serviceProviderFactory = (accountName, accountKey, passphrase, containerName, preflightMode) =>
+                BuildProductionServices(blobServiceFactory, accountName, accountKey, passphrase, containerName, preflightMode);
+        }
 
         var rootCommand = new RootCommand("Arius — content-addressable archival to Azure Blob Storage");
         rootCommand.Subcommands.Add(ArchiveVerb.Build(serviceProviderFactory));
@@ -109,13 +114,13 @@ public static class CliBuilder
     // ── Production DI ─────────────────────────────────────────────────────────
 
     private static async Task<IServiceProvider> BuildProductionServices(
+        IBlobServiceFactory blobServiceFactory,
         string        accountName,
         string?       accountKey,
         string?       passphrase,
         string        containerName,
         PreflightMode preflightMode)
     {
-        var blobServiceFactory = new BlobServiceFactory();
         var blobService = await blobServiceFactory.CreateAsync(accountName, accountKey).ConfigureAwait(false);
         var blobContainer = await blobService.GetContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
 

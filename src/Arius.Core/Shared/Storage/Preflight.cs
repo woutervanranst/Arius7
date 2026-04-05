@@ -1,7 +1,6 @@
-using Arius.Core.Shared.Storage;
+namespace Arius.Core.Shared.Storage;
 
-namespace Arius.AzureBlob;
-
+/// <summary>
 /// Classifies the type of error encountered during the preflight connectivity check.
 /// </summary>
 public enum PreflightErrorKind
@@ -44,18 +43,9 @@ public sealed class PreflightException : Exception
         StatusCode    = statusCode;
     }
 
-    /// <summary>Structured classification of the error.</summary>
     public PreflightErrorKind ErrorKind { get; }
-
-    /// <summary><c>"key"</c> when a shared-key credential was used; <c>"token"</c> for token credentials.</summary>
     public string AuthMode { get; }
-
-    /// <summary>The storage account name passed to the factory.</summary>
     public string AccountName { get; }
-
-    /// <summary>The container name passed to the factory.</summary>
     public string ContainerName { get; }
-
-    /// <summary>HTTP status code from the underlying <c>RequestFailedException</c>, or <c>null</c> for credential errors.</summary>
     public int? StatusCode { get; }
 }

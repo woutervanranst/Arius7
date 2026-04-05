@@ -73,6 +73,26 @@ public class DependencyTests
     }
 
     [Test]
+    public void Cli_Should_Not_Depend_On_AzureBlob()
+    {
+        var cliAssembly       = Architecture.Assemblies.First(a => a.FullName.Contains("Arius.Cli") && !a.FullName.Contains("Tests"));
+        var azureBlobAssembly = Architecture.Assemblies.First(a => a.FullName.Contains("Arius.AzureBlob") && !a.FullName.Contains("Tests"));
+
+        IArchRule rule = Classes().That().ResideInAssembly(cliAssembly)
+            .Should().NotDependOnAnyTypesThat().ResideInAssembly(azureBlobAssembly);
+
+        rule.HasNoViolations(Architecture).ShouldBeTrue(
+            $"Arius.Cli must not depend on Arius.AzureBlob. Violations: {DescribeViolations(rule)}");
+    }
+
+    [Test]
+    public void Preflight_Contract_Should_Live_In_Core()
+    {
+        typeof(Core.Shared.Storage.PreflightException).Assembly.GetName().Name.ShouldBe("Arius.Core");
+        typeof(Core.Shared.Storage.PreflightErrorKind).Assembly.GetName().Name.ShouldBe("Arius.Core");
+    }
+
+    [Test]
     public void Mediator_Command_And_Stream_Handlers_Should_Live_In_Core_Only()
     {
         var nonCoreHandlerTypes = new[]
