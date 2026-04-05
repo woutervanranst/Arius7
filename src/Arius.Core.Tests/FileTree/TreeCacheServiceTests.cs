@@ -158,9 +158,9 @@ public class TreeCacheServiceTests
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
 
-            // Azure should have been called at most once (second read may hit disk or may
-            // race — both outcomes are acceptable; what is NOT acceptable is >2 downloads)
-            blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBeLessThanOrEqualTo(2);
+            // Azure should have been called at most once (concurrent reads should coalesce
+            // around the first download; a second download would indicate missing deduplication)
+            blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBeLessThanOrEqualTo(1, "At most one Azure download expected");
         }
         finally
         {
