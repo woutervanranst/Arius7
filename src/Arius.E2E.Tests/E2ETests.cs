@@ -193,6 +193,8 @@ public sealed class E2EFixture : IAsyncDisposable
     public IBlobContainerService BlobContainer  { get; }
     public IEncryptionService  Encryption   { get; }
     public ChunkIndexService   Index        { get; }
+    public TreeCacheService    TreeCache    { get; }
+    public SnapshotService     Snapshot     { get; }
     public string              LocalRoot    { get; }
     public string              RestoreRoot  { get; }
 
@@ -204,6 +206,8 @@ public sealed class E2EFixture : IAsyncDisposable
         IBlobContainerService blobContainer,
         IEncryptionService  encryption,
         ChunkIndexService   index,
+        TreeCacheService    treeCache,
+        SnapshotService     snapshot,
         string              tempRoot,
         string              localRoot,
         string              restoreRoot,
@@ -214,6 +218,8 @@ public sealed class E2EFixture : IAsyncDisposable
         BlobContainer  = blobContainer;
         Encryption   = encryption;
         Index        = index;
+        TreeCache    = treeCache;
+        Snapshot     = snapshot;
         _tempRoot    = tempRoot;
         LocalRoot    = localRoot;
         RestoreRoot  = restoreRoot;
@@ -241,8 +247,10 @@ public sealed class E2EFixture : IAsyncDisposable
             : new PlaintextPassthroughService();
         var account    = container.AccountName;
         var index      = new ChunkIndexService(svc, encryption, account, container.Name);
+        var treeCache  = new TreeCacheService(svc, encryption, index, account, container.Name);
+        var snapshot   = new SnapshotService(svc, encryption, account, container.Name);
 
-        return new E2EFixture(svc, encryption, index, tempRoot, localRoot, restoreRoot,
+        return new E2EFixture(svc, encryption, index, treeCache, snapshot, tempRoot, localRoot, restoreRoot,
                               account, container.Name, defaultTier);
     }
 
@@ -266,16 +274,16 @@ public sealed class E2EFixture : IAsyncDisposable
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index,
-            new TreeCacheService(BlobContainer, Encryption, _account, _container),
-            new SnapshotService(BlobContainer, Encryption, _account, _container),
+            TreeCache,
+            Snapshot,
             _mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             _account, _container);
 
     private RestoreCommandHandler CreateRestoreHandler() =>
         new(BlobContainer, Encryption, Index,
-            new TreeCacheService(BlobContainer, Encryption, _account, _container),
-            new SnapshotService(BlobContainer, Encryption, _account, _container),
+            TreeCache,
+            Snapshot,
             _mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             _account, _container);

@@ -46,7 +46,7 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
-        var treeCache   = new TreeCacheService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
+        var treeCache   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
         var handler = new ListQueryHandler(
             blobs,
@@ -124,7 +124,7 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
-        var treeCache2   = new TreeCacheService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
+        var treeCache2   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
         var handler = new ListQueryHandler(
             blobs,
@@ -186,7 +186,7 @@ public class ListQueryHandlerTests
             index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
             index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
-            var treeCache3   = new TreeCacheService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
+            var treeCache3   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
             var handler = new ListQueryHandler(
                 blobs,
@@ -309,7 +309,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
@@ -356,7 +356,7 @@ public class ListQueryHandlerTests
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
-            var handler = MakeHandler(blobs, index);
+            var handler = MakeHandler(blobs, index, "acct-38", "ctr-38");
 
             var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
             var dirs = results.OfType<RepositoryDirectoryEntry>().ToList();
@@ -416,7 +416,7 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
         var files = results.OfType<RepositoryFileEntry>().ToList();
 
@@ -530,8 +530,8 @@ public class ListQueryHandlerTests
         AriusVersion = "test"
     };
 
-    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index) =>
-        new(blobs, s_encryption, index, new TreeCacheService(blobs, s_encryption, "account", "container"), new SnapshotService(blobs, s_encryption, "account", "container"), NullLogger<ListQueryHandler>.Instance, "account", "container");
+    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
+        new(blobs, s_encryption, index, new TreeCacheService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {

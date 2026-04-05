@@ -43,7 +43,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
         var handler    = new ArchiveCommandHandler(
-            svc, encryption, index, new TreeCacheService(svc, encryption, Account, containerName),
+            svc, encryption, index, new TreeCacheService(svc, encryption, index, Account, containerName),
             new SnapshotService(svc, encryption, Account, containerName), mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);

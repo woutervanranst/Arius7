@@ -1,3 +1,4 @@
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -41,7 +42,8 @@ public class TreeCacheServiceTests
         MakeService(string acct, string cont)
     {
         var blobs        = new FakeInMemoryBlobContainerService();
-        var svc          = new TreeCacheService(blobs, s_enc, acct, cont);
+        var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc          = new TreeCacheService(blobs, s_enc, index, acct, cont);
         var cacheDir     = TreeCacheService.GetDiskCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly

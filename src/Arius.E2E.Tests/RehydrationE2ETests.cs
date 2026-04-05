@@ -93,7 +93,7 @@ public class RehydrationE2ETests(AzureFixture azure)
 
             var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
-                new TreeCacheService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
+                new TreeCacheService(trackingSvc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
@@ -116,7 +116,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             var trackingSvc2 = new CopyTrackingBlobService(svc);
             var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
-                new TreeCacheService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
+                new TreeCacheService(trackingSvc2, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
@@ -164,7 +164,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             {
                 var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
-                    new TreeCacheService(svc, fix.Encryption, container.AccountName, container.Name),
+                    new TreeCacheService(svc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                     new SnapshotService(svc, fix.Encryption, container.AccountName, container.Name),
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,

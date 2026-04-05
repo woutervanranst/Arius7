@@ -112,7 +112,7 @@ public class ArchiveRecoveryMatrixTests
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
             Directory.CreateDirectory(TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName));
 
-            var treeCache    = new TreeCacheService(Blobs, _encryption, AccountName, _containerName);
+            var treeCache    = new TreeCacheService(Blobs, _encryption, _index, AccountName, _containerName);
             var snapshotSvc  = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
             var handler = new ArchiveCommandHandler(
                 Blobs,

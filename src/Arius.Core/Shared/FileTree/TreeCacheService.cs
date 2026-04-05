@@ -26,6 +26,7 @@ public sealed class TreeCacheService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
+    private readonly ChunkIndexService     _chunkIndex;
     private readonly string                _diskCacheDir;
     private readonly string                _snapshotsDir;
     private readonly string                _chunkIndexL2Dir;
@@ -37,16 +38,19 @@ public sealed class TreeCacheService
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
+    /// <param name="chunkIndex">Chunk index service — used to invalidate the L1 in-memory cache on snapshot mismatch.</param>
     /// <param name="accountName">Used to derive the local cache directory.</param>
     /// <param name="containerName">Used to derive the local cache directory.</param>
     public TreeCacheService(
         IBlobContainerService blobs,
         IEncryptionService    encryption,
+        ChunkIndexService     chunkIndex,
         string                accountName,
         string                containerName)
     {
         _blobs           = blobs;
         _encryption      = encryption;
+        _chunkIndex      = chunkIndex;
         _diskCacheDir    = GetDiskCacheDirectory(accountName, containerName);
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
         _chunkIndexL2Dir = ChunkIndexService.GetL2Directory(accountName, containerName);
@@ -221,6 +225,9 @@ public sealed class TreeCacheService
                 try { File.Delete(file); } catch { /* ignore individual failures */ }
             }
         }
+
+        // Also clear the in-memory L1 cache so stale shard data is not served from memory.
+        _chunkIndex.InvalidateL1();
 
         _validated = true;
     }

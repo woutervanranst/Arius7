@@ -287,4 +287,19 @@ public sealed class ChunkIndexService : IDisposable
     {
         /* future: flush in-progress state */
     }
+
+    /// <summary>
+    /// Clears the in-memory L1 LRU cache. Called by <see cref="TreeCacheService"/> when a
+    /// snapshot mismatch is detected, to ensure stale shard data is not served from memory
+    /// after the L2 disk cache has been deleted.
+    /// </summary>
+    public void InvalidateL1()
+    {
+        lock (_l1Lock)
+        {
+            _l1Lru.Clear();
+            _l1Map.Clear();
+            _l1UsedBytes = 0;
+        }
+    }
 }

@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
             new TreeCacheService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ChunkIndexService>(),
                 accountName,
                 containerName));
 

@@ -148,7 +148,9 @@ public sealed class TreeBuilder
         string              containerName)
     {
         _encryption = encryption;
-        _treeCache  = new TreeCacheService(blobs, encryption, accountName, containerName);
+        _treeCache  = new TreeCacheService(blobs, encryption,
+            new ChunkIndexService(blobs, encryption, accountName, containerName),
+            accountName, containerName);
     }
 
     /// <summary>
