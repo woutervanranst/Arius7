@@ -133,7 +133,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             Account, Container.Name);
 
     public ListQueryHandler CreateListQueryHandler() =>
-        new(BlobContainer, Encryption, Index, TreeCache, Snapshot,
+        new(Index, TreeCache, Snapshot,
             NullLogger<ListQueryHandler>.Instance,
             Account, Container.Name);
 
