@@ -1,3 +1,4 @@
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
@@ -355,6 +356,13 @@ public class TreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
+    private static TreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName)
+    {
+        var index = new ChunkIndexService(blobs, s_enc, accountName, containerName);
+        var treeCache = new TreeCacheService(blobs, s_enc, index, accountName, containerName);
+        return new TreeBuilder(s_enc, treeCache);
+    }
+
     [Test]
     public async Task BuildAsync_EmptyManifest_ReturnsNull()
     {
@@ -364,7 +372,7 @@ public class TreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, "");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = new TreeBuilder(blobs, s_enc, "account", "container");
+            var builder = CreateBuilder(blobs, "account", "container");
             var root    = await builder.BuildAsync(manifestPath);
 
             root.ShouldBeNull();
@@ -394,7 +402,7 @@ public class TreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = new TreeBuilder(blobs, s_enc, acct, cont);
+            var builder = CreateBuilder(blobs, acct, cont);
             var root    = await builder.BuildAsync(manifestPath);
 
             root.ShouldNotBeNull();
@@ -435,8 +443,8 @@ public class TreeBuilderTests
 
             var blobs1   = new FakeRecordingBlobContainerService();
             var blobs2   = new FakeRecordingBlobContainerService();
-            var builder1 = new TreeBuilder(blobs1, s_enc, acct1, cont1);
-            var builder2 = new TreeBuilder(blobs2, s_enc, acct2, cont2); // different repo-id, but same enc
+            var builder1 = CreateBuilder(blobs1, acct1, cont1);
+            var builder2 = CreateBuilder(blobs2, acct2, cont2); // different repo-id, but same enc
             var root1    = await builder1.BuildAsync(manifestPath1);
             var root2    = await builder2.BuildAsync(manifestPath2);
 
@@ -472,10 +480,10 @@ public class TreeBuilderTests
 
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
-            var root1  = await new TreeBuilder(blobs1, s_enc, acct, cont).BuildAsync(manifestPath1);
+            var root1  = await CreateBuilder(blobs1, acct, cont).BuildAsync(manifestPath1);
             // Clean cache between runs to force independent computation
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
-            var root2  = await new TreeBuilder(blobs2, s_enc, acct, cont).BuildAsync(manifestPath2);
+            var root2  = await CreateBuilder(blobs2, acct, cont).BuildAsync(manifestPath2);
 
             root1.ShouldNotBe(root2);
         }
@@ -499,7 +507,7 @@ public class TreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = new TreeBuilder(blobs, s_enc, "acc", "con");
+            var builder = CreateBuilder(blobs, "acc", "con");
 
             // First run → should upload
             var root = await builder.BuildAsync(manifestPath);
@@ -509,7 +517,7 @@ public class TreeBuilderTests
             // Second run (same builder instance, disk cache still populated)
             var blobs2   = new FakeRecordingBlobContainerService();
             // Same disk cache dir (same account/container)
-            var builder2 = new TreeBuilder(blobs2, s_enc, "acc", "con");
+            var builder2 = CreateBuilder(blobs2, "acc", "con");
             var root2    = await builder2.BuildAsync(manifestPath);
 
             root2.ShouldBe(root);

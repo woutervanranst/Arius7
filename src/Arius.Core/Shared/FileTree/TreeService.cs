@@ -141,23 +141,12 @@ public sealed class TreeBuilder
     private readonly IEncryptionService  _encryption;
     private readonly TreeCacheService    _treeCache;
 
-    public TreeBuilder(
-        IBlobContainerService blobs,
-        IEncryptionService  encryption,
-        string              accountName,
-        string              containerName)
-    {
-        _encryption = encryption;
-        _treeCache  = new TreeCacheService(blobs, encryption,
-            new ChunkIndexService(blobs, encryption, accountName, containerName),
-            accountName, containerName);
-    }
-
     /// <summary>
-    /// Internal constructor that injects a pre-built <see cref="TreeCacheService"/> directly.
-    /// Used by the archive pipeline (which holds the singleton <see cref="TreeCacheService"/>).
+    /// Builds trees using shared services supplied by the caller/DI container.
     /// </summary>
-    internal TreeBuilder(IEncryptionService encryption, TreeCacheService treeCache)
+    public TreeBuilder(
+        IEncryptionService encryption,
+        TreeCacheService   treeCache)
     {
         _encryption = encryption;
         _treeCache  = treeCache;
