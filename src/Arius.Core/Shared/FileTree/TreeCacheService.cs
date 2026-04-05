@@ -180,13 +180,18 @@ public sealed class TreeCacheService
                 .FirstOrDefault()
             : null;
 
-        // Latest remote snapshot
-        string? latestRemote = null;
+        // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
+        var remoteSnapshots = new List<string>();
         await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
         {
-            // ListAsync returns names sorted; last one is newest
-            latestRemote = Path.GetFileName(name); // strip "snapshots/" prefix
+            var fileName = Path.GetFileName(name);
+            if (!string.IsNullOrEmpty(fileName))
+                remoteSnapshots.Add(fileName);
         }
+
+        var latestRemote = remoteSnapshots
+            .OrderByDescending(name => name, StringComparer.Ordinal)
+            .FirstOrDefault();
 
         // If there are no remote snapshots, the repository is empty — fast path.
         if (latestRemote is null)

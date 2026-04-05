@@ -257,6 +257,35 @@ public class TreeCacheServiceTests
         }
     }
 
+    [Test]
+    public async Task ValidateAsync_RemoteSnapshotsOutOfOrder_SortsBeforeChoosingLatest()
+    {
+        const string acct = "tc-val-unsorted", cont = "container";
+        var blobs = new UnsortedSnapshotBlobContainerService(
+            [
+                BlobPaths.Snapshot("2024-06-15T100000.000Z"),
+                BlobPaths.Snapshot("2024-01-01T000000.000Z")
+            ]);
+        var index = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc = new TreeCacheService(blobs, s_enc, index, acct, cont);
+        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-06-15T100000.000Z"), []);
+
+            await svc.ValidateAsync();
+
+            blobs.FileTreesListed.ShouldBeFalse();
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
     // ── 7.6  ValidateAsync — mismatch — creates markers + deletes L2 ──────────
 
     [Test]
@@ -499,5 +528,56 @@ public class TreeCacheServiceTests
         {
             await CleanupAsync(cacheDir, snapshotsDir);
         }
+    }
+
+    private sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string> snapshots) : IBlobContainerService
+    {
+        public bool FileTreesListed { get; private set; }
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new BlobMetadata { Exists = false });
+
+        public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            if (prefix == BlobPaths.Snapshots)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    yield return snapshot;
+                    await Task.Yield();
+                }
+
+                yield break;
+            }
+
+            if (prefix == BlobPaths.FileTrees)
+                FileTreesListed = true;
+
+            yield break;
+        }
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }
