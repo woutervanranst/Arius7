@@ -152,6 +152,10 @@ public class ArchiveRecoveryMatrixTests
             var treeCacheDir = TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName);
             if (Directory.Exists(treeCacheDir))
                 TryDeleteDirectory(treeCacheDir);
+
+            var snapshotCacheDir = SnapshotService.GetDiskCacheDirectory(AccountName, _containerName);
+            if (Directory.Exists(snapshotCacheDir))
+                TryDeleteDirectory(snapshotCacheDir);
         }
 
         private static void TryDeleteDirectory(string path)
