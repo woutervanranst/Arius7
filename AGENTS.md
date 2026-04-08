@@ -2,9 +2,10 @@
 
 # AGENTS.md
 
+- Work Test-Driven: first, write a failing test. Then, implement.
+- Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the tests.
 - When the tests pass, make a conventional git commit.
-- Work Test-Driven: first, write a failing test. Then, implement
 
 ## Session Rules
 
@@ -19,3 +20,71 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **Filter by test name**: use `--treenode-filter "/*/*/*/<TestMethodName>"`
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
+
+## Architecture
+
+### Arius.Core shape
+
+- `src/Arius.Core/Features/` contains vertical slices (`*Command`, `*Query`) that orchestrate user-facing workflows.
+- `src/Arius.Core/Shared/` contains reusable infrastructure and domain mechanisms that multiple features depend on.
+- Keep orchestration in `Features` and storage/caching/serialization mechanics in `Shared`.
+- Prefer injecting shared services into features instead of constructing them ad hoc inside handlers or helpers.
+
+### Shared vs Features
+
+- `Features` should decide **when** to resolve a snapshot, walk a tree, look up chunk metadata, upload chunks, or restore files.
+- `Shared` should decide **how** snapshots are cached, how tree blobs are serialized/cached, how chunk-index shards are cached, and how blob names/content are interpreted.
+- If logic is repository-wide and reused by more than one feature, it usually belongs in `Shared`.
+- If logic is specific to one command/query flow, it usually belongs in that feature handler.
+
+### Cache services
+
+- `ChunkIndexService` owns the chunk-index cache.
+- `TreeCacheService` owns the filetree blob cache.
+- `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
+
+### Cache semantics
+
+- Chunk-index shards are **mutable**. Multiple runs/machines can extend or overwrite shard content for the same prefix.
+- Because chunk-index data is mutable, `ChunkIndexService` uses a tiered cache: L1 memory, L2 disk, L3 blob storage.
+- On snapshot mismatch, chunk-index caches may be stale and must be invalidated.
+
+- Filetree blobs are **immutable** and content-addressed.
+- Because filetree blobs are immutable, `TreeCacheService` can trust any non-corrupt local cache file permanently.
+- Tree-cache validation is about remote existence knowledge and cross-machine coordination, not blob staleness.
+
+- Snapshots are the coordination point between local cache state and remote repository state.
+- Snapshot comparisons determine whether the current machine can trust its local tree/chunk cache view or must refresh remote knowledge.
+
+### Service usage in features
+
+- `ArchiveCommandHandler`
+  Use `ChunkIndexService` for dedup/index recording and flush.
+  Use `TreeCacheService` for tree existence checks and tree writes.
+  Use `SnapshotService` for snapshot creation.
+  Use raw `IBlobContainerService` for chunk payload upload/copy/delete operations.
+
+- `RestoreCommandHandler`
+  Use `SnapshotService` to resolve the target snapshot.
+  Use `TreeCacheService` to traverse filetrees.
+  Use `ChunkIndexService` to resolve content hashes to chunk metadata.
+  Use raw `IBlobContainerService` for chunk download, rehydration status, copy, and cleanup.
+  `restore` is a read-only repository operation and must not create blob containers.
+
+- `ListQueryHandler`
+  Use `SnapshotService` to resolve the snapshot.
+  Use `TreeCacheService` for tree traversal.
+  Use `ChunkIndexService` for file size/original-size metadata.
+  Do not keep stale direct blob/encryption dependencies when the handler no longer uses them.
+  `ls` is a read-only repository operation and must not create blob containers.
+
+- `ChunkHydrationStatusQueryHandler`
+  Use `ChunkIndexService` to map file content hashes to chunk hashes.
+  Use raw `IBlobContainerService` metadata calls for hydration state.
+
+### DI expectations
+
+- Register shared services once per repository/session in DI.
+- Feature handlers should consume those shared instances through constructor injection.
+- Helper types such as `TreeBuilder` should accept already-constructed shared services rather than creating fresh `ChunkIndexService`, `TreeCacheService`, or `SnapshotService` instances internally.
+- Avoid duplicate service graphs for the same repository because that can split cache state and validation state.

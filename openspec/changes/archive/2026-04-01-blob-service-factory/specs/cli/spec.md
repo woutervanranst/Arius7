@@ -1,34 +1,34 @@
 ## MODIFIED Requirements
 
 ### Requirement: Account key resolution
-The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL NOT mention user secrets. Credential resolution (key lookup and fallback to `AzureCliCredential`) SHALL remain in `Arius.Cli`. The resolved credential SHALL be passed to `BlobServiceFactory.CreateAsync` as either a `StorageSharedKeyCredential` or a `TokenCredential`.
+The CLI SHALL resolve the account key in the following order: (1) `--key` / `-k` CLI parameter, (2) `ARIUS_KEY` environment variable, (3) `Microsoft.Extensions.Configuration.UserSecrets` (hidden, developer use only). The key SHALL NEVER be logged or displayed in output. The `--key` option description SHALL NOT mention user secrets. Credential resolution (key lookup and fallback to `AzureCliCredential`) SHALL remain in `Arius.Cli`. The resolved credential SHALL be passed to `AzureBlobServiceFactory.CreateAsync` as either a `StorageSharedKeyCredential` or a `TokenCredential`.
 
 #### Scenario: Key from CLI parameter
 - **WHEN** `-k` is provided on the command line
-- **THEN** the system SHALL create a `StorageSharedKeyCredential` and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL create a `StorageSharedKeyCredential` and pass it to `AzureBlobServiceFactory.CreateAsync`
 
 #### Scenario: Key from environment variable
 - **WHEN** `-k` is not provided but `ARIUS_KEY` environment variable is set
-- **THEN** the system SHALL create a `StorageSharedKeyCredential` from the environment variable and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL create a `StorageSharedKeyCredential` from the environment variable and pass it to `AzureBlobServiceFactory.CreateAsync`
 
 #### Scenario: Key from user secrets
 - **WHEN** neither `-k` nor `ARIUS_KEY` is available but a user secret is configured
-- **THEN** the system SHALL resolve the key from user secrets, create a `StorageSharedKeyCredential`, and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL resolve the key from user secrets, create a `StorageSharedKeyCredential`, and pass it to `AzureBlobServiceFactory.CreateAsync`
 
 #### Scenario: No key available — fallback to AzureCliCredential
 - **WHEN** no key is available from any source
-- **THEN** the system SHALL create an `AzureCliCredential` and pass it to `BlobServiceFactory.CreateAsync`
+- **THEN** the system SHALL create an `AzureCliCredential` and pass it to `AzureBlobServiceFactory.CreateAsync`
 
 ### Requirement: DI handler registration
-The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations. `CliBuilder.BuildProductionServices` SHALL delegate blob service construction and preflight validation to `BlobServiceFactory.CreateAsync` and SHALL only be responsible for credential resolution, calling the factory, and wiring the DI container with the returned `IBlobStorageService`.
+The system SHALL register command handlers by their `ICommandHandler<TCommand, TResult>` interface using explicit factory delegates that pass `accountName` and `containerName` as constructor arguments. The `AddArius()` extension method in `Arius.Core` SHALL encapsulate all DI registration. Handler registrations MUST be placed after `AddMediator()` to override the source generator's auto-registrations. `CliBuilder.BuildProductionServices` SHALL delegate blob service construction and preflight validation to `AzureBlobServiceFactory.CreateAsync` and SHALL only be responsible for credential resolution, calling the factory, and wiring the DI container with the returned `IBlobStorageService`.
 
 #### Scenario: Successful DI resolution
-- **WHEN** `AddArius()` is called with a valid `IBlobStorageService` from `BlobServiceFactory.CreateAsync`
+- **WHEN** `AddArius()` is called with a valid `IBlobStorageService` from `AzureBlobServiceFactory.CreateAsync`
 - **THEN** resolving `IMediator` and sending any command SHALL NOT throw a DI resolution exception
 
 #### Scenario: BuildProductionServices delegates to factory
 - **WHEN** `BuildProductionServices` is called with an account name, key, passphrase, container, and preflight mode
-- **THEN** it SHALL resolve the credential, call `BlobServiceFactory.CreateAsync`, and build the DI container with the returned service
+- **THEN** it SHALL resolve the credential, call `AzureBlobServiceFactory.CreateAsync`, and build the DI container with the returned service
 
 ## ADDED Requirements
 

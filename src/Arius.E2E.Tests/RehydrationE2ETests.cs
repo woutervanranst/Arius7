@@ -1,6 +1,8 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Shouldly;
 using System.Formats.Tar;
@@ -42,8 +44,6 @@ public class RehydrationE2ETests(AzureFixture azure)
     [Timeout(60_000)] // Task 4.2: 60-second timeout for Archive tier operations
     public async Task E2E_Rehydration_FullCycle(CancellationToken ct)
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (container, svc, cleanup) = await azure.CreateTestContainerAsync(ct);
         try
         {
@@ -91,6 +91,8 @@ public class RehydrationE2ETests(AzureFixture azure)
 
             var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
+                new TreeCacheService(trackingSvc, fix.Encryption, fix.Index, container.AccountName, container.Name),
+                new SnapshotService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
@@ -112,6 +114,8 @@ public class RehydrationE2ETests(AzureFixture azure)
             var trackingSvc2 = new CopyTrackingBlobService(svc);
             var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
+                new TreeCacheService(trackingSvc2, fix.Encryption, fix.Index, container.AccountName, container.Name),
+                new SnapshotService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                 container.AccountName, container.Name);
@@ -158,6 +162,8 @@ public class RehydrationE2ETests(AzureFixture azure)
             {
                 var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
+                    new TreeCacheService(svc, fix.Encryption, fix.Index, container.AccountName, container.Name),
+                    new SnapshotService(svc, fix.Encryption, container.AccountName, container.Name),
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
                     container.AccountName, container.Name);

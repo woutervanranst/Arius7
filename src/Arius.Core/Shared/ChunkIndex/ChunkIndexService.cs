@@ -51,13 +51,20 @@ public sealed class ChunkIndexService : IDisposable
     /// <summary>
     /// Initializes a ChunkIndexService and prepares the tiered chunk index cache state.
     /// </summary>
+    /// <param name="blobs">Blob storage backend.</param>
+    /// <param name="encryption">Encryption/hashing service.</param>
     /// <param name="accountName">Account name used to derive the on-disk L2 cache directory under the user's profile.</param>
     /// <param name="containerName">Container name used to derive the on-disk L2 cache directory under the user's profile.</param>
     /// <param name="cacheBudgetBytes">Approximate byte budget for the in-memory L1 cache.</param>
     /// <remarks>
     /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
     /// </remarks>
-    public ChunkIndexService(IBlobContainerService blobs, IEncryptionService encryption, string accountName, string containerName, long cacheBudgetBytes = DefaultCacheBudgetBytes)
+    public ChunkIndexService(
+        IBlobContainerService blobs, 
+        IEncryptionService encryption, 
+        string accountName, 
+        string containerName, 
+        long cacheBudgetBytes = DefaultCacheBudgetBytes)
     {
         _blobs         = blobs;
         _encryption    = encryption;
@@ -286,5 +293,20 @@ public sealed class ChunkIndexService : IDisposable
     public void Dispose()
     {
         /* future: flush in-progress state */
+    }
+
+    /// <summary>
+    /// Clears the in-memory L1 LRU cache. Called by <see cref="TreeCacheService"/> when a
+    /// snapshot mismatch is detected, to ensure stale shard data is not served from memory
+    /// after the L2 disk cache has been deleted.
+    /// </summary>
+    public void InvalidateL1()
+    {
+        lock (_l1Lock)
+        {
+            _l1Lru.Clear();
+            _l1Map.Clear();
+            _l1UsedBytes = 0;
+        }
     }
 }

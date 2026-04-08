@@ -1,8 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
-using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -16,24 +14,24 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 {
     private const string PointerSuffix = ".pointer.arius";
 
-    private readonly IBlobContainerService _blobs;
-    private readonly IEncryptionService _encryption;
     private readonly ChunkIndexService _index;
+    private readonly TreeCacheService _treeCache;
+    private readonly SnapshotService _snapshotSvc;
     private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
 
     public ListQueryHandler(
-        IBlobContainerService blobs,
-        IEncryptionService encryption,
         ChunkIndexService index,
+        TreeCacheService treeCache,
+        SnapshotService snapshotSvc,
         ILogger<ListQueryHandler> logger,
         string accountName,
         string containerName)
     {
-        _blobs = blobs;
-        _encryption = encryption;
         _index = index;
+        _treeCache = treeCache;
+        _snapshotSvc = snapshotSvc;
         _logger = logger;
         _accountName = accountName;
         _containerName = containerName;
@@ -55,8 +53,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             opts.Recursive,
             opts.LocalPath ?? "(none)");
 
-        var snapshotSvc = new SnapshotService(_blobs, _encryption);
-        var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+        var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
         {
             throw new InvalidOperationException(
@@ -98,9 +95,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         TreeBlob? treeBlob = null;
         if (treeHash is not null)
         {
-            var blobName = BlobPaths.FileTree(treeHash);
-            await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-            treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+            treeBlob = await _treeCache.ReadAsync(treeHash, cancellationToken);
         }
 
         var localSnapshot = BuildLocalDirectorySnapshot(localDir, currentRelativeDirectory);
@@ -254,9 +249,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 break;
             }
 
-            var blobName = BlobPaths.FileTree(currentHash);
-            await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-            var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+            var treeBlob = await _treeCache.ReadAsync(currentHash, cancellationToken);
 
             var nextDirectory = treeBlob.Entries.FirstOrDefault(e =>
                 e.Type == TreeEntryType.Dir

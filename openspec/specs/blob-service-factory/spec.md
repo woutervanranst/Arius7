@@ -2,23 +2,23 @@
 
 ## Purpose
 
-Defines the `BlobServiceFactory` in `Arius.AzureBlob` that creates a preflight-validated `IBlobStorageService`, encapsulating credential handling, Azure SDK client construction, and connectivity checks.
+Defines the `AzureBlobServiceFactory` in `Arius.AzureBlob` that creates a preflight-validated `IBlobStorageService`, encapsulating credential handling, Azure SDK client construction, and connectivity checks.
 
 ## Requirements
 
-### Requirement: BlobServiceFactory creates preflight-validated storage service
-The `Arius.AzureBlob` project SHALL expose a static `BlobServiceFactory.CreateAsync` method that accepts a credential (`StorageSharedKeyCredential` or `TokenCredential` passed as `object`), account name, container name, and `PreflightMode`, and SHALL return an `IBlobStorageService` that has passed the preflight connectivity check. The factory SHALL construct a `BlobServiceClient`, obtain a `BlobContainerClient`, execute the preflight probe, and wrap the container client in an `AzureBlobStorageService`.
+### Requirement: AzureBlobServiceFactory creates preflight-validated storage service
+The `Arius.AzureBlob` project SHALL expose a static `AzureBlobServiceFactory.CreateAsync` method that accepts a credential (`StorageSharedKeyCredential` or `TokenCredential` passed as `object`), account name, container name, and `PreflightMode`, and SHALL return an `IBlobStorageService` that has passed the preflight connectivity check. The factory SHALL construct a `BlobServiceClient`, obtain a `BlobContainerClient`, execute the preflight probe, and wrap the container client in an `AzureBlobStorageService`.
 
 #### Scenario: Create with shared key credential
-- **WHEN** `BlobServiceFactory.CreateAsync` is called with a `StorageSharedKeyCredential`, account `"myaccount"`, container `"backup"`, and `PreflightMode.ReadOnly`
+- **WHEN** `AzureBlobServiceFactory.CreateAsync` is called with a `StorageSharedKeyCredential`, account `"myaccount"`, container `"backup"`, and `PreflightMode.ReadOnly`
 - **THEN** the factory SHALL return an `IBlobStorageService` backed by a `BlobContainerClient` authenticated with the shared key
 
 #### Scenario: Create with token credential
-- **WHEN** `BlobServiceFactory.CreateAsync` is called with an `AzureCliCredential` (a `TokenCredential`), account `"myaccount"`, container `"backup"`, and `PreflightMode.ReadWrite`
+- **WHEN** `AzureBlobServiceFactory.CreateAsync` is called with an `AzureCliCredential` (a `TokenCredential`), account `"myaccount"`, container `"backup"`, and `PreflightMode.ReadWrite`
 - **THEN** the factory SHALL return an `IBlobStorageService` backed by a `BlobContainerClient` authenticated with the token credential
 
 #### Scenario: Invalid credential type rejected
-- **WHEN** `BlobServiceFactory.CreateAsync` is called with a credential that is neither `StorageSharedKeyCredential` nor `TokenCredential`
+- **WHEN** `AzureBlobServiceFactory.CreateAsync` is called with a credential that is neither `StorageSharedKeyCredential` nor `TokenCredential`
 - **THEN** the factory SHALL throw `ArgumentException`
 
 ### Requirement: Preflight probe modes

@@ -175,6 +175,21 @@ public class ArchiveCommandTests
 public class RestoreCommandTests
 {
     [Test]
+    public async Task Restore_MissingContainer_ReturnsExitCode1()
+    {
+        var rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (_, _, _, _, _) =>
+            throw new PreflightException(
+                PreflightErrorKind.ContainerNotFound,
+                authMode: "key",
+                accountName: "acct",
+                containerName: "missing"));
+
+        var exitCode = await rootCommand.Parse("restore /data -a acct -k key -c missing").InvokeAsync();
+
+        exitCode.ShouldBe(1);
+    }
+
+    [Test]
     public async Task Restore_WithVersion_ParsedCorrectly()
     {
         var harness  = new CliHarness();
@@ -235,6 +250,21 @@ public class RestoreCommandTests
 [NotInParallel("AnsiConsoleRecorder")]
 public class ListQueryParsingTests
 {
+    [Test]
+    public async Task ListQuery_MissingContainer_ReturnsExitCode1()
+    {
+        var rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (_, _, _, _, _) =>
+            throw new PreflightException(
+                PreflightErrorKind.ContainerNotFound,
+                authMode: "key",
+                accountName: "acct",
+                containerName: "missing"));
+
+        var exitCode = await rootCommand.Parse("ls -a acct -k key -c missing").InvokeAsync();
+
+        exitCode.ShouldBe(1);
+    }
+
     [Test]
     public async Task ListQuery_AllFilters_ParsedCorrectly()
     {

@@ -78,7 +78,7 @@ internal static class Program
                 // Register services
                 services.AddTransient<IDialogService, DialogService>();
                 services.AddSingleton<IRepositorySession, RepositorySession>();
-                services.AddSingleton<IBlobServiceFactory, global::Arius.AzureBlob.BlobServiceFactory>();
+                services.AddSingleton<IBlobServiceFactory, global::Arius.AzureBlob.AzureBlobServiceFactory>();
 
                 // Register windows and viewmodels
                 services.AddTransient<RepositoryExplorerWindow>();

@@ -7,7 +7,7 @@ A second (non-CLI) host is planned. Without extraction, that host must duplicate
 ## Goals / Non-Goals
 
 **Goals:**
-- Extract a `BlobServiceFactory` into `Arius.AzureBlob` that any host can call to get a preflight-validated `IBlobStorageService`
+- Extract an `AzureBlobServiceFactory` into `Arius.AzureBlob` that any host can call to get a preflight-validated `IBlobStorageService`
 - Move `PreflightMode` and `PreflightException` to `Arius.AzureBlob` so both hosts share the same types
 - Make `PreflightException` carry structured data (status code, auth mode, account, container) instead of pre-formatted strings, so each host can format its own user-facing messages
 - Keep `CliBuilder.BuildProductionServices` as a thin wrapper: resolve credential, call factory, wire DI
@@ -22,7 +22,7 @@ A second (non-CLI) host is planned. Without extraction, that host must duplicate
 
 ### 1. Factory lives in `Arius.AzureBlob` as a static async method
 
-The factory is a static `CreateAsync` method on a new `BlobServiceFactory` class. It takes a `TokenCredential` or `StorageSharedKeyCredential` (via the common base -- both are passed as typed overloads or a discriminated parameter), account name, container name, and `PreflightMode`. It returns an `IBlobStorageService`.
+The factory is a static `CreateAsync` method on a new `AzureBlobServiceFactory` class. It takes a `TokenCredential` or `StorageSharedKeyCredential` (via the common base -- both are passed as typed overloads or a discriminated parameter), account name, container name, and `PreflightMode`. It returns an `IBlobStorageService`.
 
 **Why static**: The factory has no instance state. It builds the client chain, runs the preflight probe, and returns the service. No reason to instantiate it.
 
@@ -67,7 +67,7 @@ The existing `Core_Should_Not_Reference_Azure` test is also widened from `Azure.
 
 **Why**: After extracting the factory, `Arius.Cli` should no longer reference Azure SDK types directly -- it passes credentials and receives an `IBlobStorageService`. The architecture test ensures this boundary is not accidentally violated in the future. This codifies the design intent: Azure-specific concerns live exclusively in `Arius.AzureBlob`.
 
-**What passes through**: `Arius.Cli` will still depend on `Arius.AzureBlob` (to call `BlobServiceFactory.CreateAsync` and catch `PreflightException`). The test checks direct Azure SDK namespace dependencies, not transitive project references.
+**What passes through**: `Arius.Cli` will still depend on `Arius.AzureBlob` (to call `AzureBlobServiceFactory.CreateAsync` and catch `PreflightException`). The test checks direct Azure SDK namespace dependencies, not transitive project references.
 
 ### 6. CLI error formatting moves to verb catch blocks
 

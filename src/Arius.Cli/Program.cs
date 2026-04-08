@@ -1,10 +1,11 @@
 using Arius.Cli;
+using Arius.AzureBlob;
 using Serilog;
 using Spectre.Console;
 
 try
 {
-    return await CliBuilder.BuildRootCommand().Parse(args).InvokeAsync();
+    return await CliBuilder.BuildRootCommand(blobServiceFactory: new AzureBlobServiceFactory()).Parse(args).InvokeAsync();
 }
 catch (Exception ex)
 {

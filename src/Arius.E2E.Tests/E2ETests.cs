@@ -3,6 +3,8 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -19,7 +21,7 @@ namespace Arius.E2E.Tests;
 ///   ARIUS_E2E_ACCOUNT  — storage account name
 ///   ARIUS_E2E_KEY      — storage account key
 ///
-/// Skipped when the env vars are not set.
+/// Fails when the env vars are not set.
 /// Each test creates and cleans up its own unique container.
 ///
 /// Covers tasks 16.1 – 16.5.
@@ -47,13 +49,11 @@ public class E2ETests(AzureFixture azure)
         });
     }
 
-    // ── 16.1: Configuration is set up (implicit — if env vars absent, skip) ──
+    // ── 16.1: Configuration is set up ─────────────────────────────────────────
 
     [Test]
     public async Task E2E_Configuration_IsAvailable_WhenEnvVarsSet()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         AzureFixture.AccountName.ShouldNotBeNullOrWhiteSpace();
         AzureFixture.AccountKey.ShouldNotBeNullOrWhiteSpace();
 
@@ -72,8 +72,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_HotTier_Archive_Restore_ByteIdentical()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Hot);
         try
         {
@@ -98,8 +96,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_CoolTier_Archive_Restore_ByteIdentical()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Cool);
         try
         {
@@ -122,8 +118,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_ArchiveTier_BlobTierIsSet()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Archive);
         try
         {
@@ -155,8 +149,6 @@ public class E2ETests(AzureFixture azure)
     [Timeout(300_000)] // 5 minute timeout for large file upload
     public async Task E2E_LargeFile_100MB_Streaming(CancellationToken ct)
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Hot, ct: ct);
         try
         {
@@ -191,6 +183,8 @@ public sealed class E2EFixture : IAsyncDisposable
     public IBlobContainerService BlobContainer  { get; }
     public IEncryptionService  Encryption   { get; }
     public ChunkIndexService   Index        { get; }
+    public TreeCacheService    TreeCache    { get; }
+    public SnapshotService     Snapshot     { get; }
     public string              LocalRoot    { get; }
     public string              RestoreRoot  { get; }
 
@@ -202,6 +196,8 @@ public sealed class E2EFixture : IAsyncDisposable
         IBlobContainerService blobContainer,
         IEncryptionService  encryption,
         ChunkIndexService   index,
+        TreeCacheService    treeCache,
+        SnapshotService     snapshot,
         string              tempRoot,
         string              localRoot,
         string              restoreRoot,
@@ -212,6 +208,8 @@ public sealed class E2EFixture : IAsyncDisposable
         BlobContainer  = blobContainer;
         Encryption   = encryption;
         Index        = index;
+        TreeCache    = treeCache;
+        Snapshot     = snapshot;
         _tempRoot    = tempRoot;
         LocalRoot    = localRoot;
         RestoreRoot  = restoreRoot;
@@ -239,8 +237,10 @@ public sealed class E2EFixture : IAsyncDisposable
             : new PlaintextPassthroughService();
         var account    = container.AccountName;
         var index      = new ChunkIndexService(svc, encryption, account, container.Name);
+        var treeCache  = new TreeCacheService(svc, encryption, index, account, container.Name);
+        var snapshot   = new SnapshotService(svc, encryption, account, container.Name);
 
-        return new E2EFixture(svc, encryption, index, tempRoot, localRoot, restoreRoot,
+        return new E2EFixture(svc, encryption, index, treeCache, snapshot, tempRoot, localRoot, restoreRoot,
                               account, container.Name, defaultTier);
     }
 
@@ -263,12 +263,18 @@ public sealed class E2EFixture : IAsyncDisposable
             Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
-        new(BlobContainer, Encryption, Index, _mediator,
+        new(BlobContainer, Encryption, Index,
+            TreeCache,
+            Snapshot,
+            _mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             _account, _container);
 
     private RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index, _mediator,
+        new(BlobContainer, Encryption, Index,
+            TreeCache,
+            Snapshot,
+            _mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             _account, _container);
 

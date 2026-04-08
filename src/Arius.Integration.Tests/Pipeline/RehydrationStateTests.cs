@@ -1,6 +1,8 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
@@ -158,12 +160,17 @@ public class RehydrationStateTests(AzuriteFixture azurite)
     }
 
     private static RestoreCommandHandler MakeRestoreHandler(
-        RehydrationSimulatingBlobService sim, PipelineFixture fix) =>
-        new(sim, fix.Encryption,
-            new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name),
+        RehydrationSimulatingBlobService sim, PipelineFixture fix)
+    {
+        var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
+        return new(sim, fix.Encryption,
+            index,
+            new TreeCacheService(sim, fix.Encryption, index, Account, fix.Container.Name),
+            new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
             NullLogger<RestoreCommandHandler>.Instance,
             Account, fix.Container.Name);
+    }
 
     // ── 1.2: chunk needs rehydration — verify pipeline initiates copy-to-rehydrate ──
 

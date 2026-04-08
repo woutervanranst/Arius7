@@ -24,7 +24,7 @@ The Arius.Explorer WPF app and its test project were copied verbatim from the pr
 
 - **Arius.Core**: `LsHandler`, `LsModels`, `ServiceCollectionExtensions` — streaming rewrite, new entry types, new parameters.
 - **Arius.Cli**: `LsVerb` — consume streaming Ls instead of batch `LsResult`.
-- **Arius.AzureBlob**: New container listing capability (possibly in `BlobServiceFactory` or a new service).
+- **Arius.AzureBlob**: New container listing capability (possibly in `AzureBlobServiceFactory` or a new service).
 - **Arius.Explorer**: `Program.cs` (DI setup), `ChooseRepositoryViewModel` (container names), `RepositoryExplorerViewModel` (streaming Ls, archive/restore commands), `FileItemViewModel`/`TreeNodeViewModel` (new entry types).
 - **Arius.Explorer.Tests**: Complete rewrite from xUnit v3 to TUnit.
 - **Breaking for any consumer** of the current batch `LsCommand`/`LsResult` API (only the CLI `ls` verb).

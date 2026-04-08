@@ -73,7 +73,18 @@ public static class TreeBlobSerializer
         return ParseLines(content.Split('\n'));
     }
 
-    // ── Serialize ─────────────────────────────────────────────────────────────
+    // ── Serialize / Deserialize (plaintext disk cache) ────────────────────────
+
+    /// <summary>
+    /// Deserializes a <see cref="TreeBlob"/> from canonical UTF-8 text bytes
+    /// (the inverse of <see cref="Serialize"/>). Used when reading plaintext files
+    /// from the local disk cache.
+    /// </summary>
+    public static TreeBlob Deserialize(byte[] bytes)
+    {
+        var text  = s_utf8.GetString(bytes);
+        return ParseLines(text.Split('\n'));
+    }
 
     /// <summary>
     /// Serializes a <see cref="TreeBlob"/> to canonical UTF-8 text bytes.

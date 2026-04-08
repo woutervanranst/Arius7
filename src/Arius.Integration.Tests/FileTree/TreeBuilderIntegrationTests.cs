@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
@@ -15,6 +16,13 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
 {
     private const string Account = "devstoreaccount1";
     private static readonly PlaintextPassthroughService s_enc = new();
+
+    private static TreeBuilder CreateBuilder(IBlobContainerService blobs, string containerName)
+    {
+        var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
+        var treeCache = new TreeCacheService(blobs, s_enc, index, Account, containerName);
+        return new TreeBuilder(s_enc, treeCache);
+    }
 
     private static ManifestEntry MakeEntry(string path, string hash, DateTimeOffset ts) =>
         new(path, hash, ts, ts);
@@ -33,7 +41,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
             var entry = MakeEntry("readme.txt", "aabbccdd", now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
-            var builder  = new TreeBuilder(blobs, s_enc, Account, container.Name);
+            var builder  = CreateBuilder(blobs, container.Name);
             var rootHash = await builder.BuildAsync(manifestPath);
 
             rootHash.ShouldNotBeNull();
@@ -55,7 +63,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         {
             File.Delete(manifestPath);
             // clean up disk cache
-            var cacheDir = TreeBuilder.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -74,7 +82,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
             var entry = MakeEntry("photo.jpg", "deadbeef", now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
-            var builder1 = new TreeBuilder(blobs, s_enc, Account, container.Name);
+            var builder1 = CreateBuilder(blobs, container.Name);
             var root1    = await builder1.BuildAsync(manifestPath);
 
             // Count blobs in filetrees/ after first run
@@ -83,7 +91,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
                 blobsAfterRun1.Add(b);
 
             // Second run with same manifest
-            var builder2 = new TreeBuilder(blobs, s_enc, Account, container.Name);
+            var builder2 = CreateBuilder(blobs, container.Name);
             var root2    = await builder2.BuildAsync(manifestPath);
 
             root2.ShouldBe(root1);
@@ -98,7 +106,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             File.Delete(manifestPath);
-            var cacheDir = TreeBuilder.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -122,7 +130,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
             };
             await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
 
-            var builder  = new TreeBuilder(blobs, s_enc, Account, container.Name);
+            var builder  = CreateBuilder(blobs, container.Name);
             var rootHash = await builder.BuildAsync(manifestPath);
 
             rootHash.ShouldNotBeNull();
@@ -138,7 +146,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             File.Delete(manifestPath);
-            var cacheDir = TreeBuilder.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }

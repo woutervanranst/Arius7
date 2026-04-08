@@ -46,13 +46,15 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
+        var treeCache   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
+        var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
         var handler = new ListQueryHandler(
-            blobs,
-            s_encryption,
             index,
+            treeCache,
+            snapshotSvc,
             NullLogger<ListQueryHandler>.Instance,
-            "account",
-            "container");
+            "acct-ls-test-1",
+            "ctr-ls-test-1");
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None))
@@ -120,13 +122,15 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
+        var treeCache2   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
+        var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
         var handler = new ListQueryHandler(
-            blobs,
-            s_encryption,
             index,
+            treeCache2,
+            snapshotSvc2,
             NullLogger<ListQueryHandler>.Instance,
-            "account",
-            "container");
+            "acct-ls-test-2",
+            "ctr-ls-test-2");
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
@@ -178,13 +182,15 @@ public class ListQueryHandlerTests
             index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
             index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
+            var treeCache3   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
+            var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
             var handler = new ListQueryHandler(
-                blobs,
-                s_encryption,
                 index,
+                treeCache3,
+                snapshotSvc3,
                 NullLogger<ListQueryHandler>.Instance,
-                "account",
-                "container");
+                "acct-ls-test-3",
+                "ctr-ls-test-3");
 
             var results = new List<RepositoryFileEntry>();
             await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
@@ -225,6 +231,26 @@ public class ListQueryHandlerTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    [Test]
+    public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
+    {
+        var blobs = new ThrowOnCreateBlobContainerService();
+        using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing", cacheBudgetBytes: 1024 * 1024);
+        var treeCache = new TreeCacheService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
+        var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
+        var handler = new ListQueryHandler(index, treeCache, snapshotSvc, NullLogger<ListQueryHandler>.Instance, "acct-ls-missing", "ctr-ls-missing");
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions()), CancellationToken.None))
+            {
+            }
+        });
+
+        ex.Message.ShouldBe("No snapshots found in this repository.");
+        blobs.CreateCalled.ShouldBeFalse();
     }
 
     // ── 3.3: recursive vs non-recursive ──────────────────────────────────────
@@ -297,7 +323,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
@@ -344,7 +370,7 @@ public class ListQueryHandlerTests
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
-            var handler = MakeHandler(blobs, index);
+            var handler = MakeHandler(blobs, index, "acct-38", "ctr-38");
 
             var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
             var dirs = results.OfType<RepositoryDirectoryEntry>().ToList();
@@ -404,7 +430,7 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
         var files = results.OfType<RepositoryFileEntry>().ToList();
 
@@ -518,8 +544,8 @@ public class ListQueryHandlerTests
         AriusVersion = "test"
     };
 
-    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index) =>
-        new(blobs, s_encryption, index, NullLogger<ListQueryHandler>.Instance, "account", "container");
+    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
+        new(index, new TreeCacheService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {
@@ -530,5 +556,29 @@ public class ListQueryHandlerTests
     }
 
     private static string HashFor(string label) => Convert.ToHexString(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label))).ToLowerInvariant();
+
+    private sealed class ThrowOnCreateBlobContainerService : IBlobContainerService
+    {
+        public bool CreateCalled { get; private set; }
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
+        {
+            CreateCalled = true;
+            throw new InvalidOperationException("CreateContainerIfNotExistsAsync should not be called by ls.");
+        }
+
+        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) => Task.FromResult(new BlobMetadata { Exists = false });
+        public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield break;
+        }
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 
 }

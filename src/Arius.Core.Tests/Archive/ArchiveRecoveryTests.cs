@@ -3,6 +3,7 @@ using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -87,7 +88,7 @@ public class ArchiveRecoveryMatrixTests
             _containerName = $"test-container-{Guid.NewGuid():N}";
             Directory.CreateDirectory(_rootDirectory);
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
-            Directory.CreateDirectory(TreeBuilder.GetDiskCacheDirectory(AccountName, _containerName));
+            Directory.CreateDirectory(TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName));
             Blobs = new FakeInMemoryBlobContainerService();
             _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
         }
@@ -109,12 +110,16 @@ public class ArchiveRecoveryMatrixTests
         public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
         {
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
-            Directory.CreateDirectory(TreeBuilder.GetDiskCacheDirectory(AccountName, _containerName));
+            Directory.CreateDirectory(TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName));
 
+            var treeCache    = new TreeCacheService(Blobs, _encryption, _index, AccountName, _containerName);
+            var snapshotSvc  = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
             var handler = new ArchiveCommandHandler(
                 Blobs,
                 _encryption,
                 _index,
+                treeCache,
+                snapshotSvc,
                 _mediator,
                 NullLogger<ArchiveCommandHandler>.Instance,
                 AccountName,
@@ -144,9 +149,13 @@ public class ArchiveRecoveryMatrixTests
             if (Directory.Exists(chunkIndexDir))
                 TryDeleteDirectory(chunkIndexDir);
 
-            var treeCacheDir = TreeBuilder.GetDiskCacheDirectory(AccountName, _containerName);
+            var treeCacheDir = TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName);
             if (Directory.Exists(treeCacheDir))
                 TryDeleteDirectory(treeCacheDir);
+
+            var snapshotCacheDir = SnapshotService.GetDiskCacheDirectory(AccountName, _containerName);
+            if (Directory.Exists(snapshotCacheDir))
+                TryDeleteDirectory(snapshotCacheDir);
         }
 
         private static void TryDeleteDirectory(string path)

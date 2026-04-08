@@ -1,123 +1,6 @@
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.FileTree;
-
-/// <summary>
-/// One entry written to the manifest temp file during the archive pipeline.
-/// Format (tab-separated, one line each): <c>path\thash\tcreated\tmodified\n</c>
-/// <para>
-/// <c>path</c> is always forward-slash-normalized and relative to the archive root.
-/// <c>hash</c> is the content-hash (hex).
-/// Timestamps are ISO-8601 round-trip ("O"), UTC.
-/// </para>
-/// </summary>
-public sealed record ManifestEntry(
-    string         Path,
-    string         ContentHash,
-    DateTimeOffset Created,
-    DateTimeOffset Modified)
-{
-    private const char Sep = '\t';
-
-    /// <summary>Serializes to a manifest line (no trailing newline).</summary>
-    public string Serialize() =>
-        $"{Path}{Sep}{ContentHash}{Sep}{Created:O}{Sep}{Modified:O}";
-
-    /// <summary>Parses a manifest line. Throws on invalid input.</summary>
-    public static ManifestEntry Parse(string line)
-    {
-        var parts = line.Split(Sep);
-        if (parts.Length != 4)
-            throw new FormatException($"Invalid manifest line (expected 4 tab-separated fields): '{line}'");
-
-        return new ManifestEntry(
-            Path        : parts[0],
-            ContentHash : parts[1],
-            Created     : DateTimeOffset.Parse(parts[2]),
-            Modified    : DateTimeOffset.Parse(parts[3]));
-    }
-}
-
-/// <summary>
-/// Writes completed-file entries to an unsorted temp file during the archive pipeline.
-/// Call <see cref="FlushAsync"/> / Dispose when done.
-/// Thread-safe for concurrent writers.
-/// </summary>
-public sealed class ManifestWriter : IAsyncDisposable
-{
-    private readonly StreamWriter _writer;
-    private readonly SemaphoreSlim _lock = new(1, 1);
-
-    public string TempFilePath { get; }
-
-    public ManifestWriter(string tempFilePath)
-    {
-        TempFilePath = tempFilePath;
-        _writer      = new StreamWriter(
-            new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true),
-            System.Text.Encoding.UTF8,
-            leaveOpen: false);
-    }
-
-    /// <summary>Appends a manifest entry. Thread-safe.</summary>
-    public async Task AppendAsync(ManifestEntry entry, CancellationToken cancellationToken = default)
-    {
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            await _writer.WriteLineAsync(entry.Serialize().AsMemory(), cancellationToken);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _writer.FlushAsync();
-        _writer.Dispose();
-        _lock.Dispose();
-    }
-}
-
-/// <summary>
-/// External sort of the manifest file: reads all entries, sorts by path, rewrites.
-/// At 500M × ~80 bytes this is ~40 GB; a chunked merge sort would be needed at that
-/// scale. For the initial implementation we use an in-process LINQ sort on the file
-/// (sufficient for development/testing; the hook is isolated so it can be swapped
-/// for a true external sort later).
-/// </summary>
-public static class ManifestSorter
-{
-    /// <summary>
-    /// Sorts <paramref name="manifestPath"/> in place by path (ordinal ascending).
-    /// Returns the same path for convenience.
-    /// </summary>
-    public static async Task<string> SortAsync(string manifestPath, CancellationToken cancellationToken = default)
-    {
-        // Read all lines
-        var lines = await File.ReadAllLinesAsync(manifestPath, cancellationToken);
-
-        // Parse → sort → serialize
-        var sorted = lines
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Select(ManifestEntry.Parse)
-            .OrderBy(e => e.Path, StringComparer.Ordinal)
-            .ToList();
-
-        // Rewrite in place
-        await using var writer = new StreamWriter(
-            new FileStream(manifestPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true));
-
-        foreach (var entry in sorted)
-            await writer.WriteLineAsync(entry.Serialize().AsMemory(), cancellationToken);
-
-        return manifestPath;
-    }
-}
 
 /// <summary>
 /// Builds Merkle tree blobs bottom-up from a sorted manifest file.
@@ -128,10 +11,9 @@ public static class ManifestSorter
 ///    a. Collect file entries + already-computed child directory entries.
 ///    b. Build <see cref="TreeBlob"/>.
 ///    c. Compute tree hash.
-///    d. Check local disk cache — if hit, skip upload (dedup).
-///    e. Check remote <c>filetrees/&lt;hash&gt;</c> — if exists, save to disk cache, skip upload.
-///    f. Upload new blob to <c>filetrees/&lt;hash&gt;</c>; save bytes to disk cache.
-///    g. Cascade the directory hash up to the parent directory.
+///    d. Check via <see cref="TreeCacheService.ExistsInRemote"/> — if present, skip upload (dedup).
+///    e. Upload new blob via <see cref="TreeCacheService.WriteAsync"/>; disk cache written automatically.
+///    f. Cascade the directory hash up to the parent directory.
 /// 3. Return root tree hash.
 ///
 /// Empty directories are skipped (task 5.8): if no files reach a directory
@@ -139,37 +21,18 @@ public static class ManifestSorter
 /// </summary>
 public sealed class TreeBuilder
 {
-    private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
-    private readonly string              _diskCacheDir;
-
-    public TreeBuilder(
-        IBlobContainerService blobs,
-        IEncryptionService  encryption,
-        string              accountName,
-        string              containerName)
-    {
-        _blobs        = blobs;
-        _encryption   = encryption;
-        _diskCacheDir = GetDiskCacheDirectory(accountName, containerName);
-        Directory.CreateDirectory(_diskCacheDir);
-    }
-
-    // ── Cache directory ───────────────────────────────────────────────────────
+    private readonly TreeCacheService    _treeCache;
 
     /// <summary>
-    /// Returns the local disk cache directory for tree blobs:
-    /// <c>~/.arius/{accountName}-{containerName}/filetrees/</c>
-    /// <summary>
-    /// Computes the local disk cache directory path for storing tree-blob files for the specified account and container.
+    /// Builds trees using shared services supplied by the caller/DI container.
     /// </summary>
-    /// <param name="accountName">Storage account name used to derive the repository directory name.</param>
-    /// <param name="containerName">Storage container name used to derive the repository directory name.</param>
-    /// <returns>The absolute path under the user's profile, e.g. &lt;userProfile&gt;/.arius/{repoDirectoryName}/filetrees.</returns>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
+    public TreeBuilder(
+        IEncryptionService encryption,
+        TreeCacheService   treeCache)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
+        _encryption = encryption;
+        _treeCache  = treeCache;
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
@@ -182,6 +45,9 @@ public sealed class TreeBuilder
         string            sortedManifestPath,
         CancellationToken cancellationToken = default)
     {
+        // Ensure cache is validated before calling ExistsInRemote (idempotent — no-op if already validated).
+        await _treeCache.ValidateAsync(cancellationToken);
+
         // Accumulated directory entries keyed by directory path (forward-slash, no trailing slash)
         // Value: list of TreeEntry for that directory (files + resolved child dirs)
         var dirEntries = new Dictionary<string, List<TreeEntry>>(StringComparer.Ordinal);
@@ -259,7 +125,7 @@ public sealed class TreeBuilder
             var tree = new TreeBlob { Entries = entries };
             var hash = TreeBlobSerializer.ComputeHash(tree, _encryption);
 
-            // Dedup: upload only if not already on disk cache or in blob storage
+            // Dedup: upload only if not already cached/known remotely
             await EnsureUploadedAsync(hash, tree, cancellationToken);
 
             dirHashMap[dirPath] = hash;
@@ -332,48 +198,15 @@ public sealed class TreeBuilder
     }
 
     /// <summary>
-    /// Uploads a tree blob if not already present on disk cache or in blob storage.
-    /// Saves to disk cache if uploaded or found in blob storage.
+    /// Uploads a tree blob via <see cref="TreeCacheService"/> if not already present remotely.
     /// </summary>
     private async Task EnsureUploadedAsync(
         string            treeHash,
         TreeBlob          tree,
         CancellationToken cancellationToken)
     {
-        var diskPath = Path.Combine(_diskCacheDir, treeHash);
-
-        // Disk cache hit → no upload needed (blob was already uploaded in a prior run)
-        if (File.Exists(diskPath)) return;
-
-        var blobName = BlobPaths.FileTree(treeHash);
-        var json     = TreeBlobSerializer.Serialize(tree);
-
-        // Remote blob exists? Save to disk cache, skip upload.
-        var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-        if (meta.Exists)
-        {
-            File.WriteAllBytes(diskPath, json);
-            return;
-        }
-
-        // Serialize for storage: gzip + optional encryption
-        var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
-        var contentType  = _encryption.IsEncrypted
-            ? ContentTypes.FileTreeGcmEncrypted
-            : ContentTypes.FileTreePlaintext;
-
-        // Upload new blob
-        await _blobs.UploadAsync(
-            blobName,
-            new MemoryStream(storageBytes),
-            new Dictionary<string, string>(),
-            BlobTier.Cool,
-            contentType,
-            overwrite: false,
-            cancellationToken: cancellationToken);
-
-        // Save to disk cache (plaintext, no compression or encryption)
-        File.WriteAllBytes(diskPath, json);
+        if (_treeCache.ExistsInRemote(treeHash)) return;
+        await _treeCache.WriteAsync(treeHash, tree, cancellationToken);
     }
 
     // ── Manifest streaming ────────────────────────────────────────────────────
