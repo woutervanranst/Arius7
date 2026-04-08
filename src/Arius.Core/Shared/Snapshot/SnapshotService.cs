@@ -1,4 +1,3 @@
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using System.IO.Compression;
@@ -6,6 +5,7 @@ using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arius.Core.Shared.ChunkIndex;
 
 namespace Arius.Core.Shared.Snapshot;
 
