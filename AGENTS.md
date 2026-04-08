@@ -2,9 +2,10 @@
 
 # AGENTS.md
 
+- Work Test-Driven: first, write a failing test. Then, implement.
+- Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the tests.
 - When the tests pass, make a conventional git commit.
-- Work Test-Driven: first, write a failing test. Then, implement
 
 ## Session Rules
 
