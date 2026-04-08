@@ -51,13 +51,20 @@ public sealed class ChunkIndexService : IDisposable
     /// <summary>
     /// Initializes a ChunkIndexService and prepares the tiered chunk index cache state.
     /// </summary>
+    /// <param name="blobs">Blob storage backend.</param>
+    /// <param name="encryption">Encryption/hashing service.</param>
     /// <param name="accountName">Account name used to derive the on-disk L2 cache directory under the user's profile.</param>
     /// <param name="containerName">Container name used to derive the on-disk L2 cache directory under the user's profile.</param>
     /// <param name="cacheBudgetBytes">Approximate byte budget for the in-memory L1 cache.</param>
     /// <remarks>
     /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
     /// </remarks>
-    public ChunkIndexService(IBlobContainerService blobs, IEncryptionService encryption, string accountName, string containerName, long cacheBudgetBytes = DefaultCacheBudgetBytes)
+    public ChunkIndexService(
+        IBlobContainerService blobs, 
+        IEncryptionService encryption, 
+        string accountName, 
+        string containerName, 
+        long cacheBudgetBytes = DefaultCacheBudgetBytes)
     {
         _blobs         = blobs;
         _encryption    = encryption;
