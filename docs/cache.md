@@ -33,8 +33,8 @@
 | -- | -- | -- |
 | ChunkIndexService | content-hash to chunk metadata lookup and end-of-run flush | L1 memory LRU, L2 disk, L3 blob |
 | TreeCacheService | tree blob read-through/write-through and remote existence checks | disk, then blob; snapshot-aware validation
-| SnapshotService | snapshot create/resolve/list | local JSON copy plus remote listing |
 | TreeBlobSerializer | serialization for tree blobs | not a cache itself |
 | TreeBuilder | builds Merkle tree blobs from manifest | uses TreeCacheService; temp manifest files are staging, not cache
+| SnapshotService | snapshot create/resolve/list | local JSON copy plus remote listing |
 | ManifestWriter / ManifestSorter | archive temp-file staging | transient disk staging |
 | Storage, Encryption, Streaming, LocalFileEnumerator | infrastructure/support | none |
