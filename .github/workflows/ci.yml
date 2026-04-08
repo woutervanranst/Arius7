@@ -47,6 +47,7 @@ jobs:
       - name: 📦 Restore dependencies
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             dotnet restore $project
@@ -55,6 +56,7 @@ jobs:
       - name: 🔨 Build
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             dotnet build $project --no-restore -c Release
@@ -68,6 +70,7 @@ jobs:
         if: ${{ matrix.collect_coverage }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             $coverageFile = [System.IO.Path]::GetFileNameWithoutExtension($project) + '.coverage.cobertura.xml'
@@ -81,6 +84,7 @@ jobs:
         if: ${{ !matrix.collect_coverage }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             dotnet test --project $project --no-build -c Release

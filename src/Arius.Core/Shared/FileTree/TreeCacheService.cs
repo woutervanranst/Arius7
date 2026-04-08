@@ -2,6 +2,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using System.Collections.Concurrent;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -35,6 +36,8 @@ public sealed class TreeCacheService
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
     /// </summary>
     private bool _validated;
+
+    private readonly ConcurrentDictionary<string, Lazy<Task<TreeBlob>>> _inFlightReads = new(StringComparer.Ordinal);
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
@@ -102,14 +105,31 @@ public sealed class TreeCacheService
             }
         }
 
-        // Azure fallback
-        var blobName = BlobPaths.FileTree(hash);
-        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, cancellationToken);
+        var lazyRead = _inFlightReads.GetOrAdd(
+            hash,
+            _ => new Lazy<Task<TreeBlob>>(
+                () => DownloadAndCacheAsync(hash, diskPath),
+                LazyThreadSafetyMode.ExecutionAndPublication));
 
-        // Write plaintext to disk (fills in any empty marker file)
+        try
+        {
+            return await lazyRead.Value.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            if (lazyRead.IsValueCreated && lazyRead.Value.IsCompleted)
+                _inFlightReads.TryRemove(new KeyValuePair<string, Lazy<Task<TreeBlob>>>(hash, lazyRead));
+        }
+    }
+
+    private async Task<TreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
+    {
+        var blobName = BlobPaths.FileTree(hash);
+        await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
+        var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
+
         var plaintext = TreeBlobSerializer.Serialize(treeBlob);
-        await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
+        await File.WriteAllBytesAsync(diskPath, plaintext, CancellationToken.None);
 
         return treeBlob;
     }
