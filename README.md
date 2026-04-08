@@ -99,7 +99,7 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 ### Running tests locally
 
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
-`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the tests are skipped and TUnit reports a non-zero exit code because zero tests ran.
+`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
 
 ## Updating
 

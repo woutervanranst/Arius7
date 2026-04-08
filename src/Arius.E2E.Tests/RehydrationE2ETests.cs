@@ -44,8 +44,6 @@ public class RehydrationE2ETests(AzureFixture azure)
     [Timeout(60_000)] // Task 4.2: 60-second timeout for Archive tier operations
     public async Task E2E_Rehydration_FullCycle(CancellationToken ct)
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (container, svc, cleanup) = await azure.CreateTestContainerAsync(ct);
         try
         {

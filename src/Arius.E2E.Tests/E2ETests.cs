@@ -21,7 +21,7 @@ namespace Arius.E2E.Tests;
 ///   ARIUS_E2E_ACCOUNT  — storage account name
 ///   ARIUS_E2E_KEY      — storage account key
 ///
-/// Skipped when the env vars are not set.
+/// Fails when the env vars are not set.
 /// Each test creates and cleans up its own unique container.
 ///
 /// Covers tasks 16.1 – 16.5.
@@ -49,13 +49,11 @@ public class E2ETests(AzureFixture azure)
         });
     }
 
-    // ── 16.1: Configuration is set up (implicit — if env vars absent, skip) ──
+    // ── 16.1: Configuration is set up ─────────────────────────────────────────
 
     [Test]
     public async Task E2E_Configuration_IsAvailable_WhenEnvVarsSet()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         AzureFixture.AccountName.ShouldNotBeNullOrWhiteSpace();
         AzureFixture.AccountKey.ShouldNotBeNullOrWhiteSpace();
 
@@ -74,8 +72,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_HotTier_Archive_Restore_ByteIdentical()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Hot);
         try
         {
@@ -100,8 +96,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_CoolTier_Archive_Restore_ByteIdentical()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Cool);
         try
         {
@@ -124,8 +118,6 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_ArchiveTier_BlobTierIsSet()
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Archive);
         try
         {
@@ -157,8 +149,6 @@ public class E2ETests(AzureFixture azure)
     [Timeout(300_000)] // 5 minute timeout for large file upload
     public async Task E2E_LargeFile_100MB_Streaming(CancellationToken ct)
     {
-        Skip.Unless(AzureFixture.IsAvailable, "ARIUS_E2E_ACCOUNT / ARIUS_E2E_KEY not set — skipping E2E tests");
-
         var (fix, cleanup) = await CreateFixtureAsync(BlobTier.Hot, ct: ct);
         try
         {

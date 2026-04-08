@@ -17,6 +17,7 @@ namespace Arius.E2E.Tests;
 ///   dotnet user-secrets set "ARIUS_E2E_KEY"     "..." --project src/Arius.E2E.Tests
 ///
 /// Each test run gets a unique container that is deleted on teardown.
+/// Missing credentials are treated as a test configuration error and fail the suite.
 /// </summary>
 public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
 {
@@ -28,7 +29,7 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
     public static readonly string? AccountName = _config["ARIUS_E2E_ACCOUNT"];
     public static readonly string? AccountKey  = _config["ARIUS_E2E_KEY"];
 
-    /// <summary>True when both credentials are available and E2E tests should run.</summary>
+    /// <summary>True when both credentials are available.</summary>
     public static bool IsAvailable => !string.IsNullOrWhiteSpace(AccountName)
                                    && !string.IsNullOrWhiteSpace(AccountKey);
 
@@ -39,7 +40,9 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
 
     public Task InitializeAsync()
     {
-        if (!IsAvailable) return Task.CompletedTask;
+        if (!IsAvailable)
+            throw new InvalidOperationException(
+                "ARIUS_E2E_ACCOUNT and ARIUS_E2E_KEY must be configured via environment variables or user secrets before running Arius.E2E.Tests.");
 
         var credential   = new StorageSharedKeyCredential(Account, Key);
         var serviceUri   = new Uri($"https://{Account}.blob.core.windows.net");
