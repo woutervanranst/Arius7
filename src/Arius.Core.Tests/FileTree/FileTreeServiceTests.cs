@@ -9,11 +9,11 @@ using Shouldly;
 namespace Arius.Core.Tests.FileTree;
 
 /// <summary>
-/// Unit tests for <see cref="TreeCacheService"/> covering tasks 7.1–7.12.
+/// Unit tests for <see cref="FileTreeService"/> covering tasks 7.1–7.12.
 /// Each test uses isolated account/container names to avoid cross-test disk pollution,
 /// and cleans up the cache directories in a finally block.
 /// </summary>
-public class TreeCacheServiceTests
+public class FileTreeServiceTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
@@ -22,15 +22,15 @@ public class TreeCacheServiceTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static TreeBlob MakeBlob(string fileName = "a.txt", string hash = "aabbccdd") =>
+    private static FileTreeBlob MakeBlob(string fileName = "a.txt", string hash = "aabbccdd") =>
         new()
         {
             Entries =
             [
-                new TreeEntry
+                new FileTreeEntry
                 {
                     Name     = fileName,
-                    Type     = TreeEntryType.File,
+                    Type     = FileTreeEntryType.File,
                     Hash     = hash,
                     Created  = s_ts1,
                     Modified = s_ts2
@@ -38,13 +38,13 @@ public class TreeCacheServiceTests
             ]
         };
 
-    private static (TreeCacheService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
+    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)
     {
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
-        var svc          = new TreeCacheService(blobs, s_enc, index, acct, cont);
-        var cacheDir     = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir     = FileTreeService.GetDiskCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
@@ -67,11 +67,11 @@ public class TreeCacheServiceTests
         try
         {
             var blob     = MakeBlob();
-            var hash     = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
             var diskPath = Path.Combine(cacheDir, hash);
 
             // Pre-populate disk cache with plaintext
-            var plaintext = TreeBlobSerializer.Serialize(blob);
+            var plaintext = FileTreeBlobSerializer.Serialize(blob);
             await File.WriteAllBytesAsync(diskPath, plaintext);
 
             var result = await svc.ReadAsync(hash);
@@ -97,11 +97,11 @@ public class TreeCacheServiceTests
         try
         {
             var blob     = MakeBlob("photo.jpg", "deadbeef");
-            var hash     = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure (storage serialization)
-            var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear(); // clear seed bookkeeping
 
@@ -134,11 +134,11 @@ public class TreeCacheServiceTests
         try
         {
             var blob     = MakeBlob("concurrent.txt", "cc001122");
-            var hash     = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure only — no local cache
-            var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear();
 
@@ -178,7 +178,7 @@ public class TreeCacheServiceTests
         try
         {
             var blob = MakeBlob("doc.pdf", "cafebabe");
-            var hash = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var hash = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
 
             await svc.WriteAsync(hash, blob);
 
@@ -207,11 +207,11 @@ public class TreeCacheServiceTests
         try
         {
             var blob     = MakeBlob();
-            var hash     = TreeBlobSerializer.ComputeHash(blob, s_enc);
+            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
-            var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             // Should not throw
@@ -267,8 +267,8 @@ public class TreeCacheServiceTests
                 BlobPaths.Snapshot("2024-01-01T000000.000Z")
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
-        var svc = new TreeCacheService(blobs, s_enc, index, acct, cont);
-        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 

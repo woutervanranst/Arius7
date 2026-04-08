@@ -19,7 +19,7 @@ public class RestoreCommandHandlerTests
         var blobs = new ThrowOnCreateBlobContainerService();
         var encryption = new PlaintextPassthroughService();
         using var index = new ChunkIndexService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
-        var treeCache = new TreeCacheService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
+        var fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
         var snapshotSvc = new SnapshotService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
         var mediator = Substitute.For<IMediator>();
 
@@ -27,7 +27,7 @@ public class RestoreCommandHandlerTests
             blobs,
             encryption,
             index,
-            treeCache,
+            fileTreeService,
             snapshotSvc,
             mediator,
             NullLogger<RestoreCommandHandler>.Instance,

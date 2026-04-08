@@ -21,7 +21,7 @@ _(none)_
 
 ## Impact
 
-- **Arius.Core**: `ChunkIndexService.ComputeRepoId()` removed, `GetL2Directory()` and `TreeBuilder.GetDiskCacheDirectory()` updated.
+- **Arius.Core**: `ChunkIndexService.ComputeRepoId()` removed, `GetL2Directory()` and `FileTreeBuilder.GetDiskCacheDirectory()` updated.
 - **Arius.Core.Tests**: `ComputeRepoId` unit tests removed or replaced with new path-format tests.
 - **Arius.Integration.Tests / Arius.E2E.Tests**: Cache cleanup paths in `DisposeAsync` updated.
 - **Disk layout**: `~/.arius/{account}-{container}/chunk-index/` and `~/.arius/{account}-{container}/filetrees/` replace `~/.arius/cache/{hash}/...`. Note: the `cache/` level is dropped — no longer needed since the directory name is self-describing.

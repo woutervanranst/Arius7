@@ -3,7 +3,7 @@
 The local disk cache at `~/.arius/cache/<repo-id>/` uses `SHA256(accountName + containerName)[:12]` (lowercase hex) as the directory identifier. This hash is computed by `ChunkIndexService.ComputeRepoId()` and used in two path-construction methods:
 
 - `ChunkIndexService.GetL2Directory()` → `~/.arius/cache/<repo-id>/chunk-index/`
-- `TreeBuilder.GetDiskCacheDirectory()` → `~/.arius/cache/<repo-id>/filetrees/`
+- `FileTreeBuilder.GetDiskCacheDirectory()` → `~/.arius/cache/<repo-id>/filetrees/`
 
 Both `accountName` and `containerName` are plain strings available at every call site. Azure naming rules guarantee they are filesystem-safe: account names are `[a-z0-9]{3,24}`, container names are `[a-z0-9-]{3,63}`.
 

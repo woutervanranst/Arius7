@@ -40,7 +40,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 ### Cache services
 
 - `ChunkIndexService` owns the chunk-index cache.
-- `TreeCacheService` owns the filetree blob cache.
+- `FileTreeService` owns the filetree blob cache.
 - `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
 
 ### Cache semantics
@@ -50,7 +50,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - On snapshot mismatch, chunk-index caches may be stale and must be invalidated.
 
 - Filetree blobs are **immutable** and content-addressed.
-- Because filetree blobs are immutable, `TreeCacheService` can trust any non-corrupt local cache file permanently.
+- Because filetree blobs are immutable, `FileTreeService` can trust any non-corrupt local cache file permanently.
 - Tree-cache validation is about remote existence knowledge and cross-machine coordination, not blob staleness.
 
 - Snapshots are the coordination point between local cache state and remote repository state.
@@ -60,20 +60,20 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - `ArchiveCommandHandler`
   Use `ChunkIndexService` for dedup/index recording and flush.
-  Use `TreeCacheService` for tree existence checks and tree writes.
+  Use `FileTreeService` for tree existence checks and tree writes.
   Use `SnapshotService` for snapshot creation.
   Use raw `IBlobContainerService` for chunk payload upload/copy/delete operations.
 
 - `RestoreCommandHandler`
   Use `SnapshotService` to resolve the target snapshot.
-  Use `TreeCacheService` to traverse filetrees.
+  Use `FileTreeService` to traverse filetrees.
   Use `ChunkIndexService` to resolve content hashes to chunk metadata.
   Use raw `IBlobContainerService` for chunk download, rehydration status, copy, and cleanup.
   `restore` is a read-only repository operation and must not create blob containers.
 
 - `ListQueryHandler`
   Use `SnapshotService` to resolve the snapshot.
-  Use `TreeCacheService` for tree traversal.
+  Use `FileTreeService` for tree traversal.
   Use `ChunkIndexService` for file size/original-size metadata.
   Do not keep stale direct blob/encryption dependencies when the handler no longer uses them.
   `ls` is a read-only repository operation and must not create blob containers.
@@ -86,5 +86,5 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Register shared services once per repository/session in DI.
 - Feature handlers should consume those shared instances through constructor injection.
-- Helper types such as `TreeBuilder` should accept already-constructed shared services rather than creating fresh `ChunkIndexService`, `TreeCacheService`, or `SnapshotService` instances internally.
+- Helper types such as `FileTreeBuilder` should accept already-constructed shared services rather than creating fresh `ChunkIndexService`, `FileTreeService`, or `SnapshotService` instances internally.
 - Avoid duplicate service graphs for the same repository because that can split cache state and validation state.

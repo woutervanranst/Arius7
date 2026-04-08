@@ -22,19 +22,19 @@ The system SHALL resolve the target snapshot for restore operations. When `-v` i
 - **THEN** the system SHALL report an error and exit
 
 ### Requirement: Tree traversal to target path
-The system SHALL walk the merkle tree from the root to the requested path, reading tree blobs through `TreeCacheService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed.
+The system SHALL walk the merkle tree from the root to the requested path, reading tree blobs through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed.
 
 #### Scenario: Restore single file
 - **WHEN** restoring `photos/2024/june/vacation.jpg`
-- **THEN** the system SHALL read tree blobs for `/`, `photos/`, `photos/2024/`, `photos/2024/june/` via `TreeCacheService.ReadAsync` and locate the file entry
+- **THEN** the system SHALL read tree blobs for `/`, `photos/`, `photos/2024/`, `photos/2024/june/` via `FileTreeService.ReadAsync` and locate the file entry
 
 #### Scenario: Restore directory
 - **WHEN** restoring `photos/2024/`
-- **THEN** the system SHALL traverse the full subtree under `photos/2024/` reading tree blobs via `TreeCacheService.ReadAsync` and collect all file entries
+- **THEN** the system SHALL traverse the full subtree under `photos/2024/` reading tree blobs via `FileTreeService.ReadAsync` and collect all file entries
 
 #### Scenario: Restore full snapshot
 - **WHEN** restoring with `--full`
-- **THEN** the system SHALL traverse the entire tree reading all tree blobs via `TreeCacheService.ReadAsync` and collect all file entries
+- **THEN** the system SHALL traverse the entire tree reading all tree blobs via `FileTreeService.ReadAsync` and collect all file entries
 
 #### Scenario: Parse file entry from tree blob
 - **WHEN** a tree blob line is `abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 my vacation photo.jpg`
@@ -46,7 +46,7 @@ The system SHALL walk the merkle tree from the root to the requested path, readi
 
 #### Scenario: Cached tree blob reuse during restore
 - **WHEN** a tree blob was downloaded during a previous `ls` or `restore` invocation
-- **THEN** `TreeCacheService.ReadAsync` SHALL return the cached version from disk without contacting Azure
+- **THEN** `FileTreeService.ReadAsync` SHALL return the cached version from disk without contacting Azure
 
 ### Requirement: Restore conflict check
 The system SHALL check each target file against the local filesystem before restoring, using a `[disposition]` log scope (renamed from `[conflict]`). Four dispositions SHALL be recognized:
@@ -275,7 +275,7 @@ The pipeline SHALL obtain `FileSize` from the most direct available source at ea
 | Large file restore (step 7, `RestoreLargeFileAsync`) | `FileRestoredEvent` | `indexEntry.OriginalSize` — from the index lookup already in scope |
 | Tar bundle restore (`RestoreTarBundleAsync`) | `FileRestoredEvent` | `dataBuffer?.Length ?? 0` — the buffered decompressed entry data |
 
-No changes to `FileToRestore`, `TreeEntry`, or `IndexEntry` are needed.
+No changes to `FileToRestore`, `FileTreeEntry`, or `IndexEntry` are needed.
 
 #### Scenario: Skip site file size
 - **WHEN** a file is skipped because its local hash matches the archive hash

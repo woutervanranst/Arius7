@@ -94,7 +94,7 @@ The iteration count is stored in the header, so it can be increased in future wr
 This keeps the `IEncryptionService` interface unchanged. No caller modifications needed. The write path always uses GCM.
 
 **Alternatives considered**:
-- *Two services, dispatch by content type*: Requires changes to all callers (RestorePipelineHandler, TreeBlobSerializer, SnapshotSerializer, ShardSerializer). Invasive.
+- *Two services, dispatch by content type*: Requires changes to all callers (RestorePipelineHandler, FileTreeBlobSerializer, SnapshotSerializer, ShardSerializer). Invasive.
 - *Content-type based dispatch in the service*: Service doesn't have access to blob metadata, only the stream.
 
 ### Decision 5: Class renaming

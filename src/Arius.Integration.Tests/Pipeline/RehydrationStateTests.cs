@@ -165,7 +165,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
         return new(sim, fix.Encryption,
             index,
-            new TreeCacheService(sim, fix.Encryption, index, Account, fix.Container.Name),
+            new FileTreeService(sim, fix.Encryption, index, Account, fix.Container.Name),
             new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
             NullLogger<RestoreCommandHandler>.Instance,

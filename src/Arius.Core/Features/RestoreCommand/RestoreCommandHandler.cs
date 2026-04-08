@@ -34,7 +34,7 @@ public sealed class RestoreCommandHandler
     private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
-    private readonly TreeCacheService                 _treeCache;
+    private readonly FileTreeService                 _fileTreeService;
     private readonly SnapshotService                  _snapshotSvc;
     private readonly IMediator                        _mediator;
     private readonly ILogger<RestoreCommandHandler>  _logger;
@@ -45,7 +45,7 @@ public sealed class RestoreCommandHandler
         IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
-        TreeCacheService               treeCache,
+        FileTreeService               fileTreeService,
         SnapshotService                snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
@@ -55,7 +55,7 @@ public sealed class RestoreCommandHandler
         _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
-        _treeCache     = treeCache;
+        _fileTreeService     = fileTreeService;
         _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
         _logger        = logger;
@@ -566,7 +566,7 @@ public sealed class RestoreCommandHandler
             return;
 
         // Load tree blob via cache
-        var treeBlob = await _treeCache.ReadAsync(treeHash, cancellationToken);
+        var treeBlob = await _fileTreeService.ReadAsync(treeHash, cancellationToken);
 
         foreach (var entry in treeBlob.Entries)
         {
@@ -574,7 +574,7 @@ public sealed class RestoreCommandHandler
                 ? entry.Name
                 : $"{currentPath}/{entry.Name}";
 
-            if (entry.Type == TreeEntryType.Dir)
+            if (entry.Type == FileTreeEntryType.Dir)
             {
                 // Strip trailing slash from directory name used in path assembly
                 var dirPath = entryPath.TrimEnd('/');

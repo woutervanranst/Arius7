@@ -21,7 +21,7 @@ The archive pipeline's end-of-pipeline phases — chunk-index flush and filetree
 
 ## Impact
 
-- **Core layer** (`Arius.Core`): `ChunkIndexService.FlushAsync` and `TreeBuilder.BuildAsync` (or `TreeService`) change significantly. `ArchiveCommandHandler` wires `Task.WhenAll` for the two phases.
+- **Core layer** (`Arius.Core`): `ChunkIndexService.FlushAsync` and `FileTreeBuilder.BuildAsync` (or `TreeService`) change significantly. `ArchiveCommandHandler` wires `Task.WhenAll` for the two phases.
 - **Shard path format**: `chunk-index/` blob paths change from 4-char to 3-char prefixes. Existing L2 disk cache files become stale (acceptable — cache miss falls through to L3). Existing Azure shards from prior development archives become orphaned (acceptable — still in development, no production data).
 - **New events**: `ChunkIndexFlushProgressEvent` and `TreeUploadProgressEvent` added to archive events. CLI display layer will consume these for parallel progress lines.
 - **Performance**: At 1M-chunk scale, estimated end-of-pipeline time drops from ~265 minutes (sequential) to ~13 seconds (parallel, epoch-match fast path) or ~23 seconds (slow path with prefetch).

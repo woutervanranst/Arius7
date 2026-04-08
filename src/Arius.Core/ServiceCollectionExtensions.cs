@@ -56,9 +56,9 @@ public static class ServiceCollectionExtensions
                 containerName,
                 cacheBudgetBytes));
 
-        // Tree cache
+        // File tree service
         services.AddSingleton(sp =>
-            new TreeCacheService(
+            new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
@@ -86,7 +86,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<TreeCacheService>(),
+                sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
@@ -98,7 +98,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<TreeCacheService>(),
+                sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
@@ -108,7 +108,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>>(sp =>
             new ListQueryHandler(
                 sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<TreeCacheService>(),
+                sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,

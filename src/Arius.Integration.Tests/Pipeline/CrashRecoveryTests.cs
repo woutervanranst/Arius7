@@ -90,7 +90,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
     {
         var mediator = Substitute.For<IMediator>();
         return new ArchiveCommandHandler(
-            blobService, encryption, index, new TreeCacheService(blobService, encryption, index, Account, containerName), new SnapshotService(blobService, encryption, Account, containerName), mediator,
+            blobService, encryption, index, new FileTreeService(blobService, encryption, index, Account, containerName), new SnapshotService(blobService, encryption, Account, containerName), mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);
     }

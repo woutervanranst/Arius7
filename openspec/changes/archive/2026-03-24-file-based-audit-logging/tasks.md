@@ -22,7 +22,7 @@
 - [x] 3.5 Add `[upload]` log: per-chunk upload start and completion (truncated hash, original size, compressed size humanized) in the large upload workers
 - [x] 3.6 Add `[tar]` log: tar seal summary (truncated tar hash, file count, total size), individual file listing, upload result (compressed size), thin chunk creation count
 - [x] 3.7 Add `[index]` log: flush summary (new entry count) after `ChunkIndexService.FlushAsync()`
-- [x] 3.8 Add `[tree]` log: Merkle tree build summary (truncated root hash, level count) after `TreeBuilder.BuildAsync()`
+- [x] 3.8 Add `[tree]` log: Merkle tree build summary (truncated root hash, level count) after `FileTreeBuilder.BuildAsync()`
 - [x] 3.9 Add `[snapshot]` log: snapshot creation (timestamp) after `SnapshotService.CreateAsync()`
 - [x] 3.10 Add operation start marker: command, source directory, target account/container, options
 - [x] 3.11 Add operation end marker: summary stats (scanned, uploaded, deduped, transferred, duration)

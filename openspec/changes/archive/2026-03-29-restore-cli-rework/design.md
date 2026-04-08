@@ -144,7 +144,7 @@ File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
 ### Decision 7: Investigate inconsistent binary timestamps
 
 The timestamp-setting code exists and looks correct. Possible causes for inconsistency:
-- Files restored from tar bundles: `file.Created`/`file.Modified` come from `TreeEntry.Created`/`TreeEntry.Modified` which could be null (fallback to `DateTimeOffset.UtcNow`). If the filetree was written before timestamps were added, old entries would have null timestamps.
+- Files restored from tar bundles: `file.Created`/`file.Modified` come from `FileTreeEntry.Created`/`FileTreeEntry.Modified` which could be null (fallback to `DateTimeOffset.UtcNow`). If the filetree was written before timestamps were added, old entries would have null timestamps.
 - Race condition: another process modifying the file after restore.
 - The `File.SetCreationTimeUtc` call on macOS may be a no-op depending on the filesystem.
 

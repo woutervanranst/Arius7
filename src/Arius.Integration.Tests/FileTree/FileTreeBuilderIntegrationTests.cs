@@ -8,7 +8,7 @@ using Shouldly;
 namespace Arius.Integration.Tests.FileTree;
 
 /// <summary>
-/// Integration tests for <see cref="TreeBuilder"/> against a real Azurite blob service.
+/// Integration tests for <see cref="FileTreeBuilder"/> against a real Azurite blob service.
 /// Requires Docker (Azurite via TestContainers). Task 5.11.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
@@ -17,11 +17,11 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
     private const string Account = "devstoreaccount1";
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static TreeBuilder CreateBuilder(IBlobContainerService blobs, string containerName)
+    private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string containerName)
     {
         var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
-        var treeCache = new TreeCacheService(blobs, s_enc, index, Account, containerName);
-        return new TreeBuilder(s_enc, treeCache);
+        var fileTreeService = new FileTreeService(blobs, s_enc, index, Account, containerName);
+        return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
     private static ManifestEntry MakeEntry(string path, string hash, DateTimeOffset ts) =>
@@ -53,7 +53,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Download and deserialize to verify content
             await using var stream = await blobs.DownloadAsync(blobName);
-            var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, s_enc);
+            var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, s_enc);
 
             treeBlob.Entries.Count.ShouldBe(1);
             treeBlob.Entries[0].Name.ShouldBe("readme.txt");
@@ -63,7 +63,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         {
             File.Delete(manifestPath);
             // clean up disk cache
-            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -106,7 +106,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             File.Delete(manifestPath);
-            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -146,7 +146,7 @@ public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             File.Delete(manifestPath);
-            var cacheDir = TreeCacheService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }

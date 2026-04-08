@@ -13,7 +13,7 @@ and within runs.
          │       │
          │       └── coordinates epoch for ──────────────────────┐
          │                                                        │
-         ├── TreeCacheService      disk files ↔  Azure filetrees/ │
+         ├── FileTreeService      disk files ↔  Azure filetrees/ │
          │       │                                                │
          │       └── on mismatch, invalidates ◄───────────────────┘
          │
@@ -42,15 +42,15 @@ Azure stores the same data gzip-compressed and optionally encrypted.
   Azure and caches to disk.
 
 **Why it matters:** Snapshot timestamps are the coordination point for the
-entire cache stack. `TreeCacheService` compares the latest local snapshot name
+entire cache stack. `FileTreeService` compares the latest local snapshot name
 against the latest remote one to decide whether the local tree and chunk-index
 caches are trustworthy.
 
 ---
 
-## TreeCacheService
+## FileTreeService
 
-**What it caches:** `TreeBlob` objects — the Merkle tree nodes that describe
+**What it caches:** `FileTreeBlob` objects — the Merkle tree nodes that describe
 directory structure. Each blob is content-addressed: its filename *is* its
 SHA-256 hash, so a file on disk is correct by definition.
 
@@ -119,7 +119,7 @@ entries sharing that prefix.
   `_pendingEntries` immediately after upload.
 - `FlushAsync` — merges pending entries into existing shards, uploads merged
   shards to Azure, saves to L2, promotes to L1.
-- `InvalidateL1` — clears the in-memory LRU. Called by `TreeCacheService` on a
+- `InvalidateL1` — clears the in-memory LRU. Called by `FileTreeService` on a
   snapshot mismatch, so stale shard objects are not served from memory after L2
   has been wiped.
 
@@ -133,7 +133,7 @@ L1 forces fresh downloads from Azure on the next lookup or flush.
 ## How Commands Use the Services
 
 ```
-                      SnapshotService   TreeCacheService   ChunkIndexService
+                      SnapshotService   FileTreeService   ChunkIndexService
                       ───────────────   ────────────────   ─────────────────
 archive
   stage 3 – dedup                                          LookupAsync (per file)
@@ -159,12 +159,12 @@ ls
 
 The order is deliberate:
 
-1. `TreeCacheService.ValidateAsync` — epoch check first. If a mismatch is
+1. `FileTreeService.ValidateAsync` — epoch check first. If a mismatch is
    detected, L2 shard files are wiped and L1 is cleared *before* the flush.
    This prevents stale local shard data from overwriting newer remote shards.
 2. `ChunkIndexService.FlushAsync` — merges and uploads pending shard entries
    with fresh data from Azure.
-3. `TreeBuilder.BuildAsync` — calls `ExistsInRemote` and `WriteAsync` per
+3. `FileTreeBuilder.BuildAsync` — calls `ExistsInRemote` and `WriteAsync` per
    tree node. After `ValidateAsync`, existence checks are pure disk lookups.
 4. `SnapshotService.CreateAsync` — records the new snapshot. The timestamp
    written to disk becomes the next epoch baseline.
@@ -177,7 +177,7 @@ Neither creates a blob container.
 
 ### Cross-run cache warm-up
 
-Because `TreeCacheService.ReadAsync` always writes to the disk cache on a miss,
+Because `FileTreeService.ReadAsync` always writes to the disk cache on a miss,
 caches warm organically:
 
 | Sequence | Effect |

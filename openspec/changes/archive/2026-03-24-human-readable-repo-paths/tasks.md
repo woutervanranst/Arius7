@@ -2,7 +2,7 @@
 
 - [x] 1.1 Replace `ComputeRepoId(accountName, containerName)` with `GetRepoDirectoryName(accountName, containerName)` in `ChunkIndexService.cs` — return `$"{accountName}-{containerName}"` instead of the SHA256 hash
 - [x] 1.2 Update `ChunkIndexService.GetL2Directory()` to use `Path.Combine(home, ".arius", GetRepoDirectoryName(...), "chunk-index")` (dropping the `cache/` level)
-- [x] 1.3 Update `TreeBuilder.GetDiskCacheDirectory()` in `TreeService.cs` to use `Path.Combine(home, ".arius", GetRepoDirectoryName(...), "filetrees")` (dropping the `cache/` level)
+- [x] 1.3 Update `FileTreeBuilder.GetDiskCacheDirectory()` in `TreeService.cs` to use `Path.Combine(home, ".arius", GetRepoDirectoryName(...), "filetrees")` (dropping the `cache/` level)
 
 ## 2. Tests
 

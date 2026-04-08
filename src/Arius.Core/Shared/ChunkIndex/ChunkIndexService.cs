@@ -296,7 +296,7 @@ public sealed class ChunkIndexService : IDisposable
     }
 
     /// <summary>
-    /// Clears the in-memory L1 LRU cache. Called by <see cref="TreeCacheService"/> when a
+    /// Clears the in-memory L1 LRU cache. Called by <see cref="FileTreeService"/> when a
     /// snapshot mismatch is detected, to ensure stale shard data is not served from memory
     /// after the L2 disk cache has been deleted.
     /// </summary>

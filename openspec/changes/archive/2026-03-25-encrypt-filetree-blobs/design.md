@@ -2,7 +2,7 @@
 
 Arius encrypts all blob types (chunks, snapshots, chunk-index shards) using `IEncryptionService.WrapForEncryption` before uploading to Azure Blob Storage — except filetree blobs. Filetree blobs are uploaded as plaintext UTF-8 text, leaking directory structure, file names, and timestamps to anyone with storage account read access.
 
-The `ShardSerializer` in `Arius.Core/ChunkIndex/` already implements the exact pattern needed: `text → gzip → encrypt` for remote storage, with separate plaintext methods for local disk cache. `TreeBuilder` already has `IEncryptionService` injected but only uses it for hash computation.
+The `ShardSerializer` in `Arius.Core/ChunkIndex/` already implements the exact pattern needed: `text → gzip → encrypt` for remote storage, with separate plaintext methods for local disk cache. `FileTreeBuilder` already has `IEncryptionService` injected but only uses it for hash computation.
 
 ## Goals / Non-Goals
 
@@ -22,7 +22,7 @@ The `ShardSerializer` in `Arius.Core/ChunkIndex/` already implements the exact p
 
 ### Decision 1: Mirror the ShardSerializer pattern exactly
 
-Add `SerializeForStorage` / `DeserializeFromStorage` methods to `TreeBlobSerializer`, following `ShardSerializer.SerializeAsync` / `Deserialize` exactly:
+Add `SerializeForStorage` / `DeserializeFromStorage` methods to `FileTreeBlobSerializer`, following `ShardSerializer.SerializeAsync` / `Deserialize` exactly:
 
 ```
 Upload:   Serialize(tree) → gzip → encrypt → byte[]
@@ -31,7 +31,7 @@ Download: stream → decrypt → gunzip → DeserializeAsync(stream)
 
 The existing `Serialize` / `Deserialize` / `DeserializeAsync` methods remain unchanged — they serve the local disk cache path (equivalent to `ShardSerializer.SerializeLocal` / `DeserializeLocal`).
 
-**Why mirror rather than extract a shared abstraction:** The two serializers operate on different types (`TreeBlob` vs `Shard`) with different serialization formats. A shared base would add indirection without reducing code — the gzip+encrypt wrapping is ~5 lines per method. Copy the pattern, not an abstraction.
+**Why mirror rather than extract a shared abstraction:** The two serializers operate on different types (`FileTreeBlob` vs `Shard`) with different serialization formats. A shared base would add indirection without reducing code — the gzip+encrypt wrapping is ~5 lines per method. Copy the pattern, not an abstraction.
 
 ### Decision 2: Conditional content type on upload
 
@@ -49,9 +49,9 @@ Add `FileTreeEncrypted` and `FileTreePlaintext` content types to `BlobConstants.
 
 ### Decision 3: Download paths wrap with decrypt + gunzip
 
-`RestorePipelineHandler.WalkTreeAsync` and `LsHandler.WalkTreeAsync` both download filetree blobs via `_blobs.DownloadAsync` and pass the stream directly to `TreeBlobSerializer.DeserializeAsync`. Both need to wrap the download stream through `decrypt → gunzip` before deserialization.
+`RestorePipelineHandler.WalkTreeAsync` and `LsHandler.WalkTreeAsync` both download filetree blobs via `_blobs.DownloadAsync` and pass the stream directly to `FileTreeBlobSerializer.DeserializeAsync`. Both need to wrap the download stream through `decrypt → gunzip` before deserialization.
 
-Use a new `DeserializeFromStorageAsync(stream, encryption)` method on `TreeBlobSerializer` so the callers stay clean — one method call instead of manually wrapping streams at each call site.
+Use a new `DeserializeFromStorageAsync(stream, encryption)` method on `FileTreeBlobSerializer` so the callers stay clean — one method call instead of manually wrapping streams at each call site.
 
 ### Decision 4: Disk cache stores plaintext (no change)
 

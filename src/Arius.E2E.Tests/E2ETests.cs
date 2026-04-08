@@ -183,7 +183,7 @@ public sealed class E2EFixture : IAsyncDisposable
     public IBlobContainerService BlobContainer  { get; }
     public IEncryptionService  Encryption   { get; }
     public ChunkIndexService   Index        { get; }
-    public TreeCacheService    TreeCache    { get; }
+    public FileTreeService    FileTreeService    { get; }
     public SnapshotService     Snapshot     { get; }
     public string              LocalRoot    { get; }
     public string              RestoreRoot  { get; }
@@ -196,7 +196,7 @@ public sealed class E2EFixture : IAsyncDisposable
         IBlobContainerService blobContainer,
         IEncryptionService  encryption,
         ChunkIndexService   index,
-        TreeCacheService    treeCache,
+        FileTreeService    fileTreeService,
         SnapshotService     snapshot,
         string              tempRoot,
         string              localRoot,
@@ -208,7 +208,7 @@ public sealed class E2EFixture : IAsyncDisposable
         BlobContainer  = blobContainer;
         Encryption   = encryption;
         Index        = index;
-        TreeCache    = treeCache;
+        FileTreeService    = fileTreeService;
         Snapshot     = snapshot;
         _tempRoot    = tempRoot;
         LocalRoot    = localRoot;
@@ -237,10 +237,10 @@ public sealed class E2EFixture : IAsyncDisposable
             : new PlaintextPassthroughService();
         var account    = container.AccountName;
         var index      = new ChunkIndexService(svc, encryption, account, container.Name);
-        var treeCache  = new TreeCacheService(svc, encryption, index, account, container.Name);
+        var fileTreeService  = new FileTreeService(svc, encryption, index, account, container.Name);
         var snapshot   = new SnapshotService(svc, encryption, account, container.Name);
 
-        return new E2EFixture(svc, encryption, index, treeCache, snapshot, tempRoot, localRoot, restoreRoot,
+        return new E2EFixture(svc, encryption, index, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot,
                               account, container.Name, defaultTier);
     }
 
@@ -264,7 +264,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index,
-            TreeCache,
+            FileTreeService,
             Snapshot,
             _mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
@@ -272,7 +272,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     private RestoreCommandHandler CreateRestoreHandler() =>
         new(BlobContainer, Encryption, Index,
-            TreeCache,
+            FileTreeService,
             Snapshot,
             _mediator,
             NullLogger<RestoreCommandHandler>.Instance,
