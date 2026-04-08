@@ -36,7 +36,7 @@ public static class ServiceCollectionExtensions
     {
         // Storage
         services.AddSingleton(blobContainer);
-        if (!services.Any(service => service.ServiceType == typeof(IBlobServiceFactory)))
+        if (services.All(service => service.ServiceType != typeof(IBlobServiceFactory)))
         {
             services.AddSingleton<IBlobServiceFactory, NullBlobServiceFactory>();
         }
