@@ -169,7 +169,8 @@ public sealed class TreeCacheService
     /// </summary>
     public async Task ValidateAsync(CancellationToken cancellationToken = default)
     {
-        if (_validated) return;
+        if (_validated)
+            return;
 
         // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
         var latestLocal = Directory.Exists(_snapshotsDir)
