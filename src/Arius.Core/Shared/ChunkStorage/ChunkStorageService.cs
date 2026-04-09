@@ -57,7 +57,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         long originalSize,
         long compressedSize,
         CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+        UploadThinCoreAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken);
 
     public Task<Stream> DownloadAsync(
         string chunkHash,
@@ -146,5 +146,46 @@ public sealed class ChunkStorageService : IChunkStorageService
             return isTar ? ContentTypes.TarGcmEncrypted : ContentTypes.LargeGcmEncrypted;
 
         return isTar ? ContentTypes.TarPlaintext : ContentTypes.LargePlaintext;
+    }
+
+    private async Task<bool> UploadThinCoreAsync(
+        string contentHash,
+        string parentChunkHash,
+        long originalSize,
+        long compressedSize,
+        CancellationToken cancellationToken)
+    {
+        var blobName = BlobPaths.Chunk(contentHash);
+        var metadata = new Dictionary<string, string>
+        {
+            [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+            [BlobMetadataKeys.OriginalSize] = originalSize.ToString(),
+            [BlobMetadataKeys.CompressedSize] = compressedSize.ToString(),
+        };
+
+    retry:
+        try
+        {
+            await _blobs.UploadAsync(
+                blobName: blobName,
+                content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parentChunkHash)),
+                metadata: new Dictionary<string, string>(),
+                tier: BlobTier.Cool,
+                contentType: ContentTypes.Thin,
+                overwrite: false,
+                cancellationToken: cancellationToken);
+
+            await _blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
+            return true;
+        }
+        catch (BlobAlreadyExistsException)
+        {
+            var existing = await _blobs.GetMetadataAsync(blobName, cancellationToken);
+            if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
+                return false;
+
+            await _blobs.DeleteAsync(blobName, cancellationToken);
+            goto retry;
+        }
     }
 }

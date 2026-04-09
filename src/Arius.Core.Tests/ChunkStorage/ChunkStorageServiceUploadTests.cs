@@ -86,4 +86,84 @@ public class ChunkStorageServiceUploadTests
         var metadata = await blobs.GetMetadataAsync(blobName);
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
+
+    [Test]
+    public async Task UploadThinAsync_CreatesPointerBlobWithMetadata()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+
+        var created = await service.UploadThinAsync(
+            contentHash: "thin123",
+            parentChunkHash: "tar123",
+            originalSize: 512,
+            compressedSize: 111,
+            cancellationToken: CancellationToken.None);
+
+        created.ShouldBeTrue();
+
+        var blobName = BlobPaths.Chunk("thin123");
+        var metadata = await blobs.GetMetadataAsync(blobName);
+        metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+        metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
+        metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
+        metadata.Tier.ShouldBe(BlobTier.Cool);
+
+        await using var payload = await blobs.DownloadAsync(blobName);
+        using var reader = new StreamReader(payload);
+        (await reader.ReadToEndAsync()).ShouldBe("tar123");
+    }
+
+    [Test]
+    public async Task UploadThinAsync_ReturnsFalse_WhenCommittedBlobAlreadyExists()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var blobName = BlobPaths.Chunk("thin456");
+
+        blobs.SeedBlob(
+            blobName,
+            System.Text.Encoding.UTF8.GetBytes("tar456"),
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.OriginalSize] = "123",
+                [BlobMetadataKeys.CompressedSize] = "45",
+            },
+            ContentTypes.Thin);
+
+        var created = await service.UploadThinAsync(
+            contentHash: "thin456",
+            parentChunkHash: "tar456",
+            originalSize: 123,
+            compressedSize: 45,
+            cancellationToken: CancellationToken.None);
+
+        created.ShouldBeFalse();
+        blobs.DeletedBlobNames.ShouldNotContain(blobName);
+    }
+
+    [Test]
+    public async Task UploadThinAsync_DeletesPartialExistingBlobAndRetries()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var blobName = BlobPaths.Chunk("thin789");
+
+        blobs.SeedBlob(blobName, System.Text.Encoding.UTF8.GetBytes("tar-old"), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
+
+        var created = await service.UploadThinAsync(
+            contentHash: "thin789",
+            parentChunkHash: "tar789",
+            originalSize: 789,
+            compressedSize: 222,
+            cancellationToken: CancellationToken.None);
+
+        created.ShouldBeTrue();
+        blobs.DeletedBlobNames.ShouldContain(blobName);
+
+        var metadata = await blobs.GetMetadataAsync(blobName);
+        metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+    }
 }

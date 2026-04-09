@@ -7,7 +7,7 @@
 ## 2. Chunk Storage Mechanics
 
 - [x] 2.1 Move large and tar chunk upload protocol details into `ChunkStorageService`, including progress wiring, gzip/encryption transforms, metadata writes, tier assignment, and already-exists recovery
-- [ ] 2.2 Move thin chunk creation and thin-chunk recovery rules into `ChunkStorageService`
+- [x] 2.2 Move thin chunk creation and thin-chunk recovery rules into `ChunkStorageService`
 - [ ] 2.3 Move chunk download source selection, decryption, gunzip, and hydration-state resolution into `ChunkStorageService`
 - [ ] 2.4 Implement rehydration start and rehydrated cleanup planning/execution in `ChunkStorageService`
 
