@@ -129,7 +129,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>(sp =>
             new ChunkHydrationStatusQueryHandler(
-                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));

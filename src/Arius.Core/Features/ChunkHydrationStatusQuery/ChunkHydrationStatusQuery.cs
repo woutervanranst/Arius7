@@ -1,7 +1,6 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -15,18 +14,15 @@ public sealed record ChunkHydrationStatusResult(string RelativePath, string? Con
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
 {
-    private readonly IBlobContainerService _blobs;
     private readonly ChunkIndexService _index;
     private readonly IChunkStorageService _chunkStorage;
     private readonly ILogger<ChunkHydrationStatusQueryHandler> _logger;
 
     public ChunkHydrationStatusQueryHandler(
-        IBlobContainerService blobs,
         ChunkIndexService index,
         IChunkStorageService chunkStorage,
         ILogger<ChunkHydrationStatusQueryHandler> logger)
     {
-        _blobs = blobs;
         _index = index;
         _chunkStorage = chunkStorage;
         _logger = logger;

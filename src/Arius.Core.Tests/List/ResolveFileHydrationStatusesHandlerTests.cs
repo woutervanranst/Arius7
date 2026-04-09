@@ -47,7 +47,6 @@ public class ResolveFileHydrationStatusesHandlerTests
         index.RecordEntry(entry);
 
         var handler = new ChunkHydrationStatusQueryHandler(
-            blobs,
             index,
             new ChunkStorageService(blobs, s_encryption),
             NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
@@ -92,7 +91,6 @@ public class ResolveFileHydrationStatusesHandlerTests
         index.RecordEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
 
         var handler = new ChunkHydrationStatusQueryHandler(
-            blobs,
             index,
             new ChunkStorageService(blobs, s_encryption),
             NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
