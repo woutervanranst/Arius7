@@ -19,6 +19,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Update unit and integration tests around chunk upload/download, hydration status, and cleanup to target the new service boundary
-- [ ] 4.2 Update feature tests to assert archive/restore orchestration through `ChunkIndexService` and `ChunkStorageService` rather than raw chunk blob details
-- [ ] 4.3 Run the relevant test suites and verify no user-visible archive, restore, or list behavior regresses
+- [x] 4.1 Update unit and integration tests around chunk upload/download, hydration status, and cleanup to target the new service boundary
+- [x] 4.2 Update feature tests to assert archive/restore orchestration through `ChunkIndexService` and `ChunkStorageService` rather than raw chunk blob details
+- [x] 4.3 Run the relevant test suites and verify no user-visible archive, restore, or list behavior regresses
