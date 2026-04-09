@@ -1,3 +1,4 @@
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Features.ChunkHydrationStatusQuery;

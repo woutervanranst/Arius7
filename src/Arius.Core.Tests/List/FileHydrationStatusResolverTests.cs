@@ -1,4 +1,5 @@
 using Arius.Core.Features.ChunkHydrationStatusQuery;
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.Storage;
 using Shouldly;

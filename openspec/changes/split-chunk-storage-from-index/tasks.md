@@ -1,7 +1,7 @@
 ## 1. Shared Chunk Boundaries
 
 - [x] 1.1 Add `RepositoryPaths` and move repository-local cache/log directory helper usage off `ChunkIndexService`
-- [ ] 1.2 Move `ChunkHydrationStatus` into `Shared/ChunkIndex/ChunkHydrationStatus.cs` and update references to the shared type
+- [x] 1.2 Move `ChunkHydrationStatus` into `Shared/ChunkIndex/ChunkHydrationStatus.cs` and update references to the shared type
 - [ ] 1.3 Add the `ChunkStorageService` interface and implementation surface, including upload, download, hydration status, rehydration, and cleanup-plan APIs
 
 ## 2. Chunk Storage Mechanics
