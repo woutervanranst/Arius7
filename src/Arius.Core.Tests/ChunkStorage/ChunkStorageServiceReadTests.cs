@@ -35,6 +35,18 @@ public class ChunkStorageServiceReadTests
     }
 
     [Test]
+    public async Task GetHydrationStatusAsync_ReturnsMissing_WhenPrimaryChunkDoesNotExist()
+    {
+        var blobs = new FakeMetadataOnlyBlobContainerService();
+        blobs.Metadata[BlobPaths.Chunk("abc")] = new BlobMetadata { Exists = false };
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+
+        var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
+
+        status.ShouldBe(ChunkHydrationStatus.Missing);
+    }
+
+    [Test]
     public async Task DownloadAsync_UsesRehydratedBlobWhenAvailable_AndReturnsPlaintext()
     {
         var blobs = new FakeInMemoryBlobContainerService();

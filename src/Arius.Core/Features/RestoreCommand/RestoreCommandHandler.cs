@@ -251,7 +251,7 @@ public sealed class RestoreCommandHandler
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
                 var hydrationStatus = await _chunkStorage.GetHydrationStatusAsync(chunkHash, cancellationToken);
-                if (hydrationStatus == ChunkHydrationStatus.Unknown)
+                if (hydrationStatus == ChunkHydrationStatus.Missing)
                 {
                     _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
                     continue;

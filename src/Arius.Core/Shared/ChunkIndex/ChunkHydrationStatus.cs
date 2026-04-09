@@ -2,7 +2,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 
 public enum ChunkHydrationStatus
 {
-    Unknown,
+    Missing,
     Available,
     NeedsRehydration,
     RehydrationPending,

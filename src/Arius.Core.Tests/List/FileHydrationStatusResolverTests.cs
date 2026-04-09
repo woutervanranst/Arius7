@@ -83,7 +83,7 @@ public class ChunkStorageHydrationStatusTests
 
         var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
 
-        status.ShouldBe(ChunkHydrationStatus.Unknown);
+        status.ShouldBe(ChunkHydrationStatus.Missing);
         blobs.RequestedBlobNames.ShouldBe(["chunks/abc"]);
     }
 

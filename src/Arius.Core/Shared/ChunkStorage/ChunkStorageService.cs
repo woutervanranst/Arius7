@@ -204,7 +204,7 @@ public sealed class ChunkStorageService : IChunkStorageService
     {
         var chunkMeta = await _blobs.GetMetadataAsync(BlobPaths.Chunk(chunkHash), cancellationToken).ConfigureAwait(false);
         if (!chunkMeta.Exists)
-            return ChunkHydrationStatus.Unknown;
+            return ChunkHydrationStatus.Missing;
 
         if (chunkMeta.Tier != BlobTier.Archive)
             return ChunkHydrationStatus.Available;

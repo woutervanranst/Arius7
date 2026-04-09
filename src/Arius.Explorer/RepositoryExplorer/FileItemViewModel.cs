@@ -32,7 +32,7 @@ public partial class FileItemViewModel : ObservableObject
     private string stateTooltip = "File state unknown";
 
     [ObservableProperty]
-    private ChunkHydrationStatus hydrationStatus = ChunkHydrationStatus.Unknown;
+    private ChunkHydrationStatus hydrationStatus = ChunkHydrationStatus.Missing;
 
     public FileItemViewModel(RepositoryFileEntry file)
     {
@@ -47,7 +47,7 @@ public partial class FileItemViewModel : ObservableObject
         {
             true => ChunkHydrationStatus.Available,
             false => ChunkHydrationStatus.NeedsRehydration,
-            null => ChunkHydrationStatus.Unknown,
+            null => ChunkHydrationStatus.Missing,
         };
 
         OriginalLength = file.OriginalSize ?? 0;

@@ -403,7 +403,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (itemsPending.Any())
             msg.AppendLine($"{itemsPending.Count()} item(s) ({itemsPending.Sum(item => item.OriginalLength).Bytes().Humanize()}) are already rehydrating in the cloud.");
 
-        var itemsToRestore = SelectedFiles.Where(item => item.HydrationStatus == ChunkHydrationStatus.Available || item.HydrationStatus == ChunkHydrationStatus.Unknown);
+        var itemsToRestore = SelectedFiles.Where(item => item.HydrationStatus == ChunkHydrationStatus.Available || item.HydrationStatus == ChunkHydrationStatus.Missing);
         msg.AppendLine($"This will download {itemsToRestore.Count()} item(s) ({itemsToRestore.Sum(item => item.OriginalLength).Bytes().Humanize()}).");
         msg.AppendLine();
         msg.AppendLine("Proceed?");
@@ -459,7 +459,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             return;
 
         var unresolved = items
-            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Missing && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
             .Select(item => item.File)
             .ToList();
 
