@@ -24,8 +24,8 @@ _(none)_
 ## Impact
 
 - **Shard.cs**: `TryParse` accepts 3 or 4 fields; `Serialize` omits chunk-hash when equal to content-hash. In-memory `ShardEntry` record unchanged (reconstruct on parse).
-- **TreeBlobSerializer.cs**: Replace JSON serialization with space-separated text format. `TreeModels.cs` records unchanged.
-- **TreeService.cs**: TreeBuilder writes new format. ManifestWriter unaffected (internal format).
+- **FileTreeBlobSerializer.cs**: Replace JSON serialization with space-separated text format. `TreeModels.cs` records unchanged.
+- **TreeService.cs**: FileTreeBuilder writes new format. ManifestWriter unaffected (internal format).
 - **RestorePipelineHandler.cs**: Tree traversal deserialization changes. Chunk resolution logic unchanged (still compares ContentHash == ChunkHash on the in-memory model).
 - **LsHandler.cs**: Tree traversal deserialization changes.
 - **BlobConstants.cs**: Filetree content type changes.

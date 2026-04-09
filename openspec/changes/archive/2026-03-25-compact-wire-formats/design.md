@@ -13,8 +13,8 @@ Both formats are read during restore, ls, and archive (dedup). The chunk-index i
 **Goals:**
 - Eliminate redundant chunk-hash in chunk-index entries for large files (~65 bytes saved per entry)
 - Unify wire format style: both chunk-index and filetrees use space-separated text
-- Keep the in-memory data model (`ShardEntry`, `TreeEntry`, `TreeBlob`) unchanged
-- Keep all parse/serialize changes localized to `Shard.cs` and `TreeBlobSerializer.cs`
+- Keep the in-memory data model (`ShardEntry`, `FileTreeEntry`, `FileTreeBlob`) unchanged
+- Keep all parse/serialize changes localized to `Shard.cs` and `FileTreeBlobSerializer.cs`
 
 **Non-Goals:**
 - Backward compatibility with existing repositories (still in development)

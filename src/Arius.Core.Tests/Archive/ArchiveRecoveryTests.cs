@@ -88,7 +88,7 @@ public class ArchiveRecoveryMatrixTests
             _containerName = $"test-container-{Guid.NewGuid():N}";
             Directory.CreateDirectory(_rootDirectory);
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
-            Directory.CreateDirectory(TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName));
+            Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
             Blobs = new FakeInMemoryBlobContainerService();
             _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
         }
@@ -110,15 +110,15 @@ public class ArchiveRecoveryMatrixTests
         public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
         {
             Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
-            Directory.CreateDirectory(TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName));
+            Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
 
-            var treeCache    = new TreeCacheService(Blobs, _encryption, _index, AccountName, _containerName);
+            var fileTreeService    = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
             var snapshotSvc  = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
             var handler = new ArchiveCommandHandler(
                 Blobs,
                 _encryption,
                 _index,
-                treeCache,
+                fileTreeService,
                 snapshotSvc,
                 _mediator,
                 NullLogger<ArchiveCommandHandler>.Instance,
@@ -149,7 +149,7 @@ public class ArchiveRecoveryMatrixTests
             if (Directory.Exists(chunkIndexDir))
                 TryDeleteDirectory(chunkIndexDir);
 
-            var treeCacheDir = TreeCacheService.GetDiskCacheDirectory(AccountName, _containerName);
+            var treeCacheDir = FileTreeService.GetDiskCacheDirectory(AccountName, _containerName);
             if (Directory.Exists(treeCacheDir))
                 TryDeleteDirectory(treeCacheDir);
 

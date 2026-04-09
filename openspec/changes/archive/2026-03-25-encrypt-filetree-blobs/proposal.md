@@ -23,7 +23,7 @@ _(none — this is closing a gap in existing capabilities)_
 
 ## Impact
 
-- `TreeBlobSerializer` — new storage serialization methods (gzip + encrypt / decrypt + gunzip)
+- `FileTreeBlobSerializer` — new storage serialization methods (gzip + encrypt / decrypt + gunzip)
 - `TreeService.EnsureUploadedAsync` — use encrypted serialization for upload, conditional content type
 - `RestorePipelineHandler.WalkTreeAsync` — decrypt + decompress download stream before deserialization
 - `LsHandler.WalkTreeAsync` — same as restore

@@ -23,7 +23,7 @@ namespace Arius.Core.Shared.FileTree;
 ///     <see cref="ChunkIndexService"/> is forced to re-download stale shards.</item>
 /// </list>
 /// </summary>
-public sealed class TreeCacheService
+public sealed class FileTreeService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
@@ -37,14 +37,14 @@ public sealed class TreeCacheService
     /// </summary>
     private bool _validated;
 
-    private readonly ConcurrentDictionary<string, Lazy<Task<TreeBlob>>> _inFlightReads = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<Task<FileTreeBlob>>> _inFlightReads = new(StringComparer.Ordinal);
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
     /// <param name="chunkIndex">Chunk index service — used to invalidate the L1 in-memory cache on snapshot mismatch.</param>
     /// <param name="accountName">Used to derive the local cache directory.</param>
     /// <param name="containerName">Used to derive the local cache directory.</param>
-    public TreeCacheService(
+    public FileTreeService(
         IBlobContainerService blobs,
         IEncryptionService    encryption,
         ChunkIndexService     chunkIndex,
@@ -76,13 +76,13 @@ public sealed class TreeCacheService
     // ── 1.3 ReadAsync ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the <see cref="TreeBlob"/> for the given <paramref name="hash"/>.
+    /// Returns the <see cref="FileTreeBlob"/> for the given <paramref name="hash"/>.
     /// <list type="bullet">
     ///   <item>Cache hit: reads the plaintext disk file and deserializes.</item>
     ///   <item>Cache miss: downloads from Azure, writes plaintext to disk, returns blob.</item>
     /// </list>
     /// </summary>
-    public async Task<TreeBlob> ReadAsync(string hash, CancellationToken cancellationToken = default)
+    public async Task<FileTreeBlob> ReadAsync(string hash, CancellationToken cancellationToken = default)
     {
         var diskPath = Path.Combine(_diskCacheDir, hash);
 
@@ -94,7 +94,7 @@ public sealed class TreeCacheService
             {
                 try
                 {
-                    return TreeBlobSerializer.Deserialize(cached);
+                    return FileTreeBlobSerializer.Deserialize(cached);
                 }
                 catch (Exception)
                 {
@@ -107,7 +107,7 @@ public sealed class TreeCacheService
 
         var lazyRead = _inFlightReads.GetOrAdd(
             hash,
-            _ => new Lazy<Task<TreeBlob>>(
+            _ => new Lazy<Task<FileTreeBlob>>(
                 () => DownloadAndCacheAsync(hash, diskPath),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
@@ -118,17 +118,17 @@ public sealed class TreeCacheService
         finally
         {
             if (lazyRead.IsValueCreated && lazyRead.Value.IsCompleted)
-                _inFlightReads.TryRemove(new KeyValuePair<string, Lazy<Task<TreeBlob>>>(hash, lazyRead));
+                _inFlightReads.TryRemove(new KeyValuePair<string, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
         }
     }
 
-    private async Task<TreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
+    private async Task<FileTreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
     {
         var blobName = BlobPaths.FileTree(hash);
         await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
-        var treeBlob = await TreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
+        var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
 
-        var plaintext = TreeBlobSerializer.Serialize(treeBlob);
+        var plaintext = FileTreeBlobSerializer.Serialize(treeBlob);
         await File.WriteAllBytesAsync(diskPath, plaintext, CancellationToken.None);
 
         return treeBlob;
@@ -140,10 +140,10 @@ public sealed class TreeCacheService
     /// Uploads the tree blob to Azure (if not already present) and writes the plaintext
     /// representation to the local disk cache.
     /// </summary>
-    public async Task WriteAsync(string hash, TreeBlob tree, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(string hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
     {
         var blobName     = BlobPaths.FileTree(hash);
-        var storageBytes = await TreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
+        var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted
             : ContentTypes.FileTreePlaintext;
@@ -166,7 +166,7 @@ public sealed class TreeCacheService
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
         var diskPath  = Path.Combine(_diskCacheDir, hash);
-        var plaintext = TreeBlobSerializer.Serialize(tree);
+        var plaintext = FileTreeBlobSerializer.Serialize(tree);
         await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
     }
 

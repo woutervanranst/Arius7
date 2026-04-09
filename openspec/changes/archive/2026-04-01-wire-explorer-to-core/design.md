@@ -38,7 +38,7 @@ The old Arius codebase had a `PointerFileEntriesQueryHandler` that used exactly 
 ```
 WalkMergedAsync(treeHash?, localDirPath?, prefix, recursive, ct):
   1. Download + deserialize tree blob for treeHash (if non-null)
-     → cloudEntries: Dictionary<string, TreeEntry>
+     → cloudEntries: Dictionary<string, FileTreeEntry>
   2. Phase 1 — Cloud iteration:
      For each cloud entry (files then dirs):
        - Check if local counterpart exists (File.Exists / Directory.Exists)

@@ -9,30 +9,30 @@ namespace Arius.Core.Shared.FileTree;
 /// 1. Stream sorted entries. Group by immediate parent directory.
 /// 2. For each directory (deepest-first, bottom-up):
 ///    a. Collect file entries + already-computed child directory entries.
-///    b. Build <see cref="TreeBlob"/>.
+///    b. Build <see cref="FileTreeBlob"/>.
 ///    c. Compute tree hash.
-///    d. Check via <see cref="TreeCacheService.ExistsInRemote"/> — if present, skip upload (dedup).
-///    e. Upload new blob via <see cref="TreeCacheService.WriteAsync"/>; disk cache written automatically.
+///    d. Check via <see cref="FileTreeService.ExistsInRemote"/> — if present, skip upload (dedup).
+///    e. Upload new blob via <see cref="FileTreeService.WriteAsync"/>; disk cache written automatically.
 ///    f. Cascade the directory hash up to the parent directory.
 /// 3. Return root tree hash.
 ///
 /// Empty directories are skipped (task 5.8): if no files reach a directory
 /// (directly or recursively), that directory generates no tree blob.
 /// </summary>
-public sealed class TreeBuilder
+public sealed class FileTreeBuilder
 {
     private readonly IEncryptionService  _encryption;
-    private readonly TreeCacheService    _treeCache;
+    private readonly FileTreeService    _fileTreeService;
 
     /// <summary>
     /// Builds trees using shared services supplied by the caller/DI container.
     /// </summary>
-    public TreeBuilder(
+    public FileTreeBuilder(
         IEncryptionService encryption,
-        TreeCacheService   treeCache)
+        FileTreeService   fileTreeService)
     {
         _encryption = encryption;
-        _treeCache  = treeCache;
+        _fileTreeService  = fileTreeService;
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
@@ -46,11 +46,11 @@ public sealed class TreeBuilder
         CancellationToken cancellationToken = default)
     {
         // Ensure cache is validated before calling ExistsInRemote (idempotent — no-op if already validated).
-        await _treeCache.ValidateAsync(cancellationToken);
+        await _fileTreeService.ValidateAsync(cancellationToken);
 
         // Accumulated directory entries keyed by directory path (forward-slash, no trailing slash)
-        // Value: list of TreeEntry for that directory (files + resolved child dirs)
-        var dirEntries = new Dictionary<string, List<TreeEntry>>(StringComparer.Ordinal);
+        // Value: list of FileTreeEntry for that directory (files + resolved child dirs)
+        var dirEntries = new Dictionary<string, List<FileTreeEntry>>(StringComparer.Ordinal);
 
         // Stream through sorted manifest entries
         await foreach (var manifestEntry in ReadManifestAsync(sortedManifestPath, cancellationToken))
@@ -60,12 +60,12 @@ public sealed class TreeBuilder
             var name     = Path.GetFileName(filePath);
 
             if (!dirEntries.TryGetValue(dirPath, out var list))
-                dirEntries[dirPath] = list = new List<TreeEntry>();
+                dirEntries[dirPath] = list = new List<FileTreeEntry>();
 
-            list.Add(new TreeEntry
+            list.Add(new FileTreeEntry
             {
                 Name     = name,
-                Type     = TreeEntryType.File,
+                Type     = FileTreeEntryType.File,
                 Hash     = manifestEntry.ContentHash,
                 Created  = manifestEntry.Created,
                 Modified = manifestEntry.Modified
@@ -83,7 +83,7 @@ public sealed class TreeBuilder
             while (parent != string.Empty && !allDirs.Contains(parent))
             {
                 allDirs.Add(parent);
-                dirEntries[parent] = new List<TreeEntry>();
+                dirEntries[parent] = new List<FileTreeEntry>();
                 parent = GetDirectoryPath(parent);
             }
         }
@@ -111,10 +111,10 @@ public sealed class TreeBuilder
                 if (childParent == dirPath)
                 {
                     var childName = GetLastSegment(childDirPath);
-                    entries.Add(new TreeEntry
+                    entries.Add(new FileTreeEntry
                     {
                         Name     = childName + "/",
-                        Type     = TreeEntryType.Dir,
+                        Type     = FileTreeEntryType.Dir,
                         Hash     = childHash,
                         Created  = null,
                         Modified = null
@@ -122,8 +122,8 @@ public sealed class TreeBuilder
                 }
             }
 
-            var tree = new TreeBlob { Entries = entries };
-            var hash = TreeBlobSerializer.ComputeHash(tree, _encryption);
+            var tree = new FileTreeBlob { Entries = entries };
+            var hash = FileTreeBlobSerializer.ComputeHash(tree, _encryption);
 
             // Dedup: upload only if not already cached/known remotely
             await EnsureUploadedAsync(hash, tree, cancellationToken);
@@ -162,11 +162,11 @@ public sealed class TreeBuilder
 
     private async Task<string> BuildRootBlobAsync(
         Dictionary<string, string>       dirHashMap,
-        Dictionary<string, List<TreeEntry>> dirEntries,
+        Dictionary<string, List<FileTreeEntry>> dirEntries,
         CancellationToken                cancellationToken)
     {
         // Find top-level entries (directories/files whose parent is "")
-        var rootEntryList = new List<TreeEntry>();
+        var rootEntryList = new List<FileTreeEntry>();
 
         // Top-level files (path has no slash)
         if (dirEntries.TryGetValue(string.Empty, out var rootFiles))
@@ -180,10 +180,10 @@ public sealed class TreeBuilder
             if (parentPath == string.Empty)
             {
                 var dirName = GetLastSegment(dirPath);
-                rootEntryList.Add(new TreeEntry
+                rootEntryList.Add(new FileTreeEntry
                 {
                     Name     = dirName + "/",
-                    Type     = TreeEntryType.Dir,
+                    Type     = FileTreeEntryType.Dir,
                     Hash     = hash,
                     Created  = null,
                     Modified = null
@@ -191,22 +191,22 @@ public sealed class TreeBuilder
             }
         }
 
-        var rootTree = new TreeBlob { Entries = rootEntryList };
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, _encryption);
+        var rootTree = new FileTreeBlob { Entries = rootEntryList };
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, _encryption);
         await EnsureUploadedAsync(rootHash, rootTree, cancellationToken);
         return rootHash;
     }
 
     /// <summary>
-    /// Uploads a tree blob via <see cref="TreeCacheService"/> if not already present remotely.
+    /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
     /// </summary>
     private async Task EnsureUploadedAsync(
         string            treeHash,
-        TreeBlob          tree,
+        FileTreeBlob          tree,
         CancellationToken cancellationToken)
     {
-        if (_treeCache.ExistsInRemote(treeHash)) return;
-        await _treeCache.WriteAsync(treeHash, tree, cancellationToken);
+        if (_fileTreeService.ExistsInRemote(treeHash)) return;
+        await _fileTreeService.WriteAsync(treeHash, tree, cancellationToken);
     }
 
     // ── Manifest streaming ────────────────────────────────────────────────────

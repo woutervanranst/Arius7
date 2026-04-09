@@ -10,11 +10,11 @@
 
 ## 2. Filetree: text format serialization
 
-- [x] 2.1 Rewrite `TreeBlobSerializer.Serialize()` to produce text format: one line per entry, `<hash> F <created> <modified> <name>` for files, `<hash> D <name>` for directories, sorted by name, newline-terminated
-- [x] 2.2 Rewrite `TreeBlobSerializer.Deserialize(byte[])` to parse text format: split lines, detect `F`/`D` marker, split on first 4 spaces for `F` or first 2 spaces for `D`, extract fields
-- [x] 2.3 Rewrite `TreeBlobSerializer.DeserializeAsync(Stream)` to parse text format from a stream
-- [x] 2.4 Update `TreeBlobSerializer.ComputeHash()` — no logic change needed (already hashes the output of `Serialize()`), but verify it produces a different hash than before (format changed)
-- [x] 2.5 Update xmldoc on `TreeBlob` record in `TreeModels.cs` — change "Serialized as JSON" to "Serialized as text"
+- [x] 2.1 Rewrite `FileTreeBlobSerializer.Serialize()` to produce text format: one line per entry, `<hash> F <created> <modified> <name>` for files, `<hash> D <name>` for directories, sorted by name, newline-terminated
+- [x] 2.2 Rewrite `FileTreeBlobSerializer.Deserialize(byte[])` to parse text format: split lines, detect `F`/`D` marker, split on first 4 spaces for `F` or first 2 spaces for `D`, extract fields
+- [x] 2.3 Rewrite `FileTreeBlobSerializer.DeserializeAsync(Stream)` to parse text format from a stream
+- [x] 2.4 Update `FileTreeBlobSerializer.ComputeHash()` — no logic change needed (already hashes the output of `Serialize()`), but verify it produces a different hash than before (format changed)
+- [x] 2.5 Update xmldoc on `FileTreeBlob` record in `TreeModels.cs` — change "Serialized as JSON" to "Serialized as text"
 
 ## 3. Filetree: update content type
 
@@ -29,7 +29,7 @@
 - [x] 4.5 Add test: `Serialize_FileEntryWithSpacesInName_ParsesCorrectly` — verify a filename like `my vacation photo.jpg` roundtrips correctly
 - [x] 4.6 Add test: `Serialize_DirEntryWithSpacesInName_ParsesCorrectly` — verify a dirname like `2024 trip/` roundtrips correctly
 - [x] 4.7 Verify `ComputeHash` tests still pass (hash values will change but determinism and passphrase-sensitivity properties remain)
-- [x] 4.8 Verify `TreeBuilderTests` still pass (they exercise end-to-end build via `ManifestEntry` → `TreeBuilder` → serialization)
+- [x] 4.8 Verify `TreeBuilderTests` still pass (they exercise end-to-end build via `ManifestEntry` → `FileTreeBuilder` → serialization)
 
 ## 5. Documentation
 

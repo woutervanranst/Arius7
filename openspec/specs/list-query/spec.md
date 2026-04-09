@@ -7,11 +7,11 @@ Defines the `ls` command for listing and searching repository entries within sna
 ## Requirements
 
 ### Requirement: List files in snapshot
-The system SHALL list entries in a snapshot by traversing the Merkle tree as a streaming `IAsyncEnumerable<RepositoryEntry>` via Mediator's `IStreamQuery<RepositoryEntry>` / `IStreamQueryHandler`. The stream SHALL emit both directory entries (`RepositoryDirectoryEntry`) and file entries (`RepositoryFileEntry`) as a discriminated union (abstract base record `RepositoryEntry`). Tree blobs SHALL be read through `TreeCacheService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. File entries SHALL include relative path, content hash, file metadata (created date, modified date), and file size from the chunk index. Directory entries SHALL include relative path and tree hash. The default snapshot SHALL be the latest; `-v` SHALL select a specific version.
+The system SHALL list entries in a snapshot by traversing the Merkle tree as a streaming `IAsyncEnumerable<RepositoryEntry>` via Mediator's `IStreamQuery<RepositoryEntry>` / `IStreamQueryHandler`. The stream SHALL emit both directory entries (`RepositoryDirectoryEntry`) and file entries (`RepositoryFileEntry`) as a discriminated union (abstract base record `RepositoryEntry`). Tree blobs SHALL be read through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. File entries SHALL include relative path, content hash, file metadata (created date, modified date), and file size from the chunk index. Directory entries SHALL include relative path and tree hash. The default snapshot SHALL be the latest; `-v` SHALL select a specific version.
 
 #### Scenario: List all entries in latest snapshot
 - **WHEN** `arius ls` is run without filters or `-v`
-- **THEN** the system SHALL traverse the latest snapshot's tree, reading tree blobs via `TreeCacheService.ReadAsync`, and stream all entries (files and directories) with path, size, and dates
+- **THEN** the system SHALL traverse the latest snapshot's tree, reading tree blobs via `FileTreeService.ReadAsync`, and stream all entries (files and directories) with path, size, and dates
 
 #### Scenario: List files in specific snapshot
 - **WHEN** `arius ls -v 2026-03-21T140000.000Z` is run
@@ -27,10 +27,10 @@ The system SHALL list entries in a snapshot by traversing the Merkle tree as a s
 
 #### Scenario: Cached tree blob reuse during ls
 - **WHEN** a tree blob was downloaded during a previous `ls` or `restore` invocation
-- **THEN** `TreeCacheService.ReadAsync` SHALL return the cached version from disk without contacting Azure
+- **THEN** `FileTreeService.ReadAsync` SHALL return the cached version from disk without contacting Azure
 
 ### Requirement: Path prefix filter
-The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The filter SHALL navigate to the target subtree by descending through the Merkle tree, reading tree blobs via `TreeCacheService.ReadAsync` (only downloading tree blobs on the path to the target prefix on cache miss). Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further.
+The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The filter SHALL navigate to the target subtree by descending through the Merkle tree, reading tree blobs via `FileTreeService.ReadAsync` (only downloading tree blobs on the path to the target prefix on cache miss). Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further.
 
 #### Scenario: Filter by directory prefix
 - **WHEN** `arius ls --prefix photos/2024/` is run

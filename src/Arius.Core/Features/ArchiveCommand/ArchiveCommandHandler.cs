@@ -39,7 +39,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
     private readonly ChunkIndexService              _index;
-    private readonly TreeCacheService               _treeCache;
+    private readonly FileTreeService               _fileTreeService;
     private readonly SnapshotService                _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
@@ -50,7 +50,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
-        TreeCacheService                treeCache,
+        FileTreeService                fileTreeService,
         SnapshotService                 snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
@@ -60,7 +60,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
-        _treeCache     = treeCache;
+        _fileTreeService     = fileTreeService;
         _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
         _logger        = logger;
@@ -604,8 +604,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
-            // Task 5.1: Validate tree cache before building tree (compare local/remote snapshot markers)
-            await _treeCache.ValidateAsync(cancellationToken);
+            // Task 5.1: Validate the filetree service before building the tree.
+            await _fileTreeService.ValidateAsync(cancellationToken);
 
             // Task 8.10: Index flush
             await _index.FlushAsync(cancellationToken);
@@ -615,7 +615,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await manifestWriter.DisposeAsync();
             await ManifestSorter.SortAsync(manifestPath, cancellationToken);
 
-            var treeBuilder = new TreeBuilder(_encryption, _treeCache);
+            var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
             var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
 

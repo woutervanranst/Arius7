@@ -27,7 +27,7 @@ The pipeline SHALL obtain `FileSize` from the most direct available source at ea
 | Large file restore (step 7, `RestoreLargeFileAsync`) | `FileRestoredEvent` | `indexEntry.OriginalSize` — from the index lookup already in scope |
 | Tar bundle restore (`RestoreTarBundleAsync`) | `FileRestoredEvent` | `dataBuffer?.Length ?? 0` — the buffered decompressed entry data |
 
-No changes to `FileToRestore`, `TreeEntry`, or `IndexEntry` are needed.
+No changes to `FileToRestore`, `FileTreeEntry`, or `IndexEntry` are needed.
 
 #### Scenario: Skip site file size
 - **WHEN** a file is skipped because its local hash matches the archive hash

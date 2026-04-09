@@ -127,6 +127,10 @@ virtual directories (prefixes):
 
 ### How it fits together
 
+The runtime coordinates three shared services: `SnapshotService` for snapshot manifests,
+`FileTreeService` for cached filetree blobs, and `ChunkIndexService` for deduplication
+shard lookups.
+
 ```mermaid
 flowchart TD
     subgraph snapshots/

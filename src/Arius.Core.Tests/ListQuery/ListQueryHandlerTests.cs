@@ -20,16 +20,16 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_CloudOnlyNonRecursive_StreamsRootDirectoryEntries()
     {
-        var rootTree = new TreeBlob
+        var rootTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "docs/", Type = TreeEntryType.Dir, Hash = HashFor("docs") },
-                new TreeEntry { Name = "readme.txt", Type = TreeEntryType.File, Hash = HashFor("readme"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "docs/", Type = FileTreeEntryType.Dir, Hash = HashFor("docs") },
+                new FileTreeEntry { Name = "readme.txt", Type = FileTreeEntryType.File, Hash = HashFor("readme"), Created = s_created, Modified = s_modified }
             ]
         };
 
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = new SnapshotManifest
         {
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
@@ -40,17 +40,17 @@ public class ListQueryHandlerTests
         };
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
-        var treeCache   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
+        var fileTreeService   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
         var handler = new ListQueryHandler(
             index,
-            treeCache,
+            fileTreeService,
             snapshotSvc,
             NullLogger<ListQueryHandler>.Instance,
             "acct-ls-test-1",
@@ -85,26 +85,26 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_PrefixAndNonRecursive_StreamsOnlyImmediateChildrenOfPrefix()
     {
-        var docsTree = new TreeBlob
+        var docsTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "nested/", Type = TreeEntryType.Dir, Hash = HashFor("nested") },
-                new TreeEntry { Name = "guide.txt", Type = TreeEntryType.File, Hash = HashFor("guide"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "nested/", Type = FileTreeEntryType.Dir, Hash = HashFor("nested") },
+                new FileTreeEntry { Name = "guide.txt", Type = FileTreeEntryType.File, Hash = HashFor("guide"), Created = s_created, Modified = s_modified }
             ]
         };
 
-        var docsHash = TreeBlobSerializer.ComputeHash(docsTree, s_encryption);
-        var rootTree = new TreeBlob
+        var docsHash = FileTreeBlobSerializer.ComputeHash(docsTree, s_encryption);
+        var rootTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "docs/", Type = TreeEntryType.Dir, Hash = docsHash },
-                new TreeEntry { Name = "root.txt", Type = TreeEntryType.File, Hash = HashFor("root"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "docs/", Type = FileTreeEntryType.Dir, Hash = docsHash },
+                new FileTreeEntry { Name = "root.txt", Type = FileTreeEntryType.File, Hash = HashFor("root"), Created = s_created, Modified = s_modified }
             ]
         };
 
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = new SnapshotManifest
         {
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
@@ -115,14 +115,14 @@ public class ListQueryHandlerTests
         };
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
-        blobs.AddBlob(BlobPaths.FileTree(docsHash), await TreeBlobSerializer.SerializeForStorageAsync(docsTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(docsHash), await FileTreeBlobSerializer.SerializeForStorageAsync(docsTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
-        var treeCache2   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
+        var treeCache2   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
         var handler = new ListQueryHandler(
             index,
@@ -155,16 +155,16 @@ public class ListQueryHandlerTests
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt.pointer.arius"), HashFor("shared"));
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "local-only.txt"), "local-only");
 
-            var rootTree = new TreeBlob
+            var rootTree = new FileTreeBlob
             {
                 Entries =
                 [
-                    new TreeEntry { Name = "cloud-only.txt", Type = TreeEntryType.File, Hash = HashFor("cloud-only"), Created = s_created, Modified = s_modified },
-                    new TreeEntry { Name = "shared.txt", Type = TreeEntryType.File, Hash = HashFor("shared"), Created = s_created, Modified = s_modified }
+                    new FileTreeEntry { Name = "cloud-only.txt", Type = FileTreeEntryType.File, Hash = HashFor("cloud-only"), Created = s_created, Modified = s_modified },
+                    new FileTreeEntry { Name = "shared.txt", Type = FileTreeEntryType.File, Hash = HashFor("shared"), Created = s_created, Modified = s_modified }
                 ]
             };
 
-            var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+            var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
             var snapshot = new SnapshotManifest
             {
                 Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
@@ -175,14 +175,14 @@ public class ListQueryHandlerTests
             };
 
             var blobs = new FakeSeededBlobContainerService();
-            blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+            blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3", cacheBudgetBytes: 1024 * 1024);
             index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
             index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
-            var treeCache3   = new TreeCacheService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
+            var treeCache3   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
             var handler = new ListQueryHandler(
                 index,
@@ -238,9 +238,9 @@ public class ListQueryHandlerTests
     {
         var blobs = new ThrowOnCreateBlobContainerService();
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing", cacheBudgetBytes: 1024 * 1024);
-        var treeCache = new TreeCacheService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
+        var fileTreeService = new FileTreeService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
-        var handler = new ListQueryHandler(index, treeCache, snapshotSvc, NullLogger<ListQueryHandler>.Instance, "acct-ls-missing", "ctr-ls-missing");
+        var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, NullLogger<ListQueryHandler>.Instance, "acct-ls-missing", "ctr-ls-missing");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -258,28 +258,28 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_RecursiveFalse_YieldsOnlyImmediateChildren()
     {
-        var childTree = new TreeBlob
+        var childTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "deep.txt", Type = TreeEntryType.File, Hash = HashFor("deep"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "deep.txt", Type = FileTreeEntryType.File, Hash = HashFor("deep"), Created = s_created, Modified = s_modified }
             ]
         };
-        var childHash = TreeBlobSerializer.ComputeHash(childTree, s_encryption);
-        var rootTree = new TreeBlob
+        var childHash = FileTreeBlobSerializer.ComputeHash(childTree, s_encryption);
+        var rootTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "child/", Type = TreeEntryType.Dir, Hash = childHash },
-                new TreeEntry { Name = "root.txt", Type = TreeEntryType.File, Hash = HashFor("root"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "child/", Type = FileTreeEntryType.Dir, Hash = childHash },
+                new FileTreeEntry { Name = "root.txt", Type = FileTreeEntryType.File, Hash = HashFor("root"), Created = s_created, Modified = s_modified }
             ]
         };
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
-        blobs.AddBlob(BlobPaths.FileTree(childHash), await TreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
@@ -305,21 +305,21 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_FilenameFilter_CaseInsensitiveMatchOnFilesNotDirs()
     {
-        var rootTree = new TreeBlob
+        var rootTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "Photos/", Type = TreeEntryType.Dir, Hash = HashFor("photos-dir") },
-                new TreeEntry { Name = "VACATION.jpg", Type = TreeEntryType.File, Hash = HashFor("vac"), Created = s_created, Modified = s_modified },
-                new TreeEntry { Name = "sunset.jpg",   Type = TreeEntryType.File, Hash = HashFor("sun"), Created = s_created, Modified = s_modified },
-                new TreeEntry { Name = "readme.txt",   Type = TreeEntryType.File, Hash = HashFor("rdm"), Created = s_created, Modified = s_modified },
+                new FileTreeEntry { Name = "Photos/", Type = FileTreeEntryType.Dir, Hash = HashFor("photos-dir") },
+                new FileTreeEntry { Name = "VACATION.jpg", Type = FileTreeEntryType.File, Hash = HashFor("vac"), Created = s_created, Modified = s_modified },
+                new FileTreeEntry { Name = "sunset.jpg",   Type = FileTreeEntryType.File, Hash = HashFor("sun"), Created = s_created, Modified = s_modified },
+                new FileTreeEntry { Name = "readme.txt",   Type = FileTreeEntryType.File, Hash = HashFor("rdm"), Created = s_created, Modified = s_modified },
             ]
         };
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
@@ -346,27 +346,27 @@ public class ListQueryHandlerTests
 
         try
         {
-            var cloudLocalTree  = new TreeBlob { Entries = [] };
-            var cloudOnlyTree   = new TreeBlob { Entries = [] };
-            var cloudLocalHash  = TreeBlobSerializer.ComputeHash(cloudLocalTree, s_encryption);
-            var cloudOnlyHash   = TreeBlobSerializer.ComputeHash(cloudOnlyTree, s_encryption);
+            var cloudLocalTree  = new FileTreeBlob { Entries = [] };
+            var cloudOnlyTree   = new FileTreeBlob { Entries = [] };
+            var cloudLocalHash  = FileTreeBlobSerializer.ComputeHash(cloudLocalTree, s_encryption);
+            var cloudOnlyHash   = FileTreeBlobSerializer.ComputeHash(cloudOnlyTree, s_encryption);
 
             // root has: cloud+local dir, cloud-only dir; local has: local-only dir
-            var rootTree = new TreeBlob
+            var rootTree = new FileTreeBlob
             {
                 Entries =
                 [
-                    new TreeEntry { Name = "cloud-local-dir/", Type = TreeEntryType.Dir, Hash = cloudLocalHash },
-                    new TreeEntry { Name = "cloud-only-dir/",  Type = TreeEntryType.Dir, Hash = cloudOnlyHash },
+                    new FileTreeEntry { Name = "cloud-local-dir/", Type = FileTreeEntryType.Dir, Hash = cloudLocalHash },
+                    new FileTreeEntry { Name = "cloud-only-dir/",  Type = FileTreeEntryType.Dir, Hash = cloudOnlyHash },
                 ]
             };
-            var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+            var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
             var snapshot = MakeSnapshot(rootHash);
 
             var blobs = new FakeSeededBlobContainerService();
-            blobs.AddBlob(BlobPaths.FileTree(rootHash),       await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
-            blobs.AddBlob(BlobPaths.FileTree(cloudLocalHash), await TreeBlobSerializer.SerializeForStorageAsync(cloudLocalTree, s_encryption));
-            blobs.AddBlob(BlobPaths.FileTree(cloudOnlyHash),  await TreeBlobSerializer.SerializeForStorageAsync(cloudOnlyTree, s_encryption));
+            blobs.AddBlob(BlobPaths.FileTree(rootHash),       await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+            blobs.AddBlob(BlobPaths.FileTree(cloudLocalHash), await FileTreeBlobSerializer.SerializeForStorageAsync(cloudLocalTree, s_encryption));
+            blobs.AddBlob(BlobPaths.FileTree(cloudOnlyHash),  await FileTreeBlobSerializer.SerializeForStorageAsync(cloudOnlyTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
@@ -401,29 +401,29 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_BatchSizeLookup_CalledOncePerDirectory_SizeNullWhenNotInIndex()
     {
-        var childTree = new TreeBlob
+        var childTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "child-file.txt", Type = TreeEntryType.File, Hash = HashFor("child-file"), Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "child-file.txt", Type = FileTreeEntryType.File, Hash = HashFor("child-file"), Created = s_created, Modified = s_modified }
             ]
         };
-        var childHash = TreeBlobSerializer.ComputeHash(childTree, s_encryption);
-        var rootTree = new TreeBlob
+        var childHash = FileTreeBlobSerializer.ComputeHash(childTree, s_encryption);
+        var rootTree = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "child/",    Type = TreeEntryType.Dir,  Hash = childHash },
-                new TreeEntry { Name = "known.txt", Type = TreeEntryType.File, Hash = HashFor("known"),   Created = s_created, Modified = s_modified },
-                new TreeEntry { Name = "unknown.txt",Type = TreeEntryType.File, Hash = HashFor("unknown"), Created = s_created, Modified = s_modified },
+                new FileTreeEntry { Name = "child/",    Type = FileTreeEntryType.Dir,  Hash = childHash },
+                new FileTreeEntry { Name = "known.txt", Type = FileTreeEntryType.File, Hash = HashFor("known"),   Created = s_created, Modified = s_modified },
+                new FileTreeEntry { Name = "unknown.txt",Type = FileTreeEntryType.File, Hash = HashFor("unknown"), Created = s_created, Modified = s_modified },
             ]
         };
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash),  await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
-        blobs.AddBlob(BlobPaths.FileTree(childHash), await TreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash),  await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         // Only register "known.txt" — "unknown.txt" and "child-file.txt" have no size entry
@@ -462,12 +462,12 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_SpecificVersionNotFound_ThrowsWithDescriptiveMessage()
     {
-        var rootTree = new TreeBlob { Entries = [] };
-        var rootHash = TreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var rootTree = new FileTreeBlob { Entries = [] };
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await TreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-310b", "ctr-310b", cacheBudgetBytes: 1024 * 1024);
@@ -488,26 +488,26 @@ public class ListQueryHandlerTests
         // Build a deep tree: root → dir1 → dir2 → ... → dir10.
         // Each level is a separate WalkDirectoryAsync call, so cancellation is
         // checked at each level boundary (ThrowIfCancellationRequested at top of method).
-        var leafTree = new TreeBlob { Entries = [] };
-        var leafHash = TreeBlobSerializer.ComputeHash(leafTree, s_encryption);
+        var leafTree = new FileTreeBlob { Entries = [] };
+        var leafHash = FileTreeBlobSerializer.ComputeHash(leafTree, s_encryption);
 
         // Build chain: level10 → level9 → … → level1 → root
         var currentHash  = leafHash;
         var blobs = new FakeSeededBlobContainerService();
-        blobs.AddBlob(BlobPaths.FileTree(leafHash), await TreeBlobSerializer.SerializeForStorageAsync(leafTree, s_encryption));
+        blobs.AddBlob(BlobPaths.FileTree(leafHash), await FileTreeBlobSerializer.SerializeForStorageAsync(leafTree, s_encryption));
 
         for (var i = 10; i >= 1; i--)
         {
-            var tree = new TreeBlob
+            var tree = new FileTreeBlob
             {
                 Entries =
                 [
-                    new TreeEntry { Name = $"level{i + 1}/", Type = TreeEntryType.Dir, Hash = currentHash },
-                    new TreeEntry { Name = $"file{i}.txt",   Type = TreeEntryType.File, Hash = HashFor($"f{i}"), Created = s_created, Modified = s_modified }
+                    new FileTreeEntry { Name = $"level{i + 1}/", Type = FileTreeEntryType.Dir, Hash = currentHash },
+                    new FileTreeEntry { Name = $"file{i}.txt",   Type = FileTreeEntryType.File, Hash = HashFor($"f{i}"), Created = s_created, Modified = s_modified }
                 ]
             };
-            currentHash = TreeBlobSerializer.ComputeHash(tree, s_encryption);
-            blobs.AddBlob(BlobPaths.FileTree(currentHash), await TreeBlobSerializer.SerializeForStorageAsync(tree, s_encryption));
+            currentHash = FileTreeBlobSerializer.ComputeHash(tree, s_encryption);
+            blobs.AddBlob(BlobPaths.FileTree(currentHash), await FileTreeBlobSerializer.SerializeForStorageAsync(tree, s_encryption));
         }
 
         var snapshot = MakeSnapshot(currentHash);
@@ -545,7 +545,7 @@ public class ListQueryHandlerTests
     };
 
     private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
-        new(index, new TreeCacheService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
+        new(index, new FileTreeService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {

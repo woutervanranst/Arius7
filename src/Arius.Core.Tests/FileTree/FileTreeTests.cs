@@ -9,22 +9,22 @@ namespace Arius.Core.Tests.FileTree;
 
 // ── 5.1 / 5.2  Model and serialization roundtrip ─────────────────────────────
 
-public class TreeBlobSerializerTests
+public class FileTreeBlobSerializerTests
 {
     private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static TreeBlob MakeBlob(params (string name, TreeEntryType type, string hash)[] items) =>
+    private static FileTreeBlob MakeBlob(params (string name, FileTreeEntryType type, string hash)[] items) =>
         new()
         {
-            Entries = items.Select(i => new TreeEntry
+            Entries = items.Select(i => new FileTreeEntry
             {
                 Name     = i.name,
                 Type     = i.type,
                 Hash     = i.hash,
-                Created  = i.type == TreeEntryType.File ? s_created  : null,
-                Modified = i.type == TreeEntryType.File ? s_modified : null
+                Created  = i.type == FileTreeEntryType.File ? s_created  : null,
+                Modified = i.type == FileTreeEntryType.File ? s_modified : null
             }).ToList()
         };
 
@@ -32,22 +32,22 @@ public class TreeBlobSerializerTests
     public async Task Serialize_ThenDeserialize_RoundTrips()
     {
         var blob = MakeBlob(
-            ("photo.jpg", TreeEntryType.File, "a1b2c3d4"),
-            ("subdir/",   TreeEntryType.Dir,  "e5f6a7b8"));
+            ("photo.jpg", FileTreeEntryType.File, "a1b2c3d4"),
+            ("subdir/",   FileTreeEntryType.Dir,  "e5f6a7b8"));
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Count.ShouldBe(2);
 
         var file = back.Entries.Single(e => e.Name == "photo.jpg");
-        file.Type.ShouldBe(TreeEntryType.File);
+        file.Type.ShouldBe(FileTreeEntryType.File);
         file.Hash.ShouldBe("a1b2c3d4");
         file.Created.ShouldNotBeNull();
         file.Modified.ShouldNotBeNull();
 
         var dir = back.Entries.Single(e => e.Name == "subdir/");
-        dir.Type.ShouldBe(TreeEntryType.Dir);
+        dir.Type.ShouldBe(FileTreeEntryType.Dir);
         dir.Hash.ShouldBe("e5f6a7b8");
         dir.Created.ShouldBeNull();
         dir.Modified.ShouldBeNull();
@@ -58,12 +58,12 @@ public class TreeBlobSerializerTests
     {
         // Insert entries in reverse order
         var blob = MakeBlob(
-            ("z_last.txt",  TreeEntryType.File, "hash3"),
-            ("a_first.txt", TreeEntryType.File, "hash1"),
-            ("m_mid.txt",   TreeEntryType.File, "hash2"));
+            ("z_last.txt",  FileTreeEntryType.File, "hash3"),
+            ("a_first.txt", FileTreeEntryType.File, "hash1"),
+            ("m_mid.txt",   FileTreeEntryType.File, "hash2"));
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries[0].Name.ShouldBe("a_first.txt");
         back.Entries[1].Name.ShouldBe("m_mid.txt");
@@ -73,11 +73,11 @@ public class TreeBlobSerializerTests
     [Test]
     public void Serialize_IsDeterministic_SameInputSameOutput()
     {
-        var blob1 = MakeBlob(("b.jpg", TreeEntryType.File, "hash2"), ("a.jpg", TreeEntryType.File, "hash1"));
-        var blob2 = MakeBlob(("a.jpg", TreeEntryType.File, "hash1"), ("b.jpg", TreeEntryType.File, "hash2"));
+        var blob1 = MakeBlob(("b.jpg", FileTreeEntryType.File, "hash2"), ("a.jpg", FileTreeEntryType.File, "hash1"));
+        var blob2 = MakeBlob(("a.jpg", FileTreeEntryType.File, "hash1"), ("b.jpg", FileTreeEntryType.File, "hash2"));
 
-        var bytes1 = TreeBlobSerializer.Serialize(blob1);
-        var bytes2 = TreeBlobSerializer.Serialize(blob2);
+        var bytes1 = FileTreeBlobSerializer.Serialize(blob1);
+        var bytes2 = FileTreeBlobSerializer.Serialize(blob2);
 
         bytes1.ShouldBe(bytes2);
     }
@@ -85,16 +85,16 @@ public class TreeBlobSerializerTests
     [Test]
     public void Serialize_DirEntry_HasNoTimestamps_FileEntry_HasTimestamps()
     {
-        var blob = new TreeBlob
+        var blob = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry { Name = "sub/", Type = TreeEntryType.Dir,  Hash = "abc", Created = null, Modified = null },
-                new TreeEntry { Name = "f.txt", Type = TreeEntryType.File, Hash = "def", Created = s_created, Modified = s_modified }
+                new FileTreeEntry { Name = "sub/", Type = FileTreeEntryType.Dir,  Hash = "abc", Created = null, Modified = null },
+                new FileTreeEntry { Name = "f.txt", Type = FileTreeEntryType.File, Hash = "def", Created = s_created, Modified = s_modified }
             ]
         };
 
-        var text = System.Text.Encoding.UTF8.GetString(TreeBlobSerializer.Serialize(blob));
+        var text = System.Text.Encoding.UTF8.GetString(FileTreeBlobSerializer.Serialize(blob));
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         // Dir line: <hash> D <name>  — 3 space-separated tokens
@@ -109,10 +109,10 @@ public class TreeBlobSerializerTests
     [Test]
     public async Task Serialize_FileEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("my vacation photo.jpg", TreeEntryType.File, "abc123"));
+        var blob = MakeBlob(("my vacation photo.jpg", FileTreeEntryType.File, "abc123"));
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Single().Name.ShouldBe("my vacation photo.jpg");
     }
@@ -120,10 +120,10 @@ public class TreeBlobSerializerTests
     [Test]
     public async Task Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("2024 trip/", TreeEntryType.Dir, "def456"));
+        var blob = MakeBlob(("2024 trip/", FileTreeEntryType.Dir, "def456"));
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Single().Name.ShouldBe("2024 trip/");
     }
@@ -134,10 +134,10 @@ public class TreeBlobSerializerTests
     public void ComputeHash_Deterministic_SameInputSameHash()
     {
         var enc  = new PlaintextPassthroughService();
-        var blob = MakeBlob(("file.txt", TreeEntryType.File, "deadbeef"));
+        var blob = MakeBlob(("file.txt", FileTreeEntryType.File, "deadbeef"));
 
-        var h1 = TreeBlobSerializer.ComputeHash(blob, enc);
-        var h2 = TreeBlobSerializer.ComputeHash(blob, enc);
+        var h1 = FileTreeBlobSerializer.ComputeHash(blob, enc);
+        var h2 = FileTreeBlobSerializer.ComputeHash(blob, enc);
 
         h1.ShouldBe(h2);
         h1.Length.ShouldBe(64); // SHA256 hex
@@ -147,14 +147,14 @@ public class TreeBlobSerializerTests
     public void ComputeHash_MetadataChange_ProducesNewHash()
     {
         var enc  = new PlaintextPassthroughService();
-        var blob1 = new TreeBlob
+        var blob1 = new FileTreeBlob
         {
             Entries =
             [
-                new TreeEntry
+                new FileTreeEntry
                 {
                     Name     = "file.txt",
-                    Type     = TreeEntryType.File,
+                    Type     = FileTreeEntryType.File,
                     Hash     = "deadbeef",
                     Created  = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
                     Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
@@ -172,8 +172,8 @@ public class TreeBlobSerializerTests
             ]
         };
 
-        var h1 = TreeBlobSerializer.ComputeHash(blob1, enc);
-        var h2 = TreeBlobSerializer.ComputeHash(blob2, enc);
+        var h1 = FileTreeBlobSerializer.ComputeHash(blob1, enc);
+        var h2 = FileTreeBlobSerializer.ComputeHash(blob2, enc);
 
         h1.ShouldNotBe(h2);
     }
@@ -181,12 +181,12 @@ public class TreeBlobSerializerTests
     [Test]
     public void ComputeHash_WithPassphrase_DifferentFromPlaintext()
     {
-        var blobPlain   = MakeBlob(("file.txt", TreeEntryType.File, "abc"));
+        var blobPlain   = MakeBlob(("file.txt", FileTreeEntryType.File, "abc"));
         var plain       = new PlaintextPassthroughService();
         var withPass    = new PassphraseEncryptionService("secret");
 
-        var h1 = TreeBlobSerializer.ComputeHash(blobPlain, plain);
-        var h2 = TreeBlobSerializer.ComputeHash(blobPlain, withPass);
+        var h1 = FileTreeBlobSerializer.ComputeHash(blobPlain, plain);
+        var h2 = FileTreeBlobSerializer.ComputeHash(blobPlain, withPass);
 
         h1.ShouldNotBe(h2);
     }
@@ -194,17 +194,17 @@ public class TreeBlobSerializerTests
 
 // ── 5.1 / 5.2 / 5.3  Storage serialization (gzip + optional encryption) ─────────
 
-public class TreeBlobSerializerStorageTests
+public class FileTreeBlobSerializerStorageTests
 {
     private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
 
-    private static TreeBlob MakeBlob() => new()
+    private static FileTreeBlob MakeBlob() => new()
     {
         Entries =
         [
-            new TreeEntry { Name = "photo.jpg", Type = TreeEntryType.File, Hash = "a1b2c3d4", Created = s_created, Modified = s_modified },
-            new TreeEntry { Name = "subdir/",   Type = TreeEntryType.Dir,  Hash = "e5f6a7b8" }
+            new FileTreeEntry { Name = "photo.jpg", Type = FileTreeEntryType.File, Hash = "a1b2c3d4", Created = s_created, Modified = s_modified },
+            new FileTreeEntry { Name = "subdir/",   Type = FileTreeEntryType.Dir,  Hash = "e5f6a7b8" }
         ]
     };
 
@@ -214,12 +214,12 @@ public class TreeBlobSerializerStorageTests
         var enc  = new PassphraseEncryptionService("test-passphrase");
         var blob = MakeBlob();
 
-        var bytes  = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
-        var back   = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+        var bytes  = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back   = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
         back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
-        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(FileTreeEntryType.Dir);
     }
 
     [Test]
@@ -228,12 +228,12 @@ public class TreeBlobSerializerStorageTests
         var enc  = new PlaintextPassthroughService();
         var blob = MakeBlob();
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
-        var back  = await TreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
         back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
-        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(TreeEntryType.Dir);
+        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(FileTreeEntryType.Dir);
     }
 
     [Test]
@@ -242,7 +242,7 @@ public class TreeBlobSerializerStorageTests
         var enc   = new PassphraseEncryptionService("test-passphrase");
         var blob  = MakeBlob();
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, enc);
 
         // AES-256-GCM ArGCM1 format: first 6 bytes are "ArGCM1"
         var prefix = System.Text.Encoding.ASCII.GetString(bytes[..6]);
@@ -255,7 +255,7 @@ public class TreeBlobSerializerStorageTests
         var enc  = new PassphraseEncryptionService("test-passphrase");
         var blob = MakeBlob();
 
-        var bytes = await TreeBlobSerializer.SerializeForStorageAsync(blob, enc);
+        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, enc);
         var text  = System.Text.Encoding.UTF8.GetString(bytes);
 
         // Encrypted output should not contain file names in plaintext
@@ -264,103 +264,17 @@ public class TreeBlobSerializerStorageTests
     }
 }
 
-// ── 5.4 Manifest writer ────────────────────────────────────────────────────────
+// ── 5.8 Empty directory skipping (via FileTreeBuilder) ────────────────────────────
 
-public class ManifestWriterTests
-{
-    [Test]
-    public async Task Append_ThenRead_ContainsAllEntries()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            await using var writer = new ManifestWriter(path);
-
-            var e1 = new ManifestEntry("photos/a.jpg",   "hash1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-            var e2 = new ManifestEntry("docs/report.pdf","hash2", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-            await writer.AppendAsync(e1);
-            await writer.AppendAsync(e2);
-        }
-        finally
-        {
-            // reader after dispose
-        }
-
-        var lines = await File.ReadAllLinesAsync(path);
-        var entries = lines.Where(l => !string.IsNullOrWhiteSpace(l))
-                           .Select(ManifestEntry.Parse)
-                           .ToList();
-
-        entries.Count.ShouldBe(2);
-        entries.Any(e => e.Path == "photos/a.jpg" && e.ContentHash == "hash1").ShouldBeTrue();
-        entries.Any(e => e.Path == "docs/report.pdf").ShouldBeTrue();
-
-        File.Delete(path);
-    }
-
-    [Test]
-    public void ManifestEntry_Serialize_ThenParse_RoundTrips()
-    {
-        var now   = new DateTimeOffset(2024, 6, 15, 10, 30, 0, TimeSpan.Zero);
-        var entry = new ManifestEntry("path/to/file.txt", "abcdef12", now, now.AddHours(1));
-        var back  = ManifestEntry.Parse(entry.Serialize());
-
-        back.Path.ShouldBe(entry.Path);
-        back.ContentHash.ShouldBe(entry.ContentHash);
-        back.Created.ShouldBe(entry.Created);
-        back.Modified.ShouldBe(entry.Modified);
-    }
-}
-
-// ── 5.5 External sort ─────────────────────────────────────────────────────────
-
-public class ManifestSorterTests
-{
-    [Test]
-    public async Task SortAsync_SortsEntriesByPath_Ordinal()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            var now     = DateTimeOffset.UtcNow;
-            var entries = new[]
-            {
-                new ManifestEntry("z/file.txt",   "h3", now, now),
-                new ManifestEntry("a/file.txt",   "h1", now, now),
-                new ManifestEntry("m/file.txt",   "h2", now, now),
-            };
-
-            await File.WriteAllLinesAsync(path, entries.Select(e => e.Serialize()));
-
-            await ManifestSorter.SortAsync(path);
-
-            var lines   = await File.ReadAllLinesAsync(path);
-            var sorted  = lines.Where(l => !string.IsNullOrWhiteSpace(l))
-                               .Select(ManifestEntry.Parse)
-                               .ToList();
-
-            sorted[0].Path.ShouldBe("a/file.txt");
-            sorted[1].Path.ShouldBe("m/file.txt");
-            sorted[2].Path.ShouldBe("z/file.txt");
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-}
-
-// ── 5.8 Empty directory skipping (via TreeBuilder) ────────────────────────────
-
-public class TreeBuilderTests
+public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static TreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName)
+    private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName)
     {
         var index = new ChunkIndexService(blobs, s_enc, accountName, containerName);
-        var treeCache = new TreeCacheService(blobs, s_enc, index, accountName, containerName);
-        return new TreeBuilder(s_enc, treeCache);
+        var fileTreeService = new FileTreeService(blobs, s_enc, index, accountName, containerName);
+        return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
     [Test]
@@ -389,7 +303,7 @@ public class TreeBuilderTests
     {
         const string acct = "acct-single";
         const string cont = "cont-single";
-        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
 
         // Clean any stale disk cache from prior runs before the test
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
@@ -421,8 +335,8 @@ public class TreeBuilderTests
     {
         const string acct1 = "acc-identical-1", cont1 = "con-identical-1";
         const string acct2 = "acc-identical-2", cont2 = "con-identical-2";
-        var cache1 = TreeCacheService.GetDiskCacheDirectory(acct1, cont1);
-        var cache2 = TreeCacheService.GetDiskCacheDirectory(acct2, cont2);
+        var cache1 = FileTreeService.GetDiskCacheDirectory(acct1, cont1);
+        var cache2 = FileTreeService.GetDiskCacheDirectory(acct2, cont2);
         if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
         if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
 
@@ -464,7 +378,7 @@ public class TreeBuilderTests
     public async Task BuildAsync_MetadataChange_DifferentRootHash()
     {
         const string acct = "acc-meta", cont = "con-meta";
-        var cacheDir = TreeCacheService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
 
         var manifestPath1 = Path.GetTempFileName();
@@ -528,7 +442,7 @@ public class TreeBuilderTests
         {
             File.Delete(manifestPath);
             // Clean up disk cache
-            var cacheDir = TreeCacheService.GetDiskCacheDirectory("acc", "con");
+            var cacheDir = FileTreeService.GetDiskCacheDirectory("acc", "con");
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
