@@ -93,6 +93,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<IMediator>(),

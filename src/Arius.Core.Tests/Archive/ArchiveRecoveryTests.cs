@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -114,11 +115,13 @@ public class ArchiveRecoveryMatrixTests
             Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
 
             var fileTreeService    = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
+            var chunkStorage = new ChunkStorageService(Blobs, _encryption);
             var snapshotSvc  = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
             var handler = new ArchiveCommandHandler(
                 Blobs,
                 _encryption,
                 _index,
+                chunkStorage,
                 fileTreeService,
                 snapshotSvc,
                 _mediator,

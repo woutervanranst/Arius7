@@ -13,7 +13,7 @@
 
 ## 3. Feature Refactors
 
-- [ ] 3.1 Refactor `ArchiveCommandHandler` to use `ChunkIndexService.LookupAsync(string)` and `ChunkStorageService` for large, tar, and thin chunk operations while keeping archive orchestration in the handler
+- [x] 3.1 Refactor `ArchiveCommandHandler` to use `ChunkIndexService.LookupAsync(string)` and `ChunkStorageService` for large, tar, and thin chunk operations while keeping archive orchestration in the handler
 - [ ] 3.2 Refactor `RestoreCommandHandler` to use `ChunkStorageService` for download, hydration status, rehydration start, and rehydrated cleanup planning while keeping restore orchestration in the handler
 - [ ] 3.3 Refactor `ChunkHydrationStatusQueryHandler` to resolve hydration state through `ChunkStorageService` after chunk-index lookup
 
