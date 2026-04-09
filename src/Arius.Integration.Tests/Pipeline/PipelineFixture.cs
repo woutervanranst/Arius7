@@ -1,6 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -221,8 +222,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             Directory.Delete(_tempRoot, recursive: true);
 
         // Clean up any cache dirs created by this test's container (unique name)
-        var home     = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var cacheDir = Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(Account, Container.Name));
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(Account, Container.Name);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

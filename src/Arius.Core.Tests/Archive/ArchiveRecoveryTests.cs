@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Tests.Fakes;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -87,7 +88,7 @@ public class ArchiveRecoveryMatrixTests
             _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
             _containerName = $"test-container-{Guid.NewGuid():N}";
             Directory.CreateDirectory(_rootDirectory);
-            Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
+            Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
             Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
             Blobs = new FakeInMemoryBlobContainerService();
             _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
@@ -109,7 +110,7 @@ public class ArchiveRecoveryMatrixTests
 
         public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
         {
-            Directory.CreateDirectory(ChunkIndexService.GetL2Directory(AccountName, _containerName));
+            Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
             Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
 
             var fileTreeService    = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
@@ -145,7 +146,7 @@ public class ArchiveRecoveryMatrixTests
             if (Directory.Exists(_rootDirectory))
                 Directory.Delete(_rootDirectory, recursive: true);
 
-            var chunkIndexDir = ChunkIndexService.GetL2Directory(AccountName, _containerName);
+            var chunkIndexDir = RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName);
             if (Directory.Exists(chunkIndexDir))
                 TryDeleteDirectory(chunkIndexDir);
 

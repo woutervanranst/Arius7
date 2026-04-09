@@ -6,6 +6,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared;
 
 namespace Arius.Core.Shared.Snapshot;
 
@@ -132,10 +133,7 @@ public sealed class SnapshotService
 
     /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
     public static string GetDiskCacheDirectory(string accountName, string containerName)
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "snapshots");
-    }
+        => RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
 
     // ── Snapshot blob name ────────────────────────────────────────────────────
 

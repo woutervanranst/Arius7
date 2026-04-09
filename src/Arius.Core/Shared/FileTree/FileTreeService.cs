@@ -1,3 +1,4 @@
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
@@ -56,7 +57,7 @@ public sealed class FileTreeService
         _chunkIndex      = chunkIndex;
         _diskCacheDir    = GetDiskCacheDirectory(accountName, containerName);
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
-        _chunkIndexL2Dir = ChunkIndexService.GetL2Directory(accountName, containerName);
+        _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
         Directory.CreateDirectory(_diskCacheDir);
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
@@ -68,10 +69,7 @@ public sealed class FileTreeService
     /// Returns <c>~/.arius/{accountName}-{containerName}/filetrees</c>.
     /// </summary>
     public static string GetDiskCacheDirectory(string accountName, string containerName)
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "filetrees");
-    }
+        => RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
 
     // ── 1.3 ReadAsync ─────────────────────────────────────────────────────────
 

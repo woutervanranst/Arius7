@@ -3,7 +3,7 @@ using Arius.Cli.Commands.Ls;
 using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
-using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -151,9 +151,7 @@ public static class CliBuilder
     /// </summary>
     public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
     {
-        var home    = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var logDir  = Path.Combine(home, ".arius",
-            ChunkIndexService.GetRepoDirectoryName(accountName, containerName), "logs");
+        var logDir  = RepositoryPaths.GetLogsDirectory(accountName, containerName);
         Directory.CreateDirectory(logDir);
 
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");

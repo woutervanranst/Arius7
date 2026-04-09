@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -299,8 +300,7 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        var home     = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var cacheDir = Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(_account, _container));
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(_account, _container);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
