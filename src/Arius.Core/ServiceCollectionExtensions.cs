@@ -4,6 +4,7 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -55,6 +56,12 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName,
                 cacheBudgetBytes));
+
+        services.AddSingleton<ChunkStorageService>(sp =>
+            new ChunkStorageService(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IEncryptionService>()));
+        services.AddSingleton<IChunkStorageService>(sp => sp.GetRequiredService<ChunkStorageService>());
 
         // File tree service
         services.AddSingleton(sp =>

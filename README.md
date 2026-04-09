@@ -131,7 +131,8 @@ The runtime coordinates three shared services: `SnapshotService` for snapshot ma
 `FileTreeService` for cached filetree blobs, and `ChunkIndexService` for deduplication
 shard lookups. Repository-local cache and log directories are derived consistently through
 the shared `RepositoryPaths` helper. Chunk hydration state is shared through
-`Shared/ChunkIndex/ChunkHydrationStatus`.
+`Shared/ChunkIndex/ChunkHydrationStatus`. `ChunkStorageService` now defines the shared
+surface for chunk upload, download, hydration, rehydration, and cleanup planning.
 
 ```mermaid
 flowchart TD

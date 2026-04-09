@@ -5,6 +5,7 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +37,8 @@ public class AddAriusRegistrationTests
         serviceProvider.GetRequiredService<IStreamQueryHandler<ContainerNamesQuery, string>>().ShouldBeOfType<ContainerNamesQueryHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ListQuery, RepositoryEntry>>().ShouldBeOfType<ListQueryHandler>();
         serviceProvider.GetRequiredService<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>().ShouldBeOfType<ChunkHydrationStatusQueryHandler>();
+        serviceProvider.GetRequiredService<IChunkStorageService>().ShouldBeOfType<ChunkStorageService>();
+        serviceProvider.GetRequiredService<ChunkStorageService>().ShouldBeOfType<ChunkStorageService>();
         serviceProvider.GetRequiredService<ICommandHandler<ArchiveCommand, ArchiveResult>>().ShouldBeOfType<ArchiveCommandHandler>();
         serviceProvider.GetRequiredService<ICommandHandler<RestoreCommand, RestoreResult>>().ShouldBeOfType<RestoreCommandHandler>();
     }
