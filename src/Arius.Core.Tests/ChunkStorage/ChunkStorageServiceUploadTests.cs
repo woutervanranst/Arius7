@@ -88,6 +88,33 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
+    public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries_WithNonSeekableInput()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+        var blobName = BlobPaths.Chunk("retry-nonseek");
+
+        await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
+        blobs.ClearMetadata(blobName);
+        blobs.ThrowAlreadyExistsOnOpenWrite(blobName, throwOnce: true);
+
+        await using var nonSeekable = new NonSeekableReadStream(content);
+        var result = await service.UploadLargeAsync(
+            chunkHash: "retry-nonseek",
+            content: nonSeekable,
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        blobs.DeletedBlobNames.ShouldContain(blobName);
+        (await blobs.GetMetadataAsync(blobName)).Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+    }
+
+    [Test]
     public async Task UploadThinAsync_CreatesPointerBlobWithMetadata()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -165,5 +192,18 @@ public class ChunkStorageServiceUploadTests
 
         var metadata = await blobs.GetMetadataAsync(blobName);
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+    }
+}
+
+internal sealed class NonSeekableReadStream(byte[] content) : MemoryStream(content, writable: false)
+{
+    public override bool CanSeek => false;
+
+    public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => base.Position;
+        set => throw new NotSupportedException();
     }
 }
