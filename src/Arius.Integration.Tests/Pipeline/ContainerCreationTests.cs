@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -43,7 +44,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
         var handler    = new ArchiveCommandHandler(
-            svc, encryption, index, new FileTreeService(svc, encryption, index, Account, containerName),
+            svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, index, Account, containerName),
             new SnapshotService(svc, encryption, Account, containerName), mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, containerName);

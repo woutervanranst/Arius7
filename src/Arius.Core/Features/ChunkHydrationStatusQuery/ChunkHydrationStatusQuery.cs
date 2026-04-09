@@ -1,5 +1,6 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -16,15 +17,18 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
 {
     private readonly IBlobContainerService _blobs;
     private readonly ChunkIndexService _index;
+    private readonly IChunkStorageService _chunkStorage;
     private readonly ILogger<ChunkHydrationStatusQueryHandler> _logger;
 
     public ChunkHydrationStatusQueryHandler(
         IBlobContainerService blobs,
         ChunkIndexService index,
+        IChunkStorageService chunkStorage,
         ILogger<ChunkHydrationStatusQueryHandler> logger)
     {
         _blobs = blobs;
         _index = index;
+        _chunkStorage = chunkStorage;
         _logger = logger;
     }
 
@@ -60,7 +64,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
 
             if (!statusByChunkHash.TryGetValue(entry.ChunkHash, out var status))
             {
-                status = await ChunkHydrationStatusResolver.ResolveAsync(_blobs, entry.ChunkHash, cancellationToken).ConfigureAwait(false);
+                status = await _chunkStorage.GetHydrationStatusAsync(entry.ChunkHash, cancellationToken).ConfigureAwait(false);
                 statusByChunkHash[entry.ChunkHash] = status;
             }
 

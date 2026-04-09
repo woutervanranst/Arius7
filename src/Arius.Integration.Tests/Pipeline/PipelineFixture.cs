@@ -3,6 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -28,6 +29,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     public  IBlobContainerService BlobContainer   { get; private set; } = null!;
     public  IEncryptionService  Encryption    { get; private set; } = null!;
     public  ChunkIndexService   Index         { get; private set; } = null!;
+    public  IChunkStorageService ChunkStorage { get; private set; } = null!;
     public  FileTreeService    FileTreeService     { get; private set; } = null!;
     public  SnapshotService     Snapshot      { get; private set; } = null!;
     public  IMediator           Mediator      { get; private set; } = null!;
@@ -82,6 +84,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
         Index      = new ChunkIndexService(BlobContainer, Encryption, Account, container.Name);
+        ChunkStorage = new ChunkStorageService(BlobContainer, Encryption);
         FileTreeService  = new FileTreeService(BlobContainer, Encryption, Index, Account, container.Name);
         Snapshot   = new SnapshotService(BlobContainer, Encryption, Account, container.Name);
         Mediator   = Substitute.For<IMediator>();
@@ -111,6 +114,7 @@ public sealed class PipelineFixture : IAsyncDisposable
 
         Encryption = encryption;
         Index      = new ChunkIndexService(BlobContainer, Encryption, Account, Container.Name);
+        ChunkStorage = new ChunkStorageService(BlobContainer, Encryption);
         FileTreeService  = new FileTreeService(BlobContainer, Encryption, Index, Account, Container.Name);
         Snapshot   = new SnapshotService(BlobContainer, Encryption, Account, Container.Name);
         Mediator   = Substitute.For<IMediator>();
@@ -124,12 +128,12 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
-        new(BlobContainer, Encryption, Index, FileTreeService, Snapshot, Mediator,
+        new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
             NullLogger<ArchiveCommandHandler>.Instance,
             Account, Container.Name);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index, FileTreeService, Snapshot, Mediator,
+        new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 

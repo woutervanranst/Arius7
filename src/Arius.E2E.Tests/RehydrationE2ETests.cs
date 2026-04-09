@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -91,6 +92,7 @@ public class RehydrationE2ETests(AzureFixture azure)
 
             var restoreHandler1 = new RestoreCommandHandler(
                 trackingSvc, fix.Encryption, fix.Index,
+                new ChunkStorageService(trackingSvc, fix.Encryption),
                 new FileTreeService(trackingSvc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
@@ -114,6 +116,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             var trackingSvc2 = new CopyTrackingBlobService(svc);
             var restoreHandler2 = new RestoreCommandHandler(
                 trackingSvc2, fix.Encryption, fix.Index,
+                new ChunkStorageService(trackingSvc2, fix.Encryption),
                 new FileTreeService(trackingSvc2, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
@@ -162,6 +165,7 @@ public class RehydrationE2ETests(AzureFixture azure)
             {
                 var restoreHandler3 = new RestoreCommandHandler(
                     svc, fix.Encryption, fix.Index,
+                    new ChunkStorageService(svc, fix.Encryption),
                     new FileTreeService(svc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                     new SnapshotService(svc, fix.Encryption, container.AccountName, container.Name),
                     NSubstitute.Substitute.For<Mediator.IMediator>(),

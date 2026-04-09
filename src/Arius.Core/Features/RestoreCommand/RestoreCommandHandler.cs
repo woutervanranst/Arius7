@@ -1,5 +1,5 @@
-using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -34,6 +34,7 @@ public sealed class RestoreCommandHandler
     private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
+    private readonly IChunkStorageService             _chunkStorage;
     private readonly FileTreeService                 _fileTreeService;
     private readonly SnapshotService                  _snapshotSvc;
     private readonly IMediator                        _mediator;
@@ -45,6 +46,7 @@ public sealed class RestoreCommandHandler
         IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
+        IChunkStorageService           chunkStorage,
         FileTreeService               fileTreeService,
         SnapshotService                snapshotSvc,
         IMediator                      mediator,
@@ -55,6 +57,7 @@ public sealed class RestoreCommandHandler
         _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
+        _chunkStorage  = chunkStorage;
         _fileTreeService     = fileTreeService;
         _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
@@ -242,13 +245,12 @@ public sealed class RestoreCommandHandler
             // ── Step 5: Rehydration status check ──────────────────────────────
 
             var available          = new List<string>();   // chunk hashes ready to download
-            var rehydrated         = new List<string>();   // chunk hashes in chunks-rehydrated/
             var needsRehydration   = new List<string>();   // archive-tier, not yet rehydrated
             var rehydrationPending = new List<string>();   // copy already in progress
 
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
-                var hydrationStatus = await ChunkHydrationStatusResolver.ResolveAsync(_blobs, chunkHash, cancellationToken);
+                var hydrationStatus = await _chunkStorage.GetHydrationStatusAsync(chunkHash, cancellationToken);
                 if (hydrationStatus == ChunkHydrationStatus.Unknown)
                 {
                     _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
@@ -264,25 +266,20 @@ public sealed class RestoreCommandHandler
                         needsRehydration.Add(chunkHash);
                         break;
                     case ChunkHydrationStatus.Available:
-                        var rehydratedName = BlobPaths.ChunkRehydrated(chunkHash);
-                        var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedName, cancellationToken);
-                        if (rehydratedMeta.Exists && rehydratedMeta.Tier != BlobTier.Archive)
-                            rehydrated.Add(chunkHash);
-                        else
-                            available.Add(chunkHash);
+                        available.Add(chunkHash);
                         break;
                 }
             }
 
-            _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count);
-            await _mediator.Publish(new RehydrationStatusEvent(available.Count, rehydrated.Count, needsRehydration.Count, rehydrationPending.Count), cancellationToken);
+            _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, 0, needsRehydration.Count, rehydrationPending.Count);
+            await _mediator.Publish(new RehydrationStatusEvent(available.Count, 0, needsRehydration.Count, rehydrationPending.Count), cancellationToken);
 
             // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
 
             long rehydrationBytes = 0;
             long downloadBytes    = 0;
 
-            foreach (var chunkHash in available.Concat(rehydrated))
+            foreach (var chunkHash in available)
                 downloadBytes += SumCompressedBytes(chunkHash);
             foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
                 rehydrationBytes += SumCompressedBytes(chunkHash);
@@ -310,7 +307,7 @@ public sealed class RestoreCommandHandler
             // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
             var costEstimate = RestoreCostCalculator.Compute(
                 chunksAvailable:          available.Count,
-                chunksAlreadyRehydrated:  rehydrated.Count,
+                chunksAlreadyRehydrated:  0,
                 chunksNeedingRehydration: needsRehydration.Count,
                 chunksPendingRehydration: rehydrationPending.Count,
                 rehydrationBytes:         rehydrationBytes,
@@ -343,20 +340,12 @@ public sealed class RestoreCommandHandler
 
             const int DownloadWorkers = 4;
 
-            // Build a hashset for O(1) rehydrated lookup
-            var rehydratedSet = new HashSet<string>(rehydrated, StringComparer.Ordinal);
-
-            // Download both directly-available and already-rehydrated chunks in parallel
+            // Download available chunks in parallel
             await Parallel.ForEachAsync(
-                available.Concat(rehydrated),
+                available,
                 new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = cancellationToken },
                 async (chunkHash, ct) =>
                 {
-                    var isRehydrated = rehydratedSet.Contains(chunkHash);
-                    var blobName = isRehydrated
-                        ? BlobPaths.ChunkRehydrated(chunkHash)
-                        : BlobPaths.Chunk(chunkHash);
-
                     var filesForChunk = filesByChunkHash[chunkHash];
 
                     // Determine chunk type from index entry
@@ -385,7 +374,7 @@ public sealed class RestoreCommandHandler
                     {
                         // Large file: single file maps to this chunk
                         var file = filesForChunk[0]; // only one file per large chunk
-                        await RestoreLargeFileAsync(blobName, file, opts, compressedSize, ct);
+                        await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
                         Interlocked.Increment(ref filesRestoredLong);
                         await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
                     }
@@ -397,7 +386,7 @@ public sealed class RestoreCommandHandler
                             .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
                             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                         var restored = await RestoreTarBundleAsync(
-                            blobName, chunkHash, filesByContentHash, opts, compressedSize, ct);
+                            chunkHash, filesByContentHash, opts, compressedSize, ct);
                         Interlocked.Add(ref filesRestoredLong, restored);
                     }
                 });
@@ -418,11 +407,9 @@ public sealed class RestoreCommandHandler
                 long totalRehydrateBytes = 0;
                 foreach (var chunkHash in chunksToRequest)
                 {
-                    var chunkName = BlobPaths.Chunk(chunkHash);
-                    var dst       = BlobPaths.ChunkRehydrated(chunkHash);
                     try
                     {
-                        await _blobs.CopyAsync(chunkName, dst, BlobTier.Cold, rehydratePriority, cancellationToken);
+                        await _chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
 
                         if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
                             totalRehydrateBytes += ie.CompressedSize;
@@ -444,49 +431,14 @@ public sealed class RestoreCommandHandler
 
             if (totalPending == 0)
             {
-                // Enumerate ALL blobs under chunks-rehydrated/, not just those used by this restore.
-                var allRehydratedBlobs = new List<string>();
-                await foreach (var blobName in _blobs.ListAsync(BlobPaths.ChunksRehydrated, cancellationToken))
-                    allRehydratedBlobs.Add(blobName);
-
-                if (allRehydratedBlobs.Count > 0)
+                await using var cleanupPlan = await _chunkStorage.PlanRehydratedCleanupAsync(cancellationToken);
+                if (cleanupPlan.ChunkCount > 0)
                 {
-                    long totalRehydratedBytes = 0;
-                    foreach (var blobName in allRehydratedBlobs)
+                    if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
                     {
-                        try
-                        {
-                            var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-                            totalRehydratedBytes += meta.ContentLength ?? 0;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to get metadata for rehydrated blob {BlobName}", blobName);
-                        }
-                    }
-
-                    if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(allRehydratedBlobs.Count, totalRehydratedBytes, cancellationToken))
-                    {
-                        var chunksDeleted = 0;
-                        long bytesFreed   = 0;
-
-                        foreach (var blobName in allRehydratedBlobs)
-                        {
-                            try
-                            {
-                                var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-                                await _blobs.DeleteAsync(blobName, cancellationToken);
-                                chunksDeleted++;
-                                bytesFreed += meta.ContentLength ?? 0;
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "Failed to delete rehydrated blob {BlobName}", blobName);
-                            }
-                        }
-
-                        _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", chunksDeleted, bytesFreed);
-                        await _mediator.Publish(new CleanupCompleteEvent(chunksDeleted, bytesFreed), cancellationToken);
+                        var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
+                        _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
+                        await _mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
                     }
                 }
             }
@@ -618,7 +570,7 @@ public sealed class RestoreCommandHandler
     // ── Large file restore (task 10.7) ────────────────────────────────────────
 
     private async Task RestoreLargeFileAsync(
-        string         blobName,
+        string         chunkHash,
         FileToRestore  file,
         RestoreOptions opts,
         long           compressedSize,
@@ -629,23 +581,11 @@ public sealed class RestoreCommandHandler
 
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
-        // Streaming: download → (progress) → decrypt → gunzip → write
-        // All streams must be closed before setting timestamps, otherwise the
-        // FileStream disposal resets LastWriteTimeUtc to "now" on some platforms.
         {
-            await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
-
-            // Wrap with ProgressStream if progress callback is provided
-            var progressOrRawStream = downloadStream;
-            if (opts.CreateDownloadProgress is not null)
-            {
-                var progress = opts.CreateDownloadProgress(file.RelativePath, compressedSize, DownloadKind.LargeFile);
-                progressOrRawStream = new ProgressStream(downloadStream, progress);
-            }
-
-            await using var _ = progressOrRawStream == downloadStream ? null : progressOrRawStream as IAsyncDisposable;
-            await using var decryptStream  = _encryption.WrapForDecryption(progressOrRawStream);
-            await using var gzipStream     = new GZipStream(decryptStream, CompressionMode.Decompress);
+            var progress = opts.CreateDownloadProgress is not null
+                ? opts.CreateDownloadProgress(file.RelativePath, compressedSize, DownloadKind.LargeFile)
+                : null;
+            await using var gzipStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
             await using var outputStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
             await gzipStream.CopyToAsync(outputStream, cancellationToken);
@@ -681,7 +621,6 @@ public sealed class RestoreCommandHandler
     /// <param name="cancellationToken">Token to observe for cancellation.</param>
     /// <returns>The number of files written to disk.</returns>
     private async Task<int> RestoreTarBundleAsync(
-        string                                    blobName,
         string                                    chunkHash,
         Dictionary<string, List<FileToRestore>>   filesNeeded,
         RestoreOptions                            opts,
@@ -690,19 +629,10 @@ public sealed class RestoreCommandHandler
     {
         var restored = 0;
 
-        await using var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
-
-        // Wrap with ProgressStream if progress callback is provided
-        var progressOrRawStream = downloadStream;
-        if (opts.CreateDownloadProgress is not null)
-        {
-            var progress = opts.CreateDownloadProgress(chunkHash, compressedSize, DownloadKind.TarBundle);
-            progressOrRawStream = new ProgressStream(downloadStream, progress);
-        }
-
-        await using var _ = progressOrRawStream == downloadStream ? null : progressOrRawStream as IAsyncDisposable;
-        await using var decryptStream  = _encryption.WrapForDecryption(progressOrRawStream);
-        await using var gzipStream     = new GZipStream(decryptStream, CompressionMode.Decompress);
+        var progress = opts.CreateDownloadProgress is not null
+            ? opts.CreateDownloadProgress(chunkHash, compressedSize, DownloadKind.TarBundle)
+            : null;
+        await using var gzipStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         var tarReader = new TarReader(gzipStream, leaveOpen: false);
 
         TarEntry? tarEntry;
