@@ -301,6 +301,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         private readonly IDisposable? _decryptStream;
         private readonly IDisposable? _progressStream;
         private readonly IDisposable _downloadStream;
+        private int _disposed;
 
         public ChunkDownloadStream(Stream inner, Stream decryptStream, Stream progressStream, Stream downloadStream)
         {
@@ -322,9 +323,33 @@ public sealed class ChunkStorageService : IChunkStorageService
         public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
         public override ValueTask DisposeAsync() => DisposeCoreAsync();
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                DisposeResources();
+
+            base.Dispose(disposing);
+        }
+
         private async ValueTask DisposeCoreAsync()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
             await _inner.DisposeAsync();
+            _decryptStream?.Dispose();
+            _progressStream?.Dispose();
+            _downloadStream.Dispose();
+
+            GC.SuppressFinalize(this);
+        }
+
+        private void DisposeResources()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            _inner.Dispose();
             _decryptStream?.Dispose();
             _progressStream?.Dispose();
             _downloadStream.Dispose();

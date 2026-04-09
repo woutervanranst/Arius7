@@ -77,6 +77,17 @@ public class ChunkStorageServiceReadTests
     }
 
     [Test]
+    public async Task DownloadAsync_CanBeDisposedSynchronously()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk("abc"), System.Text.Encoding.UTF8.GetBytes("hello"), BlobTier.Hot);
+
+        var stream = await service.DownloadAsync("abc", cancellationToken: CancellationToken.None);
+        stream.Dispose();
+    }
+
+    [Test]
     public async Task StartRehydrationAsync_CopiesPrimaryChunkToRehydratedPrefix()
     {
         var blobs = new FakeInMemoryBlobContainerService();
