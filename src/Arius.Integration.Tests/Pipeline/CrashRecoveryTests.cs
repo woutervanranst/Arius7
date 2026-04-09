@@ -24,6 +24,8 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
 {
     private int _uploadCount;
 
+    private bool ShouldFaultUpload() => Interlocked.Increment(ref _uploadCount) > throwAfterN + 1;
+
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
@@ -33,9 +35,8 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
         BlobTier tier, string? contentType = null, bool overwrite = false,
         CancellationToken cancellationToken = default)
     {
-        var count = Interlocked.Increment(ref _uploadCount);
-        if (count > throwAfterN)
-            throw new IOException($"Fault-injected failure on upload #{count}");
+        if (ShouldFaultUpload())
+            throw new IOException($"Fault-injected failure while uploading {blobName}");
         await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
     }
 
@@ -57,7 +58,12 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
 
     public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
         CancellationToken cancellationToken = default)
-        => inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+    {
+        if (ShouldFaultUpload())
+            throw new IOException($"Fault-injected failure while opening write stream for {blobName}");
+
+        return inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+    }
 
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
