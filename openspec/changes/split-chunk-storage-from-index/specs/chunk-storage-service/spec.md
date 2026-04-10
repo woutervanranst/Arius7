@@ -53,7 +53,7 @@ Feature handlers SHALL NOT construct chunk blob names, select chunk content type
 - **THEN** `ChunkStorageService` SHALL interpret chunk metadata completeness and perform the existing recover-or-delete-and-retry behavior internally
 
 ### Requirement: Shared chunk hydration status API
-The system SHALL define `ChunkHydrationStatus` once in `Shared/ChunkIndex/ChunkHydrationStatus.cs` and SHALL reuse that type across chunk storage and features. `ChunkStorageService` SHALL expose `GetHydrationStatusAsync(string chunkHash, CancellationToken)` and SHALL encapsulate the rules for `Missing`, `Available`, `NeedsRehydration`, and `RehydrationPending` by checking primary and rehydrated chunk blobs.
+The system SHALL define `ChunkHydrationStatus` once in `Shared/ChunkIndex/ChunkHydrationStatus.cs` and SHALL reuse that type across chunk storage and features. `ChunkStorageService` SHALL expose `GetHydrationStatusAsync(string chunkHash, CancellationToken)` and SHALL encapsulate the rules for `Unknown`, `Available`, `NeedsRehydration`, and `RehydrationPending` by checking primary and rehydrated chunk blobs.
 
 Feature handlers and queries SHALL NOT implement their own chunk hydration-state resolution rules.
 

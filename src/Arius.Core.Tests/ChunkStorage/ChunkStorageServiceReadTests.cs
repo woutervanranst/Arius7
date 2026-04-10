@@ -56,7 +56,7 @@ public class ChunkStorageServiceReadTests
 
         var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
 
-        status.ShouldBe(ChunkHydrationStatus.Missing);
+        status.ShouldBe(ChunkHydrationStatus.Unknown);
     }
 
     [Test]
