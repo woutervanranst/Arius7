@@ -229,14 +229,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
                     {
                         var knownEntry = await _index.LookupAsync(hashed.ContentHash, cancellationToken);
-                        var known = knownEntry is null
-                            ? new Dictionary<string, ShardEntry>(StringComparer.Ordinal)
-                            : new Dictionary<string, ShardEntry>(StringComparer.Ordinal) { [hashed.ContentHash] = knownEntry };
+                        var isKnown = knownEntry is not null;
 
                         // Check for pointer-only with missing chunk (task 8.5)
                         if (!hashed.FilePair.BinaryExists)
                         {
-                            if (!known.ContainsKey(hashed.ContentHash) && !inFlightHashes.ContainsKey(hashed.ContentHash))
+                            if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
                                 _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
                                 continue;
@@ -249,7 +247,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             continue;
                         }
 
-                        if (known.ContainsKey(hashed.ContentHash) || inFlightHashes.ContainsKey(hashed.ContentHash))
+                        if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
