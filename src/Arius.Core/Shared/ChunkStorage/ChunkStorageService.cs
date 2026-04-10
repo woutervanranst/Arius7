@@ -92,7 +92,12 @@ public sealed class ChunkStorageService : IChunkStorageService
     {
         var blobName = BlobPaths.Chunk(chunkHash);
         var contentType = GetChunkContentType(isTar);
-        await using var normalizedContent = await EnsureSeekableAsync(content, cancellationToken);
+
+        if (!content.CanSeek)
+            throw new InvalidOperationException("Chunk uploads require a seekable source stream so retries can rewind the content.");
+
+        if (content.Position != 0)
+            content.Position = 0;
 
     retry:
         try
@@ -104,9 +109,9 @@ public sealed class ChunkStorageService : IChunkStorageService
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = _encryption.WrapForEncryption(countingStream);
                 await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
-                await using var progressStream = progress is null ? null : new ProgressStream(normalizedContent, progress);
+                await using var progressStream = progress is null ? null : new ProgressStream(content, progress);
 
-                var source = progressStream ?? normalizedContent;
+                var source = progressStream ?? content;
                 await source.CopyToAsync(gzipStream, cancellationToken);
 
                 await gzipStream.DisposeAsync();
@@ -136,25 +141,9 @@ public sealed class ChunkStorageService : IChunkStorageService
                 return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true);
 
             await _blobs.DeleteAsync(blobName, cancellationToken);
-            normalizedContent.Position = 0;
+            content.Position = 0;
             goto retry;
         }
-    }
-
-    private static async Task<Stream> EnsureSeekableAsync(Stream content, CancellationToken cancellationToken)
-    {
-        if (content.CanSeek)
-        {
-            if (content.Position != 0)
-                content.Position = 0;
-
-            return content;
-        }
-
-        var buffered = new MemoryStream();
-        await content.CopyToAsync(buffered, cancellationToken);
-        buffered.Position = 0;
-        return buffered;
     }
 
     private string GetChunkContentType(bool isTar)

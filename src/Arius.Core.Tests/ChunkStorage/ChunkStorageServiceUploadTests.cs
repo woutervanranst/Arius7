@@ -88,30 +88,22 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries_WithNonSeekableInput()
+    public async Task UploadLargeAsync_Throws_WhenInputIsNotSeekable()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
-        var blobName = BlobPaths.Chunk("retry-nonseek");
-
-        await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
-        blobs.ClearMetadata(blobName);
-        blobs.ThrowAlreadyExistsOnOpenWrite(blobName, throwOnce: true);
 
         await using var nonSeekable = new NonSeekableReadStream(content);
-        var result = await service.UploadLargeAsync(
+
+        await Should.ThrowAsync<InvalidOperationException>(() => service.UploadLargeAsync(
             chunkHash: "retry-nonseek",
             content: nonSeekable,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
             progress: null,
-            cancellationToken: CancellationToken.None);
-
-        result.AlreadyExisted.ShouldBeFalse();
-        blobs.DeletedBlobNames.ShouldContain(blobName);
-        (await blobs.GetMetadataAsync(blobName)).Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+            cancellationToken: CancellationToken.None));
     }
 
     [Test]
