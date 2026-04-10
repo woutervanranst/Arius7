@@ -50,6 +50,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 ### Cache services
 
 - `ChunkIndexService` owns the chunk-index cache.
+- `ChunkStorageService` owns chunk blob upload/download and hydration/rehydration mechanics.
 - `FileTreeService` owns the filetree blob cache.
 - `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
 
@@ -70,15 +71,15 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - `ArchiveCommandHandler`
   Use `ChunkIndexService` for dedup/index recording and flush.
+  Use `ChunkStorageService` for large, tar, and thin chunk blob operations.
   Use `FileTreeService` for tree existence checks and tree writes.
   Use `SnapshotService` for snapshot creation.
-  Use raw `IBlobContainerService` for chunk payload upload/copy/delete operations.
 
 - `RestoreCommandHandler`
   Use `SnapshotService` to resolve the target snapshot.
   Use `FileTreeService` to traverse filetrees.
   Use `ChunkIndexService` to resolve content hashes to chunk metadata.
-  Use raw `IBlobContainerService` for chunk download, rehydration status, copy, and cleanup.
+  Use `ChunkStorageService` for chunk download, hydration status, rehydration start, and rehydrated cleanup planning.
   `restore` is a read-only repository operation and must not create blob containers.
 
 - `ListQueryHandler`
@@ -90,7 +91,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - `ChunkHydrationStatusQueryHandler`
   Use `ChunkIndexService` to map file content hashes to chunk hashes.
-  Use raw `IBlobContainerService` metadata calls for hydration state.
+  Use `ChunkStorageService` for hydration state resolution.
 
 ### DI expectations
 

@@ -127,12 +127,12 @@ virtual directories (prefixes):
 
 ### How it fits together
 
-The runtime coordinates three shared services: `SnapshotService` for snapshot manifests,
-`FileTreeService` for cached filetree blobs, and `ChunkIndexService` for deduplication
-shard lookups. Repository-local cache and log directories are derived consistently through
-the shared `RepositoryPaths` helper. Chunk hydration state is shared through
-`Shared/ChunkIndex/ChunkHydrationStatus`. `ChunkStorageService` now defines the shared
-surface for chunk upload, download, hydration, rehydration, and cleanup planning.
+The runtime coordinates four shared services: `SnapshotService` for snapshot manifests,
+`FileTreeService` for cached filetree blobs, `ChunkIndexService` for deduplication shard
+lookups and shard-cache ownership, and `ChunkStorageService` for chunk blob upload,
+download, hydration, rehydration, and cleanup planning. Repository-local cache and log
+directories are derived consistently through the shared `RepositoryPaths` helper. Chunk
+hydration state is shared through `Shared/ChunkIndex/ChunkHydrationStatus`.
 
 ```mermaid
 flowchart TD
