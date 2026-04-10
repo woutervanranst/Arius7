@@ -140,8 +140,7 @@ public class ArchiveRecoveryMatrixTests
 
         public ShardEntry? Lookup(string contentHash)
         {
-            var result = _index.LookupAsync([contentHash]).GetAwaiter().GetResult();
-            return result.TryGetValue(contentHash, out var entry) ? entry : null;
+            return _index.LookupAsync(contentHash).GetAwaiter().GetResult();
         }
 
         public void Dispose()

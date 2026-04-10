@@ -39,9 +39,9 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var (svc, _) = await CreateServiceAsync();
         var hash = "aabbccdd" + new string('0', 56); // 64-char hash
 
-        var result = await svc.LookupAsync([hash]);
+        var result = await svc.LookupAsync(hash);
 
-        result.ContainsKey(hash).ShouldBeFalse();
+        result.ShouldBeNull();
     }
 
     // ── Record → Flush → new service instance → L3 hit ───────────────────────
@@ -62,10 +62,10 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // New service instance (L1 cold, L2 may have data)
         var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var result = await svc2.LookupAsync([contentHash]);
+        var result = await svc2.LookupAsync(contentHash);
 
-        result.ContainsKey(contentHash).ShouldBeTrue();
-        result[contentHash].ChunkHash.ShouldBe("chunk-hash-001");
+        result.ShouldNotBeNull();
+        result.ChunkHash.ShouldBe("chunk-hash-001");
     }
 
     // ── Dedup: in-flight set prevents double-counting ─────────────────────────
@@ -79,10 +79,10 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         svc.RecordEntry(entry); // goes to in-flight, NOT yet uploaded
 
-        var result = await svc.LookupAsync([contentHash]);
+        var result = await svc.LookupAsync(contentHash);
 
-        result.ContainsKey(contentHash).ShouldBeTrue();
-        result[contentHash].ChunkHash.ShouldBe("some-chunk");
+        result.ShouldNotBeNull();
+        result.ChunkHash.ShouldBe("some-chunk");
     }
 
     // ── Stale L2 file (old encrypted bytes) → cache miss → L3 fallthrough ───────
@@ -108,11 +108,11 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
         var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var result = await svc2.LookupAsync([contentHash]);
+        var result = await svc2.LookupAsync(contentHash);
 
         // The entry must still be found (came from L3)
-        result.ContainsKey(contentHash).ShouldBeTrue();
-        result[contentHash].ChunkHash.ShouldBe("stale-test-chunk");
+        result.ShouldNotBeNull();
+        result.ChunkHash.ShouldBe("stale-test-chunk");
 
         // And L2 must now be in plaintext format (re-cached by the service)
         File.Exists(l2Path).ShouldBeTrue();
