@@ -2,6 +2,8 @@
 
 # AGENTS.md
 
+## Way of Working
+
 - Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the tests.
@@ -9,7 +11,7 @@
 
 ## Session Rules
 
-- Always update `README.md` to reflect the current state of the project
+- Always update `README.md` (for humans) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
 
 ## Testing
 
@@ -20,6 +22,14 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **Filter by test name**: use `--treenode-filter "/*/*/*/<TestMethodName>"`
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
+
+- Use FakeLogger instead of NullLogger
+
+## Code Style Preference
+
+- Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
+- Prefer **local methods** over private static methods for helper functionality that is only used within a single method
+- Naming convention for local fields is camelCase (without leading _)
 
 ## Architecture
 
