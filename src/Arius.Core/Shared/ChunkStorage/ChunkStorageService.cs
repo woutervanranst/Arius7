@@ -99,7 +99,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         if (content.Position != 0)
             content.Position = 0;
 
-    retry:
+        retry:
         try
         {
             long storedSize;
