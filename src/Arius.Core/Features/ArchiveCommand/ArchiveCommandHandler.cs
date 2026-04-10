@@ -39,7 +39,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
-    private readonly ChunkIndexService              _index;
+    private readonly ChunkIndexService              _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService               _fileTreeService;
     private readonly SnapshotService                _snapshotSvc;
@@ -62,7 +62,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     {
         _blobs         = blobs;
         _encryption    = encryption;
-        _index         = index;
+        _chunkIndex         = index;
         _chunkStorage  = chunkStorage;
         _fileTreeService     = fileTreeService;
         _snapshotSvc   = snapshotSvc;
@@ -228,8 +228,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        var knownEntry = await _index.LookupAsync(hashed.ContentHash, cancellationToken);
-                        var isKnown = knownEntry is not null;
+                        var isKnown = await _chunkIndex.LookupAsync(hashed.ContentHash, cancellationToken) is not null;
 
                         // Check for pointer-only with missing chunk (task 8.5)
                         if (!hashed.FilePair.BinaryExists)
@@ -308,7 +307,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var compressedSize = uploadResult.StoredSize;
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
-                    _index.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
+                    _chunkIndex.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, ct);
 
                     await WriteManifestEntry(upload.HashedPair, opts.RootDirectory, manifestWriter, ct);
@@ -442,7 +441,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional, ct);
 
-                            _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
+                            _chunkIndex.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
                             await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), ct);
 
                             await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, ct);
@@ -478,7 +477,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await _fileTreeService.ValidateAsync(cancellationToken);
 
             // Task 8.10: Index flush
-            await _index.FlushAsync(cancellationToken);
+            await _chunkIndex.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
 
             // Task 8.11: Sort manifest → build tree → create snapshot
