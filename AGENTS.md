@@ -29,7 +29,6 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
-- Naming convention for local fields is camelCase (without leading _)
 
 ## Architecture
 
