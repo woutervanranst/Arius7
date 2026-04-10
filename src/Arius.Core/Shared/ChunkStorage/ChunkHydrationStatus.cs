@@ -1,4 +1,4 @@
-namespace Arius.Core.Shared.ChunkIndex;
+namespace Arius.Core.Shared.ChunkStorage;
 
 public enum ChunkHydrationStatus
 {

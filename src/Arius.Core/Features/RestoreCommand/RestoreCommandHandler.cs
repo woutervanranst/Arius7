@@ -10,6 +10,7 @@ using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Formats.Tar;
 using System.IO.Compression;
+using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
 
 namespace Arius.Core.Features.RestoreCommand;
 

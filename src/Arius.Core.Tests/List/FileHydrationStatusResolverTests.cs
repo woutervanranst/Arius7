@@ -1,4 +1,3 @@
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.Storage;
