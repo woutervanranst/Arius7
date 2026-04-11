@@ -2,7 +2,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Shouldly;
 
-namespace Arius.Core.Tests.Snapshot;
+namespace Arius.Core.Tests.Shared.Snapshot;
 
 // ── 6.5 Unit tests: manifest serialization roundtrip, timestamp format ─────────
 

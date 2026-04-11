@@ -1,7 +1,7 @@
 using Arius.Core.Shared.LocalFile;
 using Shouldly;
 
-namespace Arius.Core.Tests.LocalFile;
+namespace Arius.Core.Tests.Shared.LocalFile;
 
 // ── 7.6 FilePair assembly tests ───────────────────────────────────────────────
 
