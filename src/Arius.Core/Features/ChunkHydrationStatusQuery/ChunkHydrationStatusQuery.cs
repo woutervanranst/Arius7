@@ -15,7 +15,7 @@ public sealed record ChunkHydrationStatusResult(string RelativePath, string? Con
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
 {
-    private readonly ChunkIndexService _index;
+    private readonly ChunkIndexService _chunkIndex;
     private readonly IChunkStorageService _chunkStorage;
     private readonly ILogger<ChunkHydrationStatusQueryHandler> _logger;
 
@@ -24,7 +24,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         IChunkStorageService chunkStorage,
         ILogger<ChunkHydrationStatusQueryHandler> logger)
     {
-        _index = index;
+        _chunkIndex = index;
         _chunkStorage = chunkStorage;
         _logger = logger;
     }
@@ -42,7 +42,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
             yield break;
         }
 
-        var indexEntries = await _index.LookupAsync(
+        var indexEntries = await _chunkIndex.LookupAsync(
             cloudFiles.Select(file => file.ContentHash!).Distinct(StringComparer.Ordinal),
             cancellationToken).ConfigureAwait(false);
 
