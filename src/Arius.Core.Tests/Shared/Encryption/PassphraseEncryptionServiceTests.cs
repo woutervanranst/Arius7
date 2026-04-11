@@ -165,44 +165,4 @@ public class PassphraseEncryptionServiceTests
         svc.ComputeHash(data).ShouldBe(expected);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /// <summary>Stream that reads <paramref name="length"/> zero bytes then returns 0.</summary>
-    private sealed class ZeroStream(long length) : Stream
-    {
-        private long _remaining = length;
-        public override bool CanRead  => true;
-        public override bool CanWrite => false;
-        public override bool CanSeek  => false;
-        public override long Length   => length;
-        public override long Position { get => length - _remaining; set => throw new NotSupportedException(); }
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            var n = (int)Math.Min(count, _remaining);
-            Array.Clear(buffer, offset, n);
-            _remaining -= n;
-            return n;
-        }
-        public override void Flush() { }
-        public override void Write(byte[] b, int o, int c) => throw new NotSupportedException();
-        public override long Seek(long o, SeekOrigin s)    => throw new NotSupportedException();
-        public override void SetLength(long v)              => throw new NotSupportedException();
-    }
-
-    /// <summary>Stream that discards all writes and counts bytes.</summary>
-    private sealed class DevNullStream : Stream
-    {
-        public long BytesWritten { get; private set; }
-        public override bool CanRead  => false;
-        public override bool CanWrite => true;
-        public override bool CanSeek  => false;
-        public override long Length   => BytesWritten;
-        public override long Position { get => BytesWritten; set => throw new NotSupportedException(); }
-        public override void Write(byte[] buffer, int offset, int count) => BytesWritten += count;
-        public override void Write(ReadOnlySpan<byte> buffer)            => BytesWritten += buffer.Length;
-        public override void Flush() { }
-        public override int  Read(byte[] b, int o, int c)  => throw new NotSupportedException();
-        public override long Seek(long o, SeekOrigin s)    => throw new NotSupportedException();
-        public override void SetLength(long v)              => throw new NotSupportedException();
-    }
 }
