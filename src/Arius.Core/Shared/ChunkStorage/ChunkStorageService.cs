@@ -272,13 +272,7 @@ public sealed class ChunkStorageService : IChunkStorageService
             var deleted = 0;
             long freed = 0;
 
-            await Parallel.ForEachAsync(
-                _blobNames,
-                new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = DeleteWorkers,
-                    CancellationToken = cancellationToken
-                },
+            await Parallel.ForEachAsync(_blobNames, new ParallelOptions { MaxDegreeOfParallelism = DeleteWorkers, CancellationToken = cancellationToken },
                 async (blobName, ct) =>
                 {
                     var meta = await _blobs.GetMetadataAsync(blobName, ct);
@@ -294,6 +288,13 @@ public sealed class ChunkStorageService : IChunkStorageService
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Wraps the fully constructed chunk download pipeline returned by <see cref="DownloadCoreAsync"/>.
+    /// Unlike <see cref="ProgressStream"/> and <see cref="CountingStream"/>, this is not a reusable behavior wrapper
+    /// that adds a cross-cutting read/write concern. Its only job is to expose the final readable stream while owning
+    /// disposal of the chunk-specific stack underneath it: decompression, decryption, optional progress reporting, and
+    /// the underlying blob download stream.
+    /// </summary>
     private sealed class ChunkDownloadStream : Stream
     {
         private readonly Stream _inner;
