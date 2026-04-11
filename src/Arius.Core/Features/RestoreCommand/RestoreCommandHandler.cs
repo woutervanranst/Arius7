@@ -252,14 +252,11 @@ public sealed class RestoreCommandHandler
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
                 var hydrationStatus = await _chunkStorage.GetHydrationStatusAsync(chunkHash, cancellationToken);
-                if (hydrationStatus == ChunkHydrationStatus.Unknown)
-                {
-                    _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
-                    continue;
-                }
-
                 switch (hydrationStatus)
                 {
+                    case ChunkHydrationStatus.Unknown:
+                        _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
+                        break;
                     case ChunkHydrationStatus.RehydrationPending:
                         rehydrationPending.Add(chunkHash);
                         break;
@@ -577,19 +574,16 @@ public sealed class RestoreCommandHandler
         long           compressedSize,
         CancellationToken cancellationToken)
     {
-        var localPath = Path.Combine(opts.RootDirectory,
-            file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
         {
-            var progress = opts.CreateDownloadProgress is not null
-                ? opts.CreateDownloadProgress(file.RelativePath, compressedSize, DownloadKind.LargeFile)
-                : null;
-            await using var gzipStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var outputStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath, compressedSize, DownloadKind.LargeFile);
+            await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+            await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
-            await gzipStream.CopyToAsync(outputStream, cancellationToken);
+            await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
         // Set file timestamps from tree metadata (after stream is closed)
@@ -630,11 +624,9 @@ public sealed class RestoreCommandHandler
     {
         var restored = 0;
 
-        var progress = opts.CreateDownloadProgress is not null
-            ? opts.CreateDownloadProgress(chunkHash, compressedSize, DownloadKind.TarBundle)
-            : null;
-        await using var gzipStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-        var tarReader = new TarReader(gzipStream, leaveOpen: false);
+        var progress = opts.CreateDownloadProgress?.Invoke(chunkHash, compressedSize, DownloadKind.TarBundle);
+        await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+        var tarReader = new TarReader(payloadStream, leaveOpen: false);
 
         TarEntry? tarEntry;
         while ((tarEntry = await tarReader.GetNextEntryAsync(copyData: false, cancellationToken)) is not null)
