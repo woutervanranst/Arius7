@@ -2,7 +2,6 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.ChunkIndex;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;

@@ -5,8 +5,6 @@ using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared;
 
 namespace Arius.Core.Shared.Snapshot;
 

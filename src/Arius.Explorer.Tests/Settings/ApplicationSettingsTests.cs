@@ -1,8 +1,5 @@
 using Arius.Explorer.Settings;
 using Shouldly;
-using System;
-using System.Collections.ObjectModel;
-using System.Threading.Tasks;
 
 namespace Arius.Explorer.Tests.Settings;
 

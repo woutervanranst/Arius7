@@ -11,7 +11,6 @@ using Mediator;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Formats.Tar;
-using System.IO.Compression;
 using System.Threading.Channels;
 
 namespace Arius.Core.Features.ArchiveCommand;
