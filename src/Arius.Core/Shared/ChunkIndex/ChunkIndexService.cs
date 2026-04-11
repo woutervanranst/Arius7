@@ -1,3 +1,4 @@
+using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using System.Collections.Concurrent;
@@ -69,31 +70,9 @@ public sealed class ChunkIndexService : IDisposable
         _blobs         = blobs;
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
-        _l2Dir         = GetL2Directory(accountName, containerName);
+        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
         Directory.CreateDirectory(_l2Dir);
-    }
-
-    // ── Repo directory naming ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// Constructs the repository directory name for the L2 cache by joining the account and container with a hyphen.
-    /// </summary>
-    /// <param name="accountName">The account name component.</param>
-    /// <param name="containerName">The container name component.</param>
-    /// <returns>The directory name in the format "{accountName}-{containerName}".</returns>
-    public static string GetRepoDirectoryName(string accountName, string containerName) => $"{accountName}-{containerName}";
-
-    /// <summary>
-    /// Get the L2 disk cache directory path for the specified account and container.
-    /// </summary>
-    /// <param name="accountName">Storage account name used in the repository directory name.</param>
-    /// <param name="containerName">Container name used in the repository directory name.</param>
-    /// <returns>The full path under the user's home directory: ~/.arius/{accountName}-{containerName}/chunk-index</returns>
-    public static string GetL2Directory(string accountName, string containerName)
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName), "chunk-index");
     }
 
     // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────
@@ -133,6 +112,12 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         return result;
+    }
+
+    public async Task<ShardEntry?> LookupAsync(string contentHash, CancellationToken cancellationToken = default)
+    {
+        var results = await LookupAsync([contentHash], cancellationToken);
+        return results.TryGetValue(contentHash, out var entry) ? entry : null;
     }
 
     // ── Record new entry ──────────────────────────────────────────────────────

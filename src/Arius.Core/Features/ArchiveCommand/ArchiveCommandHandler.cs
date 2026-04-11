@@ -1,4 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.LocalFile;
@@ -38,7 +39,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
-    private readonly ChunkIndexService              _index;
+    private readonly ChunkIndexService              _chunkIndex;
+    private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService               _fileTreeService;
     private readonly SnapshotService                _snapshotSvc;
     private readonly IMediator                      _mediator;
@@ -50,6 +52,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
         ChunkIndexService               index,
+        IChunkStorageService            chunkStorage,
         FileTreeService                fileTreeService,
         SnapshotService                 snapshotSvc,
         IMediator                       mediator,
@@ -59,7 +62,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     {
         _blobs         = blobs;
         _encryption    = encryption;
-        _index         = index;
+        _chunkIndex         = index;
+        _chunkStorage  = chunkStorage;
         _fileTreeService     = fileTreeService;
         _snapshotSvc   = snapshotSvc;
         _mediator      = mediator;
@@ -224,12 +228,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        var known = await _index.LookupAsync([hashed.ContentHash], cancellationToken);
+                        var isKnown = await _chunkIndex.LookupAsync(hashed.ContentHash, cancellationToken) is not null;
 
                         // Check for pointer-only with missing chunk (task 8.5)
                         if (!hashed.FilePair.BinaryExists)
                         {
-                            if (!known.ContainsKey(hashed.ContentHash) && !inFlightHashes.ContainsKey(hashed.ContentHash))
+                            if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
                                 _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
                                 continue;
@@ -242,7 +246,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             continue;
                         }
 
-                        if (known.ContainsKey(hashed.ContentHash) || inFlightHashes.ContainsKey(hashed.ContentHash))
+                        if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash[..8]);
@@ -287,75 +291,23 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     await _mediator.Publish(new ChunkUploadingEvent(upload.HashedPair.ContentHash, upload.FileSize), ct);
 
-                    var blobName = BlobPaths.Chunk(upload.HashedPair.ContentHash);
                     var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
-                    long compressedSize;
-
-                    retry:
-                    try
-                    {
-                        var contentType = _encryption.IsEncrypted ? ContentTypes.LargeGcmEncrypted : ContentTypes.LargePlaintext;
-
-                        // Streaming chain: ProgressStream(FileStream) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                        await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, ct))
-                        {
-                            var             countingStream = new CountingStream(writeStream);
-                            await using var encStream      = _encryption.WrapForEncryption(countingStream);
-                            await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
-                            await using (var fs = File.OpenRead(fullPath))
-                            {
-                                var uploadProgress = opts.CreateUploadProgress is not null
-                                    ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
-                                    : new Progress<long>();
-                                await using var ps = new ProgressStream(fs, uploadProgress);
-                                await ps.CopyToAsync(gzipStream, ct);
-                            }
-
-                            await gzipStream.DisposeAsync();
-                            await encStream.DisposeAsync();
-                            compressedSize = countingStream.BytesWritten;
-                        } // writeStream disposed here → commits the upload
-
-                        // Set metadata before tier: Archive-tier blobs are offline and reject SetMetadata.
-                        var uploadMeta = new Dictionary<string, string>
-                        {
-                            [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
-                            [BlobMetadataKeys.OriginalSize] = upload.FileSize.ToString(),
-                            [BlobMetadataKeys.ChunkSize]    = compressedSize.ToString(),
-                        };
-                        await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
-                        await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-                    }
-                    catch (BlobAlreadyExistsException)
-                    {
-                        // Crash recovery: blob exists from a prior interrupted run.
-                        var meta = await _blobs.GetMetadataAsync(blobName, ct);
-                        if (meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                        {
-                            // Upload + metadata both complete — recover compressed size and continue.
-                            compressedSize = meta.ContentLength ?? 0;
-                        }
-                        else
-                        {
-                            // Upload committed but metadata not yet written — partial state, wipe and retry.
-                            await _blobs.DeleteAsync(blobName, ct);
-                            goto retry;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex,
-                            "[upload] Failed: blob={BlobName} path={Path} hash={Hash} sizeBytes={SizeBytes}",
-                            blobName,
-                            upload.HashedPair.FilePair.RelativePath,
-                            upload.HashedPair.ContentHash,
-                            upload.FileSize);
-                        throw;
-                    }
+                    await using var fs = File.OpenRead(fullPath);
+                    var uploadProgress = opts.CreateUploadProgress is not null
+                        ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
+                        : null;
+                    var uploadResult = await _chunkStorage.UploadLargeAsync(
+                        upload.HashedPair.ContentHash,
+                        fs,
+                        upload.FileSize,
+                        opts.UploadTier,
+                        uploadProgress,
+                        ct);
+                    var compressedSize = uploadResult.StoredSize;
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, upload.HashedPair.ContentHash, upload.FileSize, compressedSize);
-                    _index.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
+                    _chunkIndex.RecordEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, ct);
 
                     await WriteManifestEntry(upload.HashedPair, opts.RootDirectory, manifestWriter, ct);
@@ -466,69 +418,18 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
-                        var  blobName = BlobPaths.Chunk(sealed_.TarHash);
-                        long compressedSize;
-
-                        retry:
-                        try
-                        {
-                            // Streaming chain: FileStream(tar) → GZipStream → EncryptingStream → CountingStream → OpenWriteAsync
-                            var contentType = _encryption.IsEncrypted ? ContentTypes.TarGcmEncrypted : ContentTypes.TarPlaintext;
-                            await using (var writeStream = await _blobs.OpenWriteAsync(blobName, contentType, ct))
-                            {
-                                var             countingStream = new CountingStream(writeStream);
-                                await using var encStream      = _encryption.WrapForEncryption(countingStream);
-                                await using var gzipStream     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true);
-                                await using (var fs = File.OpenRead(sealed_.TarFilePath))
-                                {
-                                    var tarProgress = opts.CreateUploadProgress is not null
-                                        ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
-                                        : new Progress<long>();
-                                    await using var ps = new ProgressStream(fs, tarProgress);
-                                    await ps.CopyToAsync(gzipStream, ct);
-                                }
-
-                                await gzipStream.DisposeAsync();
-                                await encStream.DisposeAsync();
-                                compressedSize = countingStream.BytesWritten;
-                            } // writeStream disposed here → commits the upload
-
-                            // Set metadata before tier: Archive-tier blobs are offline and reject SetMetadata.
-                            var uploadMeta = new Dictionary<string, string>
-                            {
-                                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
-                                [BlobMetadataKeys.ChunkSize] = compressedSize.ToString(),
-                            };
-                            await _blobs.SetMetadataAsync(blobName, uploadMeta, ct);
-                            await _blobs.SetTierAsync(blobName, opts.UploadTier, ct);
-                        }
-                        catch (BlobAlreadyExistsException)
-                        {
-                            // Crash recovery: blob exists from a prior interrupted run.
-                            var meta = await _blobs.GetMetadataAsync(blobName, ct);
-                            if (meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                            {
-                                // Upload + metadata both complete — recover compressed size and continue.
-                                compressedSize = meta.ContentLength ?? 0;
-                            }
-                            else
-                            {
-                                // Upload committed but metadata not yet written — partial state, wipe and retry.
-                                await _blobs.DeleteAsync(blobName, ct);
-                                goto retry;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex,
-                                "[tar] Upload failed: blob={BlobName} tarHash={TarHash} tarPath={TarPath} sizeBytes={SizeBytes} entryCount={EntryCount}",
-                                blobName,
-                                sealed_.TarHash,
-                                sealed_.TarFilePath,
-                                sealed_.UncompressedSize,
-                                sealed_.Entries.Count);
-                            throw;
-                        }
+                        await using var fs = File.OpenRead(sealed_.TarFilePath);
+                        var tarProgress = opts.CreateUploadProgress is not null
+                            ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
+                            : null;
+                        var uploadResult = await _chunkStorage.UploadTarAsync(
+                            sealed_.TarHash,
+                            fs,
+                            sealed_.UncompressedSize,
+                            opts.UploadTier,
+                            tarProgress,
+                            ct);
+                        var compressedSize = uploadResult.StoredSize;
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
                             ? (double)compressedSize / sealed_.UncompressedSize
@@ -537,42 +438,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         // Create thin chunks for each entry
                         foreach (var entry in sealed_.Entries)
                         {
-                            var thinBlobName = BlobPaths.Chunk(entry.ContentHash);
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                            var thinMeta = new Dictionary<string, string>
-                            {
-                                [BlobMetadataKeys.AriusType]      = BlobMetadataKeys.TypeThin,
-                                [BlobMetadataKeys.OriginalSize]   = entry.OriginalSize.ToString(),
-                                [BlobMetadataKeys.CompressedSize] = proportional.ToString(),
-                            };
+                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional, ct);
 
-                            retryThin:
-                            try
-                            {
-                                await _blobs.UploadAsync(
-                                    blobName: thinBlobName,
-                                    content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sealed_.TarHash)),
-                                    metadata: new Dictionary<string, string>(),
-                                    tier: BlobTier.Cool,
-                                    contentType: ContentTypes.Thin,
-                                    overwrite: false,
-                                    cancellationToken: ct);
-                                await _blobs.SetMetadataAsync(thinBlobName, thinMeta, ct);
-                            }
-                            catch (BlobAlreadyExistsException)
-                            {
-                                // Crash recovery: thin chunk exists from a prior interrupted run.
-                                var existingMeta = await _blobs.GetMetadataAsync(thinBlobName, ct);
-                                if (!existingMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                                {
-                                    // Upload committed but metadata not yet written — partial state, wipe and retry.
-                                    await _blobs.DeleteAsync(thinBlobName, ct);
-                                    goto retryThin;
-                                }
-                                // else: fully uploaded — nothing to do.
-                            }
-
-                            _index.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
+                            _chunkIndex.RecordEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
                             await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), ct);
 
                             await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, ct);
@@ -608,7 +477,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await _fileTreeService.ValidateAsync(cancellationToken);
 
             // Task 8.10: Index flush
-            await _index.FlushAsync(cancellationToken);
+            await _chunkIndex.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
 
             // Task 8.11: Sort manifest → build tree → create snapshot

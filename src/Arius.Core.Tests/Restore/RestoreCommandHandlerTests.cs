@@ -1,5 +1,6 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -24,9 +25,9 @@ public class RestoreCommandHandlerTests
         var mediator = Substitute.For<IMediator>();
 
         var handler = new RestoreCommandHandler(
-            blobs,
             encryption,
             index,
+            new ChunkStorageService(blobs, encryption),
             fileTreeService,
             snapshotSvc,
             mediator,

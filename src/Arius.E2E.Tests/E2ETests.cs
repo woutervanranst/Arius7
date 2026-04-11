@@ -1,7 +1,9 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -183,6 +185,7 @@ public sealed class E2EFixture : IAsyncDisposable
     public IBlobContainerService BlobContainer  { get; }
     public IEncryptionService  Encryption   { get; }
     public ChunkIndexService   Index        { get; }
+    public IChunkStorageService ChunkStorage { get; }
     public FileTreeService    FileTreeService    { get; }
     public SnapshotService     Snapshot     { get; }
     public string              LocalRoot    { get; }
@@ -196,6 +199,7 @@ public sealed class E2EFixture : IAsyncDisposable
         IBlobContainerService blobContainer,
         IEncryptionService  encryption,
         ChunkIndexService   index,
+        IChunkStorageService chunkStorage,
         FileTreeService    fileTreeService,
         SnapshotService     snapshot,
         string              tempRoot,
@@ -208,6 +212,7 @@ public sealed class E2EFixture : IAsyncDisposable
         BlobContainer  = blobContainer;
         Encryption   = encryption;
         Index        = index;
+        ChunkStorage = chunkStorage;
         FileTreeService    = fileTreeService;
         Snapshot     = snapshot;
         _tempRoot    = tempRoot;
@@ -237,10 +242,11 @@ public sealed class E2EFixture : IAsyncDisposable
             : new PlaintextPassthroughService();
         var account    = container.AccountName;
         var index      = new ChunkIndexService(svc, encryption, account, container.Name);
+        var chunkStorage = new ChunkStorageService(svc, encryption);
         var fileTreeService  = new FileTreeService(svc, encryption, index, account, container.Name);
         var snapshot   = new SnapshotService(svc, encryption, account, container.Name);
 
-        return new E2EFixture(svc, encryption, index, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot,
+        return new E2EFixture(svc, encryption, index, chunkStorage, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot,
                               account, container.Name, defaultTier);
     }
 
@@ -264,6 +270,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index,
+            ChunkStorage,
             FileTreeService,
             Snapshot,
             _mediator,
@@ -271,7 +278,8 @@ public sealed class E2EFixture : IAsyncDisposable
             _account, _container);
 
     private RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index,
+        new(Encryption, Index,
+            ChunkStorage,
             FileTreeService,
             Snapshot,
             _mediator,
@@ -299,8 +307,7 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        var home     = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var cacheDir = Path.Combine(home, ".arius", ChunkIndexService.GetRepoDirectoryName(_account, _container));
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(_account, _container);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

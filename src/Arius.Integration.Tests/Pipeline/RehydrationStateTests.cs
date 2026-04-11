@@ -1,6 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -163,8 +164,9 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
-        return new(sim, fix.Encryption,
+        return new(fix.Encryption,
             index,
+            new ChunkStorageService(sim, fix.Encryption),
             new FileTreeService(sim, fix.Encryption, index, Account, fix.Container.Name),
             new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),

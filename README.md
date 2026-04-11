@@ -127,9 +127,16 @@ virtual directories (prefixes):
 
 ### How it fits together
 
-The runtime coordinates three shared services: `SnapshotService` for snapshot manifests,
-`FileTreeService` for cached filetree blobs, and `ChunkIndexService` for deduplication
-shard lookups.
+The runtime coordinates four shared services: `SnapshotService` for snapshot manifests,
+`FileTreeService` for cached filetree blobs, `ChunkIndexService` for deduplication shard
+lookups and shard-cache ownership, and `ChunkStorageService` for chunk blob upload,
+download, hydration, rehydration, and cleanup planning. Feature handlers are expected to
+go through those shared services instead of depending directly on low-level blob
+abstractions such as `IBlobContainerService`, `IBlobService`, or `IBlobServiceFactory`,
+with only narrow exceptions where the feature itself is the blob-level boundary.
+Repository-local cache and log directories are derived consistently through the shared
+`RepositoryPaths` helper. Chunk hydration state is shared through
+`Shared/ChunkStorage/ChunkHydrationStatus`.
 
 ```mermaid
 flowchart TD

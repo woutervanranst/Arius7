@@ -2,14 +2,16 @@
 
 # AGENTS.md
 
+## Way of Working
+
 - Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run the tests.
+- When making code changes, always run ALL the tests.
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
 
-- Always update `README.md` to reflect the current state of the project
+- Always update `README.md` (for humans) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
 
 ## Testing
 
@@ -20,6 +22,32 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **Filter by test name**: use `--treenode-filter "/*/*/*/<TestMethodName>"`
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
+
+- Use FakeLogger instead of NullLogger
+
+## Code Style Preference
+
+- Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
+- Prefer **local methods** over private static methods for helper functionality that is only used within a single method
+
+## Domain language
+
+- **binary file**: a file on disk that Arius archives and restores.
+- **pointer file**: a file on disk containing the content hash.
+- **FilePair**: the local archive-time view of one path, combining the binary file and its optional pointer file. A `FilePair` can be binary-only, pointer-only, or have both present.
+- **hash** Arius is a content addressed storage and deduplicates binary files based on content hash.
+  - **content hash**: the hash of the (original) binary file's content
+  - **chunk hash**: the name of the chunk in which the content is actually stored (identical for large chunks, different for tar chunks)
+- **chunk**: representing unique binary content:
+  - **large chunk**: a chunk whose blob body stores one file directly as gzip plus optional encryption.
+  - **tar chunk**: a chunk whose blob body stores a tar bundle of multiple small files, then gzip plus optional encryption. Why: small files are prohibitively expensive to rehydrate in Azure Blob Storage, so we tar them together into a ~large chunk.
+  - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
+- **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
+  - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+- **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
+- **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
+
+- Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
 
 ## Architecture
 
@@ -37,13 +65,23 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - If logic is repository-wide and reused by more than one feature, it usually belongs in `Shared`.
 - If logic is specific to one command/query flow, it usually belongs in that feature handler.
 
-### Cache services
+### Shared: Storage
+
+- `src/Arius.Core/Shared/Storage/` contains the low-level storage boundary: `IBlobContainerService`, `IBlobService`, `IBlobServiceFactory`, blob metadata models, tier enums, and preflight/storage exceptions.
+- Those interfaces describe primitive storage capabilities such as upload, download, list, metadata, tier changes, and container lookup.
+- Higher-level shared services build repository semantics on top of that storage boundary:
+  - `ChunkIndexService` for deduplication index lookup, mutation, flushing, and cache invalidation
+  - `ChunkStorageService` for chunk blob upload/download, hydration, rehydration, and cleanup planning
+  - `FileTreeService` for filetree traversal, caching, and persistence
+  - `SnapshotService` for snapshot resolution, creation, listing, and local snapshot state
+- Prefer those higher-level shared services over direct `Shared/Storage` dependencies.
+
+### Shared: Cache
 
 - `ChunkIndexService` owns the chunk-index cache.
+- `ChunkStorageService` owns chunk blob upload/download and hydration/rehydration mechanics.
 - `FileTreeService` owns the filetree blob cache.
 - `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
-
-### Cache semantics
 
 - Chunk-index shards are **mutable**. Multiple runs/machines can extend or overwrite shard content for the same prefix.
 - Because chunk-index data is mutable, `ChunkIndexService` uses a tiered cache: L1 memory, L2 disk, L3 blob storage.
@@ -56,31 +94,13 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Snapshots are the coordination point between local cache state and remote repository state.
 - Snapshot comparisons determine whether the current machine can trust its local tree/chunk cache view or must refresh remote knowledge.
 
-### Service usage in features
+### Feature-specific exceptions and constraints
 
-- `ArchiveCommandHandler`
-  Use `ChunkIndexService` for dedup/index recording and flush.
-  Use `FileTreeService` for tree existence checks and tree writes.
-  Use `SnapshotService` for snapshot creation.
-  Use raw `IBlobContainerService` for chunk payload upload/copy/delete operations.
-
-- `RestoreCommandHandler`
-  Use `SnapshotService` to resolve the target snapshot.
-  Use `FileTreeService` to traverse filetrees.
-  Use `ChunkIndexService` to resolve content hashes to chunk metadata.
-  Use raw `IBlobContainerService` for chunk download, rehydration status, copy, and cleanup.
-  `restore` is a read-only repository operation and must not create blob containers.
-
-- `ListQueryHandler`
-  Use `SnapshotService` to resolve the snapshot.
-  Use `FileTreeService` for tree traversal.
-  Use `ChunkIndexService` for file size/original-size metadata.
-  Do not keep stale direct blob/encryption dependencies when the handler no longer uses them.
-  `ls` is a read-only repository operation and must not create blob containers.
-
-- `ChunkHydrationStatusQueryHandler`
-  Use `ChunkIndexService` to map file content hashes to chunk hashes.
-  Use raw `IBlobContainerService` metadata calls for hydration state.
+- Feature handlers and queries should not depend directly on `IBlobContainerService`, `IBlobService`, or `IBlobServiceFactory`.
+- Current approved exceptions are `ArchiveCommandHandler` for container creation and `ContainerNamesQueryHandler` for repository-external container enumeration.
+- `restore` is a read-only repository operation and must not create blob containers.
+- `ls` is a read-only repository operation and must not create blob containers.
+- Remove stale direct blob/encryption dependencies from feature handlers when the handler no longer uses them.
 
 ### DI expectations
 

@@ -1,11 +1,13 @@
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
-using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Tests.Fakes;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
+using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
 
 namespace Arius.Core.Tests.List;
 
@@ -46,8 +48,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         index.RecordEntry(entry);
 
         var handler = new ChunkHydrationStatusQueryHandler(
-            blobs,
             index,
+            new ChunkStorageService(blobs, s_encryption),
             NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
 
         var files = new[]
@@ -90,8 +92,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         index.RecordEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
 
         var handler = new ChunkHydrationStatusQueryHandler(
-            blobs,
             index,
+            new ChunkStorageService(blobs, s_encryption),
             NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
 
         var files = new[]

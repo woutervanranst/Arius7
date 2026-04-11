@@ -1,3 +1,4 @@
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Shouldly;
@@ -250,28 +251,28 @@ public class ShardSerializerLocalTests
     }
 }
 
-public class ChunkIndexServiceTests
+public class RepositoryPathsCompatibilityTests
 {
     [Test]
     public void RepoDirectoryName_Format_IsAccountHyphenContainer()
     {
-        var name = ChunkIndexService.GetRepoDirectoryName("mystorageacct", "photos");
+        var name = RepositoryPaths.GetRepoDirectoryName("mystorageacct", "photos");
         name.ShouldBe("mystorageacct-photos");
     }
 
     [Test]
     public void RepoDirectoryName_DifferentContainers_ProduceDifferentNames()
     {
-        var n1 = ChunkIndexService.GetRepoDirectoryName("account", "container1");
-        var n2 = ChunkIndexService.GetRepoDirectoryName("account", "container2");
+        var n1 = RepositoryPaths.GetRepoDirectoryName("account", "container1");
+        var n2 = RepositoryPaths.GetRepoDirectoryName("account", "container2");
         n1.ShouldNotBe(n2);
     }
 
     [Test]
     public void RepoDirectoryName_SameInputs_ProduceSameResult()
     {
-        var n1 = ChunkIndexService.GetRepoDirectoryName("account", "container");
-        var n2 = ChunkIndexService.GetRepoDirectoryName("account", "container");
+        var n1 = RepositoryPaths.GetRepoDirectoryName("account", "container");
+        var n2 = RepositoryPaths.GetRepoDirectoryName("account", "container");
         n1.ShouldBe(n2);
     }
 }

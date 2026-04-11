@@ -334,6 +334,7 @@ public class AesGcmEncryptionTests
         public override void SetLength(long v)              => throw new NotSupportedException();
     }
 
+    /// <summary>Stream that discards all writes and counts bytes.</summary>
     private sealed class DevNullStream : Stream
     {
         public long BytesWritten { get; private set; }

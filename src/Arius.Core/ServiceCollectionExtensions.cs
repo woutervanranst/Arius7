@@ -4,6 +4,7 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -56,6 +57,12 @@ public static class ServiceCollectionExtensions
                 containerName,
                 cacheBudgetBytes));
 
+        services.AddSingleton<ChunkStorageService>(sp =>
+            new ChunkStorageService(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IEncryptionService>()));
+        services.AddSingleton<IChunkStorageService>(sp => sp.GetRequiredService<ChunkStorageService>());
+
         // File tree service
         services.AddSingleton(sp =>
             new FileTreeService(
@@ -86,6 +93,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
@@ -95,9 +103,9 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
             new RestoreCommandHandler(
-                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
                 sp.GetRequiredService<SnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
@@ -120,8 +128,8 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>(sp =>
             new ChunkHydrationStatusQueryHandler(
-                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));
 
         return services;

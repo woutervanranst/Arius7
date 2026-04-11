@@ -1,3 +1,4 @@
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -295,7 +296,7 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
 
         // Determine the L2 dir and pre-populate it with a dummy file
-        var chunkL2Dir = Arius.Core.Shared.ChunkIndex.ChunkIndexService.GetL2Directory(acct, cont);
+        var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(acct, cont);
         Directory.CreateDirectory(chunkL2Dir);
         var dummyL2File = Path.Combine(chunkL2Dir, "dummy-shard.dat");
         await File.WriteAllTextAsync(dummyL2File, "stale");
