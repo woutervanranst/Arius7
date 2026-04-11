@@ -28,8 +28,17 @@ public class FileTreeBlobSerializerStorageTests
         var back   = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
-        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
-        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(FileTreeEntryType.Dir);
+        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg");
+        var dirEntry = back.Entries.Single(e => e.Name == "subdir/");
+
+        fileEntry.Hash.ShouldBe("a1b2c3d4");
+        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
+        fileEntry.Created.ShouldBe(s_created);
+        fileEntry.Modified.ShouldBe(s_modified);
+
+        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
+        dirEntry.Created.ShouldBeNull();
+        dirEntry.Modified.ShouldBeNull();
     }
 
     [Test]
@@ -42,8 +51,17 @@ public class FileTreeBlobSerializerStorageTests
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
-        back.Entries.Single(e => e.Name == "photo.jpg").Hash.ShouldBe("a1b2c3d4");
-        back.Entries.Single(e => e.Name == "subdir/").Type.ShouldBe(FileTreeEntryType.Dir);
+        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg");
+        var dirEntry = back.Entries.Single(e => e.Name == "subdir/");
+
+        fileEntry.Hash.ShouldBe("a1b2c3d4");
+        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
+        fileEntry.Created.ShouldBe(s_created);
+        fileEntry.Modified.ShouldBe(s_modified);
+
+        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
+        dirEntry.Created.ShouldBeNull();
+        dirEntry.Modified.ShouldBeNull();
     }
 
     [Test]
