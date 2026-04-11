@@ -103,7 +103,7 @@ Most test projects can be run directly with `dotnet test --project <path-to-cspr
 
 The bundled `ast-grep` skill in `.agents/skills/ast-grep/` is maintained as C#-first guidance. Its examples assume `--lang csharp` and prefer `pattern.context` plus `selector` when matching declarations such as methods or properties.
 
-The test suites mirror the production structure they exercise. For example, `src/Arius.Core/Shared/FileTree/` maps to `src/Arius.Core.Tests/Shared/FileTree/`, `src/Arius.Cli/Commands/Archive/` maps to `src/Arius.Cli.Tests/Commands/Archive/`, and tests for top-level files such as `src/Arius.Cli/DisplayHelpers.cs` stay at the test-project root.
+The test suites mirror the production structure they exercise. For example, `src/Arius.Core/Shared/FileTree/` maps to `src/Arius.Core.Tests/Shared/FileTree/`, and CLI verb-specific tests live under matching folders such as `src/Arius.Cli.Tests/Commands/Archive/` and `src/Arius.Cli.Tests/Commands/Restore/`. Tests for truly top-level CLI files such as `src/Arius.Cli/DisplayHelpers.cs` and `src/Arius.Cli/CliBuilder.cs` stay at the test-project root.
 
 ## Updating
 
