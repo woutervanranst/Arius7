@@ -3,7 +3,7 @@ using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.Storage;
 using Shouldly;
 
-namespace Arius.Core.Tests.List;
+namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageHydrationStatusTests
 {
@@ -99,5 +99,4 @@ public class ChunkStorageHydrationStatusTests
         status.ShouldBe(ChunkHydrationStatus.Unknown);
         blobs.RequestedBlobNames.ShouldBe(["chunks/abc"]);
     }
-
 }

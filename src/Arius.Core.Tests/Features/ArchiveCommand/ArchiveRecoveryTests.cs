@@ -11,10 +11,11 @@ using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using ArchiveCommandMessage = global::Arius.Core.Features.ArchiveCommand.ArchiveCommand;
 
-namespace Arius.Core.Tests.Archive;
+namespace Arius.Core.Tests.Features.ArchiveCommand;
 
-public class ArchiveRecoveryMatrixTests
+public class ArchiveRecoveryTests
 {
     private const string AccountName = "test-account";
 
@@ -45,7 +46,7 @@ public class ArchiveRecoveryMatrixTests
         var content = env.WriteRandomFile("small.txt", 256);
         var contentHash = env.ComputeHash(content);
 
-        var tarHash = env.ComputeHash(content); // single small file tar hash seed is arbitrary for the fake path
+        var tarHash = env.ComputeHash(content);
         await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
 
@@ -130,7 +131,7 @@ public class ArchiveRecoveryMatrixTests
                 _containerName);
 
             return await handler.Handle(
-                new ArchiveCommand(new ArchiveCommandOptions
+                new ArchiveCommandMessage(new ArchiveCommandOptions
                 {
                     RootDirectory = _rootDirectory,
                     UploadTier = uploadTier,

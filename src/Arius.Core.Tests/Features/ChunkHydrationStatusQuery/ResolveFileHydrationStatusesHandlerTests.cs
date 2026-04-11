@@ -7,9 +7,10 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
+using ChunkHydrationStatusQueryMessage = global::Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery;
 using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
 
-namespace Arius.Core.Tests.List;
+namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
 
 public class ResolveFileHydrationStatusesHandlerTests
 {
@@ -58,7 +59,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
 
         var results = new List<ChunkHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ChunkHydrationStatusQuery(files), CancellationToken.None))
+        await foreach (var result in handler.Handle(new ChunkHydrationStatusQueryMessage(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(1);
@@ -103,7 +104,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
 
         var results = new List<ChunkHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ChunkHydrationStatusQuery(files), CancellationToken.None))
+        await foreach (var result in handler.Handle(new ChunkHydrationStatusQueryMessage(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(2);
@@ -173,5 +174,4 @@ public class ResolveFileHydrationStatusesHandlerTests
         Archive,
         Rehydrating
     }
-
 }

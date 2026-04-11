@@ -1,7 +1,7 @@
 using Arius.Core.Shared;
 using Shouldly;
 
-namespace Arius.Core.Tests.Repository;
+namespace Arius.Core.Tests.Shared;
 
 public class RepositoryPathsTests
 {

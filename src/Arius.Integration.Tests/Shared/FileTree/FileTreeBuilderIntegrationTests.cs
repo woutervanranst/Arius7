@@ -5,14 +5,14 @@ using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 
-namespace Arius.Integration.Tests.FileTree;
+namespace Arius.Integration.Tests.Shared.FileTree;
 
 /// <summary>
 /// Integration tests for <see cref="FileTreeBuilder"/> against a real Azurite blob service.
 /// Requires Docker (Azurite via TestContainers). Task 5.11.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
-public class TreeBuilderIntegrationTests(AzuriteFixture azurite)
+public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 {
     private const string Account = "devstoreaccount1";
     private static readonly PlaintextPassthroughService s_enc = new();
