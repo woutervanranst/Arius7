@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Arius.Core.Tests.Encryption;
+namespace Arius.Core.Tests.Shared.Encryption;
 
 /// <summary>
 /// Unit tests for AES-256-GCM encryption (ArGCM1 format) in

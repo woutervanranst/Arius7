@@ -3,7 +3,7 @@ using Shouldly;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Arius.Core.Tests.Encryption;
+namespace Arius.Core.Tests.Shared.Encryption;
 
 public class PassphraseEncryptionServiceTests
 {

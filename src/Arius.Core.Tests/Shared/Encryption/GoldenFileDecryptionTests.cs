@@ -4,7 +4,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
 
-namespace Arius.Core.Tests.Encryption;
+namespace Arius.Core.Tests.Shared.Encryption;
 
 /// <summary>
 /// Golden file tests: decrypt actual chunks produced by the previous Arius version.
