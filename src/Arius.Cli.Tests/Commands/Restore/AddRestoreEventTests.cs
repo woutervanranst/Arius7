@@ -1,6 +1,6 @@
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies <see cref="ProgressState.AddRestoreEvent"/> caps the queue at 10 entries.

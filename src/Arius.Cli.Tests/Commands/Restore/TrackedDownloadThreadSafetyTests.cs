@@ -1,7 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies thread safety of concurrent TrackedDownload add/update/remove from 4 workers.

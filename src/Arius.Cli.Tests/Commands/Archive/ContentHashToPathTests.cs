@@ -1,6 +1,6 @@
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies the <see cref="ProgressState.ContentHashToPath"/> reverse map is populated

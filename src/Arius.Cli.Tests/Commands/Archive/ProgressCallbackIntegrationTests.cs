@@ -1,6 +1,6 @@
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies that <see cref="CliBuilder"/>'s <c>CreateHashProgress</c> and

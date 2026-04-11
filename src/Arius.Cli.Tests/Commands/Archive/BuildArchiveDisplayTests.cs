@@ -4,7 +4,7 @@ using Shouldly;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies <see cref="ArchiveVerb.BuildDisplay"/> renders the new three-section

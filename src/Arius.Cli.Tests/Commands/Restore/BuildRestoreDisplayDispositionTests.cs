@@ -4,7 +4,7 @@ using Shouldly;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 public class BuildRestoreDisplayDispositionTests
 {

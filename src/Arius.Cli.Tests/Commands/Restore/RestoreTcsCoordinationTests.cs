@@ -1,6 +1,6 @@
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies the TCS phase-coordination pattern used in the restore command.

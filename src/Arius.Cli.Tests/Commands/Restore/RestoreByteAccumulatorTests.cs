@@ -1,6 +1,6 @@
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies byte accumulators are updated alongside counters.

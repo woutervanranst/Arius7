@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Archive;
 using Shouldly;
 using Spectre.Console;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies that files removed from <see cref="ProgressState.TrackedFiles"/> do not

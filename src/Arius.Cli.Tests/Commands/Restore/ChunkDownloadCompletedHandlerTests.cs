@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies <see cref="ChunkDownloadCompletedHandler"/> removes tracked download and increments bytes.

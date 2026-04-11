@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies the dual-lookup behavior of <see cref="ChunkUploadingHandler"/>:

@@ -4,7 +4,7 @@ using Shouldly;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Restore;
 
 /// <summary>
 /// Verifies <see cref="RestoreVerb.BuildDisplay"/> renders active download table

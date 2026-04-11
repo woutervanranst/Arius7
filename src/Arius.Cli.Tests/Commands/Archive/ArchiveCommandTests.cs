@@ -1,9 +1,10 @@
+using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 [NotInParallel("AnsiConsoleRecorder")]
 public class ArchiveCommandTests

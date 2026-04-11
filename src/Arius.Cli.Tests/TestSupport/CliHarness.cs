@@ -1,3 +1,4 @@
+using System.CommandLine;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
@@ -5,9 +6,8 @@ using Arius.Core.Features.RestoreCommand;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
-using System.CommandLine;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.TestSupport;
 
 /// <summary>
 /// Builds a CLI invocation harness with mock command handlers.

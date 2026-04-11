@@ -2,7 +2,7 @@ using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
 /// Verifies that archive notification handlers update the correct
