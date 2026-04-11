@@ -5,7 +5,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Shouldly;
 
-namespace Arius.Core.Tests.FileTree;
+namespace Arius.Core.Tests.Shared.FileTree;
 
 public class FileTreeBuilderTests
 {
