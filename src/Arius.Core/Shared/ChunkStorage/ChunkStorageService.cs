@@ -251,6 +251,8 @@ public sealed class ChunkStorageService : IChunkStorageService
 
     private sealed class RehydratedChunkCleanupPlan : IRehydratedChunkCleanupPlan
     {
+        private const int DeleteWorkers = 16;
+
         private readonly IBlobContainerService _blobs;
         private readonly IReadOnlyList<string> _blobNames;
 
@@ -267,15 +269,26 @@ public sealed class ChunkStorageService : IChunkStorageService
 
         public async Task<RehydratedChunkCleanupResult> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            var deletions = _blobNames.Select(async blobName =>
-            {
-                var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-                await _blobs.DeleteAsync(blobName, cancellationToken);
-                return meta.ContentLength ?? 0;
-            });
+            var deleted = 0;
+            long freed = 0;
 
-            var freedBytes = await Task.WhenAll(deletions);
-            return new RehydratedChunkCleanupResult(_blobNames.Count, freedBytes.Sum());
+            await Parallel.ForEachAsync(
+                _blobNames,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = DeleteWorkers,
+                    CancellationToken = cancellationToken
+                },
+                async (blobName, ct) =>
+                {
+                    var meta = await _blobs.GetMetadataAsync(blobName, ct);
+                    await _blobs.DeleteAsync(blobName, ct);
+
+                    Interlocked.Increment(ref deleted);
+                    Interlocked.Add(ref freed, meta.ContentLength ?? 0);
+                });
+
+            return new RehydratedChunkCleanupResult(deleted, freed);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
