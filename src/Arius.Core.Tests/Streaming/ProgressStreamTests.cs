@@ -46,6 +46,46 @@ public class ProgressStreamTests
     }
 
     [Test]
+    public async Task ReadAsync_ByteArrayOverload_ReportsNonDecreasingProgress()
+    {
+        var data   = new byte[3000];
+        Random.Shared.NextBytes(data);
+        using var src = new MemoryStream(data);
+        var reports = new List<long>();
+        var progress = new SyncProgress<long>(value => reports.Add(value));
+        using var ps = new ProgressStream(src, progress);
+
+        var buffer = new byte[512];
+        while (await ps.ReadAsync(buffer, 0, buffer.Length, CancellationToken.None) > 0)
+        {
+        }
+
+        reports.ShouldNotBeEmpty();
+        reports.ShouldBeInOrder();
+        reports[^1].ShouldBe(data.Length);
+    }
+
+    [Test]
+    public async Task ReadAsync_MemoryOverload_ReportsNonDecreasingProgress()
+    {
+        var data   = new byte[3000];
+        Random.Shared.NextBytes(data);
+        using var src = new MemoryStream(data);
+        var reports = new List<long>();
+        var progress = new SyncProgress<long>(value => reports.Add(value));
+        using var ps = new ProgressStream(src, progress);
+
+        var buffer = new byte[700];
+        while (await ps.ReadAsync(buffer.AsMemory(), CancellationToken.None) > 0)
+        {
+        }
+
+        reports.ShouldNotBeEmpty();
+        reports.ShouldBeInOrder();
+        reports[^1].ShouldBe(data.Length);
+    }
+
+    [Test]
     public void Read_ZeroLengthSource_NoProgressReported()
     {
         using var src  = new MemoryStream([]);
