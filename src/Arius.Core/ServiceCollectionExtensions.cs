@@ -103,7 +103,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
             new RestoreCommandHandler(
-                sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),

@@ -133,7 +133,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             Account, Container.Name);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
+        new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
             NullLogger<RestoreCommandHandler>.Instance,
             Account, Container.Name);
 

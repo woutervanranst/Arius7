@@ -278,7 +278,7 @@ public sealed class E2EFixture : IAsyncDisposable
             _account, _container);
 
     private RestoreCommandHandler CreateRestoreHandler() =>
-        new(BlobContainer, Encryption, Index,
+        new(Encryption, Index,
             ChunkStorage,
             FileTreeService,
             Snapshot,

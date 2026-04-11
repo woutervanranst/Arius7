@@ -32,7 +32,6 @@ namespace Arius.Core.Features.RestoreCommand;
 public sealed class RestoreCommandHandler
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
-    private readonly IBlobContainerService              _blobs;
     private readonly IEncryptionService               _encryption;
     private readonly ChunkIndexService                _index;
     private readonly IChunkStorageService             _chunkStorage;
@@ -44,7 +43,6 @@ public sealed class RestoreCommandHandler
     private readonly string                           _containerName;
 
     public RestoreCommandHandler(
-        IBlobContainerService            blobs,
         IEncryptionService             encryption,
         ChunkIndexService              index,
         IChunkStorageService           chunkStorage,
@@ -55,7 +53,6 @@ public sealed class RestoreCommandHandler
         string                         accountName,
         string                         containerName)
     {
-        _blobs         = blobs;
         _encryption    = encryption;
         _index         = index;
         _chunkStorage  = chunkStorage;

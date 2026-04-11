@@ -25,7 +25,6 @@ public class RestoreCommandHandlerTests
         var mediator = Substitute.For<IMediator>();
 
         var handler = new RestoreCommandHandler(
-            blobs,
             encryption,
             index,
             new ChunkStorageService(blobs, encryption),
