@@ -6,7 +6,7 @@
 
 - Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run the tests.
+- When making code changes, always run ALL the tests.
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
@@ -73,6 +73,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
   Use `ChunkStorageService` for large, tar, and thin chunk blob operations.
   Use `FileTreeService` for tree existence checks and tree writes.
   Use `SnapshotService` for snapshot creation.
+  Direct `IBlobContainerService` usage is an allowed exception for container creation.
 
 - `RestoreCommandHandler`
   Use `SnapshotService` to resolve the target snapshot.
@@ -91,6 +92,9 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - `ChunkHydrationStatusQueryHandler`
   Use `ChunkIndexService` to map file content hashes to chunk hashes.
   Use `ChunkStorageService` for hydration state resolution.
+
+- Feature handlers and queries should not depend directly on `IBlobContainerService`, `IBlobService`, or `IBlobServiceFactory`.
+  Current approved exceptions are `ArchiveCommandHandler` for container creation and `ContainerNamesQueryHandler` for repository-external container enumeration.
 
 ### DI expectations
 
