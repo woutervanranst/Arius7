@@ -1,3 +1,4 @@
+using System.CommandLine;
 using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Ls;
 using Arius.Cli.Commands.Restore;
@@ -10,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Events;
 using Spectre.Console;
-using System.CommandLine;
 
 namespace Arius.Cli;
 

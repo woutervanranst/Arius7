@@ -1,13 +1,13 @@
 using Arius.Core.Features.ListQuery;
-using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
-using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Fakes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
+using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
 namespace Arius.Core.Tests.Features.ListQuery;
 

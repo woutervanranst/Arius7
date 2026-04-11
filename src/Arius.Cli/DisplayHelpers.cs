@@ -1,5 +1,5 @@
-using Humanizer;
 using System.Globalization;
+using Humanizer;
 
 namespace Arius.Cli;
 

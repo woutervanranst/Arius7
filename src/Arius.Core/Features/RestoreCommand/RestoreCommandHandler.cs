@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -7,7 +8,6 @@ using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
-using System.Formats.Tar;
 using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
 
 namespace Arius.Core.Features.RestoreCommand;

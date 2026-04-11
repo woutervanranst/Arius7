@@ -1,10 +1,3 @@
-using Arius.Core.Features.ContainerNamesQuery;
-using Arius.Explorer.Settings;
-using Arius.Explorer.Shared.Extensions;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using Mediator;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -14,6 +7,13 @@ using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Explorer.Settings;
+using Arius.Explorer.Shared.Extensions;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Mediator;
+using Microsoft.Win32;
 using Unit = System.Reactive.Unit;
 
 namespace Arius.Explorer.ChooseRepository;

@@ -1,5 +1,5 @@
-using Arius.Core.Shared.Encryption;
 using System.IO.Compression;
+using Arius.Core.Shared.Encryption;
 
 namespace Arius.Core.Shared.ChunkIndex;
 

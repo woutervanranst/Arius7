@@ -1,5 +1,5 @@
-using Arius.Explorer.Settings;
 using System.Collections.ObjectModel;
+using Arius.Explorer.Settings;
 
 namespace Arius.Explorer.Tests.Settings;
 

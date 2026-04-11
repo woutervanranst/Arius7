@@ -1,8 +1,8 @@
 using Arius.Core.Features.ContainerNamesQuery;
-using ContainerNamesQueryMessage = global::Arius.Core.Features.ContainerNamesQuery.ContainerNamesQuery;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 using Shouldly;
+using ContainerNamesQueryMessage = global::Arius.Core.Features.ContainerNamesQuery.ContainerNamesQuery;
 
 namespace Arius.Core.Tests.Features.ContainerNamesQuery;
 

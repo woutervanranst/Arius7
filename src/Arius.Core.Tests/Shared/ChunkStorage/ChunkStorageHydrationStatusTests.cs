@@ -1,6 +1,6 @@
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Tests.Fakes;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Fakes;
 using Shouldly;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;

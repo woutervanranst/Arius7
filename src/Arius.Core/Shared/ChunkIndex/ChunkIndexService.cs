@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
-using System.Collections.Concurrent;
 
 namespace Arius.Core.Shared.ChunkIndex;
 

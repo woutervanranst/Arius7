@@ -1,3 +1,6 @@
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
@@ -6,9 +9,6 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Shouldly;
-using System.Formats.Tar;
-using System.IO.Compression;
-using System.Security.Cryptography;
 
 namespace Arius.E2E.Tests;
 

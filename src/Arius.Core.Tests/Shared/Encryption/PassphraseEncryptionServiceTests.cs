@@ -1,7 +1,7 @@
-using Arius.Core.Shared.Encryption;
-using Shouldly;
 using System.Security.Cryptography;
 using System.Text;
+using Arius.Core.Shared.Encryption;
+using Shouldly;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 

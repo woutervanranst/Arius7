@@ -1,8 +1,8 @@
+using System.IO;
+using System.Windows.Media;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkStorage;
 using CommunityToolkit.Mvvm.ComponentModel;
-using System.IO;
-using System.Windows.Media;
 
 namespace Arius.Explorer.RepositoryExplorer;
 

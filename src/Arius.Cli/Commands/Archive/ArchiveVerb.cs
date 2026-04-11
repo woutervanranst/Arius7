@@ -1,3 +1,5 @@
+using System.CommandLine;
+using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -6,8 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Spectre.Console;
 using Spectre.Console.Rendering;
-using System.CommandLine;
-using System.Globalization;
 
 namespace Arius.Cli.Commands.Archive;
 

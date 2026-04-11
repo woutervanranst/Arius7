@@ -1,7 +1,7 @@
-using System.Diagnostics;
-using Spectre.Console;
 using System.CommandLine;
+using System.Diagnostics;
 using System.Text.Json;
+using Spectre.Console;
 
 namespace Arius.Cli.Commands.Update;
 

@@ -1,5 +1,4 @@
 using Arius.Core.Features.RestoreCommand;
-using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -9,6 +8,7 @@ using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 

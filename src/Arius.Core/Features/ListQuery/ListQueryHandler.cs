@@ -1,9 +1,9 @@
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
-using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Features.ListQuery;
 

@@ -1,6 +1,6 @@
-using Arius.Core.Shared.Encryption;
 using System.IO.Compression;
 using System.Text;
+using Arius.Core.Shared.Encryption;
 
 namespace Arius.Core.Shared.FileTree;
 
