@@ -125,7 +125,7 @@ public sealed class ChunkStorageService : IChunkStorageService
                 [BlobMetadataKeys.ChunkSize] = storedSize.ToString(),
             };
 
-            if (!isTar)
+            if (!isTar) // On TAR blobs this doesnt make sense. We find the original size on the respective thin chunks.
                 metadata[BlobMetadataKeys.OriginalSize] = sourceSize.ToString();
 
             await _blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
