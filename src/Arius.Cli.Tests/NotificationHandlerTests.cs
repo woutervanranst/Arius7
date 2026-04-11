@@ -1,0 +1,334 @@
+using Arius.Cli.Commands.Archive;
+using Arius.Cli.Commands.Restore;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.RestoreCommand;
+using Shouldly;
+
+namespace Arius.Cli.Tests;
+
+// ── 7.1 Archive notification handler unit tests ───────────────────────────────
+
+/// <summary>
+/// Verifies that each archive notification handler updates the correct
+/// <see cref="TrackedFile"/> state and aggregate counters on <see cref="ProgressState"/>.
+/// </summary>
+public class NotificationHandlerTests
+{
+    // ── FileScannedHandler (7.1) ──────────────────────────────────────────────
+
+    [Test]
+    public async Task FileScannedHandler_IncrementsFilesScannedAndBytesScanned()
+    {
+        var state   = new ProgressState();
+        var handler = new FileScannedHandler(state);
+
+        await handler.Handle(new FileScannedEvent("foo/bar.txt", 1024), CancellationToken.None);
+
+        state.FilesScanned.ShouldBe(1L);
+        state.BytesScanned.ShouldBe(1024L);
+    }
+
+    [Test]
+    public async Task FileScannedHandler_MultipleFiles_AccumulatesCorrectly()
+    {
+        var state   = new ProgressState();
+        var handler = new FileScannedHandler(state);
+
+        await handler.Handle(new FileScannedEvent("a.txt", 100), CancellationToken.None);
+        await handler.Handle(new FileScannedEvent("b.txt", 200), CancellationToken.None);
+        await handler.Handle(new FileScannedEvent("c.txt", 300), CancellationToken.None);
+
+        state.FilesScanned.ShouldBe(3L);
+        state.BytesScanned.ShouldBe(600L);
+    }
+
+    // ── ScanCompleteHandler (7.2) ─────────────────────────────────────────────
+
+    [Test]
+    public async Task ScanCompleteHandler_SetsTotalsAndScanComplete()
+    {
+        var state   = new ProgressState();
+        var handler = new ScanCompleteHandler(state);
+
+        state.ScanComplete.ShouldBeFalse();
+        await handler.Handle(new ScanCompleteEvent(1523, 5_000_000L), CancellationToken.None);
+
+        state.TotalFiles.ShouldBe(1523L);
+        state.TotalBytes.ShouldBe(5_000_000L);
+        state.ScanComplete.ShouldBeTrue();
+    }
+
+    // ── FileHashingHandler ────────────────────────────────────────────────────
+
+    [Test]
+    public async Task FileHashingHandler_AddsTrackedFile()
+    {
+        var state   = new ProgressState();
+        var handler = new FileHashingHandler(state);
+
+        await handler.Handle(new FileHashingEvent("foo/bar.bin", 1024), CancellationToken.None);
+
+        state.TrackedFiles.ContainsKey("foo/bar.bin").ShouldBeTrue();
+        state.TrackedFiles["foo/bar.bin"].State.ShouldBe(FileState.Hashing);
+        state.TrackedFiles["foo/bar.bin"].TotalBytes.ShouldBe(1024L);
+    }
+
+    // ── FileHashedHandler ─────────────────────────────────────────────────────
+
+    [Test]
+    public async Task FileHashedHandler_TransitionsToHashedAndIncrementsCounter()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("a.bin", 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("a.bin", "abc123"), CancellationToken.None);
+
+        state.FilesHashed.ShouldBe(1L);
+        state.TrackedFiles["a.bin"].ContentHash.ShouldBe("abc123");
+        state.TrackedFiles["a.bin"].State.ShouldBe(FileState.Hashed);
+        state.ContentHashToPath["abc123"].ShouldContain("a.bin");
+    }
+
+    // ── TarBundleStartedHandler (7.3) ─────────────────────────────────────────
+
+    [Test]
+    public async Task TarBundleStartedHandler_CreatesTrackedTar()
+    {
+        var state   = new ProgressState();
+        var handler = new TarBundleStartedHandler(state);
+
+        await handler.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+
+        state.TrackedTars.Count.ShouldBe(1);
+        state.TrackedTars[1].BundleNumber.ShouldBe(1);
+        state.TrackedTars[1].State.ShouldBe(TarState.Accumulating);
+    }
+
+    [Test]
+    public async Task TarBundleStartedHandler_MultipleBundles_IncrementsBundleNumber()
+    {
+        var state   = new ProgressState();
+        var handler = new TarBundleStartedHandler(state);
+
+        await handler.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await handler.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await handler.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+
+        state.TrackedTars.Count.ShouldBe(3);
+        state.TrackedTars[1].BundleNumber.ShouldBe(1);
+        state.TrackedTars[2].BundleNumber.ShouldBe(2);
+        state.TrackedTars[3].BundleNumber.ShouldBe(3);
+    }
+
+    // ── TarEntryAddedHandler (7.4) ────────────────────────────────────────────
+
+    [Test]
+    public async Task TarEntryAddedHandler_RemovesTrackedFileAndUpdatesTrackedTar()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var startedH   = new TarBundleStartedHandler(state);
+        var tarEntryH  = new TarEntryAddedHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("small.txt", 500), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("small.txt", "def456"), CancellationToken.None);
+        await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await tarEntryH.Handle(new TarEntryAddedEvent("def456", 1, 500), CancellationToken.None);
+
+        // File removed from TrackedFiles
+        state.TrackedFiles.ContainsKey("small.txt").ShouldBeFalse();
+
+        // TrackedTar updated
+        state.TrackedTars[1].FileCount.ShouldBe(1);
+        state.TrackedTars[1].AccumulatedBytes.ShouldBe(500L);
+    }
+
+    [Test]
+    public async Task TarEntryAddedHandler_IncrementsFilesUnique()
+    {
+        var state     = new ProgressState();
+        var hashingH  = new FileHashingHandler(state);
+        var hashedH   = new FileHashedHandler(state);
+        var startedH  = new TarBundleStartedHandler(state);
+        var tarEntryH = new TarEntryAddedHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("s.txt", 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("s.txt", "h1"), CancellationToken.None);
+        await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await tarEntryH.Handle(new TarEntryAddedEvent("h1", 1, 100), CancellationToken.None);
+
+        state.FilesUnique.ShouldBe(1L);
+    }
+
+    // ── TarBundleSealingHandler ───────────────────────────────────────────────
+
+    [Test]
+    public async Task TarBundleSealingHandler_TransitionsToSealingAndSetsTarHash()
+    {
+        var state    = new ProgressState();
+        var startedH = new TarBundleStartedHandler(state);
+        var sealingH = new TarBundleSealingHandler(state);
+
+        await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await sealingH.Handle(
+            new TarBundleSealingEvent(3, 300, "tar_xyz", ["h1", "h2", "h3"]),
+            CancellationToken.None);
+
+        state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
+        state.TrackedTars[1].TarHash.ShouldBe("tar_xyz");
+        state.TrackedTars[1].TotalBytes.ShouldBe(300L);
+    }
+
+    // ── ChunkUploadingHandler (7.5) ───────────────────────────────────────────
+
+    [Test]
+    public async Task ChunkUploadingHandler_LargeFile_SetsUploadingAndIncrementsFilesUnique()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("large.bin", 1_000_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("large.bin", "bigfile1"), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent("bigfile1", 1_000_000), CancellationToken.None);
+
+        state.TrackedFiles["large.bin"].State.ShouldBe(FileState.Uploading);
+        state.FilesUnique.ShouldBe(1L);
+    }
+
+    [Test]
+    public async Task ChunkUploadingHandler_TarBundle_TransitionsTarToUploading()
+    {
+        var state      = new ProgressState();
+        var startedH   = new TarBundleStartedHandler(state);
+        var sealingH   = new TarBundleSealingHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+
+        await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await sealingH.Handle(
+            new TarBundleSealingEvent(2, 200, "tar_hash_1", ["h1", "h2"]),
+            CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent("tar_hash_1", 200), CancellationToken.None);
+
+        state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
+        // FilesUnique should NOT be incremented for TAR bundle (only for large files)
+        state.FilesUnique.ShouldBe(0L);
+    }
+
+    // ── ChunkUploadedHandler ──────────────────────────────────────────────────
+
+    [Test]
+    public async Task ChunkUploadedHandler_RemovesFileAndIncrementsChunksUploaded()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var uploadedH  = new ChunkUploadedHandler(state);
+
+        await hashingH.Handle(new FileHashingEvent("data.bin", 5000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("data.bin", "hash999"), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent("hash999", 5000), CancellationToken.None);
+        await uploadedH.Handle(new ChunkUploadedEvent("hash999", 4000), CancellationToken.None);
+
+        state.TrackedFiles.ContainsKey("data.bin").ShouldBeFalse();
+        state.ChunksUploaded.ShouldBe(1L);
+        state.BytesUploaded.ShouldBe(4000L);
+    }
+
+    // ── TarBundleUploadedHandler (7.4) ────────────────────────────────────────
+
+    [Test]
+    public async Task TarBundleUploadedHandler_RemovesTrackedTarAndIncrementsTarsUploaded()
+    {
+        var state     = new ProgressState();
+        var startedH  = new TarBundleStartedHandler(state);
+        var sealingH  = new TarBundleSealingHandler(state);
+        var uploadedH = new TarBundleUploadedHandler(state);
+
+        await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
+        await sealingH.Handle(
+            new TarBundleSealingEvent(3, 300, "tar_abc", ["ha", "hb", "hc"]),
+            CancellationToken.None);
+        await uploadedH.Handle(
+            new TarBundleUploadedEvent("tar_abc", 200, 3),
+            CancellationToken.None);
+
+        state.TrackedTars.ContainsKey(1).ShouldBeFalse();
+        state.TarsUploaded.ShouldBe(1L);
+        state.ChunksUploaded.ShouldBe(1L);
+    }
+
+    // ── SnapshotCreatedHandler ────────────────────────────────────────────────
+
+    [Test]
+    public async Task SnapshotCreatedHandler_SetsSnapshotComplete()
+    {
+        var state   = new ProgressState();
+        var handler = new SnapshotCreatedHandler(state);
+
+        state.SnapshotComplete.ShouldBeFalse();
+        await handler.Handle(new SnapshotCreatedEvent("roothash", DateTimeOffset.UtcNow, 10), CancellationToken.None);
+
+        state.SnapshotComplete.ShouldBeTrue();
+    }
+
+    // ── RestoreStartedHandler ─────────────────────────────────────────────────
+
+    [Test]
+    public async Task RestoreStartedHandler_SetsRestoreTotalFiles()
+    {
+        var state   = new ProgressState();
+        var handler = new RestoreStartedHandler(state);
+
+        await handler.Handle(new RestoreStartedEvent(1000), CancellationToken.None);
+
+        state.RestoreTotalFiles.ShouldBe(1000);
+    }
+
+    // ── FileRestoredHandler ───────────────────────────────────────────────────
+
+    [Test]
+    public async Task FileRestoredHandler_IncrementsFilesRestored()
+    {
+        var state   = new ProgressState();
+        var handler = new FileRestoredHandler(state);
+
+        await handler.Handle(new FileRestoredEvent("dir/file.txt", 500L), CancellationToken.None);
+
+        state.FilesRestored.ShouldBe(1L);
+        state.BytesRestored.ShouldBe(500L);
+    }
+
+    // ── FileSkippedHandler ────────────────────────────────────────────────────
+
+    [Test]
+    public async Task FileSkippedHandler_IncrementsFilesSkipped()
+    {
+        var state   = new ProgressState();
+        var handler = new FileSkippedHandler(state);
+
+        await handler.Handle(new FileSkippedEvent("dir/existing.txt", 300L), CancellationToken.None);
+
+        state.FilesSkipped.ShouldBe(1L);
+        state.BytesSkipped.ShouldBe(300L);
+    }
+
+    // ── RehydrationStartedHandler ─────────────────────────────────────────────
+
+    [Test]
+    public async Task RehydrationStartedHandler_SetsChunkCount()
+    {
+        var state   = new ProgressState();
+        var handler = new RehydrationStartedHandler(state);
+
+        await handler.Handle(new RehydrationStartedEvent(7, 1024 * 1024), CancellationToken.None);
+
+        state.RehydrationChunkCount.ShouldBe(7);
+        state.RehydrationTotalBytes.ShouldBe(1024L * 1024L);
+    }
+}

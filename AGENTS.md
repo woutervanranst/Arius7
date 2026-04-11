@@ -12,6 +12,7 @@
 ## Session Rules
 
 - Always update `README.md` (for humans) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
+- The bundled `ast-grep` skill under `.agents/skills/ast-grep/` is C#-first. Use `--lang csharp`, prefer real declaration context with `pattern.context` and `selector`, and do not document generic multi-language examples there.
 
 ## Testing
 
@@ -28,6 +29,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Prefer one top-level test class per file, with the filename matching the class name.
 - If a test file contains multiple classes, keep them together only when they share one tight theme or when the extra types are local test support.
 - Place tests in folders that mirror the production folders they target. Keep cross-feature scenario tests in an explicit scenario folder such as `Pipeline/`.
+- For top-level production files such as `src/Arius.Cli/DisplayHelpers.cs` or `src/Arius.Cli/CliBuilder.cs`, keep the matching tests at the test-project root rather than inventing extra folders.
 
 ## Code Style Preference
 
