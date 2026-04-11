@@ -44,6 +44,19 @@ public class CountingStreamTests
     }
 
     [Test]
+    public async Task WriteAsync_WithOffsetCount_TracksBytesWritten()
+    {
+        using var dst = new MemoryStream();
+        using var cs  = new CountingStream(dst);
+        var buffer = new byte[1024];
+
+        await cs.WriteAsync(buffer, 100, 512, CancellationToken.None);
+
+        cs.BytesWritten.ShouldBe(512);
+        dst.Length.ShouldBe(512);
+    }
+
+    [Test]
     public void WriteSpan_TracksBytesWritten()
     {
         using var dst = new MemoryStream();
