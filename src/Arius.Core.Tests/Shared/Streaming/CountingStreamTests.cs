@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Streaming;
 using Shouldly;
 
-namespace Arius.Core.Tests.Streaming;
+namespace Arius.Core.Tests.Shared.Streaming;
 
 public class CountingStreamTests
 {
