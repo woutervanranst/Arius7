@@ -68,8 +68,12 @@ public class BuildRestoreDisplayActiveDownloadsTests
         // No TrackedDownloads
 
         var output = RenderToString(RestoreVerb.BuildDisplay(state));
+        var downloadLines = output.Split('\n')
+            .Where(l => (l.Contains("█") || l.Contains("░")) && !l.Contains("Restoring"))
+            .ToArray();
 
-        // No progress bars in the download area
+        // No progress-bar rows should be rendered for active downloads.
+        downloadLines.ShouldBeEmpty();
         output.ShouldNotContain("TAR bundle");
     }
 
