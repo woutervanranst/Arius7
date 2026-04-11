@@ -94,35 +94,13 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Snapshots are the coordination point between local cache state and remote repository state.
 - Snapshot comparisons determine whether the current machine can trust its local tree/chunk cache view or must refresh remote knowledge.
 
-### Shared usage in features
-
-- `ArchiveCommandHandler`
-  Use `ChunkIndexService` for dedup/index recording and flush.
-  Use `ChunkStorageService` for large, tar, and thin chunk blob operations.
-  Use `FileTreeService` for tree existence checks and tree writes.
-  Use `SnapshotService` for snapshot creation.
-  Direct `IBlobContainerService` usage is an allowed exception for container creation.
-
-- `RestoreCommandHandler`
-  Use `SnapshotService` to resolve the target snapshot.
-  Use `FileTreeService` to traverse filetrees.
-  Use `ChunkIndexService` to resolve content hashes to chunk metadata.
-  Use `ChunkStorageService` for chunk download, hydration status, rehydration start, and rehydrated cleanup planning.
-  `restore` is a read-only repository operation and must not create blob containers.
-
-- `ListQueryHandler`
-  Use `SnapshotService` to resolve the snapshot.
-  Use `FileTreeService` for tree traversal.
-  Use `ChunkIndexService` for file size/original-size metadata.
-  Do not keep stale direct blob/encryption dependencies when the handler no longer uses them.
-  `ls` is a read-only repository operation and must not create blob containers.
-
-- `ChunkHydrationStatusQueryHandler`
-  Use `ChunkIndexService` to map file content hashes to chunk hashes.
-  Use `ChunkStorageService` for hydration state resolution.
+### Feature-specific exceptions and constraints
 
 - Feature handlers and queries should not depend directly on `IBlobContainerService`, `IBlobService`, or `IBlobServiceFactory`.
-  Current approved exceptions are `ArchiveCommandHandler` for container creation and `ContainerNamesQueryHandler` for repository-external container enumeration.
+- Current approved exceptions are `ArchiveCommandHandler` for container creation and `ContainerNamesQueryHandler` for repository-external container enumeration.
+- `restore` is a read-only repository operation and must not create blob containers.
+- `ls` is a read-only repository operation and must not create blob containers.
+- Remove stale direct blob/encryption dependencies from feature handlers when the handler no longer uses them.
 
 ### DI expectations
 
