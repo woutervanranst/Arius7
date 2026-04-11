@@ -17,7 +17,9 @@ namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
 /// Wraps an <see cref="IBlobContainerService"/> and throws after <paramref name="throwAfterN"/>
-/// successful upload calls. Used to simulate crashes mid-pipeline.
+/// successful upload completions. Large/tar chunk uploads are counted when metadata is written;
+/// direct <see cref="IBlobContainerService.UploadAsync"/> calls are counted directly.
+/// Used to simulate crashes mid-pipeline.
 /// </summary>
 internal sealed class FaultingBlobService(IBlobContainerService inner, int throwAfterN)
     : IBlobContainerService
@@ -51,19 +53,19 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
 
     public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken cancellationToken = default)
-        => inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+    {
+        if (ShouldFaultUpload())
+            throw new IOException($"Fault-injected failure while writing metadata for {blobName}");
+
+        return inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+    }
 
     public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default)
         => inner.SetTierAsync(blobName, tier, cancellationToken);
 
     public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
         CancellationToken cancellationToken = default)
-    {
-        if (ShouldFaultUpload())
-            throw new IOException($"Fault-injected failure while opening write stream for {blobName}");
-
-        return inner.OpenWriteAsync(blobName, contentType, cancellationToken);
-    }
+        => inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
     public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
@@ -85,6 +87,19 @@ public class FaultingBlobServiceTests
 
         await Should.ThrowAsync<IOException>(async () =>
             await sut.UploadAsync("chunks/two", new MemoryStream([2]), new Dictionary<string, string>(), BlobTier.Hot));
+    }
+
+    [Test]
+    public async Task OpenWriteAsync_DoesNotCount_As_A_Completed_Upload()
+    {
+        var inner = Substitute.For<IBlobContainerService>();
+        inner.OpenWriteAsync("chunks/one", null, default).Returns(Task.FromResult<Stream>(new MemoryStream()));
+        var sut = new FaultingBlobService(inner, throwAfterN: 0);
+
+        await using var stream = await sut.OpenWriteAsync("chunks/one");
+
+        await Should.ThrowAsync<IOException>(async () =>
+            await sut.SetMetadataAsync("chunks/one", new Dictionary<string, string>()));
     }
 }
 
@@ -145,14 +160,19 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var r1 = await handler1.Handle(new ArchiveCommand(opts), default);
         r1.Success.ShouldBeFalse(); // pipeline should surface the fault
 
-        // After the crash, the first blob should be present with arius-type set (crash-recovery signal)
+        // After the crash, at least one completed chunk should be present with arius-type set.
         var blobs = new List<string>();
         await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
             blobs.Add(name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
-        var firstMeta = await fix.BlobContainer.GetMetadataAsync(blobs[0]);
-        firstMeta.Exists.ShouldBeTrue();
-        firstMeta.Metadata.ContainsKey(BlobMetadataKeys.AriusType).ShouldBeTrue("arius-type is the crash-recovery signal");
+
+        var metadataStates = new List<BlobMetadata>();
+        foreach (var blobName in blobs)
+            metadataStates.Add(await fix.BlobContainer.GetMetadataAsync(blobName));
+
+        metadataStates.ShouldContain(
+            meta => meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType),
+            "arius-type is the crash-recovery signal");
 
         // ── Run 2: use real service → should complete, deduplicate already-uploaded chunk
         var r2 = await fix.ArchiveAsync(opts);
@@ -182,8 +202,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("small2.txt", c2);
         fix.WriteFile("small3.txt", c3);
 
-        // Crash after the tar blob upload (upload #1) but before thin chunks (uploads #2, #3, #4)
-        // throwAfterN=1 means: first upload (tar blob) succeeds, then crash
+        // Crash after the tar chunk upload completes but before thin chunks are written.
+        // Completed upload #1 = tar chunk metadata write; then the next completed upload faults.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
@@ -223,11 +243,11 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("large.bin", large);
         fix.WriteFile("small.txt", small);
 
-        // Allow the large-chunk stream open and the thin chunk upload, then crash when the
-        // chunk-index shard is uploaded.
-        //   faultable upload #1 = OpenWriteAsync for large.bin
-        //   faultable upload #2 = UploadAsync for small.txt thin chunk
-        //   faultable upload #3 = UploadAsync for the index shard  ← crash here
+        // Allow the large chunk upload to complete and the thin chunk upload to complete,
+        // then crash when the chunk-index shard is uploaded.
+        //   completed upload #1 = SetMetadataAsync for large.bin
+        //   completed upload #2 = UploadAsync for small.txt thin chunk
+        //   completed upload #3 = UploadAsync for the index shard  ← crash here
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 2);
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
