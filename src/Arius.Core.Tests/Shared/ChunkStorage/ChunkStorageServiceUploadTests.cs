@@ -4,7 +4,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Shouldly;
 
-namespace Arius.Core.Tests.ChunkStorage;
+namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceUploadTests
 {
