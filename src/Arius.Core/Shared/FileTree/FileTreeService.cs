@@ -116,7 +116,9 @@ public sealed class FileTreeService
 
         try
         {
-            var cached = File.ReadAllBytesAsync(diskPath, cancellationToken).GetAwaiter().GetResult();
+            // This cache probe is intentionally synchronous so callers do not block on an
+            // async file read via GetResult(), which can deadlock under some sync contexts.
+            var cached = File.ReadAllBytes(diskPath);
             if (cached.Length == 0)
                 return null;
 
