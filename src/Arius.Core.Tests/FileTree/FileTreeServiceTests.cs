@@ -169,6 +169,46 @@ public class FileTreeServiceTests
         }
     }
 
+    [Test]
+    public async Task ReadAsync_ConcurrentReads_DoesNotExposePartialCacheFile()
+    {
+        const string acct = "tc-read-conc-partial", cont = "container";
+        var blobs = new SlowDownloadBlobContainerService();
+        var index = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            var blob = MakeBlob("partial.txt", "a1b2c3d4");
+            var hash = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
+            var blobName = BlobPaths.FileTree(hash);
+            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
+
+            var t1 = svc.ReadAsync(hash);
+            await blobs.FirstDownloadStarted;
+
+            var t2 = svc.ReadAsync(hash);
+            blobs.ReleaseFirstDownload();
+
+            var results = await Task.WhenAll(t1, t2);
+
+            results.SelectMany(result => result.Entries).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
+
+            var diskPath = Path.Combine(cacheDir, hash);
+            File.Exists(diskPath).ShouldBeTrue();
+            FileTreeBlobSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath)).Entries[0].Name.ShouldBe("partial.txt");
+            blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
     // ── 7.3  WriteAsync — Azure upload + disk cache write ────────────────────
 
     [Test]
@@ -580,5 +620,61 @@ public class FileTreeServiceTests
 
         public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class SlowDownloadBlobContainerService : IBlobContainerService
+    {
+        private readonly FakeInMemoryBlobContainerService _inner = new();
+        private readonly TaskCompletionSource _firstDownloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseFirstDownload = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _downloadCount;
+
+        public Task FirstDownloadStarted => _firstDownloadStarted.Task;
+
+        public ICollection<string> RequestedBlobNames => _inner.RequestedBlobNames;
+
+        public void SeedBlob(string blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
+            => _inner.SeedBlob(blobName, content, tier, metadata, contentType, isRehydrating);
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
+            => _inner.CreateContainerIfNotExistsAsync(cancellationToken);
+
+        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+            => _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default)
+            => _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+
+        public async Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
+        {
+            var count = Interlocked.Increment(ref _downloadCount);
+            if (count == 1)
+            {
+                _firstDownloadStarted.TrySetResult();
+                await _releaseFirstDownload.Task.WaitAsync(cancellationToken);
+            }
+
+            return await _inner.DownloadAsync(blobName, cancellationToken);
+        }
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
+            => _inner.GetMetadataAsync(blobName, cancellationToken);
+
+        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default)
+            => _inner.ListAsync(prefix, cancellationToken);
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
+            => _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default)
+            => _inner.SetTierAsync(blobName, tier, cancellationToken);
+
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
+            => _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
+
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+            => _inner.DeleteAsync(blobName, cancellationToken);
+
+        public void ReleaseFirstDownload() => _releaseFirstDownload.TrySetResult();
     }
 }
