@@ -34,6 +34,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - **binary file**: a file on disk that Arius archives and restores.
 - **pointer file**: a file on disk containing the content hash.
+- **FilePair**: the local archive-time view of one path, combining the binary file and its optional pointer file. A `FilePair` can be binary-only, pointer-only, or have both present.
 - **hash** Arius is a content addressed storage and deduplicates binary files based on content hash.
   - **content hash**: the hash of the (original) binary file's content
   - **chunk hash**: the name of the chunk in which the content is actually stored (identical for large chunks, different for tar chunks)
