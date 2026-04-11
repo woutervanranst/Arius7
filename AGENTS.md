@@ -30,6 +30,22 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
 
+## Domain language
+
+- **binary file**: a file on disk that Arius archives and restores.
+- **pointer file**: a file on disk containing the content hash.
+- **content/chunk hash**: the hash of a binary's content, used for deduplication & content addressed storage.
+- **chunk**: representing unique binary content:
+  - **large chunk**: a chunk whose blob body stores one file directly as gzip plus optional encryption.
+  - **tar chunk**: a chunk whose blob body stores a tar bundle of multiple small files, then gzip plus optional encryption. Raison d'etre: small files are prohibitively expensive to rehydrate in Azure Blob Storage, so we tar them together into a ~large chunk.
+  - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Raison d'etre: as deduplication existence check and metadata.
+- **chunk index**: the repository-wide mapping with all chunk hashes. For TAR chunks, contains the mapping from content hash to chunk hash. Raison d'etre: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
+  - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+- **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
+- **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
+
+- Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
+
 ## Architecture
 
 ### Arius.Core shape
@@ -45,6 +61,19 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - `Shared` should decide **how** snapshots are cached, how tree blobs are serialized/cached, how chunk-index shards are cached, and how blob names/content are interpreted.
 - If logic is repository-wide and reused by more than one feature, it usually belongs in `Shared`.
 - If logic is specific to one command/query flow, it usually belongs in that feature handler.
+
+### Storage layers
+
+- `src/Arius.Core/Shared/Storage/` contains the low-level storage boundary: `IBlobContainerService`, `IBlobService`, `IBlobServiceFactory`, blob metadata models, tier enums, and preflight/storage exceptions.
+- Those interfaces describe primitive storage capabilities such as upload, download, list, metadata, tier changes, and container lookup.
+- Higher-level shared services build repository semantics on top of that storage boundary:
+  - `ChunkIndexService` for deduplication index lookup, mutation, flushing, and cache invalidation
+  - `ChunkStorageService` for chunk blob upload/download, hydration, rehydration, and cleanup planning
+  - `FileTreeService` for filetree traversal, caching, and persistence
+  - `SnapshotService` for snapshot resolution, creation, listing, and local snapshot state
+- New feature handlers and queries should prefer those higher-level shared services over direct `Shared/Storage` dependencies.
+- Reach for raw storage interfaces only when the feature itself is the storage boundary and there is no appropriate higher-level abstraction yet.
+- If a new feature needs repository-aware blob behavior that would likely be reused elsewhere, add or extend a shared service instead of wiring `IBlobContainerService`/`IBlobService` directly into the feature.
 
 ### Cache services
 
