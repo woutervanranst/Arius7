@@ -278,7 +278,7 @@ public class BuildArchiveDisplayTests
         state.AddFile(longPath, 2048);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("...");
+        output.ShouldContain("...ory/structure/with/file.bin");
         output.ShouldNotContain(longPath);
     }
 
