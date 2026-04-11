@@ -267,18 +267,15 @@ public sealed class ChunkStorageService : IChunkStorageService
 
         public async Task<RehydratedChunkCleanupResult> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            var deleted = 0;
-            long freed = 0;
-
-            foreach (var blobName in _blobNames)
+            var deletions = _blobNames.Select(async blobName =>
             {
                 var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
                 await _blobs.DeleteAsync(blobName, cancellationToken);
-                deleted++;
-                freed += meta.ContentLength ?? 0;
-            }
+                return meta.ContentLength ?? 0;
+            });
 
-            return new RehydratedChunkCleanupResult(deleted, freed);
+            var freedBytes = await Task.WhenAll(deletions);
+            return new RehydratedChunkCleanupResult(_blobNames.Count, freedBytes.Sum());
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
