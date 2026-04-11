@@ -164,7 +164,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
-        return new(sim, fix.Encryption,
+        return new(fix.Encryption,
             index,
             new ChunkStorageService(sim, fix.Encryption),
             new FileTreeService(sim, fix.Encryption, index, Account, fix.Container.Name),

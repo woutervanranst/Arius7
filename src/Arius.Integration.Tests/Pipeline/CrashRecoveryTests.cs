@@ -24,7 +24,7 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
 {
     private int _uploadCount;
 
-    private bool ShouldFaultUpload() => Interlocked.Increment(ref _uploadCount) > throwAfterN + 1;
+    private bool ShouldFaultUpload() => Interlocked.Increment(ref _uploadCount) > throwAfterN;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => inner.CreateContainerIfNotExistsAsync(cancellationToken);
@@ -71,6 +71,21 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
 
     public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
         => inner.DeleteAsync(blobName, cancellationToken);
+}
+
+public class FaultingBlobServiceTests
+{
+    [Test]
+    public async Task UploadAsync_Throws_On_First_Faultable_Upload_After_ThrowAfterN_Successes()
+    {
+        var inner = Substitute.For<IBlobContainerService>();
+        var sut = new FaultingBlobService(inner, throwAfterN: 1);
+
+        await sut.UploadAsync("chunks/one", new MemoryStream([1]), new Dictionary<string, string>(), BlobTier.Hot);
+
+        await Should.ThrowAsync<IOException>(async () =>
+            await sut.UploadAsync("chunks/two", new MemoryStream([2]), new Dictionary<string, string>(), BlobTier.Hot));
+    }
 }
 
 // ── Crash recovery tests ──────────────────────────────────────────────────────
@@ -208,13 +223,12 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         fix.WriteFile("large.bin", large);
         fix.WriteFile("small.txt", small);
 
-        // Allow all data uploads but crash when index shards are being uploaded.
-        // UploadAsync calls (OpenWriteAsync calls are NOT counted):
-        //   upload #1 = thin chunk for small.txt
-        //   upload #2 = index shard (FlushAsync)  ← crash here
-        //   upload #3 = snapshot (if reached)
-        // throwAfterN=1 → thin chunk succeeds, crashes on index shard upload
-        var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
+        // Allow the large-chunk stream open and the thin chunk upload, then crash when the
+        // chunk-index shard is uploaded.
+        //   faultable upload #1 = OpenWriteAsync for large.bin
+        //   faultable upload #2 = UploadAsync for small.txt thin chunk
+        //   faultable upload #3 = UploadAsync for the index shard  ← crash here
+        var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 2);
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
