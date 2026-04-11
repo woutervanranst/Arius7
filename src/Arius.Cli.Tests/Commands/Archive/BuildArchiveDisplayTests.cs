@@ -252,8 +252,10 @@ public class BuildArchiveDisplayTests
         await uploadingH.Handle(new ChunkUploadingEvent("t2", 200), CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("TAR #1");
-        output.ShouldContain("Uploading");
+        var tarLine = GetLineContaining(output, "TAR #1");
+
+        tarLine.ShouldContain("TAR #1");
+        tarLine.ShouldContain("Uploading");
     }
 
     // ── Truncation + size column ──────────────────────────────────────────────
