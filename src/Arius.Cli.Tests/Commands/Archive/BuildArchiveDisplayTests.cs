@@ -26,6 +26,9 @@ public class BuildArchiveDisplayTests
         return writer.ToString();
     }
 
+    private static string GetLineContaining(string output, string token)
+        => output.Split('\n').Select(line => line.TrimEnd('\r')).Single(line => line.Contains(token));
+
     // ── Stage headers ─────────────────────────────────────────────────────────
 
     [Test]
@@ -50,8 +53,11 @@ public class BuildArchiveDisplayTests
         state.IncrementFilesScanned(2048);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("2");  // 2 files scanned
-        output.ShouldContain("○"); // not complete
+        var scanningLine = GetLineContaining(output, "Scanning");
+
+        scanningLine.ShouldContain("○");
+        scanningLine.ShouldContain("Scanning");
+        scanningLine.ShouldContain("2 files");
     }
 
     [Test]
@@ -61,8 +67,10 @@ public class BuildArchiveDisplayTests
         state.SetScanComplete(1523, 5_000_000L);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("●");
-        output.ShouldContain("1");  // count shown
+        var scanningLine = GetLineContaining(output, "Scanning");
+
+        scanningLine.ShouldContain("●");
+        scanningLine.ShouldContain(1523.ToString("N0") + " files");
     }
 
     // ── 6.2 Hashing header with unique count + queue depth ───────────────────
@@ -76,8 +84,10 @@ public class BuildArchiveDisplayTests
         state.IncrementFilesUnique();
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("unique");
-        output.ShouldContain("3");
+        var hashingLine = GetLineContaining(output, "Hashing");
+
+        hashingLine.ShouldContain("Hashing");
+        hashingLine.ShouldContain("(3 unique)");
     }
 
     [Test]
@@ -87,8 +97,9 @@ public class BuildArchiveDisplayTests
         state.HashQueueDepth = () => 12;
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("pending");
-        output.ShouldContain("12");
+        var hashingLine = GetLineContaining(output, "Hashing");
+
+        hashingLine.ShouldContain("[12 pending]");
     }
 
     [Test]
@@ -98,7 +109,9 @@ public class BuildArchiveDisplayTests
         state.HashQueueDepth = () => 0;
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldNotContain("pending");
+        var hashingLine = GetLineContaining(output, "Hashing");
+
+        hashingLine.ShouldNotContain("pending");
     }
 
     // ── 6.3 Uploading header with queue depth ────────────────────────────────
@@ -111,8 +124,10 @@ public class BuildArchiveDisplayTests
         state.UploadQueueDepth = () => 3;
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("3");
-        output.ShouldContain("pending");
+        var uploadingLine = GetLineContaining(output, "Uploading");
+
+        uploadingLine.ShouldContain("Uploading");
+        uploadingLine.ShouldContain("[3 pending]");
     }
 
     [Test]
@@ -123,7 +138,9 @@ public class BuildArchiveDisplayTests
         state.SetSnapshotComplete();
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("●");
+        var uploadingLine = GetLineContaining(output, "Uploading");
+
+        uploadingLine.ShouldContain("●");
     }
 
     [Test]
@@ -134,7 +151,9 @@ public class BuildArchiveDisplayTests
         // SnapshotComplete NOT set
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
-        output.ShouldContain("○");
+        var uploadingLine = GetLineContaining(output, "Uploading");
+
+        uploadingLine.ShouldContain("○");
     }
 
     // ── 6.4 Per-file lines: only Hashing or Uploading ────────────────────────
