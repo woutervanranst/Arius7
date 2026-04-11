@@ -1,9 +1,10 @@
 using Arius.Core.Features.ContainerNamesQuery;
+using ContainerNamesQueryMessage = global::Arius.Core.Features.ContainerNamesQuery.ContainerNamesQuery;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 using Shouldly;
 
-namespace Arius.Core.Tests.ContainerNames;
+namespace Arius.Core.Tests.Features.ContainerNamesQuery;
 
 public class ContainerNamesQueryHandlerTests
 {
@@ -27,7 +28,7 @@ public class ContainerNamesQueryHandlerTests
         var handler = new ContainerNamesQueryHandler(serviceProvider);
 
         var results = new List<string>();
-        await foreach (var name in handler.Handle(new ContainerNamesQuery("account", "key"), CancellationToken.None))
+        await foreach (var name in handler.Handle(new ContainerNamesQueryMessage("account", "key"), CancellationToken.None))
         {
             results.Add(name);
         }

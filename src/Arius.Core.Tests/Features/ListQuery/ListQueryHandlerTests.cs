@@ -9,7 +9,7 @@ using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 
-namespace Arius.Core.Tests.ListQuery;
+namespace Arius.Core.Tests.Features.ListQuery;
 
 public class ListQueryHandlerTests
 {
@@ -253,8 +253,6 @@ public class ListQueryHandlerTests
         blobs.CreateCalled.ShouldBeFalse();
     }
 
-    // ── 3.3: recursive vs non-recursive ──────────────────────────────────────
-
     [Test]
     public async Task Handle_RecursiveFalse_YieldsOnlyImmediateChildren()
     {
@@ -300,8 +298,6 @@ public class ListQueryHandlerTests
         recursive.ShouldContain(e => e.RelativePath == "child/deep.txt");
     }
 
-    // ── 3.6: filename substring filter ───────────────────────────────────────
-
     [Test]
     public async Task Handle_FilenameFilter_CaseInsensitiveMatchOnFilesNotDirs()
     {
@@ -325,17 +321,13 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
 
-        // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
 
-        // Directories are NOT filtered — Photos/ should still appear
         results.ShouldContain(e => e.RelativePath == "Photos/");
         results.ShouldContain(e => e.RelativePath == "VACATION.jpg");
         results.ShouldNotContain(e => e.RelativePath == "sunset.jpg");
         results.ShouldNotContain(e => e.RelativePath == "readme.txt");
     }
-
-    // ── 3.8: directory merge flags ────────────────────────────────────────────
 
     [Test]
     public async Task Handle_DirectoryMerge_AllThreeKindsYieldedWithCorrectFlags()
@@ -351,7 +343,6 @@ public class ListQueryHandlerTests
             var cloudLocalHash  = FileTreeBlobSerializer.ComputeHash(cloudLocalTree, s_encryption);
             var cloudOnlyHash   = FileTreeBlobSerializer.ComputeHash(cloudOnlyTree, s_encryption);
 
-            // root has: cloud+local dir, cloud-only dir; local has: local-only dir
             var rootTree = new FileTreeBlob
             {
                 Entries =
@@ -396,8 +387,6 @@ public class ListQueryHandlerTests
         }
     }
 
-    // ── 3.9: per-directory batch size lookup ──────────────────────────────────
-
     [Test]
     public async Task Handle_BatchSizeLookup_CalledOncePerDirectory_SizeNullWhenNotInIndex()
     {
@@ -426,7 +415,6 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        // Only register "known.txt" — "unknown.txt" and "child-file.txt" have no size entry
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
         index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
@@ -443,12 +431,10 @@ public class ListQueryHandlerTests
         child.OriginalSize.ShouldBeNull();
     }
 
-    // ── 3.10: snapshot not found ──────────────────────────────────────────────
-
     [Test]
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
-        var blobs = new FakeSeededBlobContainerService(); // empty — no snapshot blob
+        var blobs = new FakeSeededBlobContainerService();
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-310", "ctr-310", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index);
 
@@ -480,18 +466,12 @@ public class ListQueryHandlerTests
         ex.Message.ShouldContain("9999-not-found");
     }
 
-    // ── 3.11: cancellation ────────────────────────────────────────────────────
-
     [Test]
     public async Task Handle_CancellationRequested_StopsEnumeration()
     {
-        // Build a deep tree: root → dir1 → dir2 → ... → dir10.
-        // Each level is a separate WalkDirectoryAsync call, so cancellation is
-        // checked at each level boundary (ThrowIfCancellationRequested at top of method).
         var leafTree = new FileTreeBlob { Entries = [] };
         var leafHash = FileTreeBlobSerializer.ComputeHash(leafTree, s_encryption);
 
-        // Build chain: level10 → level9 → … → level1 → root
         var currentHash  = leafHash;
         var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(leafHash), await FileTreeBlobSerializer.SerializeForStorageAsync(leafTree, s_encryption));
@@ -529,11 +509,8 @@ public class ListQueryHandlerTests
             }
         });
 
-        // Should have stopped well before all 10 levels were traversed
         collected.Count.ShouldBeLessThan(20);
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static SnapshotManifest MakeSnapshot(string rootHash) => new()
     {

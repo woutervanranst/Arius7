@@ -1,12 +1,10 @@
 using Arius.Core.Features.RestoreCommand;
 using Shouldly;
 
-namespace Arius.Core.Tests.Restore;
+namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class PricingConfigTests
 {
-    // ── 1.4a Default (embedded) loading ──────────────────────────────────────
-
     [Test]
     public void LoadEmbedded_ReturnsNonNullConfig()
     {
@@ -44,8 +42,6 @@ public class PricingConfigTests
         config.Archive.ReadOpsHighPer10000.ShouldBeGreaterThan(config.Archive.ReadOpsPer10000);
     }
 
-    // ── 1.4b Override from file ────────────────────────────────────────────────
-
     [Test]
     public void LoadFromFile_ValidOverride_ReturnsParsedRates()
     {
@@ -80,8 +76,6 @@ public class PricingConfigTests
             File.Delete(path);
         }
     }
-
-    // ── 1.4c Malformed file → clear error ─────────────────────────────────────
 
     [Test]
     public void LoadFromFile_MalformedJson_ThrowsInvalidOperationException()

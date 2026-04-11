@@ -1,7 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Shouldly;
 
-namespace Arius.Core.Tests.Restore;
+namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class RestoreCostCalculatorTests
 {
@@ -34,7 +34,7 @@ public class RestoreCostCalculatorTests
             rehydrationBytes: OneGBBytes, downloadBytes: 0,
             pricing: _pricing);
 
-        estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9);  // 1 GB * 1.0 EUR/GB
+        estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9);
     }
 
     [Test]
@@ -46,15 +46,12 @@ public class RestoreCostCalculatorTests
             rehydrationBytes: OneGBBytes, downloadBytes: 0,
             pricing: _pricing);
 
-        estimate.RetrievalCostHigh.ShouldBe(5.0, tolerance: 1e-9);  // 1 GB * 5.0 EUR/GB
+        estimate.RetrievalCostHigh.ShouldBe(5.0, tolerance: 1e-9);
     }
-
-    // ── 3.4b Read ops cost — per-operation, no batching ──────────────────────
 
     [Test]
     public void ReadOpsCost_10000Blobs_EqualsRate()
     {
-        // 10000 blobs → (10000/10000) * 2.0 = 2.0
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_000, chunksPendingRehydration: 0,
@@ -67,7 +64,6 @@ public class RestoreCostCalculatorTests
     [Test]
     public void ReadOpsCost_ScalesLinearly()
     {
-        // 10001 blobs → (10001/10000) * 2.0 = 2.0002
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_001, chunksPendingRehydration: 0,
@@ -80,7 +76,6 @@ public class RestoreCostCalculatorTests
     [Test]
     public void ReadOpsCost_SingleBlob_FractionalUnit()
     {
-        // 1 blob → (1/10000) * 2.0 = 0.0002
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
@@ -90,12 +85,9 @@ public class RestoreCostCalculatorTests
         estimate.ReadOpsCostStandard.ShouldBe(0.0002, tolerance: 1e-9);
     }
 
-    // ── 3.4c Write ops cost ────────────────────────────────────────────────────
-
     [Test]
     public void WriteOpsCost_ScalesProportionally()
     {
-        // 5000 blobs → (5000/10000) * 0.1 = 0.05
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 5_000, chunksPendingRehydration: 0,
@@ -105,12 +97,9 @@ public class RestoreCostCalculatorTests
         estimate.WriteOpsCost.ShouldBe(0.05, tolerance: 1e-9);
     }
 
-    // ── 3.4d Storage cost ─────────────────────────────────────────────────────
-
     [Test]
     public void StorageCost_Default1Month_EqualsGBTimesMonthlyRate()
     {
-        // 1 GB, 1 month, Hot storagePerGBPerMonth = 0.5 → 0.5
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
@@ -130,10 +119,8 @@ public class RestoreCostCalculatorTests
             pricing: _pricing,
             monthsStored: 3.0);
 
-        estimate.StorageCost.ShouldBe(1.5, tolerance: 1e-9);  // 0.5 * 3
+        estimate.StorageCost.ShouldBe(1.5, tolerance: 1e-9);
     }
-
-    // ── 3.4e Zero-chunk edge case ─────────────────────────────────────────────
 
     [Test]
     public void ZeroChunks_AllCostsAreZero()
@@ -154,13 +141,9 @@ public class RestoreCostCalculatorTests
         estimate.TotalHigh.ShouldBe(0.0);
     }
 
-    // ── 3.4f Computed totals ──────────────────────────────────────────────────
-
     [Test]
     public void TotalStandard_SumsAllComponents()
     {
-        // 1 GB, 1 blob → opsUnits = 1/10000 = 0.0001
-        // Standard total = 1*1.0 + 0.0001*2.0 + 0.0001*0.1 + 1*0.5 = 1.50021
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
@@ -173,7 +156,6 @@ public class RestoreCostCalculatorTests
     [Test]
     public void TotalHigh_SumsAllComponents()
     {
-        // High total = 1*5.0 + 0.0001*10.0 + 0.0001*0.1 + 1*0.5 = 5.50101
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,

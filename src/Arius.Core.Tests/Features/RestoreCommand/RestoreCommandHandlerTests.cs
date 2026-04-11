@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 
-namespace Arius.Core.Tests.Restore;
+namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class RestoreCommandHandlerTests
 {
@@ -36,7 +37,7 @@ public class RestoreCommandHandlerTests
             "ctr-restore-missing");
 
         var result = await handler.Handle(
-            new RestoreCommand(new RestoreOptions { RootDirectory = Path.GetTempPath() }),
+            new RestoreCommandMessage(new RestoreOptions { RootDirectory = Path.GetTempPath() }),
             CancellationToken.None);
 
         result.Success.ShouldBeFalse();
