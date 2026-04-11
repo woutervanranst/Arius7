@@ -1,125 +1,218 @@
-# ast-grep Rule Reference
+# ast-grep Rule Reference for C#
 
-This document provides comprehensive documentation for ast-grep rule syntax, covering all rule types and metavariables.
+This reference describes the main `ast-grep` rule building blocks using C# examples.
 
-## Introduction to ast-grep Rules
+The key mindset is:
+- use `ast-grep` for syntax shape
+- use Roslyn when you need semantics
 
-ast-grep rules are declarative specifications for matching and filtering Abstract Syntax Tree (AST) nodes. They enable structural code search and analysis by defining conditions an AST node must meet to be matched.
+## Rule Categories
 
-### Rule Categories
+`ast-grep` rules are usually built from three categories:
+- atomic rules: match one node by its own properties
+- relational rules: match a node by where it sits relative to other nodes
+- composite rules: combine smaller rules with logic
 
-ast-grep rules are categorized into three types:
+## Rule Object Shape
 
-* **Atomic Rules**: Match individual AST nodes based on intrinsic properties like code patterns (`pattern`), node type (`kind`), or text content (`regex`).
-* **Relational Rules**: Define conditions based on a target node's position or relationship to other nodes (e.g., `inside`, `has`, `precedes`, `follows`).
-* **Composite Rules**: Combine other rules using logical operations (AND, OR, NOT) to form complex matching criteria (e.g., `all`, `any`, `not`, `matches`).
+A rule object matches when all of its fields match.
 
-## Anatomy of an ast-grep Rule Object
+Common properties:
 
-The ast-grep rule object is the core configuration unit defining how ast-grep identifies and filters AST nodes. It's typically written in YAML format.
-
-### General Structure
-
-Every field within an ast-grep Rule Object is optional, but at least one "positive" key (e.g., `kind`, `pattern`) must be present.
-
-A node matches a rule if it satisfies all fields defined within that rule object, implying an implicit logical AND operation.
-
-For rules using metavariables that depend on prior matching, explicit `all` composite rules are recommended to guarantee execution order.
-
-### Rule Object Properties
-
-| Property | Type | Category | Purpose | Example |
-| :--- | :--- | :--- | :--- | :--- |
-| `pattern` | String or Object | Atomic | Matches AST node by code pattern. | `pattern: console.log($ARG)` |
-| `kind` | String | Atomic | Matches AST node by its kind name. | `kind: call_expression` |
-| `regex` | String | Atomic | Matches node's text by Rust regex. | `regex: ^[a-z]+$` |
-| `nthChild` | number, string, Object | Atomic | Matches nodes by their index within parent's children. | `nthChild: 1` |
-| `range` | RangeObject | Atomic | Matches node by character-based start/end positions. | `range: { start: { line: 0, column: 0 }, end: { line: 0, column: 10 } }` |
-| `inside` | Object | Relational | Target node must be inside node matching sub-rule. | `inside: { pattern: class $C { $$$ }, stopBy: end }` |
-| `has` | Object | Relational | Target node must have descendant matching sub-rule. | `has: { pattern: await $EXPR, stopBy: end }` |
-| `precedes` | Object | Relational | Target node must appear before node matching sub-rule. | `precedes: { pattern: return $VAL }` |
-| `follows` | Object | Relational | Target node must appear after node matching sub-rule. | `follows: { pattern: import $M from '$P' }` |
-| `all` | Array<Rule> | Composite | Matches if all sub-rules match. | `all: [ { kind: call_expression }, { pattern: foo($A) } ]` |
-| `any` | Array<Rule> | Composite | Matches if any sub-rules match. | `any: [ { pattern: foo() }, { pattern: bar() } ]` |
-| `not` | Object | Composite | Matches if sub-rule does not match. | `not: { pattern: console.log($ARG) }` |
-| `matches` | String | Composite | Matches if predefined utility rule matches. | `matches: my-utility-rule-id` |
+| Property | Category | Purpose | C# Example |
+| :--- | :--- | :--- | :--- |
+| `pattern` | Atomic | Match code by syntax pattern | `pattern: logger.LogError($EXCEPTION, $MESSAGE)` |
+| `kind` | Atomic | Match a specific syntax kind | `kind: method_declaration` |
+| `regex` | Atomic | Match node text with regex | `regex: ^I[A-Z]` |
+| `nthChild` | Atomic | Match by sibling position | `nthChild: 1` |
+| `range` | Atomic | Match by location | `range: { start: { line: 0, column: 0 }, end: { line: 5, column: 0 } }` |
+| `inside` | Relational | Node must appear inside another node | `inside: { kind: catch_clause, stopBy: end }` |
+| `has` | Relational | Node must contain a descendant match | `has: { pattern: await $EXPR, stopBy: end }` |
+| `precedes` | Relational | Node must appear before another match | `precedes: { pattern: return $VALUE }` |
+| `follows` | Relational | Node must appear after another match | `follows: { pattern: _logger.LogInformation($MSG) }` |
+| `all` | Composite | All sub-rules must match | `all: [ { kind: method_declaration }, { has: { pattern: await $EXPR, stopBy: end } } ]` |
+| `any` | Composite | Any sub-rule may match | `any: [ { pattern: logger.LogError($$$) }, { pattern: logger.LogWarning($$$) } ]` |
+| `not` | Composite | Sub-rule must not match | `not: { has: { kind: catch_clause, stopBy: end } }` |
+| `matches` | Composite | Reuse a named utility rule | `matches: is-log-call` |
 
 ## Atomic Rules
 
-Atomic rules match individual AST nodes based on their intrinsic properties.
+### `pattern`
 
-### pattern: String and Object Forms
+Use `pattern` first whenever the C# syntax shape is direct.
 
-The `pattern` rule matches a single AST node based on a code pattern.
-
-**String Pattern**: Directly matches using ast-grep's pattern syntax with metavariables.
+Simple string form:
 
 ```yaml
-pattern: console.log($ARG)
+rule:
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
 ```
 
-**Object Pattern**: Offers granular control for ambiguous patterns or specific contexts.
-
-* `selector`: Pinpoints a specific part of the parsed pattern to match.
-  ```yaml
-  pattern:
-    selector: field_definition
-    context: class { $F }
-  ```
-
-* `context`: Provides surrounding code context for correct parsing.
-
-* `strictness`: Modifies the pattern's matching algorithm (`cst`, `smart`, `ast`, `relaxed`, `signature`).
-  ```yaml
-  pattern:
-    context: foo($BAR)
-    strictness: relaxed
-  ```
-
-### kind: Matching by Node Type
-
-The `kind` rule matches an AST node by its `tree_sitter_node_kind` name, derived from the language's Tree-sitter grammar. Useful for targeting constructs like `call_expression` or `function_declaration`.
+For C#, object form is especially useful because declaration snippets often need context.
 
 ```yaml
-kind: call_expression
+rule:
+  pattern:
+    context: |
+      class C
+      {
+          public async Task LoadAsync()
+          {
+              await FetchAsync();
+          }
+      }
+    selector: method_declaration
 ```
 
-### regex: Text-Based Node Matching
+Use `context` and `selector` when you need real declaration nodes such as:
+- `method_declaration`
+- `property_declaration`
+- `class_declaration`
+- `record_declaration`
 
-The `regex` rule matches the entire text content of an AST node using a Rust regular expression. It's not a "positive" rule, meaning it matches any node whose text satisfies the regex, regardless of its structural kind.
+Without surrounding context, a snippet that looks like a method can parse as `local_function_statement`.
 
-### nthChild: Positional Node Matching
+Optional `strictness` values can refine matching when needed, but start with the default.
 
-The `nthChild` rule finds nodes by their 1-based index within their parent's children list, counting only named nodes by default.
+### `kind`
 
-* `number`: Matches the exact nth child. Example: `nthChild: 1`
-* `string`: Matches positions using An+B formula. Example: `2n+1`
-* `Object`: Provides granular control:
-  * `position`: `number` or An+B string.
-  * `reverse`: `true` to count from the end.
-  * `ofRule`: An ast-grep rule to filter the sibling list before counting.
+`kind` matches the tree-sitter node kind directly.
 
-### range: Position-Based Node Matching
+```yaml
+rule:
+  kind: invocation_expression
+```
 
-The `range` rule matches an AST node based on its character-based start and end positions. A `RangeObject` defines `start` and `end` fields, each with 0-based `line` and `column`. `start` is inclusive, `end` is exclusive.
+Useful C# kinds commonly worth checking:
+- `class_declaration`
+- `method_declaration`
+- `property_declaration`
+- `invocation_expression`
+- `await_expression`
+- `attribute_list`
+- `catch_clause`
+- `try_statement`
+- `local_declaration_statement`
+
+Confirm the exact kind with `--debug-query` before relying on it.
+
+### `regex`
+
+`regex` matches the full text of a node.
+
+Example: find identifiers or declarations whose text starts with `I`.
+
+```yaml
+rule:
+  kind: identifier
+  regex: ^I[A-Z]
+```
+
+Use this as a filter on top of structural matching, not as a replacement for structure.
+
+### `nthChild`
+
+Useful when order among named siblings matters.
+
+```yaml
+rule:
+  kind: parameter
+  nthChild: 1
+```
+
+This can help for queries like "first constructor parameter" once the surrounding rule narrows the scope.
+
+### `range`
+
+Use only when location is part of the task.
+
+```yaml
+rule:
+  range:
+    start: { line: 0, column: 0 }
+    end: { line: 20, column: 0 }
+```
 
 ## Relational Rules
 
-Relational rules filter targets based on their position relative to other AST nodes. They can include `stopBy` and `field` options.
+Relational rules are where many useful C# searches become practical.
 
-### inside: Matching Within a Parent Node
+Default advice: add `stopBy: end` unless you have a specific reason not to.
 
-Requires the target node to be inside another node matching the `inside` sub-rule.
+### `inside`
+
+Match nodes inside another syntax context.
+
+Example: `LogError` calls inside `catch` clauses.
 
 ```yaml
-inside:
-  pattern: class $C { $$$ }
-  stopBy: end
+rule:
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
+  inside:
+    kind: catch_clause
+    stopBy: end
 ```
 
-### has: Matching with a Descendant Node
+Example: `await` inside a method declaration.
 
-Requires the target node to have a descendant node matching the `has` sub-rule.
+```yaml
+rule:
+  pattern: await $EXPR
+  inside:
+    kind: method_declaration
+    stopBy: end
+```
+
+### `has`
+
+Match nodes that contain something else.
+
+Example: methods that contain `await`.
+
+```yaml
+rule:
+  kind: method_declaration
+  has:
+    pattern: await $EXPR
+    stopBy: end
+```
+
+Example: classes that have a `[Test]` attribute on any descendant member is usually too broad. Prefer narrowing with `kind` and `inside` instead of scanning huge descendants unnecessarily.
+
+### `precedes` and `follows`
+
+Use these when order matters inside a local sequence.
+
+Example: a log call before `return`.
+
+```yaml
+rule:
+  pattern: logger.LogInformation($MESSAGE)
+  precedes:
+    pattern: return $VALUE
+    stopBy: end
+```
+
+Example: `return` after a guard clause log call.
+
+```yaml
+rule:
+  pattern: return $VALUE
+  follows:
+    pattern: logger.LogWarning($MESSAGE)
+    stopBy: end
+```
+
+### `stopBy`
+
+`stopBy` controls how far the relational search travels.
+
+Useful values:
+- `neighbor`: default, often too shallow
+- `end`: usually the safest choice for C# body searches
+- rule object: stop when a boundary rule matches
+
+Example:
 
 ```yaml
 has:
@@ -127,81 +220,104 @@ has:
   stopBy: end
 ```
 
-### precedes and follows: Sequential Node Matching
-
-* `precedes`: Target node must appear before a node matching the `precedes` sub-rule.
-* `follows`: Target node must appear after a node matching the `follows` sub-rule.
-
-Both include `stopBy` but not `field`.
-
-### stopBy and field: Refining Relational Searches
-
-**stopBy**: Controls search termination for relational rules.
-
-* `"neighbor"` (default): Stops when immediate surrounding node doesn't match.
-* `"end"`: Searches to the end of the direction (root for `inside`, leaf for `has`).
-* `Rule object`: Stops when a surrounding node matches the provided rule (inclusive).
-
-**field**: Specifies a sub-node within the target node that should match the relational rule. Only for `inside` and `has`.
-
-**Best Practice**: When unsure, always use `stopBy: end` to ensure the search goes to the end of the direction.
-
 ## Composite Rules
 
-Composite rules combine atomic and relational rules using logical operations.
+### `all`
 
-### all: Conjunction (AND) of Rules
+Use `all` when multiple conditions must hold.
 
-Matches a node only if all sub-rules in the list match. Guarantees order of rule matching, important for metavariables.
-
-```yaml
-all:
-  - kind: call_expression
-  - pattern: console.log($ARG)
-```
-
-### any: Disjunction (OR) of Rules
-
-Matches a node if any sub-rules in the list match.
+Example: async methods that contain `await`.
 
 ```yaml
-any:
-  - pattern: console.log($ARG)
-  - pattern: console.warn($ARG)
-  - pattern: console.error($ARG)
+rule:
+  all:
+    - kind: method_declaration
+    - has:
+        pattern: await $EXPR
+        stopBy: end
 ```
 
-### not: Negation (NOT) of a Rule
+`all` is also the safest way to combine metavariable-dependent logic because it makes evaluation order explicit.
 
-Matches a node if the single sub-rule does not match.
+### `any`
+
+Use `any` for alternatives.
+
+Example: any common log level call.
 
 ```yaml
-not:
-  pattern: console.log($ARG)
+rule:
+  any:
+    - pattern: logger.LogDebug($$$ARGS)
+    - pattern: logger.LogInformation($$$ARGS)
+    - pattern: logger.LogWarning($$$ARGS)
+    - pattern: logger.LogError($$$ARGS)
 ```
 
-### matches: Rule Reuse and Utility Rules
+### `not`
 
-Takes a rule-id string, matching if the referenced utility rule matches. Enables rule reuse and recursive rules.
+Use `not` as a filter after you have already matched the main shape.
+
+Example: methods with `await` but without `try`.
+
+```yaml
+rule:
+  all:
+    - kind: method_declaration
+    - has:
+        pattern: await $EXPR
+        stopBy: end
+    - not:
+        has:
+          kind: try_statement
+          stopBy: end
+```
+
+This is often good enough for audits, but remember it is syntax-only.
+
+### `matches`
+
+Use `matches` to reuse utility rules when a query grows beyond one readable block.
+
+Example root config excerpt:
+
+```yaml
+utils:
+  is-log-call:
+    any:
+      - pattern: logger.LogDebug($$$ARGS)
+      - pattern: logger.LogInformation($$$ARGS)
+      - pattern: logger.LogWarning($$$ARGS)
+      - pattern: logger.LogError($$$ARGS)
+
+rule:
+  matches: is-log-call
+```
 
 ## Metavariables
 
-Metavariables are placeholders in patterns to match dynamic content in the AST.
+Metavariables are placeholders inside `pattern` values.
 
-### $VAR: Single Named Node Capture
+### `$VAR`
 
-Captures a single named node in the AST.
+Matches one named node.
 
-* **Valid**: `$META`, `$META_VAR`, `$_`
-* **Invalid**: `$invalid`, `$123`, `$KEBAB-CASE`
-* **Example**: `console.log($GREETING)` matches `console.log('Hello World')`.
-* **Reuse**: `$A == $A` matches `a == a` but not `a == b`.
+```yaml
+rule:
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
+```
 
-### $$VAR: Single Unnamed Node Capture
+Typical C# matches:
+- `$EXCEPTION` can match `ex`
+- `$MESSAGE` can match `"failed"`
 
-Captures a single unnamed node (e.g., operators, punctuation).
+Reusing the same metavariable name requires the same syntax subtree on both sides.
 
-**Example**: To match the operator in `a + b`, use `$$OP`.
+### `$$VAR`
+
+Matches one unnamed node such as punctuation or an operator.
+
+Example for binary operators:
 
 ```yaml
 rule:
@@ -211,87 +327,143 @@ rule:
     pattern: $$OP
 ```
 
-### $$$MULTI_META_VARIABLE: Multi-Node Capture
+### `$$$VAR`
 
-Matches zero or more AST nodes (non-greedy). Useful for variable numbers of arguments or statements.
+Matches zero or more nodes.
 
-* **Example**: `console.log($$$)` matches `console.log()`, `console.log('hello')`, and `console.log('debug:', key, value)`.
-* **Example**: `function $FUNC($$$ARGS) { $$$ }` matches functions with varying parameters/statements.
-
-### Non-Capturing Metavariables (_VAR)
-
-Metavariables starting with an underscore (`_`) are not captured. They can match different content even if named identically, optimizing performance.
-
-* **Example**: `$_FUNC($_FUNC)` matches `test(a)` and `testFunc(1 + 1)`.
-
-### Important Considerations for Metavariable Detection
-
-* **Syntax Matching**: Only exact metavariable syntax (e.g., `$A`, `$$B`, `$$$C`) is recognized.
-* **Exclusive Content**: Metavariable text must be the only text within an AST node.
-* **Non-working**: `obj.on$EVENT`, `"Hello $WORLD"`, `a $OP b`, `$jq`.
-
-The ast-grep playground is useful for debugging patterns and visualizing metavariables.
-
-## Common Patterns and Examples
-
-### Finding Functions with Specific Content
-
-Find functions that contain await expressions:
+Very useful for C# argument and statement lists.
 
 ```yaml
 rule:
-  kind: function_declaration
-  has:
-    pattern: await $EXPR
-    stopBy: end
+  pattern: logger.LogInformation($$$ARGS)
 ```
 
-### Finding Code Inside Specific Contexts
-
-Find console.log calls inside class methods:
+Also useful in declarations:
 
 ```yaml
 rule:
-  pattern: console.log($$$)
-  inside:
-    kind: method_definition
-    stopBy: end
+  pattern:
+    context: |
+      class C
+      {
+          void M($$$PARAMS)
+          {
+              $$$BODY
+          }
+      }
+    selector: method_declaration
 ```
 
-### Combining Multiple Conditions
+### Non-capturing names
 
-Find async functions that use await but don't have try-catch:
+Names beginning with `_` are non-capturing and may match different subtrees each time.
 
 ```yaml
+rule:
+  pattern: $_LOGGER.LogInformation($_MESSAGE)
+```
+
+### Metavariable limits
+
+Metavariables only work when they occupy the full AST node slot.
+
+These do not work reliably:
+- `Log$LEVEL`
+- `"value: $X"`
+- `prefix_$NAME`
+
+## C# Examples
+
+### Find methods containing `await`
+
+```yaml
+id: methods-containing-await
+language: csharp
 rule:
   all:
-    - kind: function_declaration
+    - kind: method_declaration
     - has:
         pattern: await $EXPR
         stopBy: end
-    - not:
-        has:
-          pattern: try { $$$ } catch ($E) { $$$ }
-          stopBy: end
 ```
 
-### Matching Multiple Alternatives
-
-Find any type of console method call:
+### Find `LogError` calls inside `catch`
 
 ```yaml
+id: log-error-in-catch
+language: csharp
 rule:
-  any:
-    - pattern: console.log($$$)
-    - pattern: console.warn($$$)
-    - pattern: console.error($$$)
-    - pattern: console.debug($$$)
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
+  inside:
+    kind: catch_clause
+    stopBy: end
 ```
 
-## Troubleshooting Tips
+### Find properties with expression bodies
 
-1. **Rule doesn't match**: Use `dump_syntax_tree` to see the actual AST structure
-2. **Relational rule issues**: Ensure `stopBy: end` is set for deep searches
-3. **Wrong node kind**: Check the language's Tree-sitter grammar for correct kind names
-4. **Metavariable not working**: Ensure it's the only content in its AST node
-5. **Pattern too complex**: Break it down into simpler sub-rules using `all`
+```yaml
+id: expression-bodied-properties
+language: csharp
+rule:
+  pattern:
+    context: |
+      class C
+      {
+          string Name => GetName();
+      }
+    selector: property_declaration
+```
+
+### Find methods annotated with `[Test]`
+
+```yaml
+id: test-methods
+language: csharp
+rule:
+  all:
+    - kind: method_declaration
+    - has:
+        kind: attribute_list
+        stopBy: end
+```
+
+If you need the specific attribute name, test the concrete pattern with real code and add a narrower `has` sub-rule from the inspected AST.
+
+### Find `using var` declarations
+
+```yaml
+id: using-var-declarations
+language: csharp
+rule:
+  pattern: using var $NAME = $VALUE;
+```
+
+## Debugging
+
+### Inspect how a pattern parses
+
+```bash
+ast-grep run --pattern 'class C { async Task LoadAsync() { await FetchAsync(); } }' \
+  --lang csharp \
+  --debug-query=pattern
+```
+
+### Check a rule against a sample file
+
+```bash
+ast-grep scan --rule rule.yml /path/to/sample.cs
+```
+
+### Search the repo once the rule is stable
+
+```bash
+ast-grep scan --rule rule.yml src
+```
+
+## Practical Advice
+
+1. Start with `pattern`, not `kind`.
+2. If declarations do not match, move to `pattern.context` plus `selector`.
+3. Add `stopBy: end` for `has` and `inside` unless you know you need a tighter boundary.
+4. Use `--debug-query=pattern` before trying to memorize C# node kinds.
+5. Escalate to Roslyn when the task depends on symbols or types.

@@ -1,323 +1,311 @@
 ---
 name: ast-grep
-description: Guide for writing ast-grep rules to perform structural code search and analysis. Use when users need to search codebases using Abstract Syntax Tree (AST) patterns, find specific code structures, or perform complex code queries that go beyond simple text search. This skill should be used when users ask to search for code patterns, find specific language constructs, or locate code with particular structural characteristics.
+description: Guide for writing ast-grep rules for C# structural code search and analysis. Use when users need to search C# codebases using AST patterns, find declarations or invocations by syntax shape, or perform structural queries that go beyond text search.
 ---
 
-# ast-grep Code Search
+# ast-grep for C#
 
 ## Overview
 
-This skill helps translate natural language queries into ast-grep rules for structural code search. ast-grep uses Abstract Syntax Tree (AST) patterns to match code based on its structure rather than just text, enabling powerful and precise code search across large codebases.
+This skill helps translate natural language queries into `ast-grep` rules for C# codebases. It is intentionally optimized for `--lang csharp` usage.
 
-## When to Use This Skill
+`ast-grep` is strongest when the question is about syntax shape rather than compiler semantics.
+
+Use it for:
+- finding invocations, declarations, attributes, `await`, `using`, `catch`, and similar syntax forms
+- locating code inside specific contexts such as methods, classes, or `catch` blocks
+- rewriting repetitive syntax patterns once the pattern is stable
+
+Do not treat it like Roslyn. It does not reliably answer semantic questions such as overload resolution, inheritance, symbol visibility, or type-flow analysis.
+
+## When To Use This Skill
 
 Use this skill when users:
-- Need to search for code patterns using structural matching (e.g., "find all async functions that don't have error handling")
-- Want to locate specific language constructs (e.g., "find all function calls with specific parameters")
-- Request searches that require understanding code structure rather than just text
-- Ask to search for code with particular AST characteristics
-- Need to perform complex code queries that traditional text search cannot handle
+- want structural C# search instead of plain text search
+- need to match declarations such as classes, methods, properties, records, or attributes
+- need to match invocation shapes such as `logger.LogError(...)`
+- need composite searches like "async methods with `await` but no `try`"
+- want a starting `ast-grep` rule or a corrected rule that currently does not match
 
-## General Workflow
+## Workflow
 
-Follow this process to help users write effective ast-grep rules:
+### 1. Clarify the target C# shape
 
-### Step 1: Understand the Query
+Establish:
+- what exact C# syntax should match
+- whether the user wants declarations, statements, expressions, or attributes
+- what should be excluded
+- whether syntax-only matching is sufficient, or whether the task really needs Roslyn
 
-Clearly understand what the user wants to find. Ask clarifying questions if needed:
-- What specific code pattern or structure are they looking for?
-- Which programming language?
-- Are there specific edge cases or variations to consider?
-- What should be included or excluded from matches?
+### 2. Build a minimal C# example first
 
-### Step 2: Create Example Code
+Write the smallest valid C# snippet that expresses the target shape.
 
-Write a simple code snippet that represents what the user wants to match. Save this to a temporary file for testing.
+Example target: methods containing `await`
 
-**Example:**
-If searching for "async functions that use await", create a test file:
-
-```javascript
-// test_example.js
-async function example() {
-  const result = await fetchData();
-  return result;
+```csharp
+class Sample
+{
+    async Task LoadAsync()
+    {
+        await FetchAsync();
+    }
 }
 ```
 
-### Step 3: Write the ast-grep Rule
+### 3. Start with the simplest rule
 
-Translate the pattern into an ast-grep rule. Start simple and add complexity as needed.
+Prefer this progression:
+1. `pattern` for direct syntax matches
+2. `kind` when you need a specific node type
+3. `has` or `inside` for relationships
+4. `all`, `any`, `not` for composition
 
-**Key principles:**
-- Always use `stopBy: end` for relational rules (`inside`, `has`) to ensure search goes to the end of the direction
-- Use `pattern` for simple structures
-- Use `kind` with `has`/`inside` for complex structures
-- Break complex queries into smaller sub-rules using `all`, `any`, or `not`
+For relational rules, default to `stopBy: end`.
 
-**Example rule file (test_rule.yml):**
+### 4. Watch for the main C# parsing pitfall
+
+Bare member snippets often parse as local statements instead of top-level declarations.
+
+Example:
+- `async Task LoadAsync() { await FetchAsync(); }` parses as `local_function_statement`
+- `class C { async Task LoadAsync() { await FetchAsync(); } }` contains a real `method_declaration`
+
+When you need declaration kinds such as `method_declaration`, prefer `pattern.context` with `selector`:
+
 ```yaml
-id: async-with-await
-language: javascript
+id: async-method-with-await
+language: csharp
 rule:
-  kind: function_declaration
-  has:
-    pattern: await $EXPR
-    stopBy: end
+  all:
+    - pattern:
+        context: |
+          class C
+          {
+              async Task M()
+              {
+                  await FetchAsync();
+              }
+          }
+        selector: method_declaration
+    - has:
+        pattern: await $EXPR
+        stopBy: end
 ```
 
-See `references/rule_reference.md` for comprehensive rule documentation.
+### 5. Inspect the AST before guessing
 
-### Step 4: Test the Rule
-
-Use ast-grep CLI to verify the rule matches the example code. There are two main approaches:
-
-**Option A: Test with inline rules (for quick iterations)**
-```bash
-echo "async function test() { await fetch(); }" | ast-grep scan --inline-rules "id: test
-language: javascript
-rule:
-  kind: function_declaration
-  has:
-    pattern: await \$EXPR
-    stopBy: end" --stdin
-```
-
-**Option B: Test with rule files (recommended for complex rules)**
-```bash
-ast-grep scan --rule test_rule.yml test_example.js
-```
-
-**Debugging if no matches:**
-1. Simplify the rule (remove sub-rules)
-2. Add `stopBy: end` to relational rules if not present
-3. Use `--debug-query` to understand the AST structure (see below)
-4. Check if `kind` values are correct for the language
-
-### Step 5: Search the Codebase
-
-Once the rule matches the example code correctly, search the actual codebase:
-
-**For simple pattern searches:**
-```bash
-ast-grep run --pattern 'console.log($ARG)' --lang javascript /path/to/project
-```
-
-**For complex rule-based searches:**
-```bash
-ast-grep scan --rule my_rule.yml /path/to/project
-```
-
-**For inline rules (without creating files):**
-```bash
-ast-grep scan --inline-rules "id: my-rule
-language: javascript
-rule:
-  pattern: \$PATTERN" /path/to/project
-```
-
-## ast-grep CLI Commands
-
-### Inspect Code Structure (--debug-query)
-
-Dump the AST structure to understand how code is parsed:
+Use `--debug-query=pattern` to see how `ast-grep` interprets your pattern.
 
 ```bash
-ast-grep run --pattern 'async function example() { await fetch(); }' \
-  --lang javascript \
-  --debug-query=cst
-```
-
-**Available formats:**
-- `cst`: Concrete Syntax Tree (shows all nodes including punctuation)
-- `ast`: Abstract Syntax Tree (shows only named nodes)
-- `pattern`: Shows how ast-grep interprets your pattern
-
-**Use this to:**
-- Find the correct `kind` values for nodes
-- Understand the structure of code you want to match
-- Debug why patterns aren't matching
-
-**Example:**
-```bash
-# See the structure of your target code
-ast-grep run --pattern 'class User { constructor() {} }' \
-  --lang javascript \
-  --debug-query=cst
-
-# See how ast-grep interprets your pattern
-ast-grep run --pattern 'class $NAME { $$$BODY }' \
-  --lang javascript \
+ast-grep run --pattern 'class C { async Task LoadAsync() { await FetchAsync(); } }' \
+  --lang csharp \
   --debug-query=pattern
 ```
 
-### Test Rules (scan with --stdin)
+Use this to confirm:
+- the node `kind`
+- whether a snippet became `method_declaration` or `local_function_statement`
+- where attributes, modifiers, and bodies sit in the tree
 
-Test a rule against code snippet without creating files:
+### 6. Test the rule against a small `.cs` file
+
+For C#, testing against a temporary file is usually clearer than piping fragments through stdin.
 
 ```bash
-echo "const x = await fetch();" | ast-grep scan --inline-rules "id: test
-language: javascript
+ast-grep scan --rule rule.yml /path/to/test-file.cs
+```
+
+### 7. Search the real codebase
+
+For simple searches:
+
+```bash
+ast-grep run --pattern 'logger.LogError($EXCEPTION, $MESSAGE)' --lang csharp src
+```
+
+For relational or composite rules:
+
+```bash
+ast-grep scan --rule rule.yml src
+```
+
+## Recommended CLI Usage
+
+### Inspect a pattern
+
+```bash
+ast-grep run --pattern 'class C { void M() { logger.LogError(ex, message); } }' \
+  --lang csharp \
+  --debug-query=pattern
+```
+
+### Inspect CST or AST for a file-backed snippet
+
+```bash
+ast-grep run --pattern 'class C { void M() {} }' --lang csharp --debug-query=cst
+ast-grep run --pattern 'class C { void M() {} }' --lang csharp --debug-query=ast
+```
+
+### Quick pattern search
+
+```bash
+ast-grep run --pattern 'await $EXPR' --lang csharp src
+```
+
+### Complex YAML rule search
+
+```bash
+ast-grep scan --rule my_rule.yml src
+```
+
+### Inline rules
+
+Inline rules are fine for short iterations, but YAML files are easier to debug once the rule uses `all`, `has`, `inside`, or `not`.
+
+```bash
+ast-grep scan --inline-rules 'id: log-error-in-catch
+language: csharp
 rule:
-  pattern: await \$EXPR" --stdin
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
+  inside:
+    pattern:
+      context: |
+        try
+        {
+            DoWork();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "failed");
+        }
+      selector: catch_clause
+    stopBy: end' src
 ```
 
-**Add --json for structured output:**
-```bash
-echo "const x = await fetch();" | ast-grep scan --inline-rules "..." --stdin --json
-```
+## C#-Specific Guidance
 
-### Search with Patterns (run)
+### Prefer valid declaration context
 
-Simple pattern-based search for single AST node matches:
+If matching declarations, wrap the example in a class or namespace and select the declaration node you actually care about.
 
-```bash
-# Basic pattern search
-ast-grep run --pattern 'console.log($ARG)' --lang javascript .
-
-# Search specific files
-ast-grep run --pattern 'class $NAME' --lang python /path/to/project
-
-# JSON output for programmatic use
-ast-grep run --pattern 'function $NAME($$$)' --lang javascript --json .
-```
-
-**When to use:**
-- Simple, single-node matches
-- Quick searches without complex logic
-- When you don't need relational rules (inside/has)
-
-### Search with Rules (scan)
-
-YAML rule-based search for complex structural queries:
-
-```bash
-# With rule file
-ast-grep scan --rule my_rule.yml /path/to/project
-
-# With inline rules
-ast-grep scan --inline-rules "id: find-async
-language: javascript
-rule:
-  kind: function_declaration
-  has:
-    pattern: await \$EXPR
-    stopBy: end" /path/to/project
-
-# JSON output
-ast-grep scan --rule my_rule.yml --json /path/to/project
-```
-
-**When to use:**
-- Complex structural searches
-- Relational rules (inside, has, precedes, follows)
-- Composite logic (all, any, not)
-- When you need the power of full YAML rules
-
-**Tip:** For relational rules (inside/has), always add `stopBy: end` to ensure complete traversal.
-
-## Tips for Writing Effective Rules
-
-### Always Use stopBy: end
-
-For relational rules, always use `stopBy: end` unless there's a specific reason not to:
+Good:
 
 ```yaml
-has:
-  pattern: await $EXPR
-  stopBy: end
+pattern:
+  context: |
+    class C
+    {
+        public string Name { get; set; }
+    }
+  selector: property_declaration
 ```
 
-This ensures the search traverses the entire subtree rather than stopping at the first non-matching node.
+Risky:
 
-### Start Simple, Then Add Complexity
-
-Begin with the simplest rule that could work:
-1. Try a `pattern` first
-2. If that doesn't work, try `kind` to match the node type
-3. Add relational rules (`has`, `inside`) as needed
-4. Combine with composite rules (`all`, `any`, `not`) for complex logic
-
-### Use the Right Rule Type
-
-- **Pattern**: For simple, direct code matching (e.g., `console.log($ARG)`)
-- **Kind + Relational**: For complex structures (e.g., "function containing await")
-- **Composite**: For logical combinations (e.g., "function with await but not in try-catch")
-
-### Debug with AST Inspection
-
-When rules don't match:
-1. Use `--debug-query=cst` to see the actual AST structure
-2. Check if metavariables are being detected correctly
-3. Verify the node `kind` matches what you expect
-4. Ensure relational rules are searching in the right direction
-
-### Escaping in Inline Rules
-
-When using `--inline-rules`, escape metavariables in shell commands:
-- Use `\$VAR` instead of `$VAR` (shell interprets `$` as variable)
-- Or use single quotes: `'$VAR'` works in most shells
-
-**Example:**
-```bash
-# Correct: escaped $
-ast-grep scan --inline-rules "rule: {pattern: 'console.log(\$ARG)'}" .
-
-# Or use single quotes
-ast-grep scan --inline-rules 'rule: {pattern: "console.log($ARG)"}' .
+```yaml
+pattern: public string Name { get; set; }
 ```
 
-## Common Use Cases
+### Useful C# kinds to expect
 
-### Find Functions with Specific Content
+Common kinds that are often useful in this repo style of work:
+- `class_declaration`
+- `method_declaration`
+- `property_declaration`
+- `invocation_expression`
+- `argument_list`
+- `attribute_list`
+- `catch_clause`
+- `await_expression`
+- `local_declaration_statement`
+- `using_directive`
 
-Find async functions that use await:
-```bash
-ast-grep scan --inline-rules "id: async-await
-language: javascript
+Always verify with `--debug-query` instead of trusting memory.
+
+### Start with invocation patterns before matching kinds
+
+For many C# searches, a direct invocation pattern is enough:
+
+```yaml
+rule:
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
+```
+
+Only add `kind: invocation_expression` when the simpler version is ambiguous or you need to compose more conditions.
+
+### Use `has` for body contents
+
+Find methods that contain `await`:
+
+```yaml
+id: methods-containing-await
+language: csharp
 rule:
   all:
-    - kind: function_declaration
+    - kind: method_declaration
     - has:
-        pattern: await \$EXPR
-        stopBy: end" /path/to/project
+        pattern: await $EXPR
+        stopBy: end
 ```
 
-### Find Code Inside Specific Contexts
+### Use `inside` for context
 
-Find console.log inside class methods:
-```bash
-ast-grep scan --inline-rules "id: console-in-class
-language: javascript
+Find `LogError` calls inside `catch` clauses:
+
+```yaml
+id: log-error-in-catch
+language: csharp
 rule:
-  pattern: console.log(\$\$\$)
+  pattern: logger.LogError($EXCEPTION, $MESSAGE)
   inside:
-    kind: method_definition
-    stopBy: end" /path/to/project
+    kind: catch_clause
+    stopBy: end
 ```
 
-### Find Code Missing Expected Patterns
+### Use `not` carefully
 
-Find async functions without try-catch:
-```bash
-ast-grep scan --inline-rules "id: async-no-trycatch
-language: javascript
+Find async methods that `await` but do not contain a `try` block:
+
+```yaml
+id: async-await-without-try
+language: csharp
 rule:
   all:
-    - kind: function_declaration
+    - kind: method_declaration
     - has:
-        pattern: await \$EXPR
+        pattern: await $EXPR
         stopBy: end
     - not:
         has:
-          pattern: try { \$\$\$ } catch (\$E) { \$\$\$ }
-          stopBy: end" /path/to/project
+          pattern:
+            context: |
+              try
+              {
+                  DoWork();
+              }
+              catch (Exception ex)
+              {
+                  Handle(ex);
+              }
+            selector: try_statement
+          stopBy: end
 ```
 
-## Resources
+This is syntax-only. It does not prove exception handling is sufficient.
 
-### references/
-Contains detailed documentation for ast-grep rule syntax:
-- `rule_reference.md`: Comprehensive ast-grep rule documentation covering atomic rules, relational rules, composite rules, and metavariables
+## Troubleshooting
 
-Load these references when detailed rule syntax information is needed.
+If a C# rule does not match:
+1. inspect the pattern with `--debug-query=pattern`
+2. if matching declarations, move to `pattern.context` plus `selector`
+3. add `stopBy: end` on `has` or `inside`
+4. simplify the rule until one sub-rule matches
+5. confirm the node kind from actual output instead of guessing
+
+## References
+
+Detailed syntax reference lives in:
+- `references/rule_reference.md`
+
+That reference is also C#-first and uses `--lang csharp` examples throughout.
