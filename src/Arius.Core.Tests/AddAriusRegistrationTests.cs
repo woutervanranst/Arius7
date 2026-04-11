@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 
-namespace Arius.Cli.Tests;
+namespace Arius.Core.Tests;
 
 public class AddAriusRegistrationTests
 {

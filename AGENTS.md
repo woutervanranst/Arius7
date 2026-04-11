@@ -4,9 +4,9 @@
 
 ## Way of Working
 
-- Work Test-Driven: first, write a failing test. Then, implement.
+- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run ALL the tests.
+- When making code changes, always run ALL the tests (on OSX you can skip Arius.Explorer.Tests since they are Windows-only).
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
@@ -30,6 +30,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - If a test file contains multiple classes, keep them together only when they share one tight theme or when the extra types are local test support.
 - Place tests in folders that mirror the production folders they target. Keep cross-feature scenario tests in an explicit scenario folder such as `Pipeline/`.
 - For top-level production files such as `src/Arius.Cli/DisplayHelpers.cs` or `src/Arius.Cli/CliBuilder.cs`, keep the matching tests at the test-project root rather than inventing extra folders.
+- When refactoring test layout mechanically, prefer same-project folder moves first. Only move tests between `*.Tests` projects when the primary production target clearly lives in another assembly, such as DI registration tests for `src/Arius.Core/ServiceCollectionExtensions.cs`.
 
 ## Code Style Preference
 

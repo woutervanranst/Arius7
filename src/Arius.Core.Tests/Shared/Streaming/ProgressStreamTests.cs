@@ -1,13 +1,7 @@
 using Arius.Core.Shared.Streaming;
 using Shouldly;
 
-namespace Arius.Core.Tests.Streaming;
-
-/// <summary>Synchronous IProgress implementation for deterministic testing.</summary>
-file sealed class SyncProgress<T>(Action<T> action) : IProgress<T>
-{
-    public void Report(T value) => action(value);
-}
+namespace Arius.Core.Tests.Shared.Streaming;
 
 public class ProgressStreamTests
 {

@@ -2,7 +2,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Shouldly;
 
-namespace Arius.Core.Tests.ChunkIndex;
+namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardSerializerLocalTests
 {

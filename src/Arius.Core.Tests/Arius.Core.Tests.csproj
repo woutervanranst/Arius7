@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+    <ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Shouldly;
 
-namespace Arius.Core.Tests.ChunkIndex;
+namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardTests
 {

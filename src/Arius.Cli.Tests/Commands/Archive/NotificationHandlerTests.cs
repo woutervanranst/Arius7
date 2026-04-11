@@ -1,21 +1,15 @@
 using Arius.Cli.Commands.Archive;
-using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Features.RestoreCommand;
 using Shouldly;
 
 namespace Arius.Cli.Tests;
 
-// ── 7.1 Archive notification handler unit tests ───────────────────────────────
-
 /// <summary>
-/// Verifies that each archive notification handler updates the correct
+/// Verifies that archive notification handlers update the correct
 /// <see cref="TrackedFile"/> state and aggregate counters on <see cref="ProgressState"/>.
 /// </summary>
 public class NotificationHandlerTests
 {
-    // ── FileScannedHandler (7.1) ──────────────────────────────────────────────
-
     [Test]
     public async Task FileScannedHandler_IncrementsFilesScannedAndBytesScanned()
     {
@@ -42,8 +36,6 @@ public class NotificationHandlerTests
         state.BytesScanned.ShouldBe(600L);
     }
 
-    // ── ScanCompleteHandler (7.2) ─────────────────────────────────────────────
-
     [Test]
     public async Task ScanCompleteHandler_SetsTotalsAndScanComplete()
     {
@@ -58,8 +50,6 @@ public class NotificationHandlerTests
         state.ScanComplete.ShouldBeTrue();
     }
 
-    // ── FileHashingHandler ────────────────────────────────────────────────────
-
     [Test]
     public async Task FileHashingHandler_AddsTrackedFile()
     {
@@ -72,8 +62,6 @@ public class NotificationHandlerTests
         state.TrackedFiles["foo/bar.bin"].State.ShouldBe(FileState.Hashing);
         state.TrackedFiles["foo/bar.bin"].TotalBytes.ShouldBe(1024L);
     }
-
-    // ── FileHashedHandler ─────────────────────────────────────────────────────
 
     [Test]
     public async Task FileHashedHandler_TransitionsToHashedAndIncrementsCounter()
@@ -90,8 +78,6 @@ public class NotificationHandlerTests
         state.TrackedFiles["a.bin"].State.ShouldBe(FileState.Hashed);
         state.ContentHashToPath["abc123"].ShouldContain("a.bin");
     }
-
-    // ── TarBundleStartedHandler (7.3) ─────────────────────────────────────────
 
     [Test]
     public async Task TarBundleStartedHandler_CreatesTrackedTar()
@@ -122,8 +108,6 @@ public class NotificationHandlerTests
         state.TrackedTars[3].BundleNumber.ShouldBe(3);
     }
 
-    // ── TarEntryAddedHandler (7.4) ────────────────────────────────────────────
-
     [Test]
     public async Task TarEntryAddedHandler_RemovesTrackedFileAndUpdatesTrackedTar()
     {
@@ -138,10 +122,7 @@ public class NotificationHandlerTests
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await tarEntryH.Handle(new TarEntryAddedEvent("def456", 1, 500), CancellationToken.None);
 
-        // File removed from TrackedFiles
         state.TrackedFiles.ContainsKey("small.txt").ShouldBeFalse();
-
-        // TrackedTar updated
         state.TrackedTars[1].FileCount.ShouldBe(1);
         state.TrackedTars[1].AccumulatedBytes.ShouldBe(500L);
     }
@@ -163,8 +144,6 @@ public class NotificationHandlerTests
         state.FilesUnique.ShouldBe(1L);
     }
 
-    // ── TarBundleSealingHandler ───────────────────────────────────────────────
-
     [Test]
     public async Task TarBundleSealingHandler_TransitionsToSealingAndSetsTarHash()
     {
@@ -181,8 +160,6 @@ public class NotificationHandlerTests
         state.TrackedTars[1].TarHash.ShouldBe("tar_xyz");
         state.TrackedTars[1].TotalBytes.ShouldBe(300L);
     }
-
-    // ── ChunkUploadingHandler (7.5) ───────────────────────────────────────────
 
     [Test]
     public async Task ChunkUploadingHandler_LargeFile_SetsUploadingAndIncrementsFilesUnique()
@@ -215,11 +192,8 @@ public class NotificationHandlerTests
         await uploadingH.Handle(new ChunkUploadingEvent("tar_hash_1", 200), CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
-        // FilesUnique should NOT be incremented for TAR bundle (only for large files)
         state.FilesUnique.ShouldBe(0L);
     }
-
-    // ── ChunkUploadedHandler ──────────────────────────────────────────────────
 
     [Test]
     public async Task ChunkUploadedHandler_RemovesFileAndIncrementsChunksUploaded()
@@ -239,8 +213,6 @@ public class NotificationHandlerTests
         state.ChunksUploaded.ShouldBe(1L);
         state.BytesUploaded.ShouldBe(4000L);
     }
-
-    // ── TarBundleUploadedHandler (7.4) ────────────────────────────────────────
 
     [Test]
     public async Task TarBundleUploadedHandler_RemovesTrackedTarAndIncrementsTarsUploaded()
@@ -263,8 +235,6 @@ public class NotificationHandlerTests
         state.ChunksUploaded.ShouldBe(1L);
     }
 
-    // ── SnapshotCreatedHandler ────────────────────────────────────────────────
-
     [Test]
     public async Task SnapshotCreatedHandler_SetsSnapshotComplete()
     {
@@ -275,60 +245,5 @@ public class NotificationHandlerTests
         await handler.Handle(new SnapshotCreatedEvent("roothash", DateTimeOffset.UtcNow, 10), CancellationToken.None);
 
         state.SnapshotComplete.ShouldBeTrue();
-    }
-
-    // ── RestoreStartedHandler ─────────────────────────────────────────────────
-
-    [Test]
-    public async Task RestoreStartedHandler_SetsRestoreTotalFiles()
-    {
-        var state   = new ProgressState();
-        var handler = new RestoreStartedHandler(state);
-
-        await handler.Handle(new RestoreStartedEvent(1000), CancellationToken.None);
-
-        state.RestoreTotalFiles.ShouldBe(1000);
-    }
-
-    // ── FileRestoredHandler ───────────────────────────────────────────────────
-
-    [Test]
-    public async Task FileRestoredHandler_IncrementsFilesRestored()
-    {
-        var state   = new ProgressState();
-        var handler = new FileRestoredHandler(state);
-
-        await handler.Handle(new FileRestoredEvent("dir/file.txt", 500L), CancellationToken.None);
-
-        state.FilesRestored.ShouldBe(1L);
-        state.BytesRestored.ShouldBe(500L);
-    }
-
-    // ── FileSkippedHandler ────────────────────────────────────────────────────
-
-    [Test]
-    public async Task FileSkippedHandler_IncrementsFilesSkipped()
-    {
-        var state   = new ProgressState();
-        var handler = new FileSkippedHandler(state);
-
-        await handler.Handle(new FileSkippedEvent("dir/existing.txt", 300L), CancellationToken.None);
-
-        state.FilesSkipped.ShouldBe(1L);
-        state.BytesSkipped.ShouldBe(300L);
-    }
-
-    // ── RehydrationStartedHandler ─────────────────────────────────────────────
-
-    [Test]
-    public async Task RehydrationStartedHandler_SetsChunkCount()
-    {
-        var state   = new ProgressState();
-        var handler = new RehydrationStartedHandler(state);
-
-        await handler.Handle(new RehydrationStartedEvent(7, 1024 * 1024), CancellationToken.None);
-
-        state.RehydrationChunkCount.ShouldBe(7);
-        state.RehydrationTotalBytes.ShouldBe(1024L * 1024L);
     }
 }
