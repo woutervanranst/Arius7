@@ -6,13 +6,12 @@
 
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run ALL the tests (on OSX you can skip Arius.Explorer.Tests since they are Windows-only).
+- When making code changes, always run ALL the tests (on non-Windows you can skip Arius.Explorer.Tests since they are Windows-only).
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
 
 - Always update `README.md` (for humans) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
-- The bundled `ast-grep` skill under `.agents/skills/ast-grep/` is C#-first. Use `--lang csharp`, prefer real declaration context with `pattern.context` and `selector`, and do not document generic multi-language examples there.
 
 ## Testing
 
@@ -26,19 +25,15 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
-- Prefer one top-level test class per file, with the filename matching the class name.
-- If a test file contains multiple classes, keep them together only when they share one tight theme or when the extra types are local test support.
-- Place tests in folders that mirror the production folders they target. Keep cross-feature scenario tests in an explicit scenario folder such as `Pipeline/`.
 - Put reusable test doubles in `Fakes/`.
 - Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
-- In `src/Arius.Cli.Tests`, put verb-specific tests under `Commands/<Verb>/` when they primarily exercise archive/restore/ls behavior, even if they touch shared CLI state such as `ProgressState`.
-- For truly top-level production files such as `src/Arius.Cli/DisplayHelpers.cs` or `src/Arius.Cli/CliBuilder.cs`, keep the matching tests at the test-project root rather than inventing extra folders.
-- When refactoring test layout mechanically, prefer same-project folder moves first. Only move tests between `*.Tests` projects when the primary production target clearly lives in another assembly, such as DI registration tests for `src/Arius.Core/ServiceCollectionExtensions.cs`.
 
 ## Code Style Preference
 
 - Make non-test classes `internal`. Only make them `public` when they must be consumed by another non-test assembly; for test access, prefer InternalsVisibleTo.
+- Prefer one top-level class per file, with the filename matching the class name.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
+
 
 ## Domain language
 
