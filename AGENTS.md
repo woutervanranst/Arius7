@@ -35,7 +35,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 ## Code Style Preference
 
-- Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
+- Make non-test classes `internal`. Only make them `public` when they must be consumed by another non-test assembly; for test access, prefer InternalsVisibleTo.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
 
 ## Domain language
