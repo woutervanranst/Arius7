@@ -149,6 +149,8 @@ public class RestoreCostCalculatorTests
     [Test]
     public void TotalStandard_SumsAllComponents()
     {
+        // 1 GB, 1 blob → opsUnits = 1/10000 = 0.0001
+        // Standard total = 1*1.0 + 0.0001*2.0 + 0.0001*0.1 + 1*0.5 = 1.50021
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
@@ -161,8 +163,7 @@ public class RestoreCostCalculatorTests
     [Test]
     public void TotalHigh_SumsAllComponents()
     {
-        // 1 GB, 1 blob → opsUnits = 1/10000 = 0.0001
-        // Standard total = 1*1.0 + 0.0001*2.0 + 0.0001*0.1 + 1*0.5 = 1.50021
+        // High total = 1*5.0 + 0.0001*10.0 + 0.0001*0.1 + 1*0.5 = 5.50101
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
