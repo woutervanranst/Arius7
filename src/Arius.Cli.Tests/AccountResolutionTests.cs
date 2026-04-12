@@ -10,6 +10,7 @@ public class AccountResolutionTests
     [Test]
     public void ResolveAccount_CliFlagOverridesEnvVar()
     {
+        var original = Environment.GetEnvironmentVariable("ARIUS_ACCOUNT");
         Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", "envacct");
         try
         {
@@ -18,13 +19,14 @@ public class AccountResolutionTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", null);
+            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", original);
         }
     }
 
     [Test]
     public void ResolveAccount_EnvVarUsedWhenCliFlagOmitted()
     {
+        var original = Environment.GetEnvironmentVariable("ARIUS_ACCOUNT");
         Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", "envacct");
         try
         {
@@ -33,24 +35,33 @@ public class AccountResolutionTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", null);
+            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", original);
         }
     }
 
     [Test]
     public async Task Archive_MissingAccountFromAllSources_ReturnsExitCode1()
     {
+        var original = Environment.GetEnvironmentVariable("ARIUS_ACCOUNT");
         Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", null);
-        var harness = new CliHarness();
-        var exitCode = await harness.InvokeAsync("archive /data -k key -c ctr");
+        try
+        {
+            var harness = new CliHarness();
+            var exitCode = await harness.InvokeAsync("archive /data -k key -c ctr");
 
-        exitCode.ShouldBe(1);
-        harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
+            exitCode.ShouldBe(1);
+            harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", original);
+        }
     }
 
     [Test]
     public async Task ListQuery_EnvVarAccountUsedWhenCliFlagOmitted()
     {
+        var original = Environment.GetEnvironmentVariable("ARIUS_ACCOUNT");
         Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", "envacct");
         try
         {
@@ -62,7 +73,7 @@ public class AccountResolutionTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", null);
+            Environment.SetEnvironmentVariable("ARIUS_ACCOUNT", original);
         }
     }
 }
