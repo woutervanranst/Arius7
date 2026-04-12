@@ -83,6 +83,9 @@ public sealed class FileTreeService
     {
         var diskPath = Path.Combine(_diskCacheDir, hash);
 
+        // Avoid race conditions between concurrent readers and writers for the same hash by
+        // coordinating via a per-hash in-flight task.
+        //
         // Keep cache hits lock-free: immutable filetrees can be served straight from disk.
         // The subtle part is cache population on a miss. Another concurrent caller may probe the
         // same path while the first caller is still publishing the cache file. If we expose a
@@ -116,8 +119,6 @@ public sealed class FileTreeService
 
         try
         {
-            // This cache probe is intentionally synchronous so callers do not block on an
-            // async file read via GetResult(), which can deadlock under some sync contexts.
             var cached = File.ReadAllBytes(diskPath);
             if (cached.Length == 0)
                 return null;
