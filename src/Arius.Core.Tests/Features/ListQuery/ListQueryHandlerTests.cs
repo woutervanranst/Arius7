@@ -325,8 +325,10 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
 
+        // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
 
+         // Directories are NOT filtered — Photos/ should still appear
         results.ShouldContain(e => e.RelativePath == "Photos/");
         results.ShouldContain(e => e.RelativePath == "VACATION.jpg");
         results.ShouldNotContain(e => e.RelativePath == "sunset.jpg");
@@ -347,6 +349,7 @@ public class ListQueryHandlerTests
             var cloudLocalHash  = FileTreeBlobSerializer.ComputeHash(cloudLocalTree, s_encryption);
             var cloudOnlyHash   = FileTreeBlobSerializer.ComputeHash(cloudOnlyTree, s_encryption);
 
+            // root has: cloud+local dir, cloud-only dir; local has: local-only dir
             var rootTree = new FileTreeBlob
             {
                 Entries =
@@ -473,9 +476,13 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_CancellationRequested_StopsEnumeration()
     {
+        // Build a deep tree: root → dir1 → dir2 → ... → dir10.
+        // Each level is a separate WalkDirectoryAsync call, so cancellation is
+        // checked at each level boundary (ThrowIfCancellationRequested at top of method).
         var leafTree = new FileTreeBlob { Entries = [] };
         var leafHash = FileTreeBlobSerializer.ComputeHash(leafTree, s_encryption);
 
+        // Build chain: level10 → level9 → … → level1 → root
         var currentHash  = leafHash;
         var blobs = new FakeSeededBlobContainerService();
         blobs.AddBlob(BlobPaths.FileTree(leafHash), await FileTreeBlobSerializer.SerializeForStorageAsync(leafTree, s_encryption));
@@ -513,8 +520,11 @@ public class ListQueryHandlerTests
             }
         });
 
+        // Should have stopped well before all 10 levels were traversed
         collected.Count.ShouldBeLessThan(20);
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static SnapshotManifest MakeSnapshot(string rootHash) => new()
     {
