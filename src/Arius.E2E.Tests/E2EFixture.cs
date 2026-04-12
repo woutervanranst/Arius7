@@ -106,17 +106,17 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public string WriteFile(string relativePath, byte[] content)
     {
-        var full = Path.Combine(LocalRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        var full = CombineValidatedRelativePath(LocalRoot, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllBytes(full, content);
         return full;
     }
 
     public byte[] ReadRestored(string relativePath)
-        => File.ReadAllBytes(Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
     public bool RestoredExists(string relativePath)
-        => File.Exists(Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
     private ArchiveCommandHandler CreateArchiveHandler() =>
         new(
@@ -171,5 +171,19 @@ public sealed class E2EFixture : IAsyncDisposable
             Directory.Delete(cacheDir, recursive: true);
 
         await Task.CompletedTask;
+    }
+
+    internal static string CombineValidatedRelativePath(string rootPath, string relativePath)
+    {
+        // These helpers should only touch files under the fixture roots; rejecting rooted
+        // and parent-traversal inputs keeps accidental path escapes out of test code.
+        if (Path.IsPathRooted(relativePath))
+            throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
+
+        var parts = relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Contains("..", StringComparer.Ordinal))
+            throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
+
+        return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
     }
 }
