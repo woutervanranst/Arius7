@@ -101,20 +101,6 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
 `src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
 
-## Archive Finalization
-
-Archive writes a temporary `archive manifest` on disk, externally sorts it, builds/uploads
-filetrees, flushes chunk-index shards, and only then creates the snapshot.
-
-Chunk-index flush and filetree upload now run in parallel during finalization, but snapshot
-creation is still the only repository commit point. If a run crashes after some shard or
-filetree uploads but before the snapshot is written, that work is treated as incomplete
-state rather than a completed archive.
-
-To keep the domain language precise, use `archive manifest` for the temporary tree-build
-input file and `snapshot` or `snapshot manifest` for the durable repository state stored
-under `snapshots/`.
-
 ## Updating
 
 Run:
