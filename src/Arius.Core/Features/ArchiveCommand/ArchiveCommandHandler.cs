@@ -475,29 +475,33 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             // Task 8.10 / 8.11: overlap independent finalization work.
             await manifestWriter.DisposeAsync();
 
-            var flushTask = Task.Run(async () =>
+            string? rootHash = null;
+
+            async Task FlushFinalizationAsync(CancellationToken ct)
             {
                 var flushProgress = new Progress<(int Completed, int Total)>(update =>
-                    _mediator.Publish(new ChunkIndexFlushProgressEvent(update.Completed, update.Total), cancellationToken).AsTask().GetAwaiter().GetResult());
+                    _mediator.Publish(new ChunkIndexFlushProgressEvent(update.Completed, update.Total), ct).AsTask().GetAwaiter().GetResult());
 
-                await _chunkIndex.FlushAsync(flushProgress, cancellationToken);
+                await _chunkIndex.FlushAsync(flushProgress, ct);
                 _logger.LogInformation("[index] Flush complete");
-            }, cancellationToken);
+            }
 
-            var treeTask = Task.Run(async () =>
+            async Task BuildTreeAsync(CancellationToken ct)
             {
-                await ManifestSorter.SortAsync(manifestPath, cancellationToken);
+                await ManifestSorter.SortAsync(manifestPath, ct);
 
                 var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
                 var treeProgress = new Progress<(int Completed, int Total)>(update =>
-                    _mediator.Publish(new TreeUploadProgressEvent(update.Completed, update.Total), cancellationToken).AsTask().GetAwaiter().GetResult());
+                    _mediator.Publish(new TreeUploadProgressEvent(update.Completed, update.Total), ct).AsTask().GetAwaiter().GetResult());
 
-                return await treeBuilder.BuildAsync(manifestPath, treeProgress, cancellationToken);
-            }, cancellationToken);
+                rootHash = await treeBuilder.BuildAsync(manifestPath, treeProgress, ct);
+            }
 
-            await Task.WhenAll(flushTask, treeTask);
+            await Parallel.ForEachAsync(
+                new Func<CancellationToken, Task>[] { FlushFinalizationAsync, BuildTreeAsync },
+                new ParallelOptions { MaxDegreeOfParallelism = 2, CancellationToken = cancellationToken },
+                async (work, ct) => await work(ct));
 
-            var rootHash = await treeTask;
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
 
             string?        snapshotRootHash = null;

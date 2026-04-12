@@ -61,33 +61,31 @@ public sealed class FileTreeBuilder
         var uploadsQueued = 0;
         var uploadsCompleted = 0;
 
-        var consumers = Enumerable.Range(0, UploadWorkers)
-            .Select(_ => Task.Run(async () =>
+        var uploadTask = Parallel.ForEachAsync(
+            uploadChannel.Reader.ReadAllAsync(cancellationToken),
+            new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
+            async (upload, ct) =>
             {
-                await foreach (var upload in uploadChannel.Reader.ReadAllAsync(cancellationToken))
+                try
                 {
-                    try
-                    {
-                        var plaintext = await File.ReadAllBytesAsync(upload.SpoolPath, cancellationToken);
-                        var tree = FileTreeBlobSerializer.Deserialize(plaintext);
-                        await _fileTreeService.WriteAsync(upload.Hash, tree, cancellationToken);
+                    var plaintext = await File.ReadAllBytesAsync(upload.SpoolPath, ct);
+                    var tree = FileTreeBlobSerializer.Deserialize(plaintext);
+                    await _fileTreeService.WriteAsync(upload.Hash, tree, ct);
 
-                        var done = Interlocked.Increment(ref uploadsCompleted);
-                        if (progress is not null)
-                        {
-                            if (totalUploadsKnown.Task.IsCompletedSuccessfully)
-                                progress.Report((done, totalUploadsKnown.Task.Result));
-                            else
-                                bufferedProgress.Enqueue(done);
-                        }
-                    }
-                    finally
+                    var done = Interlocked.Increment(ref uploadsCompleted);
+                    if (progress is not null)
                     {
-                        try { File.Delete(upload.SpoolPath); } catch { /* best-effort cleanup */ }
+                        if (totalUploadsKnown.Task.IsCompletedSuccessfully)
+                            progress.Report((done, totalUploadsKnown.Task.Result));
+                        else
+                            bufferedProgress.Enqueue(done);
                     }
                 }
-            }, cancellationToken))
-            .ToArray();
+                finally
+                {
+                    try { File.Delete(upload.SpoolPath); } catch { /* best-effort cleanup */ }
+                }
+            });
 
         try
         {
@@ -119,6 +117,7 @@ public sealed class FileTreeBuilder
             {
                 uploadChannel.Writer.Complete();
                 totalUploadsKnown.TrySetResult(0);
+                await uploadTask;
                 return null;
             }
 
@@ -200,7 +199,7 @@ public sealed class FileTreeBuilder
                 progress?.Report((done, uploadsQueued));
 
             uploadChannel.Writer.Complete();
-            await Task.WhenAll(consumers);
+            await uploadTask;
 
             return rootHash;
         }
