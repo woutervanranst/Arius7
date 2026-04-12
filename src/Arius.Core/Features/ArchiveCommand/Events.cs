@@ -38,6 +38,12 @@ public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize
 /// <summary>A tar bundle was uploaded.</summary>
 public sealed record TarBundleUploadedEvent(string TarHash, long CompressedSize, int EntryCount) : INotification;
 
+/// <summary>Chunk-index flush progress update.</summary>
+public sealed record ChunkIndexFlushProgressEvent(int ShardsCompleted, int TotalShards) : INotification;
+
+/// <summary>Filetree upload progress update.</summary>
+public sealed record TreeUploadProgressEvent(int BlobsUploaded, int TotalBlobs) : INotification;
+
 /// <summary>Snapshot creation complete.</summary>
 public sealed record SnapshotCreatedEvent(string RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
 

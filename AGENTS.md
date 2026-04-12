@@ -42,6 +42,13 @@ Specialist agents
 - Snapshots are the repository commit point. Do not publish a snapshot until all referenced repository data is durably available.
 - Prefer designs that can rebuild or revalidate mutable repository metadata after cache loss, corruption, or cross-machine divergence.
 
+## Durability And Scale
+
+- Arius is a backup/archive tool. Prefer recoverability and correctness over throughput.
+- Snapshot creation is the only repository commit point. Chunk-index flushes and filetree uploads that complete before a snapshot exists are tentative partial state, not a completed archive.
+- Parallelize independent work when useful, but do not weaken crash recovery semantics to do it.
+- When local cache publication depends on remote durability, prefer a spool-then-publish flow: write tentative data outside the final cache path, upload it, then publish the final cache entry only after upload succeeds.
+
 ## Testing
 
 This project uses **TUnit** (not xUnit/NUnit). Key differences:
@@ -77,8 +84,9 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
   - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
 - **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
   - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+- **archive manifest**: the temporary per-run file-entry list written during archive, then externally sorted and consumed by `FileTreeBuilder`. It is not a durable repository commit object.
 - **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
-- **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
+- **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals. Snapshot creation is the repository commit point.
 
 - Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
 

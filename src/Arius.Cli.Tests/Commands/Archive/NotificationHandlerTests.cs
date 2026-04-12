@@ -245,4 +245,46 @@ public class NotificationHandlerTests
 
         state.SnapshotComplete.ShouldBeTrue();
     }
+
+    [Test]
+    public async Task ChunkIndexFlushProgressHandler_SetsFinalizationProgress()
+    {
+        var state = new ProgressState();
+        var handler = new ChunkIndexFlushProgressHandler(state);
+
+        await handler.Handle(new ChunkIndexFlushProgressEvent(2, 5), CancellationToken.None);
+
+        state.ChunkIndexFlushCompletedShards.ShouldBe(2);
+        state.ChunkIndexFlushTotalShards.ShouldBe(5);
+    }
+
+    [Test]
+    public async Task TreeUploadProgressHandler_SetsFinalizationProgress()
+    {
+        var state = new ProgressState();
+        var handler = new TreeUploadProgressHandler(state);
+
+        await handler.Handle(new TreeUploadProgressEvent(4, 7), CancellationToken.None);
+
+        state.TreeUploadCompletedBlobs.ShouldBe(4);
+        state.TreeUploadTotalBlobs.ShouldBe(7);
+    }
+
+    [Test]
+    public async Task FinalizationProgressHandlers_KeepLatestCounts_WhenEventsArriveOutOfOrder()
+    {
+        var state = new ProgressState();
+        var flushHandler = new ChunkIndexFlushProgressHandler(state);
+        var treeHandler = new TreeUploadProgressHandler(state);
+
+        await flushHandler.Handle(new ChunkIndexFlushProgressEvent(3, 5), CancellationToken.None);
+        await flushHandler.Handle(new ChunkIndexFlushProgressEvent(2, 5), CancellationToken.None);
+        await treeHandler.Handle(new TreeUploadProgressEvent(4, 7), CancellationToken.None);
+        await treeHandler.Handle(new TreeUploadProgressEvent(1, 7), CancellationToken.None);
+
+        state.ChunkIndexFlushCompletedShards.ShouldBe(2);
+        state.ChunkIndexFlushTotalShards.ShouldBe(5);
+        state.TreeUploadCompletedBlobs.ShouldBe(1);
+        state.TreeUploadTotalBlobs.ShouldBe(7);
+    }
 }

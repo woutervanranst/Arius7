@@ -54,6 +54,8 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new TarBundleSealingEvent(1, 100, "tar1", ["hash1"]));
         await mediator.Publish(new ChunkUploadingEvent("tar1", 100));
         await mediator.Publish(new TarBundleUploadedEvent("tar1", 80, 1));
+        await mediator.Publish(new ChunkIndexFlushProgressEvent(2, 4));
+        await mediator.Publish(new TreeUploadProgressEvent(3, 5));
         await mediator.Publish(new SnapshotCreatedEvent("root", DateTimeOffset.UtcNow, 1));
 
         // Verify ProgressState was updated
@@ -62,6 +64,10 @@ public class MediatorEventRoutingIntegrationTests
         state.ScanComplete.ShouldBeTrue();
         state.FilesHashed.ShouldBe(1L);
         state.TarsUploaded.ShouldBe(1L);
+        state.ChunkIndexFlushCompletedShards.ShouldBe(2);
+        state.ChunkIndexFlushTotalShards.ShouldBe(4);
+        state.TreeUploadCompletedBlobs.ShouldBe(3);
+        state.TreeUploadTotalBlobs.ShouldBe(5);
         // a.bin was removed after tar entry added
         state.TrackedFiles.ContainsKey("a.bin").ShouldBeFalse();
         state.SnapshotComplete.ShouldBeTrue();
