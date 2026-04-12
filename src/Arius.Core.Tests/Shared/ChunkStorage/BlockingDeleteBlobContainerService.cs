@@ -26,8 +26,14 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
         if (Interlocked.Increment(ref _activeDeletes) >= 2)
             _sawConcurrentDeletes.TrySetResult();
 
-        await _releaseDeletes.Task.WaitAsync(cancellationToken);
-        Interlocked.Decrement(ref _activeDeletes);
+        try
+        {
+            await _releaseDeletes.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeDeletes);
+        }
     }
 
     public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
