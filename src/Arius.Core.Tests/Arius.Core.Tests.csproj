@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Mediator.SourceGenerator">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Shouldly" />
@@ -16,7 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
-    <ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>
