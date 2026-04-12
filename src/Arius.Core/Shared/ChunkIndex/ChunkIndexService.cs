@@ -20,6 +20,7 @@ public sealed class ChunkIndexService : IDisposable
     // ── Configuration ─────────────────────────────────────────────────────────
 
     public const long DefaultCacheBudgetBytes = 512L * 1024 * 1024; // 512 MB
+    private const int FlushWorkers = 32;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -138,46 +139,57 @@ public sealed class ChunkIndexService : IDisposable
     /// Merges all pending entries into existing shards and uploads changed shards.
     /// Should be called once at the end of an archive run.
     /// </summary>
-    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    public async Task FlushAsync(IProgress<(int Completed, int Total)>? progress = null, CancellationToken cancellationToken = default)
     {
         if (_pendingEntries.IsEmpty) 
             return;
 
-        // Group pending entries by shard prefix
-        var byPrefix = _pendingEntries.GroupBy(e => Shard.PrefixOf(e.ContentHash));
+        // Snapshot and clear pending before launching workers so this flush operation has a
+        // stable prefix set and new entries recorded later are left for the next flush.
+        var pending = new List<ShardEntry>();
+        while (_pendingEntries.TryTake(out var entry))
+            pending.Add(entry);
 
-        foreach (var group in byPrefix)
-        {
-            var prefix   = group.Key;
-            var existing = await LoadShardAsync(prefix, cancellationToken);
-            var merged   = existing.Merge(group);
+        var byPrefix = pending
+            .GroupBy(e => Shard.PrefixOf(e.ContentHash))
+            .Select(group => (Prefix: group.Key, Entries: group.ToList()))
+            .ToList();
 
-            // Serialize and upload
-            var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
-            var blobName = BlobPaths.ChunkIndexShard(prefix);
+        var total = byPrefix.Count;
+        var completed = 0;
 
-            await _blobs.UploadAsync(
-                blobName: blobName,
-                content: new MemoryStream(bytes),
-                metadata: new Dictionary<string, string>(),
-                tier: BlobTier.Cool,
-                contentType: _encryption.IsEncrypted
-                    ? ContentTypes.ChunkIndexGcmEncrypted
-                    : ContentTypes.ChunkIndexPlaintext,
-                overwrite: true,
-                cancellationToken: cancellationToken);
+        await Parallel.ForEachAsync(
+            byPrefix,
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (group, ct) =>
+            {
+                var existing = await LoadShardAsync(group.Prefix, ct);
+                var merged   = existing.Merge(group.Entries);
 
-            // Save to L2 disk cache (plaintext, no gzip/encryption)
-            SaveToL2(prefix, merged);
+                // Serialize and upload
+                var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, ct);
+                var blobName = BlobPaths.ChunkIndexShard(group.Prefix);
 
-            // Promote merged shard to L1
-            PromoteToL1(prefix, merged, bytes.Length);
-        }
+                await _blobs.UploadAsync(
+                    blobName: blobName,
+                    content: new MemoryStream(bytes),
+                    metadata: new Dictionary<string, string>(),
+                    tier: BlobTier.Cool,
+                    contentType: _encryption.IsEncrypted
+                        ? ContentTypes.ChunkIndexGcmEncrypted
+                        : ContentTypes.ChunkIndexPlaintext,
+                    overwrite: true,
+                    cancellationToken: ct);
 
-        // Clear pending
-        while (_pendingEntries.TryTake(out _))
-        {
-        }
+                // Save to L2 disk cache (plaintext, no gzip/encryption)
+                SaveToL2(group.Prefix, merged);
+
+                // Promote merged shard to L1
+                PromoteToL1(group.Prefix, merged, bytes.Length);
+
+                var done = Interlocked.Increment(ref completed);
+                progress?.Report((done, total));
+            });
     }
 
     // ── Tier resolution ───────────────────────────────────────────────────────
