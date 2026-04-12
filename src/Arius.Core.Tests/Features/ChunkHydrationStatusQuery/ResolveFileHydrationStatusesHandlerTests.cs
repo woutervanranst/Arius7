@@ -5,7 +5,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Shouldly;
 using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
 using ChunkHydrationStatusQueryMessage = global::Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery;
@@ -51,7 +51,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
             new ChunkStorageService(blobs, s_encryption),
-            NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
+            new FakeLogger<ChunkHydrationStatusQueryHandler>());
 
         var files = new[]
         {
@@ -95,7 +95,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
             new ChunkStorageService(blobs, s_encryption),
-            NullLogger<ChunkHydrationStatusQueryHandler>.Instance);
+            new FakeLogger<ChunkHydrationStatusQueryHandler>());
 
         var files = new[]
         {

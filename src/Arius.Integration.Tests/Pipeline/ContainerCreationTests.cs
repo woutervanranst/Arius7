@@ -9,7 +9,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Shouldly;
 
@@ -43,10 +43,11 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var encryption = new PlaintextPassthroughService();
         var index      = new ChunkIndexService(svc, encryption, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
+        var logger     = new FakeLogger<ArchiveCommandHandler>();
         var handler    = new ArchiveCommandHandler(
             svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, index, Account, containerName),
             new SnapshotService(svc, encryption, Account, containerName), mediator,
-            NullLogger<ArchiveCommandHandler>.Instance,
+            logger,
             Account, containerName);
 
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-cc-{Guid.NewGuid():N}");

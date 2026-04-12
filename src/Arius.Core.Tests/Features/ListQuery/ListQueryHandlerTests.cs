@@ -5,7 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Shouldly;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
@@ -48,11 +48,12 @@ public class ListQueryHandlerTests
 
         var fileTreeService   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
+        var logger = new FakeLogger<ListQueryHandler>();
         var handler = new ListQueryHandler(
             index,
             fileTreeService,
             snapshotSvc,
-            NullLogger<ListQueryHandler>.Instance,
+            logger,
             "acct-ls-test-1",
             "ctr-ls-test-1");
 
@@ -124,11 +125,12 @@ public class ListQueryHandlerTests
 
         var treeCache2   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
+        var logger = new FakeLogger<ListQueryHandler>();
         var handler = new ListQueryHandler(
             index,
             treeCache2,
             snapshotSvc2,
-            NullLogger<ListQueryHandler>.Instance,
+            logger,
             "acct-ls-test-2",
             "ctr-ls-test-2");
 
@@ -184,11 +186,12 @@ public class ListQueryHandlerTests
 
             var treeCache3   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
+            var logger = new FakeLogger<ListQueryHandler>();
             var handler = new ListQueryHandler(
                 index,
                 treeCache3,
                 snapshotSvc3,
-                NullLogger<ListQueryHandler>.Instance,
+                logger,
                 "acct-ls-test-3",
                 "ctr-ls-test-3");
 
@@ -240,7 +243,8 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing", cacheBudgetBytes: 1024 * 1024);
         var fileTreeService = new FileTreeService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
-        var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, NullLogger<ListQueryHandler>.Instance, "acct-ls-missing", "ctr-ls-missing");
+        var logger = new FakeLogger<ListQueryHandler>();
+        var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, "acct-ls-missing", "ctr-ls-missing");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -522,7 +526,7 @@ public class ListQueryHandlerTests
     };
 
     private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
-        new(index, new FileTreeService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), NullLogger<ListQueryHandler>.Instance, account, container);
+        new(index, new FileTreeService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), new FakeLogger<ListQueryHandler>(), account, container);
 
     private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
     {

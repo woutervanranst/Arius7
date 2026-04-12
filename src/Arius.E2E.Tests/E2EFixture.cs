@@ -10,7 +10,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
 namespace Arius.E2E.Tests;
@@ -26,6 +26,8 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly string _account;
     private readonly string _container;
     private readonly IMediator _mediator;
+    private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
+    private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
     private E2EFixture(
         IBlobContainerService blobContainer,
@@ -125,7 +127,7 @@ public sealed class E2EFixture : IAsyncDisposable
             FileTreeService,
             Snapshot,
             _mediator,
-            NullLogger<ArchiveCommandHandler>.Instance,
+            _archiveLogger,
             _account,
             _container);
 
@@ -137,7 +139,7 @@ public sealed class E2EFixture : IAsyncDisposable
             FileTreeService,
             Snapshot,
             _mediator,
-            NullLogger<RestoreCommandHandler>.Instance,
+            _restoreLogger,
             _account,
             _container);
 

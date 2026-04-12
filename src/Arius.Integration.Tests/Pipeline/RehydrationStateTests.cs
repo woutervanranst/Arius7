@@ -7,7 +7,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Shouldly;
 
@@ -71,13 +71,14 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
+        var logger = new FakeLogger<RestoreCommandHandler>();
         return new(fix.Encryption,
             index,
             new ChunkStorageService(sim, fix.Encryption),
             new FileTreeService(sim, fix.Encryption, index, Account, fix.Container.Name),
             new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
-            NullLogger<RestoreCommandHandler>.Instance,
+            logger,
             Account, fix.Container.Name);
     }
 

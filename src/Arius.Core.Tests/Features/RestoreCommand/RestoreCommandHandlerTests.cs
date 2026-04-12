@@ -5,7 +5,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Shouldly;
 using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
@@ -23,6 +23,7 @@ public class RestoreCommandHandlerTests
         var fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
         var snapshotSvc = new SnapshotService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<RestoreCommandHandler>();
 
         var handler = new RestoreCommandHandler(
             encryption,
@@ -31,7 +32,7 @@ public class RestoreCommandHandlerTests
             fileTreeService,
             snapshotSvc,
             mediator,
-            NullLogger<RestoreCommandHandler>.Instance,
+            logger,
             "acct-restore-missing",
             "ctr-restore-missing");
 

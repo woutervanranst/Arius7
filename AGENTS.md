@@ -24,7 +24,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
 
-- Use FakeLogger instead of NullLogger
+- Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
 - Prefer one top-level test class per file, with the filename matching the class name.
 - If a test file contains multiple classes, keep them together only when they share one tight theme or when the extra types are local test support.

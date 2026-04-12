@@ -100,6 +100,7 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
 `src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
+Tests that need `ILogger<T>` should use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>`.
 
 The bundled `ast-grep` skill in `.agents/skills/ast-grep/` is maintained as C#-first guidance. Its examples assume `--lang csharp` and prefer `pattern.context` plus `selector` when matching declarations such as methods or properties.
 

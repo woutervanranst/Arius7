@@ -8,6 +8,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging.Testing;
 using Shouldly;
 
 namespace Arius.E2E.Tests;
@@ -96,7 +97,7 @@ public class RehydrationE2ETests(AzureFixture azure)
                 new FileTreeService(trackingSvc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
+                new FakeLogger<RestoreCommandHandler>(),
                 container.AccountName, container.Name);
 
             var result1 = await restoreHandler1.Handle(new RestoreCommand(restoreOpts1), ct).AsTask();
@@ -120,7 +121,7 @@ public class RehydrationE2ETests(AzureFixture azure)
                 new FileTreeService(trackingSvc2, fix.Encryption, fix.Index, container.AccountName, container.Name),
                 new SnapshotService(trackingSvc2, fix.Encryption, container.AccountName, container.Name),
                 NSubstitute.Substitute.For<Mediator.IMediator>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
+                new FakeLogger<RestoreCommandHandler>(),
                 container.AccountName, container.Name);
 
             var restoreOpts2 = new RestoreOptions
@@ -169,7 +170,7 @@ public class RehydrationE2ETests(AzureFixture azure)
                     new FileTreeService(svc, fix.Encryption, fix.Index, container.AccountName, container.Name),
                     new SnapshotService(svc, fix.Encryption, container.AccountName, container.Name),
                     NSubstitute.Substitute.For<Mediator.IMediator>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<RestoreCommandHandler>.Instance,
+                    new FakeLogger<RestoreCommandHandler>(),
                     container.AccountName, container.Name);
 
                 var restoreOpts3 = new RestoreOptions
