@@ -1,13 +1,15 @@
-namespace Arius.Core.Tests.Shared.Encryption;
+namespace Arius.Core.Tests.Fakes.Scenarios.Encryption;
 
 internal sealed class ZeroStream(long length) : Stream
 {
+    private readonly long _length = length;
     private long _remaining = length;
+
     public override bool CanRead => true;
     public override bool CanWrite => false;
     public override bool CanSeek => false;
-    public override long Length => length;
-    public override long Position { get => length - _remaining; set => throw new NotSupportedException(); }
+    public override long Length => _length;
+    public override long Position { get => _length - _remaining; set => throw new NotSupportedException(); }
 
     public override int Read(byte[] buffer, int offset, int count)
     {

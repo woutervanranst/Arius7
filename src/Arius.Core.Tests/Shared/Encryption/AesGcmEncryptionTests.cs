@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Tests.Fakes.Scenarios.Encryption;
 using Shouldly;
 
 namespace Arius.Core.Tests.Shared.Encryption;
