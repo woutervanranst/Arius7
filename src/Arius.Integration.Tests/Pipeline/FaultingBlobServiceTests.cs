@@ -3,7 +3,7 @@ using Arius.Integration.Tests.Pipeline.Fakes;
 using NSubstitute;
 using Shouldly;
 
-namespace Arius.Integration.Tests.Pipeline.Fakes;
+namespace Arius.Integration.Tests.Pipeline;
 
 public class FaultingBlobServiceTests
 {
