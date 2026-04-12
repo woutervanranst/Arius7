@@ -8,7 +8,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using ArchiveCommandMessage = global::Arius.Core.Features.ArchiveCommand.ArchiveCommand;
 
@@ -22,6 +22,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly ChunkIndexService _index;
     private readonly PlaintextPassthroughService _encryption = new();
     private readonly IMediator _mediator = Substitute.For<IMediator>();
+    private readonly FakeLogger<ArchiveCommandHandler> _logger = new();
 
     public ArchiveTestEnvironment()
     {
@@ -64,7 +65,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             fileTreeService,
             snapshotSvc,
             _mediator,
-            NullLogger<ArchiveCommandHandler>.Instance,
+            _logger,
             AccountName,
             _containerName);
 
