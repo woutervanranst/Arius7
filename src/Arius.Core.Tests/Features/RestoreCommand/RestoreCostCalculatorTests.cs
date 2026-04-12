@@ -34,7 +34,7 @@ public class RestoreCostCalculatorTests
             rehydrationBytes: OneGBBytes, downloadBytes: 0,
             pricing: _pricing);
 
-        estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9);
+        estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9); // 1 GB * 1.0 EUR/GB
     }
 
     [Test]
@@ -46,12 +46,13 @@ public class RestoreCostCalculatorTests
             rehydrationBytes: OneGBBytes, downloadBytes: 0,
             pricing: _pricing);
 
-        estimate.RetrievalCostHigh.ShouldBe(5.0, tolerance: 1e-9);
+        estimate.RetrievalCostHigh.ShouldBe(5.0, tolerance: 1e-9);  // 1 GB * 5.0 EUR/GB
     }
 
     [Test]
     public void ReadOpsCost_10000Blobs_EqualsRate()
     {
+        // 10000 blobs → (10000/10000) * 2.0 = 2.0
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_000, chunksPendingRehydration: 0,
@@ -64,6 +65,7 @@ public class RestoreCostCalculatorTests
     [Test]
     public void ReadOpsCost_ScalesLinearly()
     {
+        // 10001 blobs → (10001/10000) * 2.0 = 2.0002
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_001, chunksPendingRehydration: 0,
@@ -76,6 +78,7 @@ public class RestoreCostCalculatorTests
     [Test]
     public void ReadOpsCost_SingleBlob_FractionalUnit()
     {
+        // 1 blob → (1/10000) * 2.0 = 0.0002
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
@@ -88,6 +91,7 @@ public class RestoreCostCalculatorTests
     [Test]
     public void WriteOpsCost_ScalesProportionally()
     {
+        // 5000 blobs → (5000/10000) * 0.1 = 0.05
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 5_000, chunksPendingRehydration: 0,
@@ -100,13 +104,14 @@ public class RestoreCostCalculatorTests
     [Test]
     public void StorageCost_Default1Month_EqualsGBTimesMonthlyRate()
     {
+        // 1 GB, 1 month, Hot storagePerGBPerMonth = 0.5 → 0.5
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
             rehydrationBytes: OneGBBytes, downloadBytes: 0,
             pricing: _pricing);
 
-        estimate.StorageCost.ShouldBe(0.5, tolerance: 1e-9);
+        estimate.StorageCost.ShouldBe(0.5, tolerance: 1e-9); // 0.5 * 3
     }
 
     [Test]
@@ -156,6 +161,8 @@ public class RestoreCostCalculatorTests
     [Test]
     public void TotalHigh_SumsAllComponents()
     {
+        // 1 GB, 1 blob → opsUnits = 1/10000 = 0.0001
+        // Standard total = 1*1.0 + 0.0001*2.0 + 0.0001*0.1 + 1*0.5 = 1.50021
         var estimate = RestoreCostCalculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
