@@ -29,7 +29,8 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Prefer one top-level test class per file, with the filename matching the class name.
 - If a test file contains multiple classes, keep them together only when they share one tight theme or when the extra types are local test support.
 - Place tests in folders that mirror the production folders they target. Keep cross-feature scenario tests in an explicit scenario folder such as `Pipeline/`.
-- Put reusable test doubles in `Fakes/`. Put scenario-specific test doubles in a separate subfolder `Fakes/` rather than duplicating them.
+- Put reusable test doubles in `Fakes/`.
+- Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
 - In `src/Arius.Cli.Tests`, put verb-specific tests under `Commands/<Verb>/` when they primarily exercise archive/restore/ls behavior, even if they touch shared CLI state such as `ProgressState`.
 - For truly top-level production files such as `src/Arius.Cli/DisplayHelpers.cs` or `src/Arius.Cli/CliBuilder.cs`, keep the matching tests at the test-project root rather than inventing extra folders.
 - When refactoring test layout mechanically, prefer same-project folder moves first. Only move tests between `*.Tests` projects when the primary production target clearly lives in another assembly, such as DI registration tests for `src/Arius.Core/ServiceCollectionExtensions.cs`.

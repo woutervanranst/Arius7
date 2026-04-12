@@ -2,7 +2,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
-using Arius.Core.Tests.Fakes.Scenarios.ChunkStorage;
+using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 using Shouldly;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;

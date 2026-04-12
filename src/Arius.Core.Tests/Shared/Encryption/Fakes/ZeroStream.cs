@@ -1,4 +1,4 @@
-namespace Arius.Core.Tests.Fakes.Scenarios.Encryption;
+namespace Arius.Core.Tests.Shared.Encryption.Fakes;
 
 internal sealed class ZeroStream(long length) : Stream
 {

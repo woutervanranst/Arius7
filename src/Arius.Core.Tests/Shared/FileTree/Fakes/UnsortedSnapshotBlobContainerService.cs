@@ -1,6 +1,6 @@
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Core.Tests.Fakes.Scenarios.FileTree;
+namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 
 internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string> snapshots) : IBlobContainerService
 {

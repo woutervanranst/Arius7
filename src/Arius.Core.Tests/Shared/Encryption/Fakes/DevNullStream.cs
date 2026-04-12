@@ -1,4 +1,4 @@
-namespace Arius.Core.Tests.Fakes.Scenarios.Encryption;
+namespace Arius.Core.Tests.Shared.Encryption.Fakes;
 
 /// <summary>Stream that discards all writes and counts bytes.</summary>
 internal sealed class DevNullStream : Stream

@@ -1,6 +1,6 @@
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Core.Tests.Fakes.Scenarios.ChunkStorage;
+namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
 internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 {
