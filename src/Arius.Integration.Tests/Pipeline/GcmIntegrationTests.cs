@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
+using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Integration.Tests.Storage;
 using Shouldly;
 
@@ -170,4 +171,3 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
     }
 
 }
-
