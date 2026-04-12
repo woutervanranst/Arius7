@@ -1,15 +1,15 @@
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Core.Tests.Features.RestoreCommand;
+namespace Arius.Core.Tests.Fakes;
 
-internal sealed class ThrowOnCreateBlobContainerService : IBlobContainerService
+internal sealed class ThrowOnCreateBlobContainerService(string operationName) : IBlobContainerService
 {
     public bool CreateCalled { get; private set; }
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
     {
         CreateCalled = true;
-        throw new InvalidOperationException("CreateContainerIfNotExistsAsync should not be called by restore.");
+        throw new InvalidOperationException($"CreateContainerIfNotExistsAsync should not be called by {operationName}.");
     }
 
     public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>

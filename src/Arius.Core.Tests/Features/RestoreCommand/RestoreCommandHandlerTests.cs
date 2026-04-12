@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Tests.Fakes;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -17,7 +18,7 @@ public class RestoreCommandHandlerTests
     [Test]
     public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
     {
-        var blobs = new ThrowOnCreateBlobContainerService();
+        var blobs = new ThrowOnCreateBlobContainerService("restore");
         var encryption = new PlaintextPassthroughService();
         using var index = new ChunkIndexService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
         var fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");

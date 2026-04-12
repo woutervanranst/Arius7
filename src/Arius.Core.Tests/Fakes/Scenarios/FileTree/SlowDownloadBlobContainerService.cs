@@ -1,7 +1,6 @@
 using Arius.Core.Shared.Storage;
-using Arius.Core.Tests.Fakes;
 
-namespace Arius.Core.Tests.Shared.FileTree;
+namespace Arius.Core.Tests.Fakes.Scenarios.FileTree;
 
 internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
 {
