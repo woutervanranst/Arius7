@@ -7,20 +7,24 @@ internal sealed class RecordingChunkIndexBlobContainerService : IBlobContainerSe
 {
     private readonly ConcurrentDictionary<string, StoredBlob> _blobs = new(StringComparer.Ordinal);
     private readonly TimeSpan _chunkIndexUploadDelay;
+    private string? _failUploadForPrefix;
 
     private int _activeChunkIndexUploads;
     private int _maxConcurrentChunkIndexUploads;
     private int _chunkIndexMetadataReads;
     private int _chunkIndexDownloads;
 
-    public RecordingChunkIndexBlobContainerService(TimeSpan? chunkIndexUploadDelay = null)
+    public RecordingChunkIndexBlobContainerService(TimeSpan? chunkIndexUploadDelay = null, string? failUploadForPrefix = null)
     {
         _chunkIndexUploadDelay = chunkIndexUploadDelay ?? TimeSpan.Zero;
+        _failUploadForPrefix = failUploadForPrefix;
     }
 
     public int MaxConcurrentChunkIndexUploads => Volatile.Read(ref _maxConcurrentChunkIndexUploads);
     public int ChunkIndexMetadataReads => Volatile.Read(ref _chunkIndexMetadataReads);
     public int ChunkIndexDownloads => Volatile.Read(ref _chunkIndexDownloads);
+
+    public void ClearFailure() => _failUploadForPrefix = null;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -31,20 +35,29 @@ internal sealed class RecordingChunkIndexBlobContainerService : IBlobContainerSe
         {
             var active = Interlocked.Increment(ref _activeChunkIndexUploads);
             UpdateMaxConcurrency(active);
-            if (_chunkIndexUploadDelay > TimeSpan.Zero)
-                await Task.Delay(_chunkIndexUploadDelay, cancellationToken);
-        }
+            try
+            {
+                if (_chunkIndexUploadDelay > TimeSpan.Zero)
+                    await Task.Delay(_chunkIndexUploadDelay, cancellationToken);
 
-        try
+                if (_failUploadForPrefix is not null && blobName == BlobPaths.ChunkIndexShard(_failUploadForPrefix))
+                    throw new IOException($"Simulated chunk-index upload failure for prefix {_failUploadForPrefix}.");
+
+                await using var ms = new MemoryStream();
+                await content.CopyToAsync(ms, cancellationToken);
+                _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
+            }
+            finally
+            {
+                var remaining = Interlocked.Decrement(ref _activeChunkIndexUploads);
+                UpdateMaxConcurrency(remaining);
+            }
+        }
+        else
         {
             await using var ms = new MemoryStream();
             await content.CopyToAsync(ms, cancellationToken);
             _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
-        }
-        finally
-        {
-            if (isChunkIndex)
-                Interlocked.Decrement(ref _activeChunkIndexUploads);
         }
     }
 

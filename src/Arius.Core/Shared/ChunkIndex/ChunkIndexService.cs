@@ -158,38 +158,57 @@ public sealed class ChunkIndexService : IDisposable
         var total = byPrefix.Count;
         var completed = 0;
 
-        await Parallel.ForEachAsync(
-            byPrefix,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (group, ct) =>
+        var flushedPrefixes = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+
+        try
+        {
+            await Parallel.ForEachAsync(
+                byPrefix,
+                new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+                async (group, ct) =>
+                {
+                    var existing = await LoadShardAsync(group.Prefix, ct);
+                    var merged   = existing.Merge(group.Entries);
+
+                    // Serialize and upload
+                    var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, ct);
+                    var blobName = BlobPaths.ChunkIndexShard(group.Prefix);
+
+                    await _blobs.UploadAsync(
+                        blobName: blobName,
+                        content: new MemoryStream(bytes),
+                        metadata: new Dictionary<string, string>(),
+                        tier: BlobTier.Cool,
+                        contentType: _encryption.IsEncrypted
+                            ? ContentTypes.ChunkIndexGcmEncrypted
+                            : ContentTypes.ChunkIndexPlaintext,
+                        overwrite: true,
+                        cancellationToken: ct);
+
+                    // Save to L2 disk cache (plaintext, no gzip/encryption)
+                    SaveToL2(group.Prefix, merged);
+
+                    // Promote merged shard to L1
+                    PromoteToL1(group.Prefix, merged, bytes.Length);
+                    flushedPrefixes.TryAdd(group.Prefix, 0);
+
+                    var done = Interlocked.Increment(ref completed);
+                    progress?.Report((done, total));
+                });
+        }
+        catch
+        {
+            foreach (var group in byPrefix)
             {
-                var existing = await LoadShardAsync(group.Prefix, ct);
-                var merged   = existing.Merge(group.Entries);
+                if (flushedPrefixes.ContainsKey(group.Prefix))
+                    continue;
 
-                // Serialize and upload
-                var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, ct);
-                var blobName = BlobPaths.ChunkIndexShard(group.Prefix);
+                foreach (var entry in group.Entries)
+                    _pendingEntries.Add(entry);
+            }
 
-                await _blobs.UploadAsync(
-                    blobName: blobName,
-                    content: new MemoryStream(bytes),
-                    metadata: new Dictionary<string, string>(),
-                    tier: BlobTier.Cool,
-                    contentType: _encryption.IsEncrypted
-                        ? ContentTypes.ChunkIndexGcmEncrypted
-                        : ContentTypes.ChunkIndexPlaintext,
-                    overwrite: true,
-                    cancellationToken: ct);
-
-                // Save to L2 disk cache (plaintext, no gzip/encryption)
-                SaveToL2(group.Prefix, merged);
-
-                // Promote merged shard to L1
-                PromoteToL1(group.Prefix, merged, bytes.Length);
-
-                var done = Interlocked.Increment(ref completed);
-                progress?.Report((done, total));
-            });
+            throw;
+        }
     }
 
     // ── Tier resolution ───────────────────────────────────────────────────────
