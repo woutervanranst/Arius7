@@ -1,6 +1,5 @@
 using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
-using Shouldly;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;

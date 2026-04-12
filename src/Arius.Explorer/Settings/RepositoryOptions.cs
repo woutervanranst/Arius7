@@ -1,8 +1,8 @@
-using Arius.Explorer.Shared.Extensions;
 using System;
 using System.IO;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
+using Arius.Explorer.Shared.Extensions;
 
 namespace Arius.Explorer.Settings;
 

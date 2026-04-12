@@ -5,103 +5,13 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Integration.Tests.Storage;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Integration.Tests.Pipeline;
-
-// ── Fault-injection blob service wrapper ──────────────────────────────────────
-
-/// <summary>
-/// Wraps an <see cref="IBlobContainerService"/> and throws after <paramref name="throwAfterN"/>
-/// successful upload completions. Large/tar chunk uploads are counted when metadata is written;
-/// direct <see cref="IBlobContainerService.UploadAsync"/> calls are counted directly.
-/// Used to simulate crashes mid-pipeline.
-/// </summary>
-internal sealed class FaultingBlobService(IBlobContainerService inner, int throwAfterN)
-    : IBlobContainerService
-{
-    private int _uploadCount;
-
-    private bool ShouldFaultUpload() => Interlocked.Increment(ref _uploadCount) > throwAfterN;
-
-    public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
-        => inner.CreateContainerIfNotExistsAsync(cancellationToken);
-
-    public async Task UploadAsync(
-        string blobName, Stream content,
-        IReadOnlyDictionary<string, string> metadata,
-        BlobTier tier, string? contentType = null, bool overwrite = false,
-        CancellationToken cancellationToken = default)
-    {
-        if (ShouldFaultUpload())
-            throw new IOException($"Fault-injected failure while uploading {blobName}");
-        await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
-    }
-
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
-        => inner.DownloadAsync(blobName, cancellationToken);
-
-    public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
-        => inner.GetMetadataAsync(blobName, cancellationToken);
-
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default)
-        => inner.ListAsync(prefix, cancellationToken);
-
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata,
-        CancellationToken cancellationToken = default)
-    {
-        if (ShouldFaultUpload())
-            throw new IOException($"Fault-injected failure while writing metadata for {blobName}");
-
-        return inner.SetMetadataAsync(blobName, metadata, cancellationToken);
-    }
-
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default)
-        => inner.SetTierAsync(blobName, tier, cancellationToken);
-
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
-        CancellationToken cancellationToken = default)
-        => inner.OpenWriteAsync(blobName, contentType, cancellationToken);
-
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
-        RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
-        => inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
-
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
-        => inner.DeleteAsync(blobName, cancellationToken);
-}
-
-public class FaultingBlobServiceTests
-{
-    [Test]
-    public async Task UploadAsync_Throws_On_First_Faultable_Upload_After_ThrowAfterN_Successes()
-    {
-        var inner = Substitute.For<IBlobContainerService>();
-        var sut = new FaultingBlobService(inner, throwAfterN: 1);
-
-        await sut.UploadAsync("chunks/one", new MemoryStream([1]), new Dictionary<string, string>(), BlobTier.Hot);
-
-        await Should.ThrowAsync<IOException>(async () =>
-            await sut.UploadAsync("chunks/two", new MemoryStream([2]), new Dictionary<string, string>(), BlobTier.Hot));
-    }
-
-    [Test]
-    public async Task OpenWriteAsync_DoesNotCount_As_A_Completed_Upload()
-    {
-        var inner = Substitute.For<IBlobContainerService>();
-        inner.OpenWriteAsync("chunks/one", null, default).Returns(Task.FromResult<Stream>(new MemoryStream()));
-        var sut = new FaultingBlobService(inner, throwAfterN: 0);
-
-        await using var stream = await sut.OpenWriteAsync("chunks/one");
-
-        await Should.ThrowAsync<IOException>(async () =>
-            await sut.SetMetadataAsync("chunks/one", new Dictionary<string, string>()));
-    }
-}
 
 // ── Crash recovery tests ──────────────────────────────────────────────────────
 
@@ -126,9 +36,10 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         string              containerName)
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ArchiveCommandHandler>();
         return new ArchiveCommandHandler(
             blobService, encryption, index, new ChunkStorageService(blobService, encryption), new FileTreeService(blobService, encryption, index, Account, containerName), new SnapshotService(blobService, encryption, Account, containerName), mediator,
-            NullLogger<ArchiveCommandHandler>.Instance,
+            logger,
             Account, containerName);
     }
 

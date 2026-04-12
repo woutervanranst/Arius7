@@ -4,9 +4,9 @@
 
 ## Way of Working
 
-- Work Test-Driven: first, write a failing test. Then, implement.
+- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run ALL the tests.
+- When making code changes, always run ALL the tests (on non-Windows you can skip Arius.Explorer.Tests since they are Windows-only).
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
@@ -23,11 +23,15 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
 
-- Use FakeLogger instead of NullLogger
+- Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
+- Test projects should mirror the structure of the project they exercise so intent stays obvious.
+- Put reusable test doubles in `Fakes/`.
+- Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
 
 ## Code Style Preference
 
-- Make classes `internal`. Only make them `public` when they need to be visible outside of the assembly.
+- Make non-test classes `internal`. Only make them `public` when they must be consumed by another non-test assembly; for test access, prefer InternalsVisibleTo.
+- Prefer one top-level class per file, with the filename matching the class name.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
 
 ## Domain language

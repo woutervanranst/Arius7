@@ -1,6 +1,5 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Integration.Tests.Storage;
-using Shouldly;
 
 namespace Arius.Integration.Tests.Pipeline;
 

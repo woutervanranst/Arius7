@@ -1,6 +1,6 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Arius.Explorer.RepositoryExplorer;
 

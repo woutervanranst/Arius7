@@ -1,4 +1,4 @@
-using Arius.AzureBlob;
+using System.CommandLine;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -6,7 +6,6 @@ using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Spectre.Console;
-using System.CommandLine;
 
 namespace Arius.Cli.Commands.Ls;
 

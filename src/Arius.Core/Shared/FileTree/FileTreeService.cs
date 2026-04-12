@@ -1,9 +1,8 @@
-using Arius.Core.Shared;
+using System.Collections.Concurrent;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using System.Collections.Concurrent;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -84,24 +83,17 @@ public sealed class FileTreeService
     {
         var diskPath = Path.Combine(_diskCacheDir, hash);
 
-        // Disk hit (may be a real file or an empty marker; empty ⇒ treat as miss)
-        if (File.Exists(diskPath))
-        {
-            var cached = await File.ReadAllBytesAsync(diskPath, cancellationToken);
-            if (cached.Length > 0)
-            {
-                try
-                {
-                    return FileTreeBlobSerializer.Deserialize(cached);
-                }
-                catch (Exception)
-                {
-                    // Corrupt cache file (e.g. partial write from a prior crash).
-                    // Delete and fall through to Azure download.
-                    try { File.Delete(diskPath); } catch { /* best-effort */ }
-                }
-            }
-        }
+        // Avoid race conditions between concurrent readers and writers for the same hash by
+        // coordinating via a per-hash in-flight task.
+        //
+        // Keep cache hits lock-free: immutable filetrees can be served straight from disk.
+        // The subtle part is cache population on a miss. Another concurrent caller may probe the
+        // same path while the first caller is still publishing the cache file. If we expose a
+        // partially written file, the second caller can fail deserialization, delete the file as
+        // "corrupt", and trigger a redundant Azure download. The per-hash in-flight task plus
+        // atomic temp-file publish below avoids that race without introducing a coarse lock.
+        if (TryReadCachedTree(diskPath, cancellationToken) is { } cachedTree)
+            return cachedTree;
 
         var lazyRead = _inFlightReads.GetOrAdd(
             hash,
@@ -120,6 +112,40 @@ public sealed class FileTreeService
         }
     }
 
+    private FileTreeBlob? TryReadCachedTree(string diskPath, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(diskPath))
+            return null;
+
+        try
+        {
+            var cached = File.ReadAllBytes(diskPath);
+            if (cached.Length == 0)
+                return null;
+
+            try
+            {
+                return FileTreeBlobSerializer.Deserialize(cached);
+            }
+            catch (Exception)
+            {
+                // Corrupt cache file (e.g. partial write from a prior crash).
+                // Delete and fall through to Azure download.
+                try { File.Delete(diskPath); } catch { /* best-effort */ }
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Another concurrent caller may have replaced the cache file between Exists and read.
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Treat concurrent directory cleanup or creation races as a cache miss.
+        }
+
+        return null;
+    }
+
     private async Task<FileTreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
     {
         var blobName = BlobPaths.FileTree(hash);
@@ -127,9 +153,39 @@ public sealed class FileTreeService
         var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
 
         var plaintext = FileTreeBlobSerializer.Serialize(treeBlob);
-        await File.WriteAllBytesAsync(diskPath, plaintext, CancellationToken.None);
+        await WriteCacheAtomicallyAsync(diskPath, plaintext, CancellationToken.None);
 
         return treeBlob;
+    }
+
+    private static async Task WriteCacheAtomicallyAsync(string diskPath, byte[] plaintext, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(diskPath)!);
+        var tempPath = Path.Combine(Path.GetDirectoryName(diskPath)!, $".{Path.GetFileName(diskPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, plaintext, cancellationToken);
+
+            // Publish with an atomic replace/move so concurrent readers either see the old cache
+            // file or the complete new one, never a truncated intermediate file.
+            if (OperatingSystem.IsWindows() && File.Exists(diskPath))
+                File.Replace(tempPath, diskPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            else
+                File.Move(tempPath, diskPath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+                // Best-effort temp cleanup only.
+            }
+        }
     }
 
     // ── 1.4 WriteAsync ────────────────────────────────────────────────────────

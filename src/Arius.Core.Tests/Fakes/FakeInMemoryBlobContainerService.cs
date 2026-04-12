@@ -1,6 +1,6 @@
-using Arius.Core.Shared.Storage;
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Fakes;
 
@@ -17,9 +17,13 @@ internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     private readonly ConcurrentDictionary<string, StoredBlob> _blobs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> _openWriteAlreadyExists = new(StringComparer.Ordinal);
 
-    public List<string> RequestedBlobNames { get; } = [];
-    public List<string> DeletedBlobNames { get; } = [];
-    public List<string> UploadedBlobNames { get; } = [];
+    private readonly ConcurrentQueue<string> _requestedBlobNames = new();
+    private readonly ConcurrentQueue<string> _deletedBlobNames = new();
+    private readonly ConcurrentQueue<string> _uploadedBlobNames = new();
+
+    public ICollection<string> RequestedBlobNames => new RecordingCollection(_requestedBlobNames);
+    public ICollection<string> DeletedBlobNames => new RecordingCollection(_deletedBlobNames);
+    public ICollection<string> UploadedBlobNames => new RecordingCollection(_uploadedBlobNames);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -32,7 +36,7 @@ internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             throw new BlobAlreadyExistsException(blobName);
 
         _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
-        UploadedBlobNames.Add(blobName);
+        _uploadedBlobNames.Enqueue(blobName);
     }
 
     public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default)
@@ -53,20 +57,20 @@ internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         return Task.FromResult<Stream>(new CommitOnDisposeStream(bytes =>
         {
             _blobs[blobName] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false);
-            UploadedBlobNames.Add(blobName);
+            _uploadedBlobNames.Enqueue(blobName);
         }));
     }
 
     public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
     {
-        RequestedBlobNames.Add(blobName);
+        _requestedBlobNames.Enqueue(blobName);
         var blob = _blobs[blobName];
         return Task.FromResult<Stream>(new MemoryStream(blob.Content, writable: false));
     }
 
     public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
     {
-        RequestedBlobNames.Add(blobName);
+        _requestedBlobNames.Enqueue(blobName);
         if (!_blobs.TryGetValue(blobName, out var blob))
             return Task.FromResult(new BlobMetadata { Exists = false });
 
@@ -113,7 +117,7 @@ internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
     {
-        DeletedBlobNames.Add(blobName);
+        _deletedBlobNames.Enqueue(blobName);
         _blobs.TryRemove(blobName, out _);
         _openWriteAlreadyExists.TryRemove(blobName, out _);
         return Task.CompletedTask;
@@ -193,5 +197,50 @@ internal sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
             base.Dispose(disposing);
         }
+    }
+
+    private sealed class RecordingCollection(ConcurrentQueue<string> queue) : ICollection<string>
+    {
+        public int Count => queue.Count;
+        public bool IsReadOnly => false;
+
+        public void Add(string item) => queue.Enqueue(item);
+
+        public void Clear()
+        {
+            while (queue.TryDequeue(out _))
+            {
+            }
+        }
+
+        public bool Contains(string item) => queue.Contains(item);
+
+        public void CopyTo(string[] array, int arrayIndex) => queue.ToArray().CopyTo(array, arrayIndex);
+
+        public bool Remove(string item)
+        {
+            var removed = false;
+            var retained = new List<string>();
+
+            while (queue.TryDequeue(out var current))
+            {
+                if (!removed && string.Equals(current, item, StringComparison.Ordinal))
+                {
+                    removed = true;
+                    continue;
+                }
+
+                retained.Add(current);
+            }
+
+            foreach (var current in retained)
+                queue.Enqueue(current);
+
+            return removed;
+        }
+
+        public IEnumerator<string> GetEnumerator() => ((IEnumerable<string>)queue.ToArray()).GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

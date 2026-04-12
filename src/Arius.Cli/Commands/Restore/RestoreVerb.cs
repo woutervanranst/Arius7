@@ -1,4 +1,4 @@
-using Arius.AzureBlob;
+using System.CommandLine;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Spectre.Console;
 using Spectre.Console.Rendering;
-using System.CommandLine;
 
 namespace Arius.Cli.Commands.Restore;
 

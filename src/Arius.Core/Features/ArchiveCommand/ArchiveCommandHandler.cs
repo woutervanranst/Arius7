@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Formats.Tar;
+using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -9,10 +12,6 @@ using Arius.Core.Shared.Streaming;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Formats.Tar;
-using System.IO.Compression;
-using System.Threading.Channels;
 
 namespace Arius.Core.Features.ArchiveCommand;
 

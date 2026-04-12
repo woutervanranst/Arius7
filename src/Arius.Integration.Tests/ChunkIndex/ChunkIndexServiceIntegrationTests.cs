@@ -2,7 +2,6 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Integration.Tests.Storage;
-using Shouldly;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 

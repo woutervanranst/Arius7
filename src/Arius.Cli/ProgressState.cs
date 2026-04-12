@@ -1,5 +1,5 @@
-using Arius.Core.Features.RestoreCommand;
 using System.Collections.Concurrent;
+using Arius.Core.Features.RestoreCommand;
 
 namespace Arius.Cli;
 

@@ -11,7 +11,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Storage;
 using Azure.Storage.Blobs;
 using Mediator;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
 namespace Arius.Integration.Tests.Pipeline;
@@ -36,6 +36,10 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     public  string              LocalRoot     { get; private set; } = null!;
     public  string              RestoreRoot   { get; private set; } = null!;
+
+    private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
+    private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
+    private readonly FakeLogger<ListQueryHandler> _listLogger = new();
 
     private const string Account = "devstoreaccount1";
 
@@ -129,17 +133,17 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
-            NullLogger<ArchiveCommandHandler>.Instance,
+            _archiveLogger,
             Account, Container.Name);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
         new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
-            NullLogger<RestoreCommandHandler>.Instance,
+            _restoreLogger,
             Account, Container.Name);
 
     public ListQueryHandler CreateListQueryHandler() =>
         new(Index, FileTreeService, Snapshot,
-            NullLogger<ListQueryHandler>.Instance,
+            _listLogger,
             Account, Container.Name);
 
     /// <summary>
