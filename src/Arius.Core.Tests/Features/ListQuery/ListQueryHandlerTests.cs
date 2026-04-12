@@ -6,7 +6,6 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Microsoft.Extensions.Logging.Testing;
-using Shouldly;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
 namespace Arius.Core.Tests.Features.ListQuery;

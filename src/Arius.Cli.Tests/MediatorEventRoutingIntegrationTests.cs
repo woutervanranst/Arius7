@@ -6,7 +6,6 @@ using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Cli.Tests;
 

@@ -8,7 +8,6 @@ using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
 using Mediator;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Explorer.Tests.ChooseRepository;
 

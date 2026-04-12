@@ -10,7 +10,6 @@ using Arius.Integration.Tests.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Integration.Tests.Pipeline;
 

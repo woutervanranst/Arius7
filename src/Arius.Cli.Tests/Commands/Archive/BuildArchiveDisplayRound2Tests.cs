@@ -1,5 +1,4 @@
 using Arius.Cli.Commands.Archive;
-using Shouldly;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 

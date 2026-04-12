@@ -1,6 +1,5 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Shouldly;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

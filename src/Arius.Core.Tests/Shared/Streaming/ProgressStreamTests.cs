@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Streaming;
-using Shouldly;
 
 namespace Arius.Core.Tests.Shared.Streaming;
 

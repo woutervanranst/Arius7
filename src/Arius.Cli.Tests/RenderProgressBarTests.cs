@@ -1,5 +1,3 @@
-using Shouldly;
-
 namespace Arius.Cli.Tests;
 
 /// <summary>

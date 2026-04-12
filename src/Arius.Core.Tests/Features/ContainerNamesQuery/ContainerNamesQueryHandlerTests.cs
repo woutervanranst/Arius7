@@ -1,7 +1,6 @@
 using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Core.Tests.Features.ContainerNamesQuery;
 

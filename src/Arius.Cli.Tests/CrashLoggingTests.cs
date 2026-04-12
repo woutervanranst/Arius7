@@ -1,5 +1,4 @@
 using Serilog;
-using Shouldly;
 
 namespace Arius.Cli.Tests;
 

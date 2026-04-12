@@ -1,5 +1,3 @@
-using Shouldly;
-
 namespace Arius.E2E.Tests;
 
 public class E2EFixturePathTests

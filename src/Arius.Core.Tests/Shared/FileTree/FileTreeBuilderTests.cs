@@ -3,7 +3,6 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
-using Shouldly;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

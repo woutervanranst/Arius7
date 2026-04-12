@@ -1,6 +1,5 @@
 using Arius.Cli.Tests.TestSupport;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Cli.Tests;
 

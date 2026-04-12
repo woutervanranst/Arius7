@@ -1,7 +1,6 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Integration.Tests.Storage;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Integration.Tests.Pipeline;
 

@@ -8,7 +8,6 @@ using Arius.Core.Tests.Fakes;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using Shouldly;
 using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;

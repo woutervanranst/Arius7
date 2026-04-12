@@ -34,7 +34,6 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Prefer one top-level class per file, with the filename matching the class name.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
 
-
 ## Domain language
 
 - **binary file**: a file on disk that Arius archives and restores.

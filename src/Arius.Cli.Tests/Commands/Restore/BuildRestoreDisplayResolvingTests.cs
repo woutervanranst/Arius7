@@ -1,5 +1,4 @@
 using Arius.Cli.Commands.Restore;
-using Shouldly;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 

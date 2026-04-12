@@ -6,7 +6,6 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using Shouldly;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

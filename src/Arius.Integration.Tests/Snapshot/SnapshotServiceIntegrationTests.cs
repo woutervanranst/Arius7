@@ -1,7 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Integration.Tests.Storage;
-using Shouldly;
 
 namespace Arius.Integration.Tests.Snapshot;
 

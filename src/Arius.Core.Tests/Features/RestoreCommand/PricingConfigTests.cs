@@ -1,5 +1,4 @@
 using Arius.Core.Features.RestoreCommand;
-using Shouldly;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 

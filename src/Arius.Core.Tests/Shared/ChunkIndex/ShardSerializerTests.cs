@@ -1,6 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
-using Shouldly;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 

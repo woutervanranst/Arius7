@@ -2,7 +2,6 @@ using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
-using Shouldly;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 

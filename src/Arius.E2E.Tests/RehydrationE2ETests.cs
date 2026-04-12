@@ -9,7 +9,6 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging.Testing;
-using Shouldly;
 
 namespace Arius.E2E.Tests;
 

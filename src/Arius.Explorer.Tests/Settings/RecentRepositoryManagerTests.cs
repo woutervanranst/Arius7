@@ -1,6 +1,5 @@
 using System.Threading.Tasks;
 using Arius.Explorer.Settings;
-using Shouldly;
 
 namespace Arius.Explorer.Tests.Settings;
 
