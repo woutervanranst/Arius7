@@ -43,7 +43,7 @@ public class ResolveFileHydrationStatusesHandlerTests
             BlobMetadataKeys.TypeTar => new ShardEntry(contentHash, contentHash, 100, 25),
             _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
-        index.RecordEntry(entry);
+        index.AddEntry(entry);
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
@@ -86,8 +86,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         blobs.Metadata[BlobPaths.ChunkRehydrated(tarChunkHash)] = new BlobMetadata { Exists = false };
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-hydration-thin-special", "ctr-hydration-thin-special", cacheBudgetBytes: 1024 * 1024);
-        index.RecordEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
-        index.RecordEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
+        index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
+        index.AddEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,

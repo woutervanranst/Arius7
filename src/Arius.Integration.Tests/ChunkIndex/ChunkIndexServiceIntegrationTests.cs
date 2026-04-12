@@ -56,7 +56,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         var contentHash = "aabbccdd" + new string('1', 56);
         var entry       = new ShardEntry(contentHash, "chunk-hash-001", 1024, 512);
-        svc1.RecordEntry(entry);
+        svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
         // New service instance (L1 cold, L2 may have data)
@@ -76,7 +76,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var contentHash = "ccddee00" + new string('2', 56);
         var entry       = new ShardEntry(contentHash, "some-chunk", 500, 200);
 
-        svc.RecordEntry(entry); // goes to in-flight, NOT yet uploaded
+        svc.AddEntry(entry); // goes to in-flight, NOT yet uploaded
 
         var result = await svc.LookupAsync(contentHash);
 
@@ -97,7 +97,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
         var contentHash = "ddee1122" + new string('3', 56);
         var entry       = new ShardEntry(contentHash, "stale-test-chunk", 800, 400);
-        svc1.RecordEntry(entry);
+        svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
         // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)

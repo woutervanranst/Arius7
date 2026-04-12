@@ -115,7 +115,7 @@ entries sharing that prefix.
 
 - `LookupAsync` — checks `_inFlight` first, then loads shards for the remaining
   hashes through L1 → L2 → L3. Returns a dictionary of known entries.
-- `RecordEntry` — adds a newly uploaded chunk to `_inFlight` and
+- `AddEntry` — adds a newly uploaded chunk to `_inFlight` and
   `_pendingEntries` immediately after upload.
 - `FlushAsync` — merges pending entries into existing shards, uploads merged
   shards to Azure, saves to L2, promotes to L1.
@@ -137,7 +137,7 @@ L1 forces fresh downloads from Azure on the next lookup or flush.
                       ───────────────   ────────────────   ─────────────────
 archive
   stage 3 – dedup                                          LookupAsync (per file)
-  stage 4 – upload                                         RecordEntry (per chunk)
+  stage 4 – upload                                         AddEntry (per chunk)
   end-of-pipeline     CreateAsync       ValidateAsync      FlushAsync
                                         ExistsInRemote     (InvalidateL1 via
                                         WriteAsync          ValidateAsync)
@@ -172,7 +172,7 @@ The order is deliberate:
 ### restore and ls — read-only consumers
 
 Neither command calls `ValidateAsync`, `FlushAsync`, `CreateAsync`, or
-`RecordEntry`. They consume the caches but never write to the repository.
+`AddEntry`. They consume the caches but never write to the repository.
 Neither creates a blob container.
 
 ### Cross-run cache warm-up

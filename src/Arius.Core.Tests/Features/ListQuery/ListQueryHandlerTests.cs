@@ -43,7 +43,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
-        index.RecordEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
+        index.AddEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
 
         var fileTreeService   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
@@ -120,7 +120,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
-        index.RecordEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
+        index.AddEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
 
         var treeCache2   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
@@ -180,8 +180,8 @@ public class ListQueryHandlerTests
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3", cacheBudgetBytes: 1024 * 1024);
-            index.RecordEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
-            index.RecordEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
+            index.AddEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
+            index.AddEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
 
             var treeCache3   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
@@ -422,7 +422,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
-        index.RecordEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
+        index.AddEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
 
         var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));

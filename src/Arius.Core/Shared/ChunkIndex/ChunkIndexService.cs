@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
@@ -125,7 +126,7 @@ public sealed class ChunkIndexService : IDisposable
     /// Records a newly uploaded chunk entry in the in-flight set and pending list.
     /// At end-of-run, call <see cref="FlushAsync"/> to persist all pending entries.
     /// </summary>
-    public void RecordEntry(ShardEntry entry)
+    public void AddEntry(ShardEntry entry)
     {
         _inFlight[entry.ContentHash] = entry;
         _pendingEntries.Add(entry);
