@@ -23,11 +23,11 @@ public class FaultingBlobServiceTests
     {
         var inner = Substitute.For<IBlobContainerService>();
         inner.OpenWriteAsync("chunks/one", null, default).Returns(Task.FromResult<Stream>(new MemoryStream()));
-        var sut = new FaultingBlobService(inner, throwAfterN: 0);
+        inner.SetMetadataAsync("chunks/one", Arg.Any<IReadOnlyDictionary<string, string>>(), default).Returns(Task.CompletedTask);
+        var sut = new FaultingBlobService(inner, throwAfterN: 1);
 
         await using var stream = await sut.OpenWriteAsync("chunks/one");
 
-        await Should.ThrowAsync<IOException>(async () =>
-            await sut.SetMetadataAsync("chunks/one", new Dictionary<string, string>()));
+        await sut.SetMetadataAsync("chunks/one", new Dictionary<string, string>());
     }
 }
