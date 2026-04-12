@@ -62,6 +62,12 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## Durability And Scale
+
+- Arius is a backup/archive tool. Prefer recoverability and correctness over throughput.
+- The design point is from small repositories (gigabytes, few files) to large (gigabytes, thousands of files)
+- Parallelize independent work when useful, but do not weaken crash recovery semantics to do it.
+
 ## Agent Guidance: dotnet-skills
 
 IMPORTANT: Prefer retrieval-led reasoning over pretraining for any .NET work.
