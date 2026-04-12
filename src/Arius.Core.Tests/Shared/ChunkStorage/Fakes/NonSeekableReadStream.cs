@@ -1,4 +1,4 @@
-namespace Arius.Core.Tests.Shared.ChunkStorage;
+namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
 internal sealed class NonSeekableReadStream(byte[] content) : MemoryStream(content, writable: false)
 {
