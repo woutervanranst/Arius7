@@ -7,8 +7,6 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Microsoft.Extensions.Logging.Testing;
 using Shouldly;
-using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
-using ChunkHydrationStatusQueryMessage = global::Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery;
 
 namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
 
@@ -59,7 +57,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
 
         var results = new List<ChunkHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ChunkHydrationStatusQueryMessage(files), CancellationToken.None))
+        await foreach (var result in handler.Handle(new Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(1);
@@ -104,7 +102,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
 
         var results = new List<ChunkHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new ChunkHydrationStatusQueryMessage(files), CancellationToken.None))
+        await foreach (var result in handler.Handle(new Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery(files), CancellationToken.None))
             results.Add(result);
 
         results.Count.ShouldBe(2);
