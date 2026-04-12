@@ -155,6 +155,44 @@ public class BuildArchiveDisplayTests
         uploadingLine.ShouldContain("○");
     }
 
+    [Test]
+    public void BuildArchiveDisplay_ShowsChunkIndexFinalizationProgress_WhenPresent()
+    {
+        var state = new ProgressState();
+        state.SetChunkIndexFlushProgress(2, 5);
+
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
+        var line = GetLineContaining(output, "Finalizing Index");
+
+        line.ShouldContain("2 / 5 shards");
+        line.ShouldContain("○");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_ShowsTreeUploadProgress_WhenPresent()
+    {
+        var state = new ProgressState();
+        state.SetTreeUploadProgress(3, 4);
+
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
+        var line = GetLineContaining(output, "Uploading Trees");
+
+        line.ShouldContain("3 / 4 blobs");
+        line.ShouldContain("○");
+    }
+
+    [Test]
+    public void BuildArchiveDisplay_FinalizationRows_UseFilledCircle_WhenComplete()
+    {
+        var state = new ProgressState();
+        state.SetChunkIndexFlushProgress(5, 5);
+        state.SetTreeUploadProgress(4, 4);
+
+        var output = RenderToString(ArchiveVerb.BuildDisplay(state));
+        GetLineContaining(output, "Finalizing Index").ShouldContain("●");
+        GetLineContaining(output, "Uploading Trees").ShouldContain("●");
+    }
+
     // ── 6.4 Per-file lines: only Hashing or Uploading ────────────────────────
 
     [Test]

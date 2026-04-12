@@ -3,6 +3,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Core.Tests.Shared.FileTree.Fakes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -177,5 +178,117 @@ public class FileTreeBuilderTests
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task BuildAsync_MultipleMissingTrees_UsesParallelUploads()
+    {
+        const string acct = "acct-tree-parallel";
+        const string cont = "cont-tree-parallel";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+
+        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var lines = new[]
+            {
+                new ManifestEntry("photos/2024/june/a.jpg", "hash1", now, now).Serialize(),
+                new ManifestEntry("photos/2024/june/b.jpg", "hash2", now, now).Serialize(),
+                new ManifestEntry("docs/report.pdf", "hash3", now, now).Serialize(),
+            };
+            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+
+            var blobs = new RecordingFileTreeBlobContainerService(TimeSpan.FromMilliseconds(150));
+            var builder = CreateBuilder(blobs, acct, cont);
+
+            var root = await builder.BuildAsync(manifestPath);
+
+            root.ShouldNotBeNull();
+            blobs.MaxConcurrentFileTreeUploads.ShouldBeGreaterThan(1);
+        }
+        finally
+        {
+            File.Delete(manifestPath);
+            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task BuildAsync_TreeUploadProgress_ReportsCompletedUploads()
+    {
+        const string acct = "acct-tree-progress";
+        const string cont = "cont-tree-progress";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+
+        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var lines = new[]
+            {
+                new ManifestEntry("photos/2024/june/a.jpg", "hash1", now, now).Serialize(),
+                new ManifestEntry("photos/2024/june/b.jpg", "hash2", now, now).Serialize(),
+                new ManifestEntry("docs/report.pdf", "hash3", now, now).Serialize(),
+            };
+            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+
+            var blobs = new RecordingFileTreeBlobContainerService();
+            var builder = CreateBuilder(blobs, acct, cont);
+            var updates = new List<(int Completed, int Total)>();
+            var progress = new SynchronousProgress<(int Completed, int Total)>(update => updates.Add(update));
+
+            var root = await builder.BuildAsync(manifestPath, progress);
+
+            root.ShouldNotBeNull();
+            updates.ShouldNotBeEmpty();
+            updates.Select(u => u.Total).Distinct().Count().ShouldBe(1);
+            updates.Select(u => u.Completed).OrderBy(x => x).Last().ShouldBe(updates[0].Total);
+        }
+        finally
+        {
+            File.Delete(manifestPath);
+            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task BuildAsync_FailedUpload_DoesNotPublishFinalCacheFile()
+    {
+        const string acct = "acct-tree-failure";
+        const string cont = "cont-tree-failure";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+
+        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            await File.WriteAllTextAsync(manifestPath,
+                new ManifestEntry("readme.txt", "aabbccdd", now, now).Serialize() + "\n");
+
+            var blobs = new RecordingFileTreeBlobContainerService(throwOnFileTreeUpload: true);
+            var builder = CreateBuilder(blobs, acct, cont);
+
+            await Should.ThrowAsync<IOException>(() => builder.BuildAsync(manifestPath));
+
+            Directory.Exists(cacheDir).ShouldBeTrue();
+            Directory.EnumerateFiles(cacheDir).ShouldBeEmpty();
+        }
+        finally
+        {
+            File.Delete(manifestPath);
+            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    private sealed class SynchronousProgress<T>(Action<T> onReport) : IProgress<T>
+    {
+        public void Report(T value) => onReport(value);
     }
 }

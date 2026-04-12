@@ -185,6 +185,28 @@ public sealed class TarBundleUploadedHandler(ProgressState state) : INotificatio
     }
 }
 
+// ── ChunkIndexFlushProgressHandler ────────────────────────────────────────────
+
+public sealed class ChunkIndexFlushProgressHandler(ProgressState state) : INotificationHandler<ChunkIndexFlushProgressEvent>
+{
+    public ValueTask Handle(ChunkIndexFlushProgressEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetChunkIndexFlushProgress(notification.ShardsCompleted, notification.TotalShards);
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ── TreeUploadProgressHandler ─────────────────────────────────────────────────
+
+public sealed class TreeUploadProgressHandler(ProgressState state) : INotificationHandler<TreeUploadProgressEvent>
+{
+    public ValueTask Handle(TreeUploadProgressEvent notification, CancellationToken cancellationToken)
+    {
+        state.SetTreeUploadProgress(notification.BlobsUploaded, notification.TotalBlobs);
+        return ValueTask.CompletedTask;
+    }
+}
+
 // ── SnapshotCreatedHandler ────────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.SnapshotComplete"/> when the snapshot is created.</summary>

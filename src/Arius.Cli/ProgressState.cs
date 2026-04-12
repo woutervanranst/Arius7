@@ -434,6 +434,32 @@ public sealed class ProgressState
     /// <summary>Marks the snapshot as complete.</summary>
     public void SetSnapshotComplete() => Volatile.Write(ref _snapshotComplete, true);
 
+    // ── Archive: finalization progress ───────────────────────────────────────
+
+    public int? ChunkIndexFlushTotalShards => Volatile.Read(ref _chunkIndexFlushTotalShards) < 0 ? null : Volatile.Read(ref _chunkIndexFlushTotalShards);
+    private int _chunkIndexFlushTotalShards = -1;
+
+    public int ChunkIndexFlushCompletedShards => Volatile.Read(ref _chunkIndexFlushCompletedShards);
+    private int _chunkIndexFlushCompletedShards;
+
+    public void SetChunkIndexFlushProgress(int completed, int total)
+    {
+        Volatile.Write(ref _chunkIndexFlushCompletedShards, completed);
+        Volatile.Write(ref _chunkIndexFlushTotalShards, total);
+    }
+
+    public int? TreeUploadTotalBlobs => Volatile.Read(ref _treeUploadTotalBlobs) < 0 ? null : Volatile.Read(ref _treeUploadTotalBlobs);
+    private int _treeUploadTotalBlobs = -1;
+
+    public int TreeUploadCompletedBlobs => Volatile.Read(ref _treeUploadCompletedBlobs);
+    private int _treeUploadCompletedBlobs;
+
+    public void SetTreeUploadProgress(int completed, int total)
+    {
+        Volatile.Write(ref _treeUploadCompletedBlobs, completed);
+        Volatile.Write(ref _treeUploadTotalBlobs, total);
+    }
+
     // ── Restore ───────────────────────────────────────────────────────────────
 
     // ── Restore: active downloads ────────────────────────────────────────────

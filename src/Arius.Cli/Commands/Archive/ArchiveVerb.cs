@@ -270,6 +270,21 @@ internal static class ArchiveVerb
             }
         }
 
+        // ── Finalization headers ──────────────────────────────────────────────
+        if (state.ChunkIndexFlushTotalShards is { } flushTotal)
+        {
+            var flushDone = state.ChunkIndexFlushCompletedShards >= flushTotal;
+            var flushSymbol = flushDone ? "[green]●[/]" : "[yellow]○[/]";
+            lines.Add(new Markup($"  {flushSymbol} Finalizing Index [dim]{state.ChunkIndexFlushCompletedShards:N0} / {flushTotal:N0} shards[/]"));
+        }
+
+        if (state.TreeUploadTotalBlobs is { } treeTotal)
+        {
+            var treeDone = state.TreeUploadCompletedBlobs >= treeTotal;
+            var treeSymbol = treeDone ? "[green]●[/]" : "[yellow]○[/]";
+            lines.Add(new Markup($"  {treeSymbol} Uploading Trees [dim]{state.TreeUploadCompletedBlobs:N0} / {treeTotal:N0} blobs[/]"));
+        }
+
         // ── Per-file and TAR bundle rows ──────────────────────────────────────
         var activeFiles = state.TrackedFiles.Values
             .Where(f => f.State is FileState.Hashing or FileState.Uploading)
