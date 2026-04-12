@@ -9,6 +9,9 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class ProgressCallbackIntegrationTests
 {
+    private static void WaitFor(Func<bool> condition) =>
+        SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(1)).ShouldBeTrue();
+
     [Test]
     public void CreateHashProgress_UpdatesBytesProcessed()
     {
@@ -24,7 +27,8 @@ public class ProgressCallbackIntegrationTests
         hashProgress.ShouldNotBeNull();
         file.ShouldNotBeNull();
 
-        file.SetBytesProcessed(2_500_000);
+        hashProgress.Report(2_500_000);
+        WaitFor(() => file.BytesProcessed == 2_500_000L);
         file.BytesProcessed.ShouldBe(2_500_000L);
     }
 
@@ -53,7 +57,8 @@ public class ProgressCallbackIntegrationTests
         uploadProgress.ShouldNotBeNull();
         state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(0L);
 
-        state.TrackedFiles["chunk.bin"].SetBytesProcessed(450_000);
+        uploadProgress.Report(450_000);
+        WaitFor(() => state.TrackedFiles["chunk.bin"].BytesProcessed == 450_000L);
         state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(450_000L);
     }
 
@@ -70,7 +75,10 @@ public class ProgressCallbackIntegrationTests
         var foundTar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == "tarhash1");
         foundTar.ShouldNotBeNull();
 
-        foundTar!.SetBytesUploaded(150L);
+        IProgress<long> uploadProgress = new Progress<long>(bytes => foundTar!.SetBytesUploaded(bytes));
+
+        uploadProgress.Report(150L);
+        WaitFor(() => tar.BytesUploaded == 150L);
         tar.BytesUploaded.ShouldBe(150L);
     }
 }
