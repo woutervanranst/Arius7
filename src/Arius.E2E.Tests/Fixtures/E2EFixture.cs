@@ -8,6 +8,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.E2E.Tests.Datasets;
 using Azure.Storage.Blobs;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
@@ -29,7 +30,7 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
-    private E2EFixture(
+    internal E2EFixture(
         IBlobContainerService blobContainer,
         IEncryptionService encryption,
         ChunkIndexService index,
@@ -68,8 +69,9 @@ public sealed class E2EFixture : IAsyncDisposable
     public string RestoreRoot { get; }
 
     public static async Task<E2EFixture> CreateAsync(
-        BlobContainerClient container,
-        AzureBlobContainerService svc,
+        IBlobContainerService blobContainer,
+        string accountName,
+        string containerName,
         BlobTier defaultTier,
         string? passphrase = null,
         CancellationToken ct = default)
@@ -83,14 +85,13 @@ public sealed class E2EFixture : IAsyncDisposable
         var encryption = passphrase is not null
             ? (IEncryptionService)new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
-        var account = container.AccountName;
-        var index = new ChunkIndexService(svc, encryption, account, container.Name);
-        var chunkStorage = new ChunkStorageService(svc, encryption);
-        var fileTreeService = new FileTreeService(svc, encryption, index, account, container.Name);
-        var snapshot = new SnapshotService(svc, encryption, account, container.Name);
+        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var chunkStorage = new ChunkStorageService(blobContainer, encryption);
+        var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
+        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
         return new E2EFixture(
-            svc,
+            blobContainer,
             encryption,
             index,
             chunkStorage,
@@ -99,9 +100,31 @@ public sealed class E2EFixture : IAsyncDisposable
             tempRoot,
             localRoot,
             restoreRoot,
-            account,
-            container.Name,
+            accountName,
+            containerName,
             defaultTier);
+    }
+
+    public static Task ResetLocalCacheAsync(string accountName, string containerName)
+    {
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        return Task.CompletedTask;
+    }
+
+    internal Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
+        SyntheticRepositoryDefinition definition,
+        SyntheticRepositoryVersion version,
+        int seed)
+    {
+        if (Directory.Exists(LocalRoot))
+            Directory.Delete(LocalRoot, recursive: true);
+
+        Directory.CreateDirectory(LocalRoot);
+
+        return SyntheticRepositoryMaterializer.MaterializeAsync(definition, version, seed, LocalRoot);
     }
 
     public string WriteFile(string relativePath, byte[] content)
@@ -118,7 +141,7 @@ public sealed class E2EFixture : IAsyncDisposable
     public bool RestoredExists(string relativePath)
         => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
-    private ArchiveCommandHandler CreateArchiveHandler() =>
+    public ArchiveCommandHandler CreateArchiveHandler() =>
         new(
             BlobContainer,
             Encryption,
@@ -131,7 +154,7 @@ public sealed class E2EFixture : IAsyncDisposable
             _account,
             _container);
 
-    private RestoreCommandHandler CreateRestoreHandler() =>
+    public RestoreCommandHandler CreateRestoreHandler() =>
         new(
             Encryption,
             Index,
@@ -166,9 +189,7 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        var cacheDir = RepositoryPaths.GetRepositoryDirectory(_account, _container);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        await ResetLocalCacheAsync(_account, _container);
 
         await Task.CompletedTask;
     }
