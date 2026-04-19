@@ -240,6 +240,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            logger.LogDebug("Node content load was cancelled.");
         }
         catch (Exception e)
         {
@@ -291,6 +292,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            logger.LogDebug("Hydration status load was cancelled for {Prefix}", node.Prefix);
         }
         catch (Exception ex)
         {

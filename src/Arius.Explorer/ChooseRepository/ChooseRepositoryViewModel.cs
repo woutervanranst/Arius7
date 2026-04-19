@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -158,10 +159,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is expected when new credentials are entered; do not flag as error
+            Trace.TraceInformation("Container loading was cancelled because credentials changed.");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Trace.TraceError($"Failed to load container names: {ex}");
             synchronizationContext.Post(_ =>
             {
                 StorageAccountError = true;
@@ -235,9 +237,9 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
                 window.Close();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle error - show message to user
+            Trace.TraceError($"Failed to prepare the selected repository: {ex}");
         }
         finally
         {

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
+using System.ComponentModel;
+using System.Threading.Channels;
 using System.Threading;
 using System.Threading.Tasks;
 using Arius.Core.Features.ContainerNamesQuery;
@@ -70,7 +73,10 @@ public class ChooseRepositoryViewModelTests
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
 
-        await WaitForAsync(() => viewModel.ContainerNames.Count == 2);
+        await WaitForAsync(viewModel, () =>
+            viewModel.ContainerNames.Count == 2 &&
+            viewModel.ContainerName == "container-a" &&
+            !viewModel.IsLoading);
 
         viewModel.StorageAccountError.ShouldBeFalse();
         viewModel.IsLoading.ShouldBeFalse();
@@ -94,7 +100,11 @@ public class ChooseRepositoryViewModelTests
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
 
-        await WaitForAsync(() => viewModel.StorageAccountError);
+        await WaitForAsync(viewModel, () =>
+            viewModel.StorageAccountError &&
+            !viewModel.IsLoading &&
+            viewModel.ContainerNames.Count == 0 &&
+            viewModel.ContainerName == string.Empty);
 
         viewModel.IsLoading.ShouldBeFalse();
         viewModel.StorageAccountError.ShouldBeTrue();
@@ -133,7 +143,10 @@ public class ChooseRepositoryViewModelTests
         viewModel.AccountKey = "secret-key";
         viewModel.Passphrase = "secret-pass";
 
-        WaitForAsync(() => viewModel.ContainerNames.Count == 1).GetAwaiter().GetResult();
+        WaitForAsync(viewModel, () =>
+            viewModel.ContainerNames.Count == 1 &&
+            viewModel.ContainerName == "valid-container-123" &&
+            !viewModel.IsLoading).GetAwaiter().GetResult();
 
         viewModel.OpenRepositoryCommand.CanExecute(null).ShouldBeTrue();
         viewModel.OpenRepositoryCommand.Execute(null);
@@ -184,7 +197,11 @@ public class ChooseRepositoryViewModelTests
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
 
-        await WaitForAsync(() => queryInvoked && !viewModel.IsLoading);
+        await WaitForAsync(viewModel, () =>
+            queryInvoked &&
+            !viewModel.IsLoading &&
+            viewModel.ContainerNames.Count == 0 &&
+            viewModel.ContainerName == string.Empty);
 
         viewModel.StorageAccountError.ShouldBeFalse();
         viewModel.ContainerName.ShouldBe(string.Empty);
@@ -210,24 +227,61 @@ public class ChooseRepositoryViewModelTests
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
 
-        await WaitForAsync(() => queryInvoked && viewModel.ContainerNames.Count == 2);
+        await WaitForAsync(viewModel, () =>
+            queryInvoked &&
+            viewModel.ContainerNames.Count == 2 &&
+            viewModel.ContainerName == "container-b" &&
+            !viewModel.IsLoading);
 
         viewModel.ContainerName.ShouldBe("container-b");
     }
 
-    private static async Task WaitForAsync(Func<bool> condition, int timeoutMilliseconds = 1000)
+    private static void Signal(Channel<bool> signal)
     {
-        var timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
-        var start = DateTime.UtcNow;
+        signal.Writer.TryWrite(true);
+    }
 
-        while (!condition())
+    private static async Task WaitForAsync(ChooseRepositoryViewModel viewModel, Func<bool> condition, int timeoutMilliseconds = 1000)
+    {
+        if (condition())
         {
-            if (DateTime.UtcNow - start > timeout)
-            {
-                throw new TimeoutException("Condition was not met within the allotted time.");
-            }
+            return;
+        }
 
-            await Task.Delay(25);
+        var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        void OnPropertyChanged(object? _, PropertyChangedEventArgs __) => Signal(signal);
+        void OnContainerNamesChanged(object? _, NotifyCollectionChangedEventArgs __) => Signal(signal);
+
+        viewModel.PropertyChanged += OnPropertyChanged;
+        viewModel.ContainerNames.CollectionChanged += OnContainerNamesChanged;
+
+        try
+        {
+            Signal(signal);
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMilliseconds));
+
+            while (!condition())
+            {
+                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token);
+                while (signal.Reader.TryRead(out _))
+                {
+                    if (condition())
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            viewModel.PropertyChanged -= OnPropertyChanged;
+            viewModel.ContainerNames.CollectionChanged -= OnContainerNamesChanged;
         }
     }
 

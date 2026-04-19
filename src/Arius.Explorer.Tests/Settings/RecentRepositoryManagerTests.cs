@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+using System;
 using System.Linq;
 using Arius.Explorer.Settings;
 
@@ -10,7 +10,8 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_AddsAndOrdersMostRecentFirst()
     {
         var settings = new FakeApplicationSettings();
-        var manager = new RecentRepositoryManager(settings);
+        var times = CreateClock(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
+        var manager = new RecentRepositoryManager(settings, times);
 
         var repoA = new RepositoryOptions
         {
@@ -26,7 +27,6 @@ public class RecentRepositoryManagerTests
         };
 
         manager.TouchOrAdd(repoA);
-        Task.Delay(5).GetAwaiter().GetResult();
         manager.TouchOrAdd(repoB);
 
         manager.GetAll().Count.ShouldBe(2);
@@ -38,7 +38,8 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_UpdatesExistingWithoutDuplicating()
     {
         var settings = new FakeApplicationSettings();
-        var manager = new RecentRepositoryManager(settings);
+        var times = CreateClock(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
+        var manager = new RecentRepositoryManager(settings, times);
 
         var original = new RepositoryOptions
         {
@@ -85,12 +86,13 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_RespectsRecentLimit()
     {
         var settings = new FakeApplicationSettings { RecentLimit = 2 };
-        var manager = new RecentRepositoryManager(settings);
+        var manager = new RecentRepositoryManager(settings, CreateClock(
+            new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc),
+            new DateTime(2026, 1, 1, 0, 0, 2, DateTimeKind.Utc)));
 
         manager.TouchOrAdd(new RepositoryOptions { LocalDirectoryPath = "C:/a", AccountName = "acct", ContainerName = "repo-a" });
-        Task.Delay(5).GetAwaiter().GetResult();
         manager.TouchOrAdd(new RepositoryOptions { LocalDirectoryPath = "C:/b", AccountName = "acct", ContainerName = "repo-b" });
-        Task.Delay(5).GetAwaiter().GetResult();
         manager.TouchOrAdd(new RepositoryOptions { LocalDirectoryPath = "C:/c", AccountName = "acct", ContainerName = "repo-c" });
 
         manager.GetAll().Select(repo => repo.ContainerName).ShouldBe(["repo-c", "repo-b"]);
@@ -117,5 +119,11 @@ public class RecentRepositoryManagerTests
 
         settings.RecentRepositories.Count.ShouldBe(1);
         settings.SaveCalls.ShouldBe(0);
+    }
+
+    private static Func<DateTime> CreateClock(params DateTime[] values)
+    {
+        var index = 0;
+        return () => values[Math.Min(index++, values.Length - 1)];
     }
 }

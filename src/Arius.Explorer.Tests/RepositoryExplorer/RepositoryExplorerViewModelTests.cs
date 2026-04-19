@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Threading.Channels;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -69,7 +72,7 @@ public class RepositoryExplorerViewModelTests
 
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger);
 
-        await WaitForAsync(() =>
+        await WaitForAsync(viewModel, () =>
             viewModel.RootNode.Count == 1 &&
             viewModel.SelectedTreeNode?.Items.Count == 2 &&
             viewModel.SelectedTreeNode.Items[0].HydrationStatus == ChunkHydrationStatus.Available);
@@ -139,7 +142,7 @@ public class RepositoryExplorerViewModelTests
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger);
 
         await viewModel.OpenChooseRepositoryDialogCommand.ExecuteAsync(null);
-        await WaitForAsync(() => viewModel.RootNode.Count == 1 && viewModel.Repository != null);
+        await WaitForAsync(viewModel, () => viewModel.RootNode.Count == 1 && viewModel.Repository != null);
 
         viewModel.Repository.ShouldBe(repository);
         recentRepositoryManager.Received(1).TouchOrAdd(repository);
@@ -261,7 +264,7 @@ public class RepositoryExplorerViewModelTests
         RepositoryExplorerViewModel.ShowMessageBox = static (_, _, _, _) => MessageBoxResult.Yes;
 
         await viewModel.RestoreCommand.ExecuteAsync(null);
-        await WaitForAsync(() => viewModel.SelectedTreeNode?.Items.Count == 1 && viewModel.SelectedFiles.Count == 0);
+        await WaitForAsync(viewModel, () => viewModel.SelectedTreeNode?.Items.Count == 1 && viewModel.SelectedFiles.Count == 0);
 
         await mediator.Received(1).Send(
             Arg.Is<RestoreCommand>(command =>
@@ -324,19 +327,82 @@ public class RepositoryExplorerViewModelTests
         };
     }
 
-    private static async Task WaitForAsync(Func<bool> condition, int timeoutMilliseconds = 1000)
+    private static async Task WaitForAsync(RepositoryExplorerViewModel viewModel, Func<bool> condition, int timeoutMilliseconds = 1000)
     {
-        var timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
-        var start = DateTime.UtcNow;
-
-        while (!condition())
+        if (condition())
         {
-            if (DateTime.UtcNow - start > timeout)
+            return;
+        }
+
+        var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        void Notify() => signal.Writer.TryWrite(true);
+        void OnViewModelPropertyChanged(object? _, PropertyChangedEventArgs __) => Notify();
+        void OnRootNodeChanged(object? _, NotifyCollectionChangedEventArgs __) => Notify();
+        void OnSelectedFilesChanged(object? _, NotifyCollectionChangedEventArgs __) => Notify();
+        void OnSelectedTreeNodePropertyChanged(object? _, PropertyChangedEventArgs __) => Notify();
+        void OnSelectedTreeNodeItemsChanged(object? _, NotifyCollectionChangedEventArgs __) => Notify();
+
+        TreeNodeViewModel? subscribedTreeNode = null;
+
+        void AttachSelectedTreeNode(TreeNodeViewModel? node)
+        {
+            if (ReferenceEquals(subscribedTreeNode, node))
             {
-                throw new TimeoutException("Condition was not met within the allotted time.");
+                return;
             }
 
-            await Task.Delay(25);
+            if (subscribedTreeNode is not null)
+            {
+                subscribedTreeNode.PropertyChanged -= OnSelectedTreeNodePropertyChanged;
+                subscribedTreeNode.Items.CollectionChanged -= OnSelectedTreeNodeItemsChanged;
+            }
+
+            subscribedTreeNode = node;
+
+            if (subscribedTreeNode is not null)
+            {
+                subscribedTreeNode.PropertyChanged += OnSelectedTreeNodePropertyChanged;
+                subscribedTreeNode.Items.CollectionChanged += OnSelectedTreeNodeItemsChanged;
+            }
+        }
+
+        viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        viewModel.RootNode.CollectionChanged += OnRootNodeChanged;
+        viewModel.SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
+        AttachSelectedTreeNode(viewModel.SelectedTreeNode);
+
+        try
+        {
+            Notify();
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMilliseconds));
+
+            while (!condition())
+            {
+                AttachSelectedTreeNode(viewModel.SelectedTreeNode);
+
+                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token);
+                while (signal.Reader.TryRead(out _))
+                {
+                    AttachSelectedTreeNode(viewModel.SelectedTreeNode);
+                    if (condition())
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            viewModel.RootNode.CollectionChanged -= OnRootNodeChanged;
+            viewModel.SelectedFiles.CollectionChanged -= OnSelectedFilesChanged;
+            AttachSelectedTreeNode(null);
         }
     }
 
