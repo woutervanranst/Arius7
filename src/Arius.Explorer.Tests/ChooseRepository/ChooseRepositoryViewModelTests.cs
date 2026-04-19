@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -119,16 +120,20 @@ public class ChooseRepositoryViewModelTests
     [Test]
     public void OpenRepositoryCommand_WhenAllFieldsAreValid_IsEnabledAndBuildsRepository()
     {
-        Skip.Test("TODO");
-
         var mediator = Substitute.For<IMediator>();
+
+        mediator
+            .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "secret-key"), Arg.Any<CancellationToken>())
+            .Returns(_ => new[] { "valid-container-123" }.ToAsyncEnumerable());
+
         using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
         viewModel.AccountKey = "secret-key";
-        viewModel.ContainerName = "valid-container-123";
         viewModel.Passphrase = "secret-pass";
+
+        WaitForAsync(() => viewModel.ContainerNames.Count == 1).GetAwaiter().GetResult();
 
         viewModel.OpenRepositoryCommand.CanExecute(null).ShouldBeTrue();
         viewModel.OpenRepositoryCommand.Execute(null);
@@ -139,6 +144,75 @@ public class ChooseRepositoryViewModelTests
         repository.ContainerName.ShouldBe("valid-container-123");
         repository.AccountKey.ShouldBe("secret-key");
         repository.Passphrase.ShouldBe("secret-pass");
+    }
+
+    [Test]
+    public void OpenRepositoryCommand_WhenContainerNameViolatesAzureRules_IsDisabled()
+    {
+        var mediator = Substitute.For<IMediator>();
+        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+
+        viewModel.LocalDirectoryPath = "C:/data";
+        viewModel.AccountName = "account";
+        viewModel.AccountKey = "key";
+        viewModel.Passphrase = "pass";
+
+        foreach (var invalidContainerName in new[] { "ab", "-abc", "abc-", "ab--cd", "Abc" })
+        {
+            viewModel.ContainerName = invalidContainerName;
+            viewModel.OpenRepositoryCommand.CanExecute(null).ShouldBeFalse($"{invalidContainerName} should be rejected");
+        }
+    }
+
+    [Test]
+    public async Task AccountCredentials_WhenQueryReturnsNoContainers_ClearsContainerSelection()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var queryInvoked = false;
+
+        mediator
+            .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                queryInvoked = true;
+                return EmptyAsyncEnumerable();
+            });
+
+        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+
+        viewModel.ContainerName = "existing-container";
+        viewModel.AccountName = "account";
+        viewModel.AccountKey = "key";
+
+        await WaitForAsync(() => queryInvoked && !viewModel.IsLoading);
+
+        viewModel.StorageAccountError.ShouldBeFalse();
+        viewModel.ContainerName.ShouldBe(string.Empty);
+    }
+
+    [Test]
+    public async Task AccountCredentials_WhenCurrentContainerStillExists_PreservesSelection()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var queryInvoked = false;
+
+        mediator
+            .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                queryInvoked = true;
+                return new[] { "container-a", "container-b" }.ToAsyncEnumerable();
+            });
+
+        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+
+        viewModel.ContainerName = "container-b";
+        viewModel.AccountName = "account";
+        viewModel.AccountKey = "key";
+
+        await WaitForAsync(() => queryInvoked && viewModel.ContainerNames.Count == 2);
+
+        viewModel.ContainerName.ShouldBe("container-b");
     }
 
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMilliseconds = 1000)
@@ -155,5 +229,11 @@ public class ChooseRepositoryViewModelTests
 
             await Task.Delay(25);
         }
+    }
+
+    private static async IAsyncEnumerable<string> EmptyAsyncEnumerable()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 }
