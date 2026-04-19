@@ -19,11 +19,11 @@ namespace Arius.E2E.Tests.Fixtures;
 /// Each test run gets a unique container that is deleted on teardown.
 /// Missing credentials are treated as a test configuration error and fail the suite.
 /// </summary>
-public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
+internal sealed class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
 {
     private static readonly Microsoft.Extensions.Configuration.IConfiguration _config = new ConfigurationBuilder()
         .AddEnvironmentVariables()
-        .AddUserSecrets<AzureFixture>()
+        .AddUserSecrets<AzureE2EBackendFixture>()
         .Build();
 
     public static readonly string? AccountName = _config["ARIUS_E2E_ACCOUNT"];
@@ -34,6 +34,12 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
                                    && !string.IsNullOrWhiteSpace(AccountKey);
 
     private BlobServiceClient? _serviceClient;
+
+    public string Name => "Azure";
+
+    public E2EBackendCapabilities Capabilities { get; } = new(
+        SupportsArchiveTier: true,
+        SupportsRehydrationPlanning: true);
 
     public string Account    => AccountName ?? throw new InvalidOperationException("ARIUS_E2E_ACCOUNT not set.");
     public string Key        => AccountKey  ?? throw new InvalidOperationException("ARIUS_E2E_KEY not set.");
@@ -58,7 +64,7 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
         CreateTestContainerAsync(CancellationToken ct = default)
     {
         if (_serviceClient is null)
-            throw new InvalidOperationException("AzureFixture not initialized.");
+            throw new InvalidOperationException("AzureE2EBackendFixture not initialized.");
 
         var containerName = $"arius-e2e-{Guid.NewGuid():N}";
         var container     = _serviceClient.GetBlobContainerClient(containerName);
@@ -75,9 +81,21 @@ public sealed class AzureFixture : IAsyncInitializer, IAsyncDisposable
         return (container, svc, Cleanup);
     }
 
-    public async ValueTask DisposeAsync()
+    public async Task<E2EStorageBackendContext> CreateContextAsync(CancellationToken cancellationToken = default)
     {
-        // Service client has no resources to release; containers cleaned up per-test.
-        await Task.CompletedTask;
+        var (container, service, cleanup) = await CreateTestContainerAsync(cancellationToken);
+
+        return new E2EStorageBackendContext
+        {
+            BlobContainer = service,
+            AccountName = container.AccountName,
+            ContainerName = container.Name,
+            BlobContainerClient = container,
+            AzureBlobContainerService = service,
+            Capabilities = Capabilities,
+            CleanupAsync = async () => await cleanup(),
+        };
     }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

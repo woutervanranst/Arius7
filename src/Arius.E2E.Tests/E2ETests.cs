@@ -15,8 +15,8 @@ namespace Arius.E2E.Tests;
 ///
 /// Covers tasks 16.1 – 16.5.
 /// </summary>
-[ClassDataSource<AzureFixture>(Shared = SharedType.PerTestSession)]
-public class E2ETests(AzureFixture azure)
+[ClassDataSource<AzureE2EBackendFixture>(Shared = SharedType.PerTestSession)]
+internal class E2ETests(AzureE2EBackendFixture azure)
 {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -43,8 +43,8 @@ public class E2ETests(AzureFixture azure)
     [Test]
     public async Task E2E_Configuration_IsAvailable_WhenEnvVarsSet()
     {
-        AzureFixture.AccountName.ShouldNotBeNullOrWhiteSpace();
-        AzureFixture.AccountKey.ShouldNotBeNullOrWhiteSpace();
+        AzureE2EBackendFixture.AccountName.ShouldNotBeNullOrWhiteSpace();
+        AzureE2EBackendFixture.AccountKey.ShouldNotBeNullOrWhiteSpace();
 
         // Create and immediately clean up a container to validate credentials work
         var (container, _, cleanup) = await azure.CreateTestContainerAsync();
