@@ -27,6 +27,33 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
+    public async Task ScenarioRunner_LatestRestore_WithV1Source_PreparesOnlyV1RemoteState()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-tier-planning");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var restoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, restoreFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
+        setupFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+        ]);
+        setupFixture.ArchiveCallCount.ShouldBe(1);
+        restoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
+    }
+
+    [Test]
     public async Task ScenarioRunner_InitialArchive_StartsFromEmptyRemote()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "initial-archive-v1");

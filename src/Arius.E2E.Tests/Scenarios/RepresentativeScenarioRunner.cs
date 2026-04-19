@@ -190,7 +190,12 @@ internal static class RepresentativeScenarioRunner
         return scenario.Operation switch
         {
             ScenarioOperation.Archive => scenario.ArchiveMode == ScenarioArchiveMode.NoChanges,
-            ScenarioOperation.Restore => scenario.RestoreTarget is ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.Latest or ScenarioRestoreTarget.MultipleVersions,
+            ScenarioOperation.Restore => scenario.RestoreTarget switch
+            {
+                ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.MultipleVersions => true,
+                ScenarioRestoreTarget.Latest => scenario.SourceVersion == SyntheticRepositoryVersion.V2,
+                _ => false,
+            },
             ScenarioOperation.ArchiveThenRestore => false,
             _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
         };
