@@ -135,7 +135,13 @@ internal sealed record SyntheticRepositoryDefinition
             if (Path.IsPathRooted(path))
                 throw new ArgumentException($"Path '{path}' must be relative.", paramName);
 
+            if (path.Contains("//", StringComparison.Ordinal) || path.Contains("\\\\", StringComparison.Ordinal))
+                throw new ArgumentException($"Path '{path}' must not contain repeated separators.", paramName);
+
             var parts = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Contains(".", StringComparer.Ordinal))
+                throw new ArgumentException($"Path '{path}' must not contain '.' segments.", paramName);
+
             if (parts.Contains("..", StringComparer.Ordinal))
                 throw new ArgumentException($"Path '{path}' must not contain '..' segments.", paramName);
         }

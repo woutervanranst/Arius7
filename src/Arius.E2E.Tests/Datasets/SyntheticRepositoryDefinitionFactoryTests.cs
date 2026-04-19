@@ -395,6 +395,30 @@ public class SyntheticRepositoryDefinitionFactoryTests
     }
 
     [Test]
+    public async Task SyntheticRepositoryDefinition_Rejects_NonNormalized_Relative_Paths()
+    {
+        await Task.CompletedTask;
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/./readme.txt", 8 * 1024, "small-001")],
+            []));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001")],
+            [new SyntheticMutation(SyntheticMutationKind.Add, "docs//new.bin", ReplacementContentId: "small-002", ReplacementSizeBytes: 8 * 1024)]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001")],
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "docs/./renamed.txt")]));
+    }
+
+    [Test]
     public async Task Representative_Profile_Composes_Valid_V2_Path_Set()
     {
         await Task.CompletedTask;
@@ -441,6 +465,11 @@ public class SyntheticRepositoryDefinitionFactoryTests
             path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
                 .Contains("..", StringComparer.Ordinal)
                 .ShouldBeFalse();
+            path.Split(['/', '\\'], StringSplitOptions.None)
+                .Contains(".", StringComparer.Ordinal)
+                .ShouldBeFalse();
+            path.Contains("//", StringComparison.Ordinal).ShouldBeFalse();
+            path.Contains("\\\\", StringComparison.Ordinal).ShouldBeFalse();
         }
     }
 }
