@@ -130,10 +130,21 @@ internal sealed record SyntheticRepositoryDefinition
             string.Equals(path, rootDirectory, StringComparison.Ordinal) ||
             path.StartsWith($"{rootDirectory}/", StringComparison.Ordinal));
 
+        static void ValidateRelativePath(string path, string paramName)
+        {
+            if (Path.IsPathRooted(path))
+                throw new ArgumentException($"Path '{path}' must be relative.", paramName);
+
+            var parts = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Contains("..", StringComparer.Ordinal))
+                throw new ArgumentException($"Path '{path}' must not contain '..' segments.", paramName);
+        }
+
         var v1Paths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in filesCopy)
         {
             ArgumentNullException.ThrowIfNull(file);
+            ValidateRelativePath(file.Path, nameof(Files));
 
             if (!IsUnderDeclaredRoot(file.Path))
                 throw new ArgumentException($"File path '{file.Path}' is outside declared roots.", nameof(Files));
@@ -147,6 +158,7 @@ internal sealed record SyntheticRepositoryDefinition
         foreach (var mutation in mutationsCopy)
         {
             ArgumentNullException.ThrowIfNull(mutation);
+            ValidateRelativePath(mutation.Path, nameof(V2Mutations));
 
             if (!mutatedSourcePaths.Add(mutation.Path))
                 throw new ArgumentException($"Mutation source '{mutation.Path}' may only be mutated once.", nameof(V2Mutations));
@@ -167,6 +179,8 @@ internal sealed record SyntheticRepositoryDefinition
                     if (!v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Rename source '{mutation.Path}' must exist in V1.", nameof(V2Mutations));
 
+                    ValidateRelativePath(mutation.TargetPath!, nameof(V2Mutations));
+
                     if (string.Equals(mutation.Path, mutation.TargetPath, StringComparison.Ordinal))
                         throw new ArgumentException("Rename target must differ from source.", nameof(V2Mutations));
 
@@ -183,6 +197,8 @@ internal sealed record SyntheticRepositoryDefinition
                     break;
 
                 case SyntheticMutationKind.Add:
+                    ValidateRelativePath(mutation.Path, nameof(V2Mutations));
+
                     if (!IsUnderDeclaredRoot(mutation.Path))
                         throw new ArgumentException($"Add target '{mutation.Path}' is outside declared roots.", nameof(V2Mutations));
 

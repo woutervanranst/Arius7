@@ -363,4 +363,84 @@ public class SyntheticRepositoryDefinitionFactoryTests
             validFiles,
             [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "src/readme.txt")]));
     }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Rejects_Invalid_Relative_Paths()
+    {
+        await Task.CompletedTask;
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/../escape.bin", 8 * 1024, "small-001")],
+            []));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001")],
+            [new SyntheticMutation(SyntheticMutationKind.Delete, "docs/../escape.bin")]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001")],
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "/escape.bin")]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001")],
+            [new SyntheticMutation(SyntheticMutationKind.Add, "docs/../escape.bin", ReplacementContentId: "small-002", ReplacementSizeBytes: 8 * 1024)]));
+    }
+
+    [Test]
+    public async Task Representative_Profile_Composes_Valid_V2_Path_Set()
+    {
+        await Task.CompletedTask;
+
+        var definition = SyntheticRepositoryDefinitionFactory.Create(
+            SyntheticRepositoryProfile.Representative);
+        var finalPaths = definition.Files.Select(x => x.Path).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var mutation in definition.V2Mutations)
+        {
+            switch (mutation.Kind)
+            {
+                case SyntheticMutationKind.Delete:
+                    finalPaths.Remove(mutation.Path);
+                    break;
+
+                case SyntheticMutationKind.Rename:
+                    finalPaths.Remove(mutation.Path);
+                    finalPaths.Add(mutation.TargetPath!);
+                    break;
+
+                case SyntheticMutationKind.Add:
+                    finalPaths.Add(mutation.Path);
+                    break;
+
+                case SyntheticMutationKind.ChangeContent:
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        finalPaths.Contains("docs/batch-00/doc-0000.txt").ShouldBeFalse();
+        finalPaths.Contains("archives/duplicates/copy-a.bin").ShouldBeFalse();
+        finalPaths.Contains("archives/duplicates/copy-a-renamed.bin").ShouldBeTrue();
+        finalPaths.Contains("src/module-99/group-00/new-file-0000.bin").ShouldBeTrue();
+        finalPaths.Count.ShouldBe(definition.Files.Count);
+        finalPaths.Count.ShouldBe(finalPaths.Distinct(StringComparer.Ordinal).Count());
+
+        foreach (var path in finalPaths)
+        {
+            Path.IsPathRooted(path).ShouldBeFalse();
+            path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+                .Contains("..", StringComparer.Ordinal)
+                .ShouldBeFalse();
+        }
+    }
 }
