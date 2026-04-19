@@ -175,4 +175,95 @@ public class E2EFixtureCacheStateTests
             await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
         }
     }
+
+    [Test]
+    public async Task PreserveLocalCacheAsync_AfterDispose_ThrowsInvalidOperationException()
+    {
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var blobContainer = Substitute.For<IBlobContainerService>();
+
+        var fixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+
+        await fixture.DisposeAsync();
+
+        await Should.ThrowAsync<InvalidOperationException>(async () => await fixture.PreserveLocalCacheAsync());
+    }
+
+    [Test]
+    public async Task DisposeAsync_WhenTempRootDeletionThrows_ReleasesRepositoryLeaseForLaterFixtures()
+    {
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var blobContainer = Substitute.For<IBlobContainerService>();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-e2e-dispose-tests-{Guid.NewGuid():N}");
+        var localRoot = Path.Combine(tempRoot, "source");
+        var restoreRoot = Path.Combine(tempRoot, "restore");
+
+        Directory.CreateDirectory(localRoot);
+        Directory.CreateDirectory(restoreRoot);
+
+        var brokenFixture = CreateFixtureForTests(
+            blobContainer,
+            tempRoot,
+            localRoot,
+            restoreRoot,
+            accountName,
+            containerName,
+            _ => throw new IOException("temp-root delete failed"));
+
+        await Should.ThrowAsync<IOException>(async () => await brokenFixture.DisposeAsync());
+
+        Directory.CreateDirectory(repositoryDirectory);
+
+        var secondFixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+
+        await secondFixture.DisposeAsync();
+
+        Directory.Exists(repositoryDirectory).ShouldBeFalse();
+        if (Directory.Exists(tempRoot))
+            Directory.Delete(tempRoot, recursive: true);
+        else if (File.Exists(tempRoot))
+            File.Delete(tempRoot);
+    }
+
+    static E2EFixture CreateFixtureForTests(
+        IBlobContainerService blobContainer,
+        string tempRoot,
+        string localRoot,
+        string restoreRoot,
+        string accountName,
+        string containerName,
+        Action<string>? deleteTempRoot = null)
+    {
+        var encryption = new Arius.Core.Shared.Encryption.PlaintextPassthroughService();
+        var index = new Arius.Core.Shared.ChunkIndex.ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var chunkStorage = new Arius.Core.Shared.ChunkStorage.ChunkStorageService(blobContainer, encryption);
+        var fileTreeService = new Arius.Core.Shared.FileTree.FileTreeService(blobContainer, encryption, index, accountName, containerName);
+        var snapshot = new Arius.Core.Shared.Snapshot.SnapshotService(blobContainer, encryption, accountName, containerName);
+
+        return new E2EFixture(
+            blobContainer,
+            encryption,
+            index,
+            chunkStorage,
+            fileTreeService,
+            snapshot,
+            tempRoot,
+            localRoot,
+            restoreRoot,
+            accountName,
+            containerName,
+            BlobTier.Cool,
+            deleteTempRoot);
+    }
 }

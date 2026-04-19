@@ -30,6 +30,7 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly string _container;
     private readonly IMediator _mediator;
     private bool _disposed;
+    private readonly Action<string> _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
@@ -45,7 +46,8 @@ public sealed class E2EFixture : IAsyncDisposable
         string restoreRoot,
         string account,
         string containerName,
-        BlobTier defaultTier)
+        BlobTier defaultTier,
+        Action<string>? deleteTempRoot = null)
     {
         BlobContainer = blobContainer;
         Encryption = encryption;
@@ -59,6 +61,7 @@ public sealed class E2EFixture : IAsyncDisposable
         _account = account;
         _container = containerName;
         _defaultTier = defaultTier;
+        _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
         _mediator = Substitute.For<IMediator>();
 
         lock (RepositoryCacheLeaseLock)
@@ -138,6 +141,9 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public Task PreserveLocalCacheAsync()
     {
+        if (_disposed)
+            throw new InvalidOperationException("Cannot preserve cache after fixture disposal.");
+
         lock (RepositoryCacheLeaseLock)
         {
             var cacheKey = GetRepositoryCacheKey(_account, _container);
@@ -226,11 +232,22 @@ public sealed class E2EFixture : IAsyncDisposable
 
         _disposed = true;
 
-        if (Directory.Exists(_tempRoot))
-            Directory.Delete(_tempRoot, recursive: true);
+        Exception? tempRootDeletionException = null;
+        try
+        {
+            if (Directory.Exists(_tempRoot))
+                _deleteTempRoot(_tempRoot);
+        }
+        catch (Exception ex)
+        {
+            tempRootDeletionException = ex;
+        }
 
         if (ShouldResetCacheOnDispose())
             await ResetLocalCacheAsync(_account, _container);
+
+        if (tempRootDeletionException is not null)
+            throw tempRootDeletionException;
 
         await Task.CompletedTask;
     }
