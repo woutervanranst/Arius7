@@ -73,12 +73,12 @@ public interface IRecentRepositoryManager
 public sealed class RecentRepositoryManager : IRecentRepositoryManager
 {
     private readonly IApplicationSettings settings;
-    private readonly Func<DateTime> now;
+    private readonly TimeProvider timeProvider;
 
-    public RecentRepositoryManager(IApplicationSettings settings, Func<DateTime>? now = null)
+    public RecentRepositoryManager(IApplicationSettings settings, TimeProvider? timeProvider = null)
     {
         this.settings = settings;
-        this.now = now ?? (() => DateTime.UtcNow);
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public IReadOnlyList<RepositoryOptions> GetAll() =>
@@ -99,7 +99,7 @@ public sealed class RecentRepositoryManager : IRecentRepositoryManager
             string.Equals(a.AccountName,        b.AccountName,        StringComparison.OrdinalIgnoreCase);
 
         var existing = settings.RecentRepositories.FirstOrDefault(r => EqualRepositoryOptions(r, repo));
-        var openedAt = now();
+        var openedAt = timeProvider.GetUtcNow().UtcDateTime;
 
         if (existing is null)
         {

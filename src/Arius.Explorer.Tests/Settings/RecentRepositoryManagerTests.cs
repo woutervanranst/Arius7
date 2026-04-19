@@ -10,8 +10,10 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_AddsAndOrdersMostRecentFirst()
     {
         var settings = new FakeApplicationSettings();
-        var times = CreateClock(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
-        var manager = new RecentRepositoryManager(settings, times);
+        var timeProvider = new SequencedTimeProvider(
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 1, 0, 0, 1, TimeSpan.Zero));
+        var manager = new RecentRepositoryManager(settings, timeProvider);
 
         var repoA = new RepositoryOptions
         {
@@ -38,8 +40,10 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_UpdatesExistingWithoutDuplicating()
     {
         var settings = new FakeApplicationSettings();
-        var times = CreateClock(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
-        var manager = new RecentRepositoryManager(settings, times);
+        var timeProvider = new SequencedTimeProvider(
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 1, 0, 0, 1, TimeSpan.Zero));
+        var manager = new RecentRepositoryManager(settings, timeProvider);
 
         var original = new RepositoryOptions
         {
@@ -86,10 +90,10 @@ public class RecentRepositoryManagerTests
     public void RecentRepositoryManager_TouchOrAdd_RespectsRecentLimit()
     {
         var settings = new FakeApplicationSettings { RecentLimit = 2 };
-        var manager = new RecentRepositoryManager(settings, CreateClock(
-            new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc),
-            new DateTime(2026, 1, 1, 0, 0, 2, DateTimeKind.Utc)));
+        var manager = new RecentRepositoryManager(settings, new SequencedTimeProvider(
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 1, 0, 0, 1, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 1, 0, 0, 2, TimeSpan.Zero)));
 
         manager.TouchOrAdd(new RepositoryOptions { LocalDirectoryPath = "C:/a", AccountName = "acct", ContainerName = "repo-a" });
         manager.TouchOrAdd(new RepositoryOptions { LocalDirectoryPath = "C:/b", AccountName = "acct", ContainerName = "repo-b" });
@@ -121,9 +125,14 @@ public class RecentRepositoryManagerTests
         settings.SaveCalls.ShouldBe(0);
     }
 
-    private static Func<DateTime> CreateClock(params DateTime[] values)
+    private sealed class SequencedTimeProvider(params DateTimeOffset[] values) : TimeProvider
     {
-        var index = 0;
-        return () => values[Math.Min(index++, values.Length - 1)];
+        private readonly DateTimeOffset[] values = values;
+        private int index;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            return values[Math.Min(index++, values.Length - 1)];
+        }
     }
 }
