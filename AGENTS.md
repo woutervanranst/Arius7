@@ -118,6 +118,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **Filter by test name**: use `--treenode-filter "/*/*/*/<TestMethodName>"`
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
+- **Coverage with TUnit/MTP**: use `--coverage`, not `--collect:"XPlat Code Coverage"`
 
 - Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.

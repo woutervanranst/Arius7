@@ -14,4 +14,27 @@ public class ApplicationSettingsTests
         settings.UpgradeRequired.ShouldBeTrue();
     }
 
+    [Test]
+    public void RecentRepositories_WhenUnset_ReturnsReusableCollection()
+    {
+        var settings = new ApplicationSettings();
+
+        var first = settings.RecentRepositories;
+        var second = settings.RecentRepositories;
+
+        first.ShouldNotBeNull();
+        second.ShouldBeSameAs(first);
+    }
+
+    [Test]
+    public void UpgradeRequired_WhenSetFalse_ReturnsFalse()
+    {
+        var settings = new ApplicationSettings
+        {
+            UpgradeRequired = false,
+        };
+
+        settings.UpgradeRequired.ShouldBeFalse();
+    }
+
 }

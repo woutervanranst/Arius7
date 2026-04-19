@@ -13,6 +13,7 @@ using Arius.Explorer.Shared.Extensions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mediator;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using Unit = System.Reactive.Unit;
 
@@ -21,6 +22,7 @@ namespace Arius.Explorer.ChooseRepository;
 public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator              mediator;
+    private readonly ILogger<ChooseRepositoryViewModel> logger;
     private readonly Subject<Unit>          credentialsChangedSubject = new();
     private readonly IDisposable            debounceSubscription;
     private readonly TimeSpan               debounceTimeSpan;
@@ -31,9 +33,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 
     public ChooseRepositoryViewModel(
         IMediator              mediator,
+        ILogger<ChooseRepositoryViewModel> logger,
         TimeSpan?              debounceTimeSpan = null)
     {
-        this.mediator = mediator;
+        this.mediator          = mediator;
+        this.logger            = logger;
         this.debounceTimeSpan  = debounceTimeSpan ?? TimeSpan.FromMilliseconds(500);
         synchronizationContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
@@ -158,10 +162,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is expected when new credentials are entered; do not flag as error
+            logger.LogDebug("Container loading was cancelled because credentials changed.");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogError(ex, "Failed to load container names.");
             synchronizationContext.Post(_ =>
             {
                 StorageAccountError = true;
@@ -235,9 +240,9 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
                 window.Close();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle error - show message to user
+            logger.LogError(ex, "Failed to prepare the selected repository.");
         }
         finally
         {
