@@ -21,6 +21,21 @@ internal enum ScenarioBackendRequirement
     AzureArchiveCapable,
 }
 
+internal enum ScenarioArchiveMode
+{
+    Initial,
+    Incremental,
+    NoChanges,
+}
+
+internal enum ScenarioRestoreTarget
+{
+    None,
+    Latest,
+    Previous,
+    MultipleVersions,
+}
+
 internal sealed record RepresentativeScenarioDefinition(
     string Name,
     ScenarioOperation Operation,
@@ -30,4 +45,5 @@ internal sealed record RepresentativeScenarioDefinition(
     bool UseNoPointers = false,
     bool UseRemoveLocal = false,
     bool UseOverwrite = true,
-    string? RestoreVersion = null);
+    ScenarioArchiveMode ArchiveMode = ScenarioArchiveMode.Initial,
+    ScenarioRestoreTarget RestoreTarget = ScenarioRestoreTarget.None);
