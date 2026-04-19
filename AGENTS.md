@@ -118,7 +118,6 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
 - The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
 - **Coverage with TUnit/MTP**: use `--coverage`, not `--collect:"XPlat Code Coverage"`
-- **Explorer coverage**: prefer `src/Arius.Explorer.Tests/coverage.settings.xml` so coverage reflects testable Explorer logic instead of generated `obj` code and WPF shell/bootstrap files
 
 - Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
