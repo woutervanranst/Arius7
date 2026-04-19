@@ -22,12 +22,12 @@ namespace Arius.E2E.Tests.Fixtures;
 /// </summary>
 public sealed class E2EFixture : IAsyncDisposable
 {
-    private static readonly HashSet<string> PreservedRepositoryCaches = new(StringComparer.Ordinal);
     private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
     private readonly IMediator _mediator;
+    private bool _preserveLocalCache;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
@@ -119,7 +119,6 @@ public sealed class E2EFixture : IAsyncDisposable
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
-        PreservedRepositoryCaches.Remove(GetRepositoryCacheKey(accountName, containerName));
 
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
@@ -127,9 +126,9 @@ public sealed class E2EFixture : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public static Task PreserveLocalCacheAsync(string accountName, string containerName)
+    public Task PreserveLocalCacheAsync()
     {
-        PreservedRepositoryCaches.Add(GetRepositoryCacheKey(accountName, containerName));
+        _preserveLocalCache = true;
         return Task.CompletedTask;
     }
 
@@ -208,7 +207,7 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        if (!PreservedRepositoryCaches.Contains(GetRepositoryCacheKey(_account, _container)))
+        if (!_preserveLocalCache)
             await ResetLocalCacheAsync(_account, _container);
 
         await Task.CompletedTask;
@@ -227,7 +226,4 @@ public sealed class E2EFixture : IAsyncDisposable
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
     }
-
-    static string GetRepositoryCacheKey(string accountName, string containerName) =>
-        $"{accountName}\n{containerName}";
 }

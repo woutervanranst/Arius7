@@ -30,31 +30,6 @@ public class E2EFixtureCacheStateTests
     }
 
     [Test]
-    public async Task PreserveLocalCache_LeavesRepositoryCacheDirectoryAndContents_OnRealRepositoryPath()
-    {
-        var accountName = $"account-{Guid.NewGuid():N}";
-        var containerName = $"container-{Guid.NewGuid():N}";
-        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
-        var markerFile = Path.Combine(repositoryDirectory, "marker.txt");
-        Directory.CreateDirectory(repositoryDirectory);
-        await File.WriteAllTextAsync(markerFile, "preserve-me");
-
-        try
-        {
-            await E2EFixture.PreserveLocalCacheAsync(accountName, containerName);
-
-            Directory.Exists(repositoryDirectory).ShouldBeTrue();
-            File.Exists(markerFile).ShouldBeTrue();
-            (await File.ReadAllTextAsync(markerFile)).ShouldBe("preserve-me");
-        }
-        finally
-        {
-            if (Directory.Exists(repositoryDirectory))
-                Directory.Delete(repositoryDirectory, recursive: true);
-        }
-    }
-
-    [Test]
     public async Task CreateAsync_MaterializeSourceAsync_ReplacesLocalTreeWithRequestedVersion()
     {
         var definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Small);
@@ -76,7 +51,7 @@ public class E2EFixtureCacheStateTests
     }
 
     [Test]
-    public async Task DisposeAsync_PreservedCacheMode_LeavesRepositoryCacheDirectoryInPlace()
+    public async Task DisposeAsync_PreservedCacheMode_IsScopedToTheFixtureInstance()
     {
         var accountName = $"account-{Guid.NewGuid():N}";
         var containerName = $"container-{Guid.NewGuid():N}";
@@ -89,7 +64,17 @@ public class E2EFixtureCacheStateTests
 
         try
         {
-            await E2EFixture.PreserveLocalCacheAsync(accountName, containerName);
+            await using (var fixture = await E2EFixture.CreateAsync(
+                             blobContainer,
+                             accountName,
+                             containerName,
+                             BlobTier.Cool))
+            {
+                await fixture.PreserveLocalCacheAsync();
+            }
+
+            Directory.Exists(repositoryDirectory).ShouldBeTrue();
+            File.Exists(markerFile).ShouldBeTrue();
 
             await using (var fixture = await E2EFixture.CreateAsync(
                              blobContainer,
@@ -99,8 +84,7 @@ public class E2EFixtureCacheStateTests
             {
             }
 
-            Directory.Exists(repositoryDirectory).ShouldBeTrue();
-            File.Exists(markerFile).ShouldBeTrue();
+            Directory.Exists(repositoryDirectory).ShouldBeFalse();
         }
         finally
         {
