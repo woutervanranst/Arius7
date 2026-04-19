@@ -28,6 +28,9 @@ Archive and restore at a glance:
 Download the binary for your platform from the
 [latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
+For OpenCode in this repository, `opencode.json` includes the `superpowers` plugin.
+Restart OpenCode after pulling the workspace if you want the plugin skills to load.
+
 ### Windows
 
 ```powershell
