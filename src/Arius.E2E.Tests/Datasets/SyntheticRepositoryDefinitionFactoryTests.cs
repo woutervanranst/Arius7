@@ -194,4 +194,109 @@ public class SyntheticRepositoryDefinitionFactoryTests
         add.ReplacementSizeBytes.ShouldBe(8 * 1024);
         rename.TargetPath.ShouldBe("src/new.bin");
     }
+
+    [Test]
+    public async Task SyntheticFileDefinition_Rejects_Invalid_Values()
+    {
+        await Task.CompletedTask;
+
+        Should.Throw<ArgumentException>(() => new SyntheticFileDefinition(
+            "",
+            8 * 1024,
+            "small-001"));
+
+        Should.Throw<ArgumentOutOfRangeException>(() => new SyntheticFileDefinition(
+            "docs/readme.txt",
+            0,
+            "small-001"));
+
+        Should.Throw<ArgumentException>(() => new SyntheticFileDefinition(
+            "docs/readme.txt",
+            8 * 1024,
+            ""));
+    }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Copies_Mutable_Input_Collections()
+    {
+        await Task.CompletedTask;
+
+        var rootDirectories = new List<string> { "docs" };
+        var files = new List<SyntheticFileDefinition>
+        {
+            new("docs/readme.txt", 8 * 1024, "small-001"),
+        };
+        var mutations = new List<SyntheticMutation>
+        {
+            new(SyntheticMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-002", ReplacementSizeBytes: 8 * 1024),
+        };
+
+        var definition = new SyntheticRepositoryDefinition(
+            256 * 1024,
+            rootDirectories,
+            files,
+            mutations);
+
+        rootDirectories.Add("src");
+        files.Add(new SyntheticFileDefinition("src/new.bin", 8 * 1024, "small-003"));
+        mutations.Add(new SyntheticMutation(SyntheticMutationKind.Add, "src/new.bin", ReplacementContentId: "small-004", ReplacementSizeBytes: 8 * 1024));
+
+        definition.RootDirectories.ShouldBe(["docs"]);
+        definition.Files.Select(x => x.Path).ShouldBe(["docs/readme.txt"]);
+        definition.V2Mutations.Count.ShouldBe(1);
+        (definition.RootDirectories is string[]).ShouldBeFalse();
+        (definition.Files is SyntheticFileDefinition[]).ShouldBeFalse();
+        (definition.V2Mutations is SyntheticMutation[]).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Rejects_Invalid_V2_Transitions()
+    {
+        await Task.CompletedTask;
+
+        var files = new[]
+        {
+            new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, "small-001"),
+            new SyntheticFileDefinition("src/existing.bin", 8 * 1024, "small-002"),
+        };
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [new SyntheticMutation(SyntheticMutationKind.Delete, "docs/missing.txt")]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [new SyntheticMutation(SyntheticMutationKind.ChangeContent, "docs/missing.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 8 * 1024)]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "docs/readme.txt")]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "src/existing.bin")]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [new SyntheticMutation(SyntheticMutationKind.Add, "src/existing.bin", ReplacementContentId: "small-003", ReplacementSizeBytes: 8 * 1024)]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs", "src"],
+            files,
+            [
+                new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "tmp/renamed.txt"),
+                new SyntheticMutation(SyntheticMutationKind.Add, "tmp/renamed.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 8 * 1024),
+            ]));
+    }
 }
