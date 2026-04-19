@@ -8,6 +8,10 @@ namespace Arius.E2E.Tests.Scenarios;
 
 internal interface IRepresentativeScenarioFixture : IAsyncDisposable
 {
+    string LocalRoot { get; }
+
+    string RestoreRoot { get; }
+
     Task PreserveLocalCacheAsync();
 
     Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
@@ -15,9 +19,9 @@ internal interface IRepresentativeScenarioFixture : IAsyncDisposable
         SyntheticRepositoryVersion version,
         int seed);
 
-    Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default);
+    Task<ArchiveResult> ArchiveAsync(ArchiveCommandOptions options, CancellationToken ct = default);
 
-    Task<RestoreResult> RestoreAsync(CancellationToken ct = default);
+    Task<RestoreResult> RestoreAsync(RestoreOptions options, CancellationToken ct = default);
 }
 
 internal sealed class RepresentativeScenarioRunnerDependencies
@@ -76,14 +80,18 @@ internal static class RepresentativeScenarioRunner
         {
             await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V1, seed);
 
-            var initialArchive = await setupFixture.ArchiveAsync(cancellationToken);
+            var initialArchive = await setupFixture.ArchiveAsync(
+                CreateArchiveOptions(setupFixture, useNoPointers: false, useRemoveLocal: false),
+                cancellationToken);
             initialArchive.Success.ShouldBeTrue(initialArchive.ErrorMessage);
 
-            if (scenario.SourceVersion == SyntheticRepositoryVersion.V2)
+            if (RequiresV2RemoteState(scenario))
             {
                 await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V2, seed);
 
-                var v2Archive = await setupFixture.ArchiveAsync(cancellationToken);
+                var v2Archive = await setupFixture.ArchiveAsync(
+                    CreateArchiveOptions(setupFixture, useNoPointers: false, useRemoveLocal: false),
+                    cancellationToken);
                 v2Archive.Success.ShouldBeTrue(v2Archive.ErrorMessage);
             }
 
@@ -102,20 +110,29 @@ internal static class RepresentativeScenarioRunner
         switch (scenario.Operation)
         {
             case ScenarioOperation.Archive:
-                var archiveResult = await fixture.ArchiveAsync(cancellationToken);
+                var archiveResult = await fixture.ArchiveAsync(
+                    CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
+                    cancellationToken);
                 archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
                 break;
 
             case ScenarioOperation.Restore:
-                var restoreResult = await fixture.RestoreAsync(cancellationToken);
-                restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+                foreach (var restoreOptions in CreateRestoreOptions(scenario, fixture))
+                {
+                    var restoreResult = await fixture.RestoreAsync(restoreOptions, cancellationToken);
+                    restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+                }
                 break;
 
             case ScenarioOperation.ArchiveThenRestore:
-                var archive = await fixture.ArchiveAsync(cancellationToken);
+                var archive = await fixture.ArchiveAsync(
+                    CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
+                    cancellationToken);
                 archive.Success.ShouldBeTrue(archive.ErrorMessage);
 
-                var restore = await fixture.RestoreAsync(cancellationToken);
+                var restore = await fixture.RestoreAsync(
+                    CreateRestoreOptions(scenario, fixture).Single(),
+                    cancellationToken);
                 restore.Success.ShouldBeTrue(restore.ErrorMessage);
                 break;
 
@@ -126,8 +143,54 @@ internal static class RepresentativeScenarioRunner
         return new RepresentativeScenarioRunResult(false);
     }
 
+    private static bool RequiresV2RemoteState(RepresentativeScenarioDefinition scenario)
+    {
+        return scenario.SourceVersion == SyntheticRepositoryVersion.V2 ||
+               scenario.RestoreTarget is ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.MultipleVersions;
+    }
+
+    private static ArchiveCommandOptions CreateArchiveOptions(
+        IRepresentativeScenarioFixture fixture,
+        bool useNoPointers,
+        bool useRemoveLocal)
+    {
+        return new ArchiveCommandOptions
+        {
+            RootDirectory = fixture.LocalRoot,
+            UploadTier = BlobTier.Cool,
+            NoPointers = useNoPointers,
+            RemoveLocal = useRemoveLocal,
+        };
+    }
+
+    private static IReadOnlyList<RestoreOptions> CreateRestoreOptions(
+        RepresentativeScenarioDefinition scenario,
+        IRepresentativeScenarioFixture fixture)
+    {
+        var latest = new RestoreOptions
+        {
+            RootDirectory = fixture.RestoreRoot,
+            Overwrite = scenario.UseOverwrite,
+            Version = scenario.RestoreVersion,
+        };
+
+        return scenario.RestoreTarget switch
+        {
+            ScenarioRestoreTarget.MultipleVersions =>
+            [
+                latest with { Version = "previous" },
+                latest with { Version = null },
+            ],
+            _ => [latest],
+        };
+    }
+
     private sealed class E2EScenarioFixtureAdapter(E2EFixture inner) : IRepresentativeScenarioFixture
     {
+        public string LocalRoot => inner.LocalRoot;
+
+        public string RestoreRoot => inner.RestoreRoot;
+
         public Task PreserveLocalCacheAsync() => inner.PreserveLocalCacheAsync();
 
         public Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
@@ -135,9 +198,11 @@ internal static class RepresentativeScenarioRunner
             SyntheticRepositoryVersion version,
             int seed) => inner.MaterializeSourceAsync(definition, version, seed);
 
-        public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) => inner.ArchiveAsync(ct);
+        public Task<ArchiveResult> ArchiveAsync(ArchiveCommandOptions options, CancellationToken ct = default) =>
+            inner.CreateArchiveHandler().Handle(new ArchiveCommand(options), ct).AsTask();
 
-        public Task<RestoreResult> RestoreAsync(CancellationToken ct = default) => inner.RestoreAsync(ct);
+        public Task<RestoreResult> RestoreAsync(RestoreOptions options, CancellationToken ct = default) =>
+            inner.CreateRestoreHandler().Handle(new RestoreCommand(options), ct).AsTask();
 
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }

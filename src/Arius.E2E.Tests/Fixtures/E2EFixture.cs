@@ -133,8 +133,14 @@ public sealed class E2EFixture : IAsyncDisposable
     {
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
 
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        try
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
 
         return Task.CompletedTask;
     }
