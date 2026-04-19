@@ -77,6 +77,7 @@ public class SyntheticRepositoryDefinitionFactoryTests
         changeContent.Path.ShouldBe("src/module-00/group-00/file-0000.bin");
         v1Paths.Contains(changeContent.Path).ShouldBeTrue();
         changeContent.ReplacementContentId.ShouldBe("small-updated-000");
+        changeContent.ReplacementSizeBytes.ShouldBe(4 * 1024);
         changeContent.TargetPath.ShouldBeNull();
 
         var delete = definition.V2Mutations.Single(x => x.Kind == SyntheticMutationKind.Delete);
@@ -84,18 +85,21 @@ public class SyntheticRepositoryDefinitionFactoryTests
         v1Paths.Contains(delete.Path).ShouldBeTrue();
         delete.TargetPath.ShouldBeNull();
         delete.ReplacementContentId.ShouldBeNull();
+        delete.ReplacementSizeBytes.ShouldBeNull();
 
         var rename = definition.V2Mutations.Single(x => x.Kind == SyntheticMutationKind.Rename);
         rename.Path.ShouldBe("archives/duplicates/copy-a.bin");
         v1Paths.Contains(rename.Path).ShouldBeTrue();
         rename.TargetPath.ShouldBe("archives/duplicates/copy-a-renamed.bin");
         rename.ReplacementContentId.ShouldBeNull();
+        rename.ReplacementSizeBytes.ShouldBeNull();
 
         var add = definition.V2Mutations.Single(x => x.Kind == SyntheticMutationKind.Add);
         add.Path.ShouldBe("src/module-99/group-00/new-file-0000.bin");
         v1Paths.Contains(add.Path).ShouldBeFalse();
         add.TargetPath.ShouldBeNull();
         add.ReplacementContentId.ShouldBe("new-000");
+        add.ReplacementSizeBytes.ShouldBe(24 * 1024);
     }
 
     [Test]
@@ -129,11 +133,65 @@ public class SyntheticRepositoryDefinitionFactoryTests
         v1Paths.Contains(changeContent.Path).ShouldBeTrue();
         changeContent.TargetPath.ShouldBeNull();
         changeContent.ReplacementContentId.ShouldBe("small-003");
+        changeContent.ReplacementSizeBytes.ShouldBe(32 * 1024);
 
         var add = definition.V2Mutations.Single(x => x.Kind == SyntheticMutationKind.Add);
         add.Path.ShouldBe("src/simple/c.bin");
         v1Paths.Contains(add.Path).ShouldBeFalse();
         add.TargetPath.ShouldBeNull();
         add.ReplacementContentId.ShouldBe("small-004");
+        add.ReplacementSizeBytes.ShouldBe(8 * 1024);
+    }
+
+    [Test]
+    public async Task SyntheticMutation_Rejects_Invalid_State_Combinations()
+    {
+        await Task.CompletedTask;
+
+        Should.Throw<ArgumentException>(() => new SyntheticMutation(
+            SyntheticMutationKind.Rename,
+            "docs/readme.txt"));
+
+        Should.Throw<ArgumentException>(() => new SyntheticMutation(
+            SyntheticMutationKind.Delete,
+            "docs/readme.txt",
+            ReplacementContentId: "ignored",
+            ReplacementSizeBytes: 32 * 1024));
+
+        Should.Throw<ArgumentException>(() => new SyntheticMutation(
+            SyntheticMutationKind.Add,
+            "src/new.bin",
+            ReplacementContentId: "new-001"));
+
+        Should.Throw<ArgumentException>(() => new SyntheticMutation(
+            SyntheticMutationKind.ChangeContent,
+            "src/file.bin",
+            ReplacementSizeBytes: 8 * 1024));
+
+        Should.Throw<ArgumentOutOfRangeException>(() => new SyntheticMutation(
+            SyntheticMutationKind.Add,
+            "src/new.bin",
+            ReplacementContentId: "new-001",
+            ReplacementSizeBytes: 0));
+    }
+
+    [Test]
+    public async Task SyntheticMutation_Allows_Valid_State_Combinations()
+    {
+        await Task.CompletedTask;
+
+        var add = new SyntheticMutation(
+            SyntheticMutationKind.Add,
+            "src/new.bin",
+            ReplacementContentId: "new-001",
+            ReplacementSizeBytes: 8 * 1024);
+
+        var rename = new SyntheticMutation(
+            SyntheticMutationKind.Rename,
+            "src/old.bin",
+            TargetPath: "src/new.bin");
+
+        add.ReplacementSizeBytes.ShouldBe(8 * 1024);
+        rename.TargetPath.ShouldBe("src/new.bin");
     }
 }

@@ -26,8 +26,8 @@ internal static class SyntheticRepositoryDefinitionFactory
                 new SyntheticFileDefinition("media/large.bin", 2 * 1024 * 1024, "large-001"),
             ],
             [
-                new SyntheticMutation(SyntheticMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-003"),
-                new SyntheticMutation(SyntheticMutationKind.Add, "src/simple/c.bin", ReplacementContentId: "small-004"),
+                new SyntheticMutation(SyntheticMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 32 * 1024),
+                new SyntheticMutation(SyntheticMutationKind.Add, "src/simple/c.bin", ReplacementContentId: "small-004", ReplacementSizeBytes: 8 * 1024),
             ]);
     }
 
@@ -61,10 +61,10 @@ internal static class SyntheticRepositoryDefinitionFactory
 
         IReadOnlyList<SyntheticMutation> mutations =
         [
-            new(SyntheticMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000"),
+            new(SyntheticMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
             new(SyntheticMutationKind.Delete, "docs/batch-00/doc-0000.txt"),
             new(SyntheticMutationKind.Rename, "archives/duplicates/copy-a.bin", TargetPath: "archives/duplicates/copy-a-renamed.bin"),
-            new(SyntheticMutationKind.Add, "src/module-99/group-00/new-file-0000.bin", ReplacementContentId: "new-000"),
+            new(SyntheticMutationKind.Add, "src/module-99/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
         ];
 
         return new SyntheticRepositoryDefinition(
