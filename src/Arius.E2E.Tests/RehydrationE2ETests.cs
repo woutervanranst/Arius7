@@ -52,7 +52,7 @@ internal class RehydrationE2ETests(AzureFixture azure)
         {
             // ── Task 2.2: Create 3 test files of ~100-500 bytes ───────────────
 
-            var fix = await E2EFixture.CreateAsync(svc, container.AccountName, container.Name, BlobTier.Archive, ct: ct);
+            var fix = await E2EFixture.CreateAsync(container, svc, BlobTier.Archive, ct: ct);
 
             var content1 = new byte[100]; Random.Shared.NextBytes(content1);
             var content2 = new byte[300]; Random.Shared.NextBytes(content2);
@@ -77,9 +77,8 @@ internal class RehydrationE2ETests(AzureFixture azure)
             // Track copy calls to verify exactly one rehydration request per chunk
             var trackingSvc = new CopyTrackingBlobService(svc);
             var restoreFixture = await E2EFixture.CreateAsync(
+                container,
                 new AzureBlobContainerService(container),
-                container.AccountName,
-                container.Name,
                 BlobTier.Archive,
                 ct: ct);
 

@@ -105,12 +105,28 @@ public sealed class E2EFixture : IAsyncDisposable
             defaultTier);
     }
 
-    public static Task ResetLocalCacheAsync(string accountName, string containerName)
+    public static Task<E2EFixture> CreateAsync(
+        BlobContainerClient container,
+        AzureBlobContainerService svc,
+        BlobTier defaultTier,
+        string? passphrase = null,
+        CancellationToken ct = default)
     {
-        var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, ct);
+    }
+
+    public static Task ResetLocalCacheAsync(string accountName, string containerName, string? cacheRoot = null)
+    {
+        var cacheDir = GetRepositoryDirectory(accountName, containerName, cacheRoot);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
+        return Task.CompletedTask;
+    }
+
+    public static Task PreserveLocalCacheAsync(string accountName, string containerName, string? cacheRoot = null)
+    {
+        _ = GetRepositoryDirectory(accountName, containerName, cacheRoot);
         return Task.CompletedTask;
     }
 
@@ -141,7 +157,7 @@ public sealed class E2EFixture : IAsyncDisposable
     public bool RestoredExists(string relativePath)
         => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
-    public ArchiveCommandHandler CreateArchiveHandler() =>
+    internal ArchiveCommandHandler CreateArchiveHandler() =>
         new(
             BlobContainer,
             Encryption,
@@ -154,7 +170,7 @@ public sealed class E2EFixture : IAsyncDisposable
             _account,
             _container);
 
-    public RestoreCommandHandler CreateRestoreHandler() =>
+    internal RestoreCommandHandler CreateRestoreHandler() =>
         new(
             Encryption,
             Index,
@@ -206,5 +222,13 @@ public sealed class E2EFixture : IAsyncDisposable
             throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    internal static string GetRepositoryDirectory(string accountName, string containerName, string? cacheRoot = null)
+    {
+        if (string.IsNullOrWhiteSpace(cacheRoot))
+            return RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+
+        return Path.Combine(cacheRoot, ".arius", RepositoryPaths.GetRepoDirectoryName(accountName, containerName));
     }
 }

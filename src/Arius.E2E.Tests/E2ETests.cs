@@ -30,7 +30,7 @@ internal class E2ETests(AzureFixture azure)
         CancellationToken ct = default)
     {
         var (container, svc, cleanup) = await azure.CreateTestContainerAsync(ct);
-        var fix = await E2EFixture.CreateAsync(svc, container.AccountName, container.Name, tier, passphrase, ct);
+        var fix = await E2EFixture.CreateAsync(container, svc, tier, passphrase, ct);
         return (fix, async () =>
         {
             await fix.DisposeAsync();
