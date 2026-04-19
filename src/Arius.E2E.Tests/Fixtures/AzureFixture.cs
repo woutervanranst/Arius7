@@ -6,6 +6,10 @@ using TUnit.Core.Interfaces;
 
 namespace Arius.E2E.Tests.Fixtures;
 
+internal sealed class AzureFixture : AzureE2EBackendFixture
+{
+}
+
 /// <summary>
 /// Connects to a real Azure Storage account for E2E testing.
 /// Credentials are read (in order) from environment variables or dotnet user-secrets:
@@ -19,7 +23,7 @@ namespace Arius.E2E.Tests.Fixtures;
 /// Each test run gets a unique container that is deleted on teardown.
 /// Missing credentials are treated as a test configuration error and fail the suite.
 /// </summary>
-internal sealed class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
+internal class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
 {
     private static readonly Microsoft.Extensions.Configuration.IConfiguration _config = new ConfigurationBuilder()
         .AddEnvironmentVariables()

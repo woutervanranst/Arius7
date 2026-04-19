@@ -27,8 +27,8 @@ namespace Arius.E2E.Tests;
 ///
 /// Covers tasks 2.1–4.3.
 /// </summary>
-[ClassDataSource<AzureE2EBackendFixture>(Shared = SharedType.PerTestSession)]
-internal class RehydrationE2ETests(AzureE2EBackendFixture azure)
+[ClassDataSource<AzureFixture>(Shared = SharedType.PerTestSession)]
+internal class RehydrationE2ETests(AzureFixture azure)
 {
     // ── Task 2.1: E2E archive/restore against real Azure, gated by env vars ───
 
