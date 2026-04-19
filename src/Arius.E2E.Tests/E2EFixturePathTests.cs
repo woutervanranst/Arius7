@@ -1,3 +1,5 @@
+using Arius.E2E.Tests.Fixtures;
+
 namespace Arius.E2E.Tests;
 
 public class E2EFixturePathTests

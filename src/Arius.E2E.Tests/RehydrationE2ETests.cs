@@ -8,6 +8,8 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.E2E.Tests.Fixtures;
+using Arius.E2E.Tests.Services;
 using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.E2E.Tests;

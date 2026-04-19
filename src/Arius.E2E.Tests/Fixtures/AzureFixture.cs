@@ -4,7 +4,7 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using TUnit.Core.Interfaces;
 
-namespace Arius.E2E.Tests;
+namespace Arius.E2E.Tests.Fixtures;
 
 /// <summary>
 /// Connects to a real Azure Storage account for E2E testing.

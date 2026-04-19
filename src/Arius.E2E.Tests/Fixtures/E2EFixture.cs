@@ -13,7 +13,7 @@ using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
-namespace Arius.E2E.Tests;
+namespace Arius.E2E.Tests.Fixtures;
 
 /// <summary>
 /// Lightweight pipeline fixture for E2E tests backed by real Azure.

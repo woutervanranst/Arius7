@@ -1,7 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.E2E.Tests;
+namespace Arius.E2E.Tests.Services;
 
 /// <summary>
 /// Wraps <see cref="AzureBlobContainerService"/> and records all <see cref="CopyAsync"/> calls.

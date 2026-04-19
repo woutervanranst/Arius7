@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Storage;
+using Arius.E2E.Tests.Fixtures;
 
 namespace Arius.E2E.Tests;
 
