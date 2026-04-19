@@ -11,6 +11,7 @@ using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
 using Mediator;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
 namespace Arius.Explorer.Tests.ChooseRepository;
@@ -21,8 +22,9 @@ public class ChooseRepositoryViewModelTests
     public void Defaults_AreEmptyAndIdle()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.Repository.ShouldBeNull();
         viewModel.LocalDirectoryPath.ShouldBe(string.Empty);
@@ -39,7 +41,8 @@ public class ChooseRepositoryViewModelTests
     public void SettingRepository_PopulatesViewModelFields()
     {
         var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         var repository = new RepositoryOptions
         {
@@ -63,12 +66,13 @@ public class ChooseRepositoryViewModelTests
     public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
         mediator
             .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
             .Returns(_ => new[] { "container-a", "container-b" }.ToAsyncEnumerable());
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
@@ -90,12 +94,13 @@ public class ChooseRepositoryViewModelTests
     public async Task AccountCredentials_WhenFactoryThrows_SetsErrorAndClearsContainers()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
         mediator
             .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
             .Returns(_ => throw new InvalidOperationException("boom"));
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.AccountName = "account";
         viewModel.AccountKey = "key";
@@ -116,7 +121,8 @@ public class ChooseRepositoryViewModelTests
     public void OpenRepositoryCommand_WhenConfigurationIsInvalid_IsDisabled()
     {
         var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
@@ -131,12 +137,13 @@ public class ChooseRepositoryViewModelTests
     public void OpenRepositoryCommand_WhenAllFieldsAreValid_IsEnabledAndBuildsRepository()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
         mediator
             .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "secret-key"), Arg.Any<CancellationToken>())
             .Returns(_ => new[] { "valid-container-123" }.ToAsyncEnumerable());
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
@@ -163,7 +170,8 @@ public class ChooseRepositoryViewModelTests
     public void OpenRepositoryCommand_WhenContainerNameViolatesAzureRules_IsDisabled()
     {
         var mediator = Substitute.For<IMediator>();
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.LocalDirectoryPath = "C:/data";
         viewModel.AccountName = "account";
@@ -181,6 +189,7 @@ public class ChooseRepositoryViewModelTests
     public async Task AccountCredentials_WhenQueryReturnsNoContainers_ClearsContainerSelection()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
         var queryInvoked = false;
 
         mediator
@@ -191,7 +200,7 @@ public class ChooseRepositoryViewModelTests
                 return EmptyAsyncEnumerable();
             });
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.ContainerName = "existing-container";
         viewModel.AccountName = "account";
@@ -211,6 +220,7 @@ public class ChooseRepositoryViewModelTests
     public async Task AccountCredentials_WhenCurrentContainerStillExists_PreservesSelection()
     {
         var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
         var queryInvoked = false;
 
         mediator
@@ -221,7 +231,7 @@ public class ChooseRepositoryViewModelTests
                 return new[] { "container-a", "container-b" }.ToAsyncEnumerable();
             });
 
-        using var viewModel = new ChooseRepositoryViewModel(mediator, TimeSpan.FromMilliseconds(1));
+        using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
 
         viewModel.ContainerName = "container-b";
         viewModel.AccountName = "account";

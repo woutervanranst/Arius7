@@ -25,10 +25,19 @@ namespace Arius.Explorer.Tests.RepositoryExplorer;
 [NotInParallel("RepositoryExplorerViewModelTests")]
 public class RepositoryExplorerViewModelTests
 {
+    private Func<string, string, MessageBoxButton, MessageBoxImage, MessageBoxResult> originalShowMessageBox = null!;
+
     [Before(Test)]
     public void ResetMessageBox()
     {
+        originalShowMessageBox = RepositoryExplorerViewModel.ShowMessageBox;
         RepositoryExplorerViewModel.ShowMessageBox = static (_, _, _, _) => MessageBoxResult.OK;
+    }
+
+    [After(Test)]
+    public void RestoreMessageBox()
+    {
+        RepositoryExplorerViewModel.ShowMessageBox = originalShowMessageBox;
     }
 
     [Test]
@@ -145,6 +154,8 @@ public class RepositoryExplorerViewModelTests
         await WaitForAsync(viewModel, () => viewModel.RootNode.Count == 1 && viewModel.Repository != null);
 
         viewModel.Repository.ShouldBe(repository);
+        repositorySession.ConnectCalls.ShouldBe(1);
+        repositorySession.Repository.ShouldBe(repository);
         recentRepositoryManager.Received(1).TouchOrAdd(repository);
         dialogService.Received(1).ShowChooseRepositoryDialog(null);
     }

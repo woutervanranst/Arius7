@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -14,6 +13,7 @@ using Arius.Explorer.Shared.Extensions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mediator;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using Unit = System.Reactive.Unit;
 
@@ -22,6 +22,7 @@ namespace Arius.Explorer.ChooseRepository;
 public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 {
     private readonly IMediator              mediator;
+    private readonly ILogger<ChooseRepositoryViewModel> logger;
     private readonly Subject<Unit>          credentialsChangedSubject = new();
     private readonly IDisposable            debounceSubscription;
     private readonly TimeSpan               debounceTimeSpan;
@@ -32,9 +33,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 
     public ChooseRepositoryViewModel(
         IMediator              mediator,
+        ILogger<ChooseRepositoryViewModel> logger,
         TimeSpan?              debounceTimeSpan = null)
     {
-        this.mediator = mediator;
+        this.mediator          = mediator;
+        this.logger            = logger;
         this.debounceTimeSpan  = debounceTimeSpan ?? TimeSpan.FromMilliseconds(500);
         synchronizationContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
@@ -159,11 +162,11 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            Trace.TraceInformation("Container loading was cancelled because credentials changed.");
+            logger.LogDebug("Container loading was cancelled because credentials changed.");
         }
         catch (Exception ex)
         {
-            Trace.TraceError($"Failed to load container names: {ex}");
+            logger.LogError(ex, "Failed to load container names.");
             synchronizationContext.Post(_ =>
             {
                 StorageAccountError = true;
@@ -239,7 +242,7 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Trace.TraceError($"Failed to prepare the selected repository: {ex}");
+            logger.LogError(ex, "Failed to prepare the selected repository.");
         }
         finally
         {
