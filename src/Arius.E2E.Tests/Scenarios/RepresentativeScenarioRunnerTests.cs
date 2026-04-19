@@ -27,7 +27,7 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
-    public async Task ScenarioRunner_ArchiveScenario_UsesPreparedSourceTree_AndPassesArchiveOptions()
+    public async Task ScenarioRunner_IncrementalArchive_PreparesRemoteV1_AndRunsOperationWithLocalV2()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "incremental-archive-v2");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
@@ -49,8 +49,8 @@ public class RepresentativeScenarioRunnerTests
         result.SkipReason.ShouldBeNull();
         setupFixture.MaterializedVersions.ShouldBe([
             SyntheticRepositoryVersion.V1,
-            SyntheticRepositoryVersion.V2,
         ]);
+        setupFixture.ArchiveCallCount.ShouldBe(1);
         operationFixture.MaterializedVersions.ShouldBe([
             SyntheticRepositoryVersion.V2,
         ]);
@@ -60,9 +60,9 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
-    public async Task ScenarioRunner_ArchiveThenRestoreScenario_PassesRemoveLocal_ToArchiveOperation()
+    public async Task ScenarioRunner_NoChangesArchive_PreparesRemoteV2_AndRunsOperationWithLocalV2()
     {
-        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-remove-local-then-thin-followup");
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "second-archive-no-changes");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
         var operationFixture = new FakeScenarioFixture();
@@ -79,11 +79,43 @@ public class RepresentativeScenarioRunnerTests
             });
 
         result.WasSkipped.ShouldBeFalse();
+        setupFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+            SyntheticRepositoryVersion.V2,
+        ]);
+        setupFixture.ArchiveCallCount.ShouldBe(2);
+        operationFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V2,
+        ]);
+        operationFixture.ArchiveOptions.ShouldHaveSingleItem().RootDirectory.ShouldBe(operationFixture.LocalRoot);
+    }
+
+    [Test]
+    public async Task ScenarioRunner_ArchiveThenRestoreScenario_PassesRemoveLocal_ToArchiveOperation()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-remove-local-then-thin-followup");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var operationFixture = new FakeScenarioFixture();
+        var restoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture, restoreFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
         operationFixture.MaterializedVersions.ShouldBe([
             SyntheticRepositoryVersion.V1,
         ]);
         operationFixture.ArchiveOptions.ShouldHaveSingleItem().RemoveLocal.ShouldBeTrue();
-        operationFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
+        restoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
     }
 
     [Test]
@@ -92,8 +124,8 @@ public class RepresentativeScenarioRunnerTests
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-latest-cold-cache");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
-        var operationFixture = new FakeScenarioFixture();
-        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
+        var restoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, restoreFixture]);
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
@@ -112,8 +144,8 @@ public class RepresentativeScenarioRunnerTests
             SyntheticRepositoryVersion.V2,
         ]);
         setupFixture.ArchiveCallCount.ShouldBe(2);
-        operationFixture.MaterializedVersions.Count.ShouldBe(0);
-        operationFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
+        restoreFixture.MaterializedVersions.Count.ShouldBe(0);
+        restoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
     }
 
     [Test]
@@ -122,8 +154,8 @@ public class RepresentativeScenarioRunnerTests
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-previous-cold-cache");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
-        var operationFixture = new FakeScenarioFixture();
-        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
+        var restoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, restoreFixture]);
         var cacheResets = new List<string>();
 
         var result = await RepresentativeScenarioRunner.RunAsync(
@@ -150,20 +182,21 @@ public class RepresentativeScenarioRunnerTests
         setupFixture.ArchiveCallCount.ShouldBe(2);
         setupFixture.RestoreCallCount.ShouldBe(0);
         setupFixture.DisposeCallCount.ShouldBe(1);
-        operationFixture.RestoreOptions.ShouldHaveSingleItem().RootDirectory.ShouldBe(operationFixture.RestoreRoot);
-        operationFixture.RestoreOptions.Single().Version.ShouldBe("previous");
-        operationFixture.RestoreOptions.Single().Overwrite.ShouldBeTrue();
+        restoreFixture.RestoreOptions.ShouldHaveSingleItem().RootDirectory.ShouldBe(restoreFixture.RestoreRoot);
+        restoreFixture.RestoreOptions.Single().Version.ShouldBe("previous");
+        restoreFixture.RestoreOptions.Single().Overwrite.ShouldBeTrue();
         cacheResets.Count.ShouldBe(2);
     }
 
     [Test]
-    public async Task ScenarioRunner_MultipleVersionsRestore_PerformsPreviousAndLatestRestores()
+    public async Task ScenarioRunner_MultipleVersionsRestore_UsesIndependentRestoreFixtures()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-multiple-versions");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
-        var operationFixture = new FakeScenarioFixture();
-        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
+        var previousRestoreFixture = new FakeScenarioFixture();
+        var latestRestoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, previousRestoreFixture, latestRestoreFixture]);
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
@@ -180,9 +213,9 @@ public class RepresentativeScenarioRunnerTests
             SyntheticRepositoryVersion.V1,
             SyntheticRepositoryVersion.V2,
         ]);
-        operationFixture.RestoreOptions.Count.ShouldBe(2);
-        operationFixture.RestoreOptions[0].Version.ShouldBe("previous");
-        operationFixture.RestoreOptions[1].Version.ShouldBeNull();
+        previousRestoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBe("previous");
+        latestRestoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
+        previousRestoreFixture.RestoreOptions.Single().RootDirectory.ShouldNotBe(latestRestoreFixture.RestoreOptions.Single().RootDirectory);
     }
 
     private sealed class FakeBackend(bool supportsArchiveTier) : IE2EStorageBackend
@@ -218,9 +251,9 @@ public class RepresentativeScenarioRunnerTests
 
     private sealed class FakeScenarioFixture : IRepresentativeScenarioFixture
     {
-        public string LocalRoot { get; } = "/fake/source";
+        public string LocalRoot { get; } = $"/fake/source/{Guid.NewGuid():N}";
 
-        public string RestoreRoot { get; } = "/fake/restore";
+        public string RestoreRoot { get; } = $"/fake/restore/{Guid.NewGuid():N}";
 
         public List<SyntheticRepositoryVersion> MaterializedVersions { get; } = [];
 

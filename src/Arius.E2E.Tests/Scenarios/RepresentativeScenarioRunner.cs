@@ -85,7 +85,7 @@ internal static class RepresentativeScenarioRunner
                 cancellationToken);
             initialArchive.Success.ShouldBeTrue(initialArchive.ErrorMessage);
 
-            if (RequiresV2RemoteState(scenario))
+            if (RequiresV2SetupArchive(scenario))
             {
                 await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V2, seed);
 
@@ -102,38 +102,37 @@ internal static class RepresentativeScenarioRunner
         if (scenario.CacheState == ScenarioCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
 
-        await using var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
-
-        if (scenario.Operation is ScenarioOperation.Archive or ScenarioOperation.ArchiveThenRestore)
-            await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
-
         switch (scenario.Operation)
         {
             case ScenarioOperation.Archive:
-                var archiveResult = await fixture.ArchiveAsync(
-                    CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
-                    cancellationToken);
-                archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+                await using (var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken))
+                {
+                    await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+
+                    var archiveResult = await fixture.ArchiveAsync(
+                        CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
+                        cancellationToken);
+                    archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+                }
+
                 break;
 
             case ScenarioOperation.Restore:
-                foreach (var restoreOptions in CreateRestoreOptions(scenario, fixture))
-                {
-                    var restoreResult = await fixture.RestoreAsync(restoreOptions, cancellationToken);
-                    restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-                }
+                await ExecuteRestoreOperationsAsync(context, scenario, dependencies, cancellationToken);
                 break;
 
             case ScenarioOperation.ArchiveThenRestore:
-                var archive = await fixture.ArchiveAsync(
-                    CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
-                    cancellationToken);
-                archive.Success.ShouldBeTrue(archive.ErrorMessage);
+                await using (var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken))
+                {
+                    await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
 
-                var restore = await fixture.RestoreAsync(
-                    CreateRestoreOptions(scenario, fixture).Single(),
-                    cancellationToken);
-                restore.Success.ShouldBeTrue(restore.ErrorMessage);
+                    var archive = await fixture.ArchiveAsync(
+                        CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
+                        cancellationToken);
+                    archive.Success.ShouldBeTrue(archive.ErrorMessage);
+                }
+
+                await ExecuteRestoreOperationsAsync(context, scenario, dependencies, cancellationToken);
                 break;
 
             default:
@@ -143,10 +142,31 @@ internal static class RepresentativeScenarioRunner
         return new RepresentativeScenarioRunResult(false);
     }
 
-    private static bool RequiresV2RemoteState(RepresentativeScenarioDefinition scenario)
+    private static async Task ExecuteRestoreOperationsAsync(
+        E2EStorageBackendContext context,
+        RepresentativeScenarioDefinition scenario,
+        RepresentativeScenarioRunnerDependencies dependencies,
+        CancellationToken cancellationToken)
     {
-        return scenario.SourceVersion == SyntheticRepositoryVersion.V2 ||
-               scenario.RestoreTarget is ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.MultipleVersions;
+        foreach (var restoreOptions in CreateRestoreOptions(scenario))
+        {
+            await using var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
+            var restoreResult = await restoreFixture.RestoreAsync(
+                restoreOptions with { RootDirectory = restoreFixture.RestoreRoot },
+                cancellationToken);
+            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        }
+    }
+
+    private static bool RequiresV2SetupArchive(RepresentativeScenarioDefinition scenario)
+    {
+        return scenario.Operation switch
+        {
+            ScenarioOperation.Archive => scenario.ArchiveMode == ScenarioArchiveMode.NoChanges,
+            ScenarioOperation.Restore => scenario.RestoreTarget is ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.Latest or ScenarioRestoreTarget.MultipleVersions,
+            ScenarioOperation.ArchiveThenRestore => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
+        };
     }
 
     private static ArchiveCommandOptions CreateArchiveOptions(
@@ -163,13 +183,11 @@ internal static class RepresentativeScenarioRunner
         };
     }
 
-    private static IReadOnlyList<RestoreOptions> CreateRestoreOptions(
-        RepresentativeScenarioDefinition scenario,
-        IRepresentativeScenarioFixture fixture)
+    private static IReadOnlyList<RestoreOptions> CreateRestoreOptions(RepresentativeScenarioDefinition scenario)
     {
         var latest = new RestoreOptions
         {
-            RootDirectory = fixture.RestoreRoot,
+            RootDirectory = string.Empty,
             Overwrite = scenario.UseOverwrite,
             Version = scenario.RestoreVersion,
         };
