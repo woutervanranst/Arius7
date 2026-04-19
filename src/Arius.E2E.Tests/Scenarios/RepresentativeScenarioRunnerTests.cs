@@ -195,7 +195,14 @@ public class RepresentativeScenarioRunnerTests
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
         var previousRestoreFixture = new FakeScenarioFixture();
-        var latestRestoreFixture = new FakeScenarioFixture();
+        var latestRestoreFixture = new FakeScenarioFixture
+        {
+            OnRestoreAsync = () =>
+            {
+                previousRestoreFixture.DisposeCallCount.ShouldBe(0);
+                return Task.CompletedTask;
+            },
+        };
         var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, previousRestoreFixture, latestRestoreFixture]);
 
         var result = await RepresentativeScenarioRunner.RunAsync(
@@ -267,6 +274,8 @@ public class RepresentativeScenarioRunnerTests
 
         public int DisposeCallCount { get; private set; }
 
+        public Func<Task>? OnRestoreAsync { get; init; }
+
         public Task PreserveLocalCacheAsync() => Task.CompletedTask;
 
         public Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
@@ -300,6 +309,9 @@ public class RepresentativeScenarioRunnerTests
             RestoreCallCount++;
             RestoreOptions.Add(options);
 
+            if (OnRestoreAsync is not null)
+                return RestoreWithHookAsync();
+
             return Task.FromResult(new RestoreResult
             {
                 Success = true,
@@ -307,6 +319,19 @@ public class RepresentativeScenarioRunnerTests
                 FilesSkipped = 0,
                 ChunksPendingRehydration = 0,
             });
+
+            async Task<RestoreResult> RestoreWithHookAsync()
+            {
+                await OnRestoreAsync!();
+
+                return new RestoreResult
+                {
+                    Success = true,
+                    FilesRestored = 0,
+                    FilesSkipped = 0,
+                    ChunksPendingRehydration = 0,
+                };
+            }
         }
 
         public ValueTask DisposeAsync()

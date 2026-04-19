@@ -148,6 +148,32 @@ internal static class RepresentativeScenarioRunner
         RepresentativeScenarioRunnerDependencies dependencies,
         CancellationToken cancellationToken)
     {
+        if (scenario.CacheState == ScenarioCacheState.Warm && scenario.RestoreTarget == ScenarioRestoreTarget.MultipleVersions)
+        {
+            var restoreFixtures = new List<IRepresentativeScenarioFixture>();
+
+            try
+            {
+                foreach (var restoreOptions in CreateRestoreOptions(scenario))
+                {
+                    var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
+                    restoreFixtures.Add(restoreFixture);
+
+                    var restoreResult = await restoreFixture.RestoreAsync(
+                        restoreOptions with { RootDirectory = restoreFixture.RestoreRoot },
+                        cancellationToken);
+                    restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+                }
+            }
+            finally
+            {
+                for (var i = restoreFixtures.Count - 1; i >= 0; i--)
+                    await restoreFixtures[i].DisposeAsync();
+            }
+
+            return;
+        }
+
         foreach (var restoreOptions in CreateRestoreOptions(scenario))
         {
             await using var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
