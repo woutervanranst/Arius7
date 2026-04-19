@@ -45,5 +45,9 @@ internal sealed record RepresentativeScenarioDefinition(
     bool UseNoPointers = false,
     bool UseRemoveLocal = false,
     bool UseOverwrite = true,
-    ScenarioArchiveMode ArchiveMode = ScenarioArchiveMode.Initial,
-    ScenarioRestoreTarget RestoreTarget = ScenarioRestoreTarget.None);
+    string? RestoreVersion = null)
+{
+    public ScenarioArchiveMode ArchiveMode { get; init; } = ScenarioArchiveMode.Initial;
+
+    public ScenarioRestoreTarget RestoreTarget { get; init; } = ScenarioRestoreTarget.None;
+}
