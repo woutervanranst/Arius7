@@ -25,6 +25,8 @@ public class SyntheticRepositoryMaterializerTests
                 rightRoot);
 
             left.Files.ShouldBe(right.Files);
+            await AssertMatchesSnapshotAsync(left, leftRoot);
+            await AssertMatchesSnapshotAsync(right, rightRoot);
         }
         finally
         {
@@ -55,6 +57,8 @@ public class SyntheticRepositoryMaterializerTests
 
             snapshot.Files.Keys.ShouldContain("src/simple/c.bin");
             snapshot.Files.Keys.ShouldContain("docs/readme.txt");
+            File.Exists(Path.Combine(root, "src", "simple", "c.bin")).ShouldBeTrue();
+            File.Exists(Path.Combine(root, "docs", "readme.txt")).ShouldBeTrue();
 
             var v1 = await SyntheticRepositoryMaterializer.MaterializeAsync(
                 definition,
@@ -64,6 +68,7 @@ public class SyntheticRepositoryMaterializerTests
 
             snapshot.Files["docs/readme.txt"].ShouldNotBe(v1.Files["docs/readme.txt"]);
             snapshot.Files["src/simple/c.bin"].ShouldNotBeNullOrWhiteSpace();
+            await AssertMatchesSnapshotAsync(snapshot, root);
         }
         finally
         {
@@ -73,5 +78,81 @@ public class SyntheticRepositoryMaterializerTests
             if (Directory.Exists(v1Root))
                 Directory.Delete(v1Root, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task Materialize_V1_ReusedRoot_RemovesStaleFiles_AndDirectories()
+    {
+        var definition = SyntheticRepositoryDefinitionFactory.Create(
+            SyntheticRepositoryProfile.Small);
+
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "stale", "nested"));
+            await File.WriteAllTextAsync(Path.Combine(root, "stale", "nested", "leftover.txt"), "stale");
+
+            var snapshot = await SyntheticRepositoryMaterializer.MaterializeAsync(
+                definition,
+                SyntheticRepositoryVersion.V1,
+                seed: 12345,
+                root);
+
+            Directory.Exists(Path.Combine(root, "stale")).ShouldBeFalse();
+            await AssertMatchesSnapshotAsync(snapshot, root);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Materialize_V2_RepresentativeProfile_AppliesDeleteAndRename_OnDisk()
+    {
+        var definition = SyntheticRepositoryDefinitionFactory.Create(
+            SyntheticRepositoryProfile.Representative);
+
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var snapshot = await SyntheticRepositoryMaterializer.MaterializeAsync(
+                definition,
+                SyntheticRepositoryVersion.V2,
+                seed: 12345,
+                root);
+
+            File.Exists(Path.Combine(root, "docs", "batch-00", "doc-0000.txt")).ShouldBeFalse();
+            File.Exists(Path.Combine(root, "archives", "duplicates", "copy-a.bin")).ShouldBeFalse();
+            File.Exists(Path.Combine(root, "archives", "duplicates", "copy-a-renamed.bin")).ShouldBeTrue();
+            snapshot.Files.ContainsKey("docs/batch-00/doc-0000.txt").ShouldBeFalse();
+            snapshot.Files.ContainsKey("archives/duplicates/copy-a.bin").ShouldBeFalse();
+            snapshot.Files.ContainsKey("archives/duplicates/copy-a-renamed.bin").ShouldBeTrue();
+            await AssertMatchesSnapshotAsync(snapshot, root);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    static async Task AssertMatchesSnapshotAsync(RepositoryTreeSnapshot snapshot, string rootPath)
+    {
+        var actual = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(rootPath, filePath)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var bytes = await File.ReadAllBytesAsync(filePath);
+            actual[relativePath] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        }
+
+        actual.OrderBy(x => x.Key, StringComparer.Ordinal).ToArray()
+            .ShouldBe(snapshot.Files.OrderBy(x => x.Key, StringComparer.Ordinal).ToArray());
     }
 }

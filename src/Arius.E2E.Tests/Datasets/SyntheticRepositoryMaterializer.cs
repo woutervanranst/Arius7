@@ -14,6 +14,9 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
 
+        if (Directory.Exists(rootPath))
+            Directory.Delete(rootPath, recursive: true);
+
         Directory.CreateDirectory(rootPath);
 
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -34,7 +37,6 @@ internal static class SyntheticRepositoryMaterializer
     {
         var length = checked((int)sizeBytes);
         var bytes = new byte[length];
-        var seedBytes = Encoding.UTF8.GetBytes($"{seed}:{contentId}");
         var offset = 0;
         var block = 0;
 
