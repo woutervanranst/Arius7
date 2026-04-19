@@ -74,4 +74,37 @@ public class E2EFixtureCacheStateTests
         snapshot.Files.Keys.ShouldContain("src/simple/c.bin");
         File.Exists(Path.Combine(fixture.LocalRoot, "src", "simple", "c.bin")).ShouldBeTrue();
     }
+
+    [Test]
+    public async Task DisposeAsync_PreservedCacheMode_LeavesRepositoryCacheDirectoryInPlace()
+    {
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var markerFile = Path.Combine(repositoryDirectory, "marker.txt");
+        var blobContainer = Substitute.For<IBlobContainerService>();
+
+        Directory.CreateDirectory(repositoryDirectory);
+        await File.WriteAllTextAsync(markerFile, "preserve-me");
+
+        try
+        {
+            await E2EFixture.PreserveLocalCacheAsync(accountName, containerName);
+
+            await using (var fixture = await E2EFixture.CreateAsync(
+                             blobContainer,
+                             accountName,
+                             containerName,
+                             BlobTier.Cool))
+            {
+            }
+
+            Directory.Exists(repositoryDirectory).ShouldBeTrue();
+            File.Exists(markerFile).ShouldBeTrue();
+        }
+        finally
+        {
+            await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
+        }
+    }
 }

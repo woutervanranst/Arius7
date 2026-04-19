@@ -22,6 +22,7 @@ namespace Arius.E2E.Tests.Fixtures;
 /// </summary>
 public sealed class E2EFixture : IAsyncDisposable
 {
+    private static readonly HashSet<string> PreservedRepositoryCaches = new(StringComparer.Ordinal);
     private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
@@ -118,6 +119,8 @@ public sealed class E2EFixture : IAsyncDisposable
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        PreservedRepositoryCaches.Remove(GetRepositoryCacheKey(accountName, containerName));
+
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
@@ -126,6 +129,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static Task PreserveLocalCacheAsync(string accountName, string containerName)
     {
+        PreservedRepositoryCaches.Add(GetRepositoryCacheKey(accountName, containerName));
         return Task.CompletedTask;
     }
 
@@ -204,7 +208,8 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        await ResetLocalCacheAsync(_account, _container);
+        if (!PreservedRepositoryCaches.Contains(GetRepositoryCacheKey(_account, _container)))
+            await ResetLocalCacheAsync(_account, _container);
 
         await Task.CompletedTask;
     }
@@ -222,4 +227,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
     }
+
+    static string GetRepositoryCacheKey(string accountName, string containerName) =>
+        $"{accountName}\n{containerName}";
 }
