@@ -96,6 +96,9 @@ internal static class RepresentativeScenarioRunner
 
         await using var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
 
+        if (scenario.Operation is ScenarioOperation.Archive or ScenarioOperation.ArchiveThenRestore)
+            await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+
         switch (scenario.Operation)
         {
             case ScenarioOperation.Archive:

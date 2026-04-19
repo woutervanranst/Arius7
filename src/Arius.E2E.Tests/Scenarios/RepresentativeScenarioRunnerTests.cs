@@ -27,7 +27,38 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
-    public async Task ScenarioRunner_RestoreScenario_WithV2Source_ArchivesV2DuringSetup()
+    public async Task ScenarioRunner_ArchiveScenario_UsesPreparedSourceTree_ForOperationUnderTest()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "incremental-archive-v2");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var operationFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
+        result.SkipReason.ShouldBeNull();
+        setupFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+            SyntheticRepositoryVersion.V2,
+        ]);
+        operationFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V2,
+        ]);
+        operationFixture.ArchiveCallCount.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task ScenarioRunner_RestoreScenario_WithV2Source_ArchivesV2DuringSetup_AndUsesFreshRestoreFixture()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-latest-cold-cache");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
@@ -52,6 +83,7 @@ public class RepresentativeScenarioRunnerTests
             SyntheticRepositoryVersion.V2,
         ]);
         setupFixture.ArchiveCallCount.ShouldBe(2);
+        operationFixture.MaterializedVersions.Count.ShouldBe(0);
         operationFixture.RestoreCallCount.ShouldBe(1);
     }
 
