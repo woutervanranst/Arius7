@@ -200,6 +200,11 @@ public class SyntheticRepositoryDefinitionFactoryTests
     {
         await Task.CompletedTask;
 
+        new SyntheticFileDefinition(
+            "docs/readme.txt",
+            8 * 1024,
+            null).ContentId.ShouldBeNull();
+
         Should.Throw<ArgumentException>(() => new SyntheticFileDefinition(
             "",
             8 * 1024,
@@ -214,6 +219,72 @@ public class SyntheticRepositoryDefinitionFactoryTests
             "docs/readme.txt",
             8 * 1024,
             ""));
+    }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Normalizes_Separators_For_Comparison()
+    {
+        await Task.CompletedTask;
+
+        var definition = new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs\\area"],
+            [new SyntheticFileDefinition("docs/area/readme.txt", 8 * 1024, null)],
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs\\area/readme.txt", TargetPath: "docs\\area/renamed.txt")]);
+
+        definition.RootDirectories.ShouldBe(["docs/area"]);
+        definition.Files.Single().Path.ShouldBe("docs/area/readme.txt");
+
+        var rename = definition.V2Mutations.Single();
+        rename.Path.ShouldBe("docs/area/readme.txt");
+        rename.TargetPath.ShouldBe("docs/area/renamed.txt");
+    }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Rejects_Malformed_RootDirectories()
+    {
+        await Task.CompletedTask;
+
+        var files = new[]
+        {
+            new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, null),
+        };
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(256 * 1024, ["docs/"], files, []));
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(256 * 1024, ["./docs"], files, []));
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(256 * 1024, ["docs/../tmp"], files, []));
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(256 * 1024, ["docs//tmp"], files, []));
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(256 * 1024, ["/docs"], files, []));
+    }
+
+    [Test]
+    public async Task SyntheticRepositoryDefinition_Rejects_Directory_Shaped_Paths()
+    {
+        await Task.CompletedTask;
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs", 8 * 1024, null)],
+            []));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt/", 8 * 1024, null)],
+            []));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, null)],
+            [new SyntheticMutation(SyntheticMutationKind.Add, "docs", ReplacementContentId: "small-002", ReplacementSizeBytes: 8 * 1024)]));
+
+        Should.Throw<ArgumentException>(() => new SyntheticRepositoryDefinition(
+            256 * 1024,
+            ["docs"],
+            [new SyntheticFileDefinition("docs/readme.txt", 8 * 1024, null)],
+            [new SyntheticMutation(SyntheticMutationKind.Rename, "docs/readme.txt", TargetPath: "docs/")]));
     }
 
     [Test]

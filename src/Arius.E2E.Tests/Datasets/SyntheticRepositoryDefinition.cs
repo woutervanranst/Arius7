@@ -12,14 +12,15 @@ internal sealed record SyntheticFileDefinition
 {
     public SyntheticFileDefinition(string Path, long SizeBytes, string? ContentId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(Path);
+        var normalizedPath = SyntheticRepositoryPath.NormalizeRelativePath(Path, nameof(Path));
 
         if (SizeBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(SizeBytes), "File size must be greater than zero.");
 
-        ArgumentException.ThrowIfNullOrWhiteSpace(ContentId);
+        if (ContentId is not null)
+            ArgumentException.ThrowIfNullOrWhiteSpace(ContentId);
 
-        this.Path = Path;
+        this.Path = normalizedPath;
         this.SizeBytes = SizeBytes;
         this.ContentId = ContentId;
     }
@@ -38,11 +39,14 @@ internal sealed record SyntheticMutation
         string? ReplacementContentId = null,
         long? ReplacementSizeBytes = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(Path);
+        var normalizedPath = SyntheticRepositoryPath.NormalizeRelativePath(Path, nameof(Path));
+        var normalizedTargetPath = TargetPath is null
+            ? null
+            : SyntheticRepositoryPath.NormalizeRelativePath(TargetPath, nameof(TargetPath));
 
         this.Kind = Kind;
-        this.Path = Path;
-        this.TargetPath = TargetPath;
+        this.Path = normalizedPath;
+        this.TargetPath = normalizedTargetPath;
         this.ReplacementContentId = ReplacementContentId;
         this.ReplacementSizeBytes = ReplacementSizeBytes;
 
@@ -113,44 +117,29 @@ internal sealed record SyntheticRepositoryDefinition
         ArgumentNullException.ThrowIfNull(Files);
         ArgumentNullException.ThrowIfNull(V2Mutations);
 
-        var rootDirectoriesCopy = RootDirectories.ToArray();
+        var rootDirectoriesCopy = RootDirectories
+            .Select(x => SyntheticRepositoryPath.NormalizeRootDirectory(x, nameof(RootDirectories)))
+            .ToArray();
         var filesCopy = Files.ToArray();
         var mutationsCopy = V2Mutations.ToArray();
         var rootDirectorySet = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var rootDirectory in rootDirectoriesCopy)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-
             if (!rootDirectorySet.Add(rootDirectory))
                 throw new ArgumentException($"Duplicate root directory '{rootDirectory}'.", nameof(RootDirectories));
         }
 
         bool IsUnderDeclaredRoot(string path) => rootDirectoriesCopy.Any(rootDirectory =>
-            string.Equals(path, rootDirectory, StringComparison.Ordinal) ||
             path.StartsWith($"{rootDirectory}/", StringComparison.Ordinal));
-
-        static void ValidateRelativePath(string path, string paramName)
-        {
-            if (Path.IsPathRooted(path))
-                throw new ArgumentException($"Path '{path}' must be relative.", paramName);
-
-            if (path.Contains("//", StringComparison.Ordinal) || path.Contains("\\\\", StringComparison.Ordinal))
-                throw new ArgumentException($"Path '{path}' must not contain repeated separators.", paramName);
-
-            var parts = path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Contains(".", StringComparer.Ordinal))
-                throw new ArgumentException($"Path '{path}' must not contain '.' segments.", paramName);
-
-            if (parts.Contains("..", StringComparer.Ordinal))
-                throw new ArgumentException($"Path '{path}' must not contain '..' segments.", paramName);
-        }
 
         var v1Paths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in filesCopy)
         {
             ArgumentNullException.ThrowIfNull(file);
-            ValidateRelativePath(file.Path, nameof(Files));
+
+            if (rootDirectorySet.Contains(file.Path))
+                throw new ArgumentException($"File path '{file.Path}' must not point at a declared root directory.", nameof(Files));
 
             if (!IsUnderDeclaredRoot(file.Path))
                 throw new ArgumentException($"File path '{file.Path}' is outside declared roots.", nameof(Files));
@@ -164,7 +153,9 @@ internal sealed record SyntheticRepositoryDefinition
         foreach (var mutation in mutationsCopy)
         {
             ArgumentNullException.ThrowIfNull(mutation);
-            ValidateRelativePath(mutation.Path, nameof(V2Mutations));
+
+            if (rootDirectorySet.Contains(mutation.Path))
+                throw new ArgumentException($"Mutation path '{mutation.Path}' must not point at a declared root directory.", nameof(V2Mutations));
 
             if (!mutatedSourcePaths.Add(mutation.Path))
                 throw new ArgumentException($"Mutation source '{mutation.Path}' may only be mutated once.", nameof(V2Mutations));
@@ -185,10 +176,11 @@ internal sealed record SyntheticRepositoryDefinition
                     if (!v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Rename source '{mutation.Path}' must exist in V1.", nameof(V2Mutations));
 
-                    ValidateRelativePath(mutation.TargetPath!, nameof(V2Mutations));
-
                     if (string.Equals(mutation.Path, mutation.TargetPath, StringComparison.Ordinal))
                         throw new ArgumentException("Rename target must differ from source.", nameof(V2Mutations));
+
+                    if (rootDirectorySet.Contains(mutation.TargetPath!))
+                        throw new ArgumentException($"Rename target '{mutation.TargetPath}' must not point at a declared root directory.", nameof(V2Mutations));
 
                     if (!IsUnderDeclaredRoot(mutation.TargetPath!))
                         throw new ArgumentException($"Rename target '{mutation.TargetPath}' is outside declared roots.", nameof(V2Mutations));
@@ -203,7 +195,8 @@ internal sealed record SyntheticRepositoryDefinition
                     break;
 
                 case SyntheticMutationKind.Add:
-                    ValidateRelativePath(mutation.Path, nameof(V2Mutations));
+                    if (rootDirectorySet.Contains(mutation.Path))
+                        throw new ArgumentException($"Add target '{mutation.Path}' must not point at a declared root directory.", nameof(V2Mutations));
 
                     if (!IsUnderDeclaredRoot(mutation.Path))
                         throw new ArgumentException($"Add target '{mutation.Path}' is outside declared roots.", nameof(V2Mutations));
@@ -231,4 +224,45 @@ internal sealed record SyntheticRepositoryDefinition
     public IReadOnlyList<string> RootDirectories { get; }
     public IReadOnlyList<SyntheticFileDefinition> Files { get; }
     public IReadOnlyList<SyntheticMutation> V2Mutations { get; }
+}
+
+internal static class SyntheticRepositoryPath
+{
+    public static string NormalizeRootDirectory(string path, string paramName)
+    {
+        var normalized = NormalizeRelativePath(path, paramName);
+
+        if (!normalized.Contains('/', StringComparison.Ordinal))
+            return normalized;
+
+        return normalized;
+    }
+
+    public static string NormalizeRelativePath(string path, string paramName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (Path.IsPathRooted(path))
+            throw new ArgumentException($"Path '{path}' must be relative.", paramName);
+
+        var normalized = path.Replace('\\', '/');
+
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+            throw new ArgumentException($"Path '{path}' must be relative.", paramName);
+
+        if (normalized.EndsWith("/", StringComparison.Ordinal))
+            throw new ArgumentException($"Path '{path}' must not end with a separator.", paramName);
+
+        if (normalized.Contains("//", StringComparison.Ordinal))
+            throw new ArgumentException($"Path '{path}' must not contain repeated separators.", paramName);
+
+        var parts = normalized.Split('/', StringSplitOptions.None);
+        if (parts.Contains(".", StringComparer.Ordinal))
+            throw new ArgumentException($"Path '{path}' must not contain '.' segments.", paramName);
+
+        if (parts.Contains("..", StringComparer.Ordinal))
+            throw new ArgumentException($"Path '{path}' must not contain '..' segments.", paramName);
+
+        return normalized;
+    }
 }
