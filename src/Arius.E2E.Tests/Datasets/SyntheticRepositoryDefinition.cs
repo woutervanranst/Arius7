@@ -116,25 +116,40 @@ internal sealed record SyntheticRepositoryDefinition
         var rootDirectoriesCopy = RootDirectories.ToArray();
         var filesCopy = Files.ToArray();
         var mutationsCopy = V2Mutations.ToArray();
+        var rootDirectorySet = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var rootDirectory in rootDirectoriesCopy)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+
+            if (!rootDirectorySet.Add(rootDirectory))
+                throw new ArgumentException($"Duplicate root directory '{rootDirectory}'.", nameof(RootDirectories));
         }
+
+        bool IsUnderDeclaredRoot(string path) => rootDirectoriesCopy.Any(rootDirectory =>
+            string.Equals(path, rootDirectory, StringComparison.Ordinal) ||
+            path.StartsWith($"{rootDirectory}/", StringComparison.Ordinal));
 
         var v1Paths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in filesCopy)
         {
             ArgumentNullException.ThrowIfNull(file);
 
+            if (!IsUnderDeclaredRoot(file.Path))
+                throw new ArgumentException($"File path '{file.Path}' is outside declared roots.", nameof(Files));
+
             if (!v1Paths.Add(file.Path))
                 throw new ArgumentException($"Duplicate V1 file path '{file.Path}'.", nameof(Files));
         }
 
         var finalPaths = new HashSet<string>(v1Paths, StringComparer.Ordinal);
+        var mutatedSourcePaths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var mutation in mutationsCopy)
         {
             ArgumentNullException.ThrowIfNull(mutation);
+
+            if (!mutatedSourcePaths.Add(mutation.Path))
+                throw new ArgumentException($"Mutation source '{mutation.Path}' may only be mutated once.", nameof(V2Mutations));
 
             switch (mutation.Kind)
             {
@@ -155,6 +170,9 @@ internal sealed record SyntheticRepositoryDefinition
                     if (string.Equals(mutation.Path, mutation.TargetPath, StringComparison.Ordinal))
                         throw new ArgumentException("Rename target must differ from source.", nameof(V2Mutations));
 
+                    if (!IsUnderDeclaredRoot(mutation.TargetPath!))
+                        throw new ArgumentException($"Rename target '{mutation.TargetPath}' is outside declared roots.", nameof(V2Mutations));
+
                     if (v1Paths.Contains(mutation.TargetPath!))
                         throw new ArgumentException($"Rename target '{mutation.TargetPath}' must be absent in V1.", nameof(V2Mutations));
 
@@ -165,6 +183,9 @@ internal sealed record SyntheticRepositoryDefinition
                     break;
 
                 case SyntheticMutationKind.Add:
+                    if (!IsUnderDeclaredRoot(mutation.Path))
+                        throw new ArgumentException($"Add target '{mutation.Path}' is outside declared roots.", nameof(V2Mutations));
+
                     if (v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Add target '{mutation.Path}' must be absent in V1.", nameof(V2Mutations));
 
