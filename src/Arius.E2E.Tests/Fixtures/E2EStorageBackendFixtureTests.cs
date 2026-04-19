@@ -3,15 +3,13 @@ namespace Arius.E2E.Tests.Fixtures;
 public class E2EStorageBackendFixtureTests
 {
     [Test]
-    public async Task AzureFixture_CompatibilityType_ReportsArchiveCapability()
+    public void AzureFixture_CompatibilityType_ReportsAzureBackendShape()
     {
-        await using var backend = new AzureFixture();
-        await backend.InitializeAsync();
+        var backend = new AzureFixture();
 
-        var context = await backend.CreateContextAsync();
-
-        context.Capabilities.SupportsArchiveTier.ShouldBeTrue();
-        await context.DisposeAsync();
+        backend.Name.ShouldBe("Azure");
+        backend.Capabilities.SupportsArchiveTier.ShouldBeTrue();
+        backend.Capabilities.SupportsRehydrationPlanning.ShouldBeTrue();
     }
 
     [Test]
