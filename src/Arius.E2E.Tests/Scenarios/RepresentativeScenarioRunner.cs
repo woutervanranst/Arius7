@@ -76,8 +76,9 @@ internal static class RepresentativeScenarioRunner
         if (scenario.CacheState == ScenarioCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
 
-        await using (var setupFixture = await dependencies.CreateFixtureAsync(context, cancellationToken))
+        if (RequiresSetupArchive(scenario))
         {
+            await using var setupFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
             await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V1, seed);
 
             var initialArchive = await setupFixture.ArchiveAsync(
@@ -190,6 +191,17 @@ internal static class RepresentativeScenarioRunner
         {
             ScenarioOperation.Archive => scenario.ArchiveMode == ScenarioArchiveMode.NoChanges,
             ScenarioOperation.Restore => scenario.RestoreTarget is ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.Latest or ScenarioRestoreTarget.MultipleVersions,
+            ScenarioOperation.ArchiveThenRestore => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
+        };
+    }
+
+    private static bool RequiresSetupArchive(RepresentativeScenarioDefinition scenario)
+    {
+        return scenario.Operation switch
+        {
+            ScenarioOperation.Archive => scenario.ArchiveMode != ScenarioArchiveMode.Initial,
+            ScenarioOperation.Restore => true,
             ScenarioOperation.ArchiveThenRestore => false,
             _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
         };

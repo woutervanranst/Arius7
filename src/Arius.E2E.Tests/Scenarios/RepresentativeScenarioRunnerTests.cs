@@ -27,6 +27,57 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
+    public async Task ScenarioRunner_InitialArchive_StartsFromEmptyRemote()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "initial-archive-v1");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var operationFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([operationFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
+        operationFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+        ]);
+        operationFixture.ArchiveCallCount.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task ScenarioRunner_ArchiveNoPointers_StartsFromEmptyRemote_AndPassesNoPointers()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-no-pointers");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var operationFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([operationFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
+        operationFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+        ]);
+        operationFixture.ArchiveOptions.ShouldHaveSingleItem().NoPointers.ShouldBeTrue();
+        operationFixture.ArchiveCallCount.ShouldBe(1);
+    }
+
+    [Test]
     public async Task ScenarioRunner_IncrementalArchive_PreparesRemoteV1_AndRunsOperationWithLocalV2()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "incremental-archive-v2");
@@ -95,10 +146,9 @@ public class RepresentativeScenarioRunnerTests
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-remove-local-then-thin-followup");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
-        var setupFixture = new FakeScenarioFixture();
         var operationFixture = new FakeScenarioFixture();
         var restoreFixture = new FakeScenarioFixture();
-        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture, restoreFixture]);
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([operationFixture, restoreFixture]);
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
