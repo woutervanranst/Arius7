@@ -1,5 +1,9 @@
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using NSubstitute;
 
 namespace Arius.E2E.Tests.Scenarios;
 
@@ -23,58 +27,71 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
-    public async Task ScenarioRunner_RunsArchiveScenario_OnAzuriteBackend()
-    {
-        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "initial-archive-v1");
-        await using var backend = new AzuriteE2EBackendFixture();
-        await backend.InitializeAsync();
-
-        var result = await RepresentativeScenarioRunner.RunAsync(
-            backend,
-            scenario,
-            SyntheticRepositoryProfile.Small,
-            seed: 12345);
-
-        result.WasSkipped.ShouldBeFalse();
-        result.SkipReason.ShouldBeNull();
-    }
-
-    [Test]
-    public async Task ScenarioRunner_RunsRestoreScenario_OnAzuriteBackend()
+    public async Task ScenarioRunner_RestoreScenario_WithV2Source_ArchivesV2DuringSetup()
     {
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-latest-cold-cache");
-        await using var backend = new AzuriteE2EBackendFixture();
-        await backend.InitializeAsync();
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var operationFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
             scenario,
             SyntheticRepositoryProfile.Small,
-            seed: 12345);
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
 
         result.WasSkipped.ShouldBeFalse();
         result.SkipReason.ShouldBeNull();
+        setupFixture.MaterializedVersions.ShouldBe([
+            SyntheticRepositoryVersion.V1,
+            SyntheticRepositoryVersion.V2,
+        ]);
+        setupFixture.ArchiveCallCount.ShouldBe(2);
+        operationFixture.RestoreCallCount.ShouldBe(1);
     }
 
     [Test]
-    public async Task ScenarioRunner_RunsArchiveThenRestoreScenario_OnAzuriteBackend()
+    public async Task ScenarioRunner_ColdRestore_UsesFreshFixtureForOperationUnderTest()
     {
-        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-remove-local-then-thin-followup");
-        await using var backend = new AzuriteE2EBackendFixture();
-        await backend.InitializeAsync();
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-previous-cold-cache");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var operationFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, operationFixture]);
+        var cacheResets = new List<string>();
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
             scenario,
             SyntheticRepositoryProfile.Small,
-            seed: 12345);
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+                ResetLocalCacheAsync = (accountName, containerName) =>
+                {
+                    cacheResets.Add($"{accountName}/{containerName}");
+                    return Task.CompletedTask;
+                },
+            });
 
         result.WasSkipped.ShouldBeFalse();
         result.SkipReason.ShouldBeNull();
+        setupFixture.RestoreCallCount.ShouldBe(0);
+        setupFixture.DisposeCallCount.ShouldBe(1);
+        operationFixture.RestoreCallCount.ShouldBe(1);
+        cacheResets.Count.ShouldBe(2);
     }
 
     private sealed class FakeBackend(bool supportsArchiveTier) : IE2EStorageBackend
     {
+        private readonly IBlobContainerService _blobContainer = Substitute.For<IBlobContainerService>();
+
         public string Name => "Fake";
 
         public E2EBackendCapabilities Capabilities { get; } = new(
@@ -88,9 +105,74 @@ public class RepresentativeScenarioRunnerTests
         public Task<E2EStorageBackendContext> CreateContextAsync(CancellationToken cancellationToken = default)
         {
             CreateContextCallCount++;
-            throw new InvalidOperationException("CreateContextAsync should not be called for skipped scenarios.");
+
+            return Task.FromResult(new E2EStorageBackendContext
+            {
+                BlobContainer = _blobContainer,
+                AccountName = "account",
+                ContainerName = "container",
+                Capabilities = Capabilities,
+                CleanupAsync = () => ValueTask.CompletedTask,
+            });
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class FakeScenarioFixture : IRepresentativeScenarioFixture
+    {
+        public List<SyntheticRepositoryVersion> MaterializedVersions { get; } = [];
+
+        public int ArchiveCallCount { get; private set; }
+
+        public int RestoreCallCount { get; private set; }
+
+        public int DisposeCallCount { get; private set; }
+
+        public Task PreserveLocalCacheAsync() => Task.CompletedTask;
+
+        public Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
+            SyntheticRepositoryDefinition definition,
+            SyntheticRepositoryVersion version,
+            int seed)
+        {
+            MaterializedVersions.Add(version);
+            return Task.FromResult(new RepositoryTreeSnapshot(new Dictionary<string, string>(StringComparer.Ordinal)));
+        }
+
+        public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default)
+        {
+            ArchiveCallCount++;
+
+            return Task.FromResult(new ArchiveResult
+            {
+                Success = true,
+                FilesScanned = 0,
+                FilesUploaded = 0,
+                FilesDeduped = 0,
+                TotalSize = 0,
+                RootHash = "root",
+                SnapshotTime = DateTimeOffset.UtcNow,
+            });
+        }
+
+        public Task<RestoreResult> RestoreAsync(CancellationToken ct = default)
+        {
+            RestoreCallCount++;
+
+            return Task.FromResult(new RestoreResult
+            {
+                Success = true,
+                FilesRestored = 0,
+                FilesSkipped = 0,
+                ChunksPendingRehydration = 0,
+            });
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCallCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 }
