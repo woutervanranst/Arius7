@@ -13,6 +13,33 @@ public class E2EStorageBackendFixtureTests
     }
 
     [Test]
+    public async Task AzureFixture_CreateContext_PopulatesAzureBackendFields_WhenCredentialsAvailable()
+    {
+        if (!AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials not available — skipping live backend context test");
+            return;
+        }
+
+        await using var backend = new AzureFixture();
+        await backend.InitializeAsync();
+
+        var context = await backend.CreateContextAsync();
+
+        context.BlobContainer.ShouldNotBeNull();
+        context.AccountName.ShouldNotBeNullOrWhiteSpace();
+        context.ContainerName.ShouldNotBeNullOrWhiteSpace();
+        context.BlobContainerClient.ShouldNotBeNull();
+        context.AzureBlobContainerService.ShouldNotBeNull();
+        context.Capabilities.SupportsArchiveTier.ShouldBeTrue();
+
+        context.AccountName.ShouldBe(context.BlobContainerClient.AccountName);
+        context.ContainerName.ShouldBe(context.BlobContainerClient.Name);
+
+        await context.DisposeAsync();
+    }
+
+    [Test]
     public async Task Azurite_Backend_Context_ReportsLimitedCapabilities()
     {
         await using var backend = new AzuriteE2EBackendFixture();
