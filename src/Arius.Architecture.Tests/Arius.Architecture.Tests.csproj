@@ -1,22 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<UserSecretsId>c7adb251-9251-4709-8733-a581a11e2a74</UserSecretsId>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Shouldly" />
-    <PackageReference Include="TngTech.ArchUnitNET" />
-    <PackageReference Include="TUnit" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Shouldly" />
+		<PackageReference Include="TngTech.ArchUnitNET" />
+		<PackageReference Include="TUnit" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
-    <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
-    <ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+		<ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
+		<ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
+	</ItemGroup>
 
 </Project>
