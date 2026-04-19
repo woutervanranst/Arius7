@@ -73,10 +73,12 @@ public interface IRecentRepositoryManager
 public sealed class RecentRepositoryManager : IRecentRepositoryManager
 {
     private readonly IApplicationSettings settings;
+    private readonly TimeProvider timeProvider;
 
-    public RecentRepositoryManager(IApplicationSettings settings)
+    public RecentRepositoryManager(IApplicationSettings settings, TimeProvider? timeProvider = null)
     {
         this.settings = settings;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public IReadOnlyList<RepositoryOptions> GetAll() =>
@@ -97,18 +99,18 @@ public sealed class RecentRepositoryManager : IRecentRepositoryManager
             string.Equals(a.AccountName,        b.AccountName,        StringComparison.OrdinalIgnoreCase);
 
         var existing = settings.RecentRepositories.FirstOrDefault(r => EqualRepositoryOptions(r, repo));
-        var now = DateTime.UtcNow;
+        var openedAt = timeProvider.GetUtcNow().UtcDateTime;
 
         if (existing is null)
         {
-            repo.LastOpened = now;
+            repo.LastOpened = openedAt;
             settings.RecentRepositories.Add(repo);
         }
         else
         {
             existing.AccountKeyProtected = repo.AccountKeyProtected;
             existing.PassphraseProtected = repo.PassphraseProtected;
-            existing.LastOpened          = now;
+            existing.LastOpened          = openedAt;
             // do not update key properties
             //existing.LocalDirectoryPath  = repo.LocalDirectoryPath;
             //existing.ContainerName       = repo.ContainerName;

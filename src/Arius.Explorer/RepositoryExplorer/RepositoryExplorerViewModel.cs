@@ -23,6 +23,9 @@ namespace Arius.Explorer.RepositoryExplorer;
 
 public partial class RepositoryExplorerViewModel : ObservableObject
 {
+    public static Func<string, string, MessageBoxButton, MessageBoxImage, MessageBoxResult> ShowMessageBox { get; set; } =
+        static (message, caption, button, image) => MessageBox.Show(message, caption, button, image);
+
     private readonly IApplicationSettings                 settings;
     private readonly IRecentRepositoryManager             recentRepositoryManager;
     private readonly IDialogService                       dialogService;
@@ -237,11 +240,12 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            logger.LogDebug("Node content load was cancelled.");
         }
         catch (Exception e)
         {
             logger.LogError(e, "Error loading node content");
-            MessageBox.Show(
+            ShowMessageBox(
                 $"Failed to load repository content: {e.Message}\n\nPlease check your repository options (Account Name, Account Key, Container Name, and Passphrase).",
                 "Error Loading Repository",
                 MessageBoxButton.OK,
@@ -288,6 +292,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            logger.LogDebug("Hydration status load was cancelled for {Prefix}", node.Prefix);
         }
         catch (Exception ex)
         {
@@ -408,7 +413,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         msg.AppendLine();
         msg.AppendLine("Proceed?");
 
-        if (MessageBox.Show(msg.ToString(), App.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.No)
+        if (ShowMessageBox(msg.ToString(), App.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.No)
             return;
 
         if (repositorySession.Mediator is null)
@@ -445,7 +450,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         catch (Exception ex)
         {
             // Handle error (optionally show message)
-            MessageBox.Show($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessageBox($"Restore failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

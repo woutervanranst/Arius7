@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "createdAt": "2026-04-19T05:58:29.8559632+00:00",
+  "updatedAt": "2026-04-19T05:58:29.8590116+00:00",
+  "description": "Initial baseline created by 'slopwatch init' on 2026-04-19 05:58:29 UTC",
+  "entries": [
+    {
+      "hash": "f842af346b93fa73",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Cli/Commands/Update/UpdateVerb.cs",
+      "lineNumber": 166,
+      "codeSnippet": "catch { /* best-effort cleanup */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8587205+00:00"
+    },
+    {
+      "hash": "55577880b9147b73",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Cli/Commands/Update/UpdateVerb.cs",
+      "lineNumber": 173,
+      "codeSnippet": "catch\r\n                {\r\n                }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8588265+00:00"
+    },
+    {
+      "hash": "6e5d2aad62476608",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Cli.Tests/Commands/Archive/ProgressCallbackIntegrationTests.cs",
+      "lineNumber": 11,
+      "codeSnippet": "SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(1)).ShouldBeTrue()",
+      "message": "Test uses SpinWait which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8588336+00:00"
+    },
+    {
+      "hash": "47671674deb75d61",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Cli.Tests/Commands/Archive/ProgressCallbackIntegrationTests.cs",
+      "lineNumber": 11,
+      "codeSnippet": "SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(1))",
+      "message": "Test uses SpinWait which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8588374+00:00"
+    },
+    {
+      "hash": "7b5eb675f49a6656",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Cli.Tests/Commands/Restore/RestoreTcsCoordinationTests.cs",
+      "lineNumber": 79,
+      "codeSnippet": "Task.Delay(50)",
+      "message": "Test uses Task.Delay(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8588464+00:00"
+    },
+    {
+      "hash": "09295c86822f20ae",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Cli.Tests/Commands/Restore/RestoreTcsCoordinationTests.cs",
+      "lineNumber": 87,
+      "codeSnippet": "Task.Delay(20)",
+      "message": "Test uses Task.Delay(20) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8588498+00:00"
+    },
+    {
+      "hash": "8ba82b541fd67d9b",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Cli.Tests/Commands/Restore/RestoreTcsCoordinationTests.cs",
+      "lineNumber": 103,
+      "codeSnippet": "Task.Delay(5000)",
+      "message": "Test uses Task.Delay(5000) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.858853+00:00"
+    },
+    {
+      "hash": "5d911240c1675d7c",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs",
+      "lineNumber": 461,
+      "codeSnippet": "catch { /* ignore */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589047+00:00"
+    },
+    {
+      "hash": "91ae2d5e6ce897e1",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs",
+      "lineNumber": 564,
+      "codeSnippet": "catch\r\n            {\r\n                /* ignore */\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589099+00:00"
+    },
+    {
+      "hash": "581fffc590679ef4",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 134,
+      "codeSnippet": "catch { /* best-effort */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589137+00:00"
+    },
+    {
+      "hash": "919564589745508e",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 137,
+      "codeSnippet": "catch (FileNotFoundException)\r\n        {\r\n            // Another concurrent caller may have replaced the cache file between Exists and read.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589179+00:00"
+    },
+    {
+      "hash": "83ed6a19b6c99ce1",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 141,
+      "codeSnippet": "catch (DirectoryNotFoundException)\r\n        {\r\n            // Treat concurrent directory cleanup or creation races as a cache miss.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589234+00:00"
+    },
+    {
+      "hash": "b0ceecce9d445406",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 184,
+      "codeSnippet": "catch\r\n            {\r\n                // Best-effort temp cleanup only.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589272+00:00"
+    },
+    {
+      "hash": "06fa5821a2b07e55",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 216,
+      "codeSnippet": "catch (BlobAlreadyExistsException)\r\n        {\r\n            // Blob was already uploaded (crash recovery or concurrent run). Continue.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.858931+00:00"
+    },
+    {
+      "hash": "1768371c283e1c33",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core/Shared/FileTree/FileTreeService.cs",
+      "lineNumber": 305,
+      "codeSnippet": "catch { /* ignore individual failures */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589342+00:00"
+    },
+    {
+      "hash": "2c3880b1d6517c60",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Core.Tests/Features/ArchiveCommand/ArchiveTestEnvironment.cs",
+      "lineNumber": 108,
+      "codeSnippet": "catch (DirectoryNotFoundException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589389+00:00"
+    },
+    {
+      "hash": "72376a498d314a0a",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.E2E.Tests/RehydrationE2ETests.cs",
+      "lineNumber": 233,
+      "codeSnippet": "Task.Delay(2000, ct)",
+      "message": "Test uses Task.Delay(2000) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589426+00:00"
+    },
+    {
+      "hash": "49d6c72110306a52",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.E2E.Tests/Fixtures/AzureFixture.cs",
+      "lineNumber": 72,
+      "codeSnippet": "catch { /* best-effort */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589459+00:00"
+    },
+    {
+      "hash": "10e3dbff16080806",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Explorer/ChooseRepository/ChooseRepositoryViewModel.cs",
+      "lineNumber": 159,
+      "codeSnippet": "catch (OperationCanceledException)\r\n        {\r\n            // Cancellation is expected when new credentials are entered; do not flag as error\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589509+00:00"
+    },
+    {
+      "hash": "9cd5431125a8377c",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Explorer/ChooseRepository/ChooseRepositoryViewModel.cs",
+      "lineNumber": 238,
+      "codeSnippet": "catch (Exception)\r\n        {\r\n            // TODO: Handle error - show message to user\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589549+00:00"
+    },
+    {
+      "hash": "6ffe7152bf85a3b1",
+      "ruleId": "SW003",
+      "filePath": "src/Arius.Explorer/RepositoryExplorer/RepositoryExplorerViewModel.cs",
+      "lineNumber": 241,
+      "codeSnippet": "catch (OperationCanceledException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-04-19T05:58:29.8589586+00:00"
+    },
+    {
+      "hash": "93d1e5c2f4450dc7",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Explorer.Tests/ChooseRepository/ChooseRepositoryViewModelTests.cs",
+      "lineNumber": 230,
+      "codeSnippet": "Task.Delay(25)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589722+00:00"
+    },
+    {
+      "hash": "8f520324d88e9362",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Explorer.Tests/RepositoryExplorer/RepositoryExplorerViewModelTests.cs",
+      "lineNumber": 339,
+      "codeSnippet": "Task.Delay(25)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589761+00:00"
+    },
+    {
+      "hash": "945d54a5ae368f02",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Explorer.Tests/Settings/RecentRepositoryManagerTests.cs",
+      "lineNumber": 29,
+      "codeSnippet": "Task.Delay(5).GetAwaiter().GetResult()",
+      "message": "Test uses Task.Delay(?) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589796+00:00"
+    },
+    {
+      "hash": "e2e16eb3c44c09ff",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Explorer.Tests/Settings/RecentRepositoryManagerTests.cs",
+      "lineNumber": 29,
+      "codeSnippet": "Task.Delay(5).GetAwaiter()",
+      "message": "Test uses Task.Delay(?) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589828+00:00"
+    },
+    {
+      "hash": "4af1265c9ffb201d",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Explorer.Tests/Settings/RecentRepositoryManagerTests.cs",
+      "lineNumber": 29,
+      "codeSnippet": "Task.Delay(5)",
+      "message": "Test uses Task.Delay(5) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8589859+00:00"
+    },
+    {
+      "hash": "5ce9eb332da2143e",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Integration.Tests/Pipeline/ListQueryIntegrationTests.cs",
+      "lineNumber": 111,
+      "codeSnippet": "Task.Delay(1100)",
+      "message": "Test uses Task.Delay(1100) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.859008+00:00"
+    },
+    {
+      "hash": "7cf0a5e6b67e68bc",
+      "ruleId": "SW004",
+      "filePath": "src/Arius.Integration.Tests/Pipeline/RoundtripTests.cs",
+      "lineNumber": 170,
+      "codeSnippet": "Task.Delay(1100)",
+      "message": "Test uses Task.Delay(1100) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-04-19T05:58:29.8590115+00:00"
+    }
+  ]
+}
