@@ -22,6 +22,8 @@ namespace Arius.E2E.Tests.Fixtures;
 /// </summary>
 public sealed class E2EFixture : IAsyncDisposable
 {
+    private static readonly Lock RepositoryCacheLeaseLock = new();
+    private static readonly Dictionary<string, int> RepositoryCacheLiveFixtureCounts = new(StringComparer.Ordinal);
     private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
@@ -58,6 +60,13 @@ public sealed class E2EFixture : IAsyncDisposable
         _container = containerName;
         _defaultTier = defaultTier;
         _mediator = Substitute.For<IMediator>();
+
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(account, containerName);
+            RepositoryCacheLiveFixtureCounts[cacheKey] =
+                RepositoryCacheLiveFixtureCounts.GetValueOrDefault(cacheKey) + 1;
+        }
     }
 
     public IBlobContainerService BlobContainer { get; }
@@ -118,6 +127,11 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
+        lock (RepositoryCacheLeaseLock)
+        {
+            RepositoryCacheLiveFixtureCounts.Remove(GetRepositoryCacheKey(accountName, containerName));
+        }
+
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
 
         if (Directory.Exists(cacheDir))
@@ -128,7 +142,11 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public Task PreserveLocalCacheAsync()
     {
-        _preserveLocalCache = true;
+        lock (RepositoryCacheLeaseLock)
+        {
+            _preserveLocalCache = true;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -207,7 +225,7 @@ public sealed class E2EFixture : IAsyncDisposable
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
-        if (!_preserveLocalCache)
+        if (ShouldResetCacheOnDispose())
             await ResetLocalCacheAsync(_account, _container);
 
         await Task.CompletedTask;
@@ -226,4 +244,27 @@ public sealed class E2EFixture : IAsyncDisposable
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
     }
+
+    bool ShouldResetCacheOnDispose()
+    {
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(_account, _container);
+            if (!RepositoryCacheLiveFixtureCounts.TryGetValue(cacheKey, out var liveFixtureCount))
+                return true;
+
+            liveFixtureCount--;
+            if (liveFixtureCount > 0)
+            {
+                RepositoryCacheLiveFixtureCounts[cacheKey] = liveFixtureCount;
+                return false;
+            }
+
+            RepositoryCacheLiveFixtureCounts.Remove(cacheKey);
+            return !_preserveLocalCache;
+        }
+    }
+
+    static string GetRepositoryCacheKey(string accountName, string containerName) =>
+        $"{accountName}\n{containerName}";
 }

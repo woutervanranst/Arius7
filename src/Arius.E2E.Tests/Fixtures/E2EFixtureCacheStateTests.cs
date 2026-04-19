@@ -34,11 +34,13 @@ public class E2EFixtureCacheStateTests
     {
         var definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Small);
         var blobContainer = Substitute.For<IBlobContainerService>();
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
 
         await using var fixture = await E2EFixture.CreateAsync(
             blobContainer,
-            "account",
-            "container",
+            accountName,
+            containerName,
             BlobTier.Cool);
 
         fixture.WriteFile("stale.txt", [1, 2, 3]);
@@ -90,5 +92,36 @@ public class E2EFixtureCacheStateTests
         {
             await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
         }
+    }
+
+    [Test]
+    public async Task DisposeAsync_WhileAnotherFixtureForSameRepositoryIsAlive_LeavesCacheUntilLastFixtureDisposes()
+    {
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var blobContainer = Substitute.For<IBlobContainerService>();
+
+        await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
+        Directory.CreateDirectory(repositoryDirectory);
+
+        await using var firstFixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+        await using var secondFixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+
+        await firstFixture.DisposeAsync();
+
+        Directory.Exists(repositoryDirectory).ShouldBeTrue();
+
+        await secondFixture.DisposeAsync();
+
+        Directory.Exists(repositoryDirectory).ShouldBeFalse();
     }
 }
