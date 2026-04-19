@@ -53,7 +53,7 @@ public class E2EFixtureCacheStateTests
     }
 
     [Test]
-    public async Task DisposeAsync_PreservedCacheMode_IsScopedToTheFixtureInstance()
+    public async Task DisposeAsync_DoubleDispose_DoesNotCorruptRepositoryCoordination()
     {
         var accountName = $"account-{Guid.NewGuid():N}";
         var containerName = $"container-{Guid.NewGuid():N}";
@@ -66,25 +66,26 @@ public class E2EFixtureCacheStateTests
 
         try
         {
-            await using (var fixture = await E2EFixture.CreateAsync(
-                             blobContainer,
-                             accountName,
-                             containerName,
-                             BlobTier.Cool))
-            {
-                await fixture.PreserveLocalCacheAsync();
-            }
+            var fixture = await E2EFixture.CreateAsync(
+                blobContainer,
+                accountName,
+                containerName,
+                BlobTier.Cool);
+            await fixture.PreserveLocalCacheAsync();
+
+            await fixture.DisposeAsync();
+            await fixture.DisposeAsync();
 
             Directory.Exists(repositoryDirectory).ShouldBeTrue();
             File.Exists(markerFile).ShouldBeTrue();
 
-            await using (var fixture = await E2EFixture.CreateAsync(
-                             blobContainer,
-                             accountName,
-                             containerName,
-                             BlobTier.Cool))
-            {
-            }
+            var secondFixture = await E2EFixture.CreateAsync(
+                blobContainer,
+                accountName,
+                containerName,
+                BlobTier.Cool);
+
+            await secondFixture.DisposeAsync();
 
             Directory.Exists(repositoryDirectory).ShouldBeFalse();
         }
@@ -105,23 +106,31 @@ public class E2EFixtureCacheStateTests
         await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
         Directory.CreateDirectory(repositoryDirectory);
 
-        await using var firstFixture = await E2EFixture.CreateAsync(
+        var firstFixture = await E2EFixture.CreateAsync(
             blobContainer,
             accountName,
             containerName,
             BlobTier.Cool);
-        await using var secondFixture = await E2EFixture.CreateAsync(
+        var secondFixture = await E2EFixture.CreateAsync(
             blobContainer,
             accountName,
             containerName,
             BlobTier.Cool);
 
-        await firstFixture.DisposeAsync();
+        try
+        {
+            await firstFixture.DisposeAsync();
 
-        Directory.Exists(repositoryDirectory).ShouldBeTrue();
+            Directory.Exists(repositoryDirectory).ShouldBeTrue();
 
-        await secondFixture.DisposeAsync();
+            await secondFixture.DisposeAsync();
 
-        Directory.Exists(repositoryDirectory).ShouldBeFalse();
+            Directory.Exists(repositoryDirectory).ShouldBeFalse();
+        }
+        finally
+        {
+            await firstFixture.DisposeAsync();
+            await secondFixture.DisposeAsync();
+        }
     }
 }

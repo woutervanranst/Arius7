@@ -30,6 +30,7 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly string _container;
     private readonly IMediator _mediator;
     private bool _preserveLocalCache;
+    private bool _disposed;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
@@ -127,11 +128,6 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        lock (RepositoryCacheLeaseLock)
-        {
-            RepositoryCacheLiveFixtureCounts.Remove(GetRepositoryCacheKey(accountName, containerName));
-        }
-
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
 
         if (Directory.Exists(cacheDir))
@@ -222,6 +218,11 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
         if (Directory.Exists(_tempRoot))
             Directory.Delete(_tempRoot, recursive: true);
 
