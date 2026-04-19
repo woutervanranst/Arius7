@@ -115,18 +115,17 @@ public sealed class E2EFixture : IAsyncDisposable
         return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, ct);
     }
 
-    public static Task ResetLocalCacheAsync(string accountName, string containerName, string? cacheRoot = null)
+    public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        var cacheDir = GetRepositoryDirectory(accountName, containerName, cacheRoot);
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
         return Task.CompletedTask;
     }
 
-    public static Task PreserveLocalCacheAsync(string accountName, string containerName, string? cacheRoot = null)
+    public static Task PreserveLocalCacheAsync(string accountName, string containerName)
     {
-        _ = GetRepositoryDirectory(accountName, containerName, cacheRoot);
         return Task.CompletedTask;
     }
 
@@ -222,13 +221,5 @@ public sealed class E2EFixture : IAsyncDisposable
             throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-    }
-
-    internal static string GetRepositoryDirectory(string accountName, string containerName, string? cacheRoot = null)
-    {
-        if (string.IsNullOrWhiteSpace(cacheRoot))
-            return RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
-
-        return Path.Combine(cacheRoot, ".arius", RepositoryPaths.GetRepoDirectoryName(accountName, containerName));
     }
 }

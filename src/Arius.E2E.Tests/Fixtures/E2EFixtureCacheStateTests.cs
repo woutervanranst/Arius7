@@ -9,42 +9,48 @@ namespace Arius.E2E.Tests.Fixtures;
 public class E2EFixtureCacheStateTests
 {
     [Test]
-    public async Task ResetLocalCache_RemovesRepositoryCacheDirectory_InsideExplicitRoot()
+    public async Task ResetLocalCache_RemovesRepositoryCacheDirectory_OnRealRepositoryPath()
     {
-        var cacheRoot = Path.Combine(Path.GetTempPath(), $"arius-cache-tests-{Guid.NewGuid():N}");
-        var repositoryDirectory = Path.Combine(cacheRoot, ".arius", "account-container");
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
         Directory.CreateDirectory(repositoryDirectory);
 
         try
         {
-            await E2EFixture.ResetLocalCacheAsync("account", "container", cacheRoot);
+            await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
 
             Directory.Exists(repositoryDirectory).ShouldBeFalse();
         }
         finally
         {
-            if (Directory.Exists(cacheRoot))
-                Directory.Delete(cacheRoot, recursive: true);
+            if (Directory.Exists(repositoryDirectory))
+                Directory.Delete(repositoryDirectory, recursive: true);
         }
     }
 
     [Test]
-    public async Task PreserveLocalCache_LeavesRepositoryCacheDirectory_InsideExplicitRoot()
+    public async Task PreserveLocalCache_LeavesRepositoryCacheDirectoryAndContents_OnRealRepositoryPath()
     {
-        var cacheRoot = Path.Combine(Path.GetTempPath(), $"arius-cache-tests-{Guid.NewGuid():N}");
-        var repositoryDirectory = Path.Combine(cacheRoot, ".arius", "account-container");
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var markerFile = Path.Combine(repositoryDirectory, "marker.txt");
         Directory.CreateDirectory(repositoryDirectory);
+        await File.WriteAllTextAsync(markerFile, "preserve-me");
 
         try
         {
-            await E2EFixture.PreserveLocalCacheAsync("account", "container", cacheRoot);
+            await E2EFixture.PreserveLocalCacheAsync(accountName, containerName);
 
             Directory.Exists(repositoryDirectory).ShouldBeTrue();
+            File.Exists(markerFile).ShouldBeTrue();
+            (await File.ReadAllTextAsync(markerFile)).ShouldBe("preserve-me");
         }
         finally
         {
-            if (Directory.Exists(cacheRoot))
-                Directory.Delete(cacheRoot, recursive: true);
+            if (Directory.Exists(repositoryDirectory))
+                Directory.Delete(repositoryDirectory, recursive: true);
         }
     }
 
