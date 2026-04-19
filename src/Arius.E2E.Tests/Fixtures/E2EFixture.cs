@@ -23,13 +23,12 @@ namespace Arius.E2E.Tests.Fixtures;
 public sealed class E2EFixture : IAsyncDisposable
 {
     private static readonly Lock RepositoryCacheLeaseLock = new();
-    private static readonly Dictionary<string, int> RepositoryCacheLiveFixtureCounts = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, RepositoryCacheLease> RepositoryCacheLeases = new(StringComparer.Ordinal);
     private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
     private readonly IMediator _mediator;
-    private bool _preserveLocalCache;
     private bool _disposed;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
@@ -65,8 +64,9 @@ public sealed class E2EFixture : IAsyncDisposable
         lock (RepositoryCacheLeaseLock)
         {
             var cacheKey = GetRepositoryCacheKey(account, containerName);
-            RepositoryCacheLiveFixtureCounts[cacheKey] =
-                RepositoryCacheLiveFixtureCounts.GetValueOrDefault(cacheKey) + 1;
+            var lease = RepositoryCacheLeases.GetValueOrDefault(cacheKey);
+            lease.LiveFixtureCount++;
+            RepositoryCacheLeases[cacheKey] = lease;
         }
     }
 
@@ -140,7 +140,10 @@ public sealed class E2EFixture : IAsyncDisposable
     {
         lock (RepositoryCacheLeaseLock)
         {
-            _preserveLocalCache = true;
+            var cacheKey = GetRepositoryCacheKey(_account, _container);
+            var lease = RepositoryCacheLeases.GetValueOrDefault(cacheKey);
+            lease.PreserveRequested = true;
+            RepositoryCacheLeases[cacheKey] = lease;
         }
 
         return Task.CompletedTask;
@@ -251,21 +254,28 @@ public sealed class E2EFixture : IAsyncDisposable
         lock (RepositoryCacheLeaseLock)
         {
             var cacheKey = GetRepositoryCacheKey(_account, _container);
-            if (!RepositoryCacheLiveFixtureCounts.TryGetValue(cacheKey, out var liveFixtureCount))
+            if (!RepositoryCacheLeases.TryGetValue(cacheKey, out var lease))
                 return true;
 
-            liveFixtureCount--;
-            if (liveFixtureCount > 0)
+            lease.LiveFixtureCount--;
+
+            if (lease.LiveFixtureCount > 0)
             {
-                RepositoryCacheLiveFixtureCounts[cacheKey] = liveFixtureCount;
+                RepositoryCacheLeases[cacheKey] = lease;
                 return false;
             }
 
-            RepositoryCacheLiveFixtureCounts.Remove(cacheKey);
-            return !_preserveLocalCache;
+            RepositoryCacheLeases.Remove(cacheKey);
+            return !lease.PreserveRequested;
         }
     }
 
     static string GetRepositoryCacheKey(string accountName, string containerName) =>
         $"{accountName}\n{containerName}";
+
+    struct RepositoryCacheLease
+    {
+        public int LiveFixtureCount { get; set; }
+        public bool PreserveRequested { get; set; }
+    }
 }

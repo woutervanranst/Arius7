@@ -133,4 +133,46 @@ public class E2EFixtureCacheStateTests
             await secondFixture.DisposeAsync();
         }
     }
+
+    [Test]
+    public async Task DisposeAsync_LastNonPreservingFixture_StillPreservesCacheWhenAnotherFixtureRequestedPreserve()
+    {
+        var accountName = $"account-{Guid.NewGuid():N}";
+        var containerName = $"container-{Guid.NewGuid():N}";
+        var repositoryDirectory = Arius.Core.Shared.RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var markerFile = Path.Combine(repositoryDirectory, "marker.txt");
+        var blobContainer = Substitute.For<IBlobContainerService>();
+
+        await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
+        Directory.CreateDirectory(repositoryDirectory);
+        await File.WriteAllTextAsync(markerFile, "preserve-me");
+
+        var preservingFixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+        var nonPreservingFixture = await E2EFixture.CreateAsync(
+            blobContainer,
+            accountName,
+            containerName,
+            BlobTier.Cool);
+
+        try
+        {
+            await preservingFixture.PreserveLocalCacheAsync();
+
+            await preservingFixture.DisposeAsync();
+            await nonPreservingFixture.DisposeAsync();
+
+            Directory.Exists(repositoryDirectory).ShouldBeTrue();
+            File.Exists(markerFile).ShouldBeTrue();
+        }
+        finally
+        {
+            await preservingFixture.DisposeAsync();
+            await nonPreservingFixture.DisposeAsync();
+            await E2EFixture.ResetLocalCacheAsync(accountName, containerName);
+        }
+    }
 }
