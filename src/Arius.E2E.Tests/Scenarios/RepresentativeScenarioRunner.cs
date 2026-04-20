@@ -321,7 +321,6 @@ internal static class RepresentativeScenarioRunner
         {
             RootDirectory = string.Empty,
             Overwrite = scenario.UseOverwrite,
-            NoPointers = true,
             Version = scenario.RestoreVersion == "previous"
                 ? previousSnapshotVersion
                 : scenario.RestoreVersion,
@@ -401,7 +400,19 @@ internal static class RepresentativeScenarioRunner
                 seed,
                 expectedRoot);
 
-            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot);
+            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot, includePointerFiles: false);
+
+            if (!scenario.UseNoPointers)
+            {
+                foreach (var relativePath in expected.Files.Keys)
+                {
+                    var pointerPath = Path.Combine(
+                        fixture.RestoreRoot,
+                        (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+
+                    File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
+                }
+            }
         }
         finally
         {
@@ -470,7 +481,7 @@ internal static class RepresentativeScenarioRunner
 
         var trackingSvc1 = new CopyTrackingBlobService(azureBlobContainer);
         var firstEstimateCaptured = false;
-        var initialResult = await CreateArchiveTierRestoreHandler(
+            var initialResult = await CreateArchiveTierRestoreHandler(
                 fixture,
                 context,
                 trackingSvc1)
@@ -479,7 +490,6 @@ internal static class RepresentativeScenarioRunner
                 RootDirectory = fixture.RestoreRoot,
                 TargetPath = "src",
                 Overwrite = true,
-                NoPointers = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
                     firstEstimateCaptured = true;
@@ -500,7 +510,6 @@ internal static class RepresentativeScenarioRunner
                 RootDirectory = fixture.RestoreRoot,
                 TargetPath = "src",
                 Overwrite = true,
-                NoPointers = true,
                 ConfirmRehydration = (_, _) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
             }), cancellationToken).AsTask();
 
@@ -523,7 +532,6 @@ internal static class RepresentativeScenarioRunner
                 RootDirectory = readyRestoreRoot,
                 TargetPath = "src",
                 Overwrite = true,
-                NoPointers = true,
                 ConfirmCleanup = (count, _, _) =>
                 {
                     cleanupDeletedChunks = count;
@@ -542,9 +550,21 @@ internal static class RepresentativeScenarioRunner
                     seed,
                     expectedRoot);
 
+                var expectedRestoreTree = FilterSnapshotToPrefix(expected, "src", trimPrefix: false);
+
                 await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(
-                    FilterSnapshotToPrefix(expected, "src", trimPrefix: false),
-                    readyRestoreRoot);
+                    expectedRestoreTree,
+                    readyRestoreRoot,
+                    includePointerFiles: false);
+
+                foreach (var relativePath in expectedRestoreTree.Files.Keys)
+                {
+                    var pointerPath = Path.Combine(
+                        readyRestoreRoot,
+                        (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+
+                    File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
+                }
             }
             finally
             {

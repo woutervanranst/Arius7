@@ -17,6 +17,12 @@ internal class RepresentativeArchiveRestoreTests
         RepresentativeScenarioDefinition scenario,
         CancellationToken cancellationToken)
     {
+        if (backend is AzureE2EBackendFixture && !AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials not available — skipping live representative backend coverage");
+            return;
+        }
+
         if (ShouldSkipForAzureColdRestoreTimeout(backend, scenario))
         {
             Skip.Unless(false, $"Azure cold restore representative scenario is tracked by issue #65: {scenario.Name}");

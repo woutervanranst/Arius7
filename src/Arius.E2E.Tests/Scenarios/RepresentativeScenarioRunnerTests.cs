@@ -263,7 +263,31 @@ public class RepresentativeScenarioRunnerTests
         restoreFixture.RestoreOptions.ShouldHaveSingleItem().RootDirectory.ShouldBe(restoreFixture.RestoreRoot);
         restoreFixture.RestoreOptions.Single().Version.ShouldNotBeNullOrWhiteSpace();
         restoreFixture.RestoreOptions.Single().Overwrite.ShouldBeTrue();
+        restoreFixture.RestoreOptions.Single().NoPointers.ShouldBeFalse();
         cacheResets.Count.ShouldBe(2);
+    }
+
+    [Test]
+    public async Task ScenarioRunner_RestoreLatestScenario_PreservesDefaultPointerRestoreBehavior()
+    {
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-latest-cold-cache");
+        await using var backend = new FakeBackend(supportsArchiveTier: true);
+        var setupFixture = new FakeScenarioFixture();
+        var restoreFixture = new FakeScenarioFixture();
+        var createdFixtures = new Queue<IRepresentativeScenarioFixture>([setupFixture, restoreFixture]);
+
+        var result = await RepresentativeScenarioRunner.RunAsync(
+            backend,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 12345,
+            new RepresentativeScenarioRunnerDependencies
+            {
+                CreateFixtureAsync = (_, _) => Task.FromResult(createdFixtures.Dequeue()),
+            });
+
+        result.WasSkipped.ShouldBeFalse();
+        restoreFixture.RestoreOptions.ShouldHaveSingleItem().NoPointers.ShouldBeFalse();
     }
 
     [Test]

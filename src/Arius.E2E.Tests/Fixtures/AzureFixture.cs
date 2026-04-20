@@ -21,7 +21,7 @@ internal sealed class AzureFixture : AzureE2EBackendFixture
 ///   dotnet user-secrets set "ARIUS_E2E_KEY"     "..." --project src/Arius.E2E.Tests
 ///
 /// Each test run gets a unique container that is deleted on teardown.
-/// Missing credentials are treated as a test configuration error and fail the suite.
+/// Missing credentials leave the live Azure backend unavailable; tests that require it must skip explicitly.
 /// </summary>
 internal class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
 {
@@ -51,8 +51,7 @@ internal class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
     public Task InitializeAsync()
     {
         if (!IsAvailable)
-            throw new InvalidOperationException(
-                "ARIUS_E2E_ACCOUNT and ARIUS_E2E_KEY must be configured via environment variables or user secrets before running Arius.E2E.Tests.");
+            return Task.CompletedTask;
 
         var credential   = new StorageSharedKeyCredential(Account, Key);
         var serviceUri   = new Uri($"https://{Account}.blob.core.windows.net");

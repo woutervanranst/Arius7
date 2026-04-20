@@ -13,6 +13,19 @@ public class E2EStorageBackendFixtureTests
     }
 
     [Test]
+    public async Task AzureFixture_Initialize_DoesNotThrow_WhenCredentialsAreUnavailable()
+    {
+        if (AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials available — missing-credential behavior not applicable");
+            return;
+        }
+
+        await using var backend = new AzureFixture();
+        await backend.InitializeAsync();
+    }
+
+    [Test]
     public async Task AzureFixture_CreateContext_PopulatesAzureBackendFields_WhenCredentialsAvailable()
     {
         if (!AzureFixture.IsAvailable)

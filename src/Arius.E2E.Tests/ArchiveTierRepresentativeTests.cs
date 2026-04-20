@@ -10,6 +10,12 @@ internal class ArchiveTierRepresentativeTests(AzureE2EBackendFixture backend)
     [Test]
     public async Task ArchiveTier_Planning_And_PendingVsReady_Are_Reported(CancellationToken cancellationToken)
     {
+        if (!AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials not available — skipping live archive-tier representative coverage");
+            return;
+        }
+
         var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-tier-planning");
 
         var result = await RepresentativeScenarioRunner.RunAsync(

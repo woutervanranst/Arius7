@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Fixtures;
 
 namespace Arius.E2E.Tests;
@@ -9,10 +10,11 @@ namespace Arius.E2E.Tests;
 ///   ARIUS_E2E_ACCOUNT  — storage account name
 ///   ARIUS_E2E_KEY      — storage account key
 ///
-/// Fails when the env vars are not set.
+/// Skips live-only coverage when the env vars are not set.
 /// Each test creates and cleans up its own unique container.
 ///
-/// Retains only the live Azure credential sanity check; representative coverage lives elsewhere.
+/// Retains the live Azure credential sanity check plus unique hot-tier pointer and large-file probes;
+/// representative coverage lives elsewhere.
 /// </summary>
 [ClassDataSource<AzureFixture>(Shared = SharedType.PerTestSession)]
 internal class E2ETests(AzureFixture azure)
@@ -31,5 +33,74 @@ internal class E2ETests(AzureFixture azure)
             exists.Value.ShouldBeTrue("Container should have been created");
         }
         finally { await cleanup(); }
+    }
+
+    [Test]
+    public async Task E2E_HotTier_Restore_CreatesPointerFiles_ByDefault()
+    {
+        if (!AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials not available — skipping live hot-tier restore sanity test");
+            return;
+        }
+
+        var (container, service, cleanup) = await azure.CreateTestContainerAsync();
+        var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot);
+        try
+        {
+            var content = new byte[2048];
+            Random.Shared.NextBytes(content);
+            fixture.WriteFile("hot.bin", content);
+
+            var archiveResult = await fixture.ArchiveAsync();
+            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+            var restoreResult = await fixture.RestoreAsync();
+            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+            restoreResult.FilesRestored.ShouldBe(1);
+
+            File.Exists(Path.Combine(fixture.RestoreRoot, "hot.bin.pointer.arius")).ShouldBeTrue();
+            fixture.ReadRestored("hot.bin").ShouldBe(content);
+        }
+        finally
+        {
+            await fixture.DisposeAsync();
+            await cleanup();
+        }
+    }
+
+    [Test]
+    [Timeout(300_000)]
+    public async Task E2E_LargeFile_Streaming_RemainsCovered(CancellationToken cancellationToken)
+    {
+        if (!AzureFixture.IsAvailable)
+        {
+            Skip.Unless(false, "Azure credentials not available — skipping live large-file sanity test");
+            return;
+        }
+
+        var (container, service, cleanup) = await azure.CreateTestContainerAsync(cancellationToken);
+        var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot, ct: cancellationToken);
+        try
+        {
+            var content = new byte[2 * 1024 * 1024];
+            Random.Shared.NextBytes(content);
+            fixture.WriteFile("large.bin", content);
+
+            var archiveResult = await fixture.ArchiveAsync(cancellationToken);
+            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+            archiveResult.FilesUploaded.ShouldBe(1);
+
+            var restoreResult = await fixture.RestoreAsync(cancellationToken);
+            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+            restoreResult.FilesRestored.ShouldBe(1);
+
+            fixture.ReadRestored("large.bin").ShouldBe(content);
+        }
+        finally
+        {
+            await fixture.DisposeAsync();
+            await cleanup();
+        }
     }
 }
