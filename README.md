@@ -104,18 +104,6 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
 `src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
 
-## End-to-End Tests
-
-The end-to-end tests now use a shared representative scenario model across two storage backends:
-
-- Azurite for local and CI validation
-- Azure Blob Storage for opt-in real-service validation
-
-The archive history is generated deterministically from a fixed seed and named dataset profile, so the same repository shape and mutations can be reproduced across runs.
-
-`src/Arius.E2E.Tests/E2ETests.cs` now retains only the live Azure credential sanity check; the representative suites carry the archive, restore, and archive-tier behavior coverage.
-`src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.
-The representative E2E suite currently skips the live Azure cold-restore scenarios tracked in issue `#65` because those cases time out while rebuilding remote repository metadata on a cold cache.
 
 ## Updating
 
