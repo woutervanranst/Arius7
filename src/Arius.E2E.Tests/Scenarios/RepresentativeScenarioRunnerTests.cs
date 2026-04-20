@@ -260,7 +260,7 @@ public class RepresentativeScenarioRunnerTests
         setupFixture.RestoreCallCount.ShouldBe(0);
         setupFixture.DisposeCallCount.ShouldBe(1);
         restoreFixture.RestoreOptions.ShouldHaveSingleItem().RootDirectory.ShouldBe(restoreFixture.RestoreRoot);
-        restoreFixture.RestoreOptions.Single().Version.ShouldBe("previous");
+        restoreFixture.RestoreOptions.Single().Version.ShouldNotBeNullOrWhiteSpace();
         restoreFixture.RestoreOptions.Single().Overwrite.ShouldBeTrue();
         cacheResets.Count.ShouldBe(2);
     }
@@ -297,7 +297,7 @@ public class RepresentativeScenarioRunnerTests
             SyntheticRepositoryVersion.V1,
             SyntheticRepositoryVersion.V2,
         ]);
-        previousRestoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBe("previous");
+        previousRestoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldNotBeNullOrWhiteSpace();
         latestRestoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
         previousRestoreFixture.RestoreOptions.Single().RootDirectory.ShouldNotBe(latestRestoreFixture.RestoreOptions.Single().RootDirectory);
     }

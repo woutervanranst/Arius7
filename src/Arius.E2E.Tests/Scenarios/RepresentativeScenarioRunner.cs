@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
@@ -30,11 +31,17 @@ internal sealed class RepresentativeScenarioRunnerDependencies
         async (context, cancellationToken) => await RepresentativeScenarioRunner.CreateFixtureAsync(context, cancellationToken);
 
     public Func<string, string, Task> ResetLocalCacheAsync { get; init; } = E2EFixture.ResetLocalCacheAsync;
+
+    public bool AssertRestoreTrees { get; init; }
 }
 
 internal sealed record RepresentativeScenarioRunResult(
     bool WasSkipped,
     string? SkipReason = null);
+
+internal sealed record RestoreExecutionPlan(
+    RestoreOptions Options,
+    SyntheticRepositoryVersion ExpectedVersion);
 
 internal static class RepresentativeScenarioRunner
 {
@@ -72,6 +79,7 @@ internal static class RepresentativeScenarioRunner
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
         var definition = SyntheticRepositoryDefinitionFactory.Create(profile);
+        string? previousSnapshotVersion = null;
 
         if (scenario.CacheState == ScenarioCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
@@ -85,6 +93,7 @@ internal static class RepresentativeScenarioRunner
                 CreateArchiveOptions(setupFixture, useNoPointers: false, useRemoveLocal: false),
                 cancellationToken);
             initialArchive.Success.ShouldBeTrue(initialArchive.ErrorMessage);
+            previousSnapshotVersion = FormatSnapshotVersion(initialArchive.SnapshotTime);
 
             if (RequiresV2SetupArchive(scenario))
             {
@@ -119,7 +128,14 @@ internal static class RepresentativeScenarioRunner
                 break;
 
             case ScenarioOperation.Restore:
-                await ExecuteRestoreOperationsAsync(context, scenario, dependencies, cancellationToken);
+                await ExecuteRestoreOperationsAsync(
+                    context,
+                    definition,
+                    scenario,
+                    seed,
+                    previousSnapshotVersion,
+                    dependencies,
+                    cancellationToken);
                 break;
 
             case ScenarioOperation.ArchiveThenRestore:
@@ -133,7 +149,14 @@ internal static class RepresentativeScenarioRunner
                     archive.Success.ShouldBeTrue(archive.ErrorMessage);
                 }
 
-                await ExecuteRestoreOperationsAsync(context, scenario, dependencies, cancellationToken);
+                await ExecuteRestoreOperationsAsync(
+                    context,
+                    definition,
+                    scenario,
+                    seed,
+                    previousSnapshotVersion,
+                    dependencies,
+                    cancellationToken);
                 break;
 
             default:
@@ -145,25 +168,37 @@ internal static class RepresentativeScenarioRunner
 
     private static async Task ExecuteRestoreOperationsAsync(
         E2EStorageBackendContext context,
+        SyntheticRepositoryDefinition definition,
         RepresentativeScenarioDefinition scenario,
+        int seed,
+        string? previousSnapshotVersion,
         RepresentativeScenarioRunnerDependencies dependencies,
         CancellationToken cancellationToken)
     {
+        var restorePlans = CreateRestorePlans(scenario, previousSnapshotVersion);
+
         if (scenario.CacheState == ScenarioCacheState.Warm && scenario.RestoreTarget == ScenarioRestoreTarget.MultipleVersions)
         {
             var restoreFixtures = new List<IRepresentativeScenarioFixture>();
 
             try
             {
-                foreach (var restoreOptions in CreateRestoreOptions(scenario))
+                foreach (var restorePlan in restorePlans)
                 {
                     var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
                     restoreFixtures.Add(restoreFixture);
 
+                    await PrepareRestoreConflictAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed);
+
                     var restoreResult = await restoreFixture.RestoreAsync(
-                        restoreOptions with { RootDirectory = restoreFixture.RestoreRoot },
+                        restorePlan.Options with { RootDirectory = restoreFixture.RestoreRoot },
                         cancellationToken);
                     restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+
+                    if (dependencies.AssertRestoreTrees)
+                    {
+                        await AssertRestoreOutcomeAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed, restoreResult);
+                    }
                 }
             }
             finally
@@ -175,13 +210,21 @@ internal static class RepresentativeScenarioRunner
             return;
         }
 
-        foreach (var restoreOptions in CreateRestoreOptions(scenario))
+        foreach (var restorePlan in restorePlans)
         {
             await using var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
+
+            await PrepareRestoreConflictAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed);
+
             var restoreResult = await restoreFixture.RestoreAsync(
-                restoreOptions with { RootDirectory = restoreFixture.RestoreRoot },
+                restorePlan.Options with { RootDirectory = restoreFixture.RestoreRoot },
                 cancellationToken);
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+
+            if (dependencies.AssertRestoreTrees)
+            {
+                await AssertRestoreOutcomeAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed, restoreResult);
+            }
         }
     }
 
@@ -226,24 +269,126 @@ internal static class RepresentativeScenarioRunner
         };
     }
 
-    private static IReadOnlyList<RestoreOptions> CreateRestoreOptions(RepresentativeScenarioDefinition scenario)
+    private static IReadOnlyList<RestoreExecutionPlan> CreateRestorePlans(
+        RepresentativeScenarioDefinition scenario,
+        string? previousSnapshotVersion)
     {
         var latest = new RestoreOptions
         {
             RootDirectory = string.Empty,
             Overwrite = scenario.UseOverwrite,
-            Version = scenario.RestoreVersion,
+            NoPointers = true,
+            Version = scenario.RestoreVersion == "previous"
+                ? previousSnapshotVersion
+                : scenario.RestoreVersion,
         };
 
         return scenario.RestoreTarget switch
         {
             ScenarioRestoreTarget.MultipleVersions =>
             [
-                latest with { Version = "previous" },
-                latest with { Version = null },
+                new RestoreExecutionPlan(
+                    latest with { Version = previousSnapshotVersion },
+                    SyntheticRepositoryVersion.V1),
+                new RestoreExecutionPlan(
+                    latest with { Version = null },
+                    SyntheticRepositoryVersion.V2),
             ],
-            _ => [latest],
+            _ =>
+            [
+                new RestoreExecutionPlan(
+                    latest,
+                    scenario.RestoreTarget == ScenarioRestoreTarget.Previous
+                        ? SyntheticRepositoryVersion.V1
+                        : scenario.SourceVersion),
+            ],
         };
+    }
+
+    private static async Task PrepareRestoreConflictAsync(
+        IRepresentativeScenarioFixture fixture,
+        SyntheticRepositoryDefinition definition,
+        RepresentativeScenarioDefinition scenario,
+        SyntheticRepositoryVersion expectedVersion,
+        int seed)
+    {
+        if (scenario.RestoreTarget != ScenarioRestoreTarget.Latest)
+            return;
+
+        if (scenario.Name is not "restore-local-conflict-no-overwrite" and not "restore-local-conflict-overwrite")
+            return;
+
+        var conflictPath = GetConflictPath(definition, expectedVersion);
+        var fullPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
+        var conflictBytes = CreateConflictBytes(seed, conflictPath);
+        await File.WriteAllBytesAsync(fullPath, conflictBytes);
+    }
+
+    private static async Task AssertRestoreOutcomeAsync(
+        IRepresentativeScenarioFixture fixture,
+        SyntheticRepositoryDefinition definition,
+        RepresentativeScenarioDefinition scenario,
+        SyntheticRepositoryVersion expectedVersion,
+        int seed,
+        RestoreResult restoreResult)
+    {
+        if (scenario.RestoreTarget == ScenarioRestoreTarget.None)
+            return;
+
+        if (!scenario.UseOverwrite && scenario.Name == "restore-local-conflict-no-overwrite")
+        {
+            var conflictPath = GetConflictPath(definition, expectedVersion);
+            var restoredPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
+            var expectedConflictBytes = CreateConflictBytes(seed, conflictPath);
+
+            restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
+            (await File.ReadAllBytesAsync(restoredPath)).ShouldBe(expectedConflictBytes);
+            return;
+        }
+
+        var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-expected-{Guid.NewGuid():N}");
+        try
+        {
+            var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
+                definition,
+                expectedVersion,
+                seed,
+                expectedRoot);
+
+            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot);
+        }
+        finally
+        {
+            if (Directory.Exists(expectedRoot))
+                Directory.Delete(expectedRoot, recursive: true);
+        }
+    }
+
+    private static string FormatSnapshotVersion(DateTimeOffset snapshotTime) =>
+        snapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+
+    private static string GetConflictPath(
+        SyntheticRepositoryDefinition definition,
+        SyntheticRepositoryVersion expectedVersion)
+    {
+        const string v1ChangedPath = "src/module-00/group-00/file-0000.bin";
+
+        if (definition.Files.Any(file => file.Path == v1ChangedPath) &&
+            expectedVersion == SyntheticRepositoryVersion.V1)
+        {
+            return v1ChangedPath;
+        }
+
+        return definition.Files[0].Path;
+    }
+
+    private static byte[] CreateConflictBytes(int seed, string path)
+    {
+        var bytes = new byte[1024];
+        new Random(HashCode.Combine(seed, path, "restore-conflict")).NextBytes(bytes);
+        return bytes;
     }
 
     private sealed class E2EScenarioFixtureAdapter(E2EFixture inner) : IRepresentativeScenarioFixture
