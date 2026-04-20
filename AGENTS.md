@@ -124,6 +124,13 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
 - Put reusable test doubles in `Fakes/`.
 - Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
+
+## E2E Test Guidance
+
+- Prefer the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` over ad hoc random files.
+- Shared representative scenarios should run against both Azurite and Azure when supported by backend capabilities.
+- Treat cache state (`Cold` vs `Warm`) and dataset version (`V1` vs `V2`) as explicit scenario inputs, not incidental fixture behavior.
+- Keep real archive-tier and rehydration semantics in Azure-capability-gated tests.
 - `src/Arius.E2E.Tests/E2ETests.cs` is now only the live Azure credential/configuration sanity check; representative suites own archive and restore behavior coverage.
 - `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` is the dedicated live Azure representative coverage for archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup verification.
 - The representative Azure E2E cold-restore scenarios are temporarily skipped in `src/Arius.E2E.Tests/RepresentativeArchiveRestoreTests.cs` with a reference to issue `#65`. Do not remove that skip until the cold-cache restore performance issue is fixed and the Azure scenarios are re-verified.
