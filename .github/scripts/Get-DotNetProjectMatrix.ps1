@@ -44,8 +44,16 @@ function Test-IsWindowsOnlyProject {
 function Test-RequiresLinuxRunner {
     param([xml]$ProjectXml)
 
-    return ($ProjectXml.Project.ItemGroup.PackageReference | Where-Object {
+    $hasDirectTestcontainersReference = ($ProjectXml.Project.ItemGroup.PackageReference | Where-Object {
         [string]$_.Include -match '^Testcontainers(?:\.|$)'
+    }).Count -gt 0
+
+    if ($hasDirectTestcontainersReference) {
+        return $true
+    }
+
+    return ($ProjectXml.Project.ItemGroup.ProjectReference | Where-Object {
+        [string]$_.Include -match 'Arius\.Integration\.Tests\.csproj$'
     }).Count -gt 0
 }
 
