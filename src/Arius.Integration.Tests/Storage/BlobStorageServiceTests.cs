@@ -1,6 +1,7 @@
 using System.Text;
 using Arius.AzureBlob;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Storage;
 
 namespace Arius.Integration.Tests.Storage;
 

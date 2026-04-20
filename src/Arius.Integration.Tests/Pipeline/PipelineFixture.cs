@@ -2,17 +2,12 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
-using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Integration.Tests.Storage;
+using Arius.Tests.Shared.Fixtures;
+using Arius.Tests.Shared.Storage;
 using Azure.Storage.Blobs;
-using Mediator;
 using Microsoft.Extensions.Logging.Testing;
-using NSubstitute;
 
 namespace Arius.Integration.Tests.Pipeline;
 
@@ -22,32 +17,28 @@ namespace Arius.Integration.Tests.Pipeline;
 /// </summary>
 public sealed class PipelineFixture : IAsyncDisposable
 {
-    private readonly AzuriteFixture  _azurite;
-    private readonly string          _tempRoot;
+    private readonly RepositoryTestFixture _repository;
     public           BlobContainerClient Container { get; private set; } = null!;
 
-    public  IBlobContainerService BlobContainer   { get; private set; } = null!;
-    public  IEncryptionService  Encryption    { get; private set; } = null!;
-    public  ChunkIndexService   Index         { get; private set; } = null!;
-    public  IChunkStorageService ChunkStorage { get; private set; } = null!;
-    public  FileTreeService    FileTreeService     { get; private set; } = null!;
-    public  SnapshotService     Snapshot      { get; private set; } = null!;
-    public  IMediator           Mediator      { get; private set; } = null!;
-
-    public  string              LocalRoot     { get; private set; } = null!;
-    public  string              RestoreRoot   { get; private set; } = null!;
-
-    private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
-    private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler> _listLogger = new();
 
     private const string Account = "devstoreaccount1";
 
-    private PipelineFixture(AzuriteFixture azurite, string tempRoot)
+    private PipelineFixture(BlobContainerClient container, RepositoryTestFixture repository)
     {
-        _azurite  = azurite;
-        _tempRoot = tempRoot;
+        Container = container;
+        _repository = repository;
     }
+
+    public IBlobContainerService BlobContainer => _repository.BlobContainer;
+    public IEncryptionService Encryption => _repository.Encryption;
+    public Arius.Core.Shared.ChunkIndex.ChunkIndexService Index => _repository.Index;
+    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage => _repository.ChunkStorage;
+    public Arius.Core.Shared.FileTree.FileTreeService FileTreeService => _repository.FileTreeService;
+    public Arius.Core.Shared.Snapshot.SnapshotService Snapshot => _repository.Snapshot;
+    public Mediator.IMediator Mediator => _repository.Mediator;
+    public string LocalRoot => _repository.LocalRoot;
+    public string RestoreRoot => _repository.RestoreRoot;
 
     /// <summary>Creates a fully initialised fixture with unique container and temp dirs.</summary>
     public static async Task<PipelineFixture> CreateAsync(
@@ -55,10 +46,9 @@ public sealed class PipelineFixture : IAsyncDisposable
         string?        passphrase = null,
         CancellationToken ct = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-pipe-{Guid.NewGuid():N}");
-        var fixture = new PipelineFixture(azurite, tempRoot);
-        await fixture.InitAsync(passphrase, ct);
-        return fixture;
+        var (container, svc) = await azurite.CreateTestServiceAsync(ct);
+        var repository = await RepositoryTestFixture.CreateAsync(svc, Account, container.Name, passphrase, ct: ct);
+        return new PipelineFixture(container, repository);
     }
 
     /// <summary>
@@ -73,73 +63,33 @@ public sealed class PipelineFixture : IAsyncDisposable
         BlobContainerClient? existingContainer = null,
         CancellationToken ct = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-pipe-{Guid.NewGuid():N}");
-        var fixture  = new PipelineFixture(azurite, tempRoot);
-        await fixture.InitAsyncWithEncryption(encryption, existingContainer, ct);
-        return fixture;
-    }
+        BlobContainerClient container;
+        IBlobContainerService blobContainer;
 
-    private async Task InitAsync(string? passphrase, CancellationToken ct)
-    {
-        var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
-        Container   = container;
-        BlobContainer = svc;
-        Encryption  = passphrase is not null
-            ? new PassphraseEncryptionService(passphrase)
-            : new PlaintextPassthroughService();
-        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, container.Name);
-        ChunkStorage = new ChunkStorageService(BlobContainer, Encryption);
-        FileTreeService  = new FileTreeService(BlobContainer, Encryption, Index, Account, container.Name);
-        Snapshot   = new SnapshotService(BlobContainer, Encryption, Account, container.Name);
-        Mediator   = Substitute.For<IMediator>();
-
-        LocalRoot   = Path.Combine(_tempRoot, "source");
-        RestoreRoot = Path.Combine(_tempRoot, "restore");
-        Directory.CreateDirectory(LocalRoot);
-        Directory.CreateDirectory(RestoreRoot);
-    }
-
-    private async Task InitAsyncWithEncryption(
-        IEncryptionService   encryption,
-        BlobContainerClient? existingContainer,
-        CancellationToken    ct)
-    {
         if (existingContainer is not null)
         {
-            Container   = existingContainer;
-            BlobContainer = _azurite.CreateTestServiceFromExistingContainer(existingContainer);
+            container = existingContainer;
+            blobContainer = azurite.CreateTestServiceFromExistingContainer(existingContainer);
         }
         else
         {
-            var (container, svc) = await _azurite.CreateTestServiceAsync(ct);
-            Container   = container;
-            BlobContainer = svc;
+            var created = await azurite.CreateTestServiceAsync(ct);
+            container = created.Container;
+            blobContainer = created.Service;
         }
 
-        Encryption = encryption;
-        Index      = new ChunkIndexService(BlobContainer, Encryption, Account, Container.Name);
-        ChunkStorage = new ChunkStorageService(BlobContainer, Encryption);
-        FileTreeService  = new FileTreeService(BlobContainer, Encryption, Index, Account, Container.Name);
-        Snapshot   = new SnapshotService(BlobContainer, Encryption, Account, Container.Name);
-        Mediator   = Substitute.For<IMediator>();
+        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, Account, container.Name, encryption, ct: ct);
 
-        LocalRoot   = Path.Combine(_tempRoot, "source");
-        RestoreRoot = Path.Combine(_tempRoot, "restore");
-        Directory.CreateDirectory(LocalRoot);
-        Directory.CreateDirectory(RestoreRoot);
+        return new PipelineFixture(container, repository);
     }
 
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
-        new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
-            _archiveLogger,
-            Account, Container.Name);
+        _repository.CreateArchiveHandler();
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator,
-            _restoreLogger,
-            Account, Container.Name);
+        _repository.CreateRestoreHandler();
 
     public ListQueryHandler CreateListQueryHandler() =>
         new(Index, FileTreeService, Snapshot,
@@ -194,12 +144,7 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with the given content.</summary>
     public string WriteFile(string relativePath, byte[] content)
-    {
-        var full = Path.Combine(LocalRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllBytes(full, content);
-        return full;
-    }
+        => _repository.WriteFile(relativePath, content);
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with random byte content.</summary>
     public string WriteRandomFile(string relativePath, int sizeBytes)
@@ -211,29 +156,22 @@ public sealed class PipelineFixture : IAsyncDisposable
 
     /// <summary>Reads a restored file's bytes from <see cref="RestoreRoot"/>.</summary>
     public byte[] ReadRestored(string relativePath)
-    {
-        var full = Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        return File.ReadAllBytes(full);
-    }
+        => _repository.ReadRestored(relativePath);
 
     /// <summary>Checks whether a restored file exists.</summary>
     public bool RestoredExists(string relativePath) =>
-        File.Exists(Path.Combine(RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        _repository.RestoredExists(relativePath);
 
     /// <summary>
     /// Releases resources used by the fixture by removing the fixture's temporary directory and any repository-specific chunk-index cache directory under the current user's profile, if they exist.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Clean up unique temp dir
-        if (Directory.Exists(_tempRoot))
-            Directory.Delete(_tempRoot, recursive: true);
-
         // Clean up any cache dirs created by this test's container (unique name)
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(Account, Container.Name);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
-        await Task.CompletedTask;
+        await _repository.DisposeAsync();
     }
 }

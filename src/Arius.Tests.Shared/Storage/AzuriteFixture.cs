@@ -3,18 +3,8 @@ using Azure.Storage.Blobs;
 using Testcontainers.Azurite;
 using TUnit.Core.Interfaces;
 
-namespace Arius.Integration.Tests.Storage;
+namespace Arius.Tests.Shared.Storage;
 
-/// <summary>
-/// Manages a shared Azurite container for the entire integration test session.
-/// Each test gets its own uniquely-named blob container to guarantee isolation.
-///
-/// Usage in a test class:
-/// <code>
-///   [ClassDataSource&lt;AzuriteFixture&gt;(Shared = SharedType.PerTestSession)]
-///   public class MyTest(AzuriteFixture azurite) { ... }
-/// </code>
-/// </summary>
 public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
 {
     private AzuriteContainer? _azurite;
@@ -30,10 +20,6 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
         await _azurite.StartAsync();
     }
 
-    /// <summary>
-    /// Creates a new, uniquely-named blob container and returns
-    /// an <see cref="AzureBlobContainerService"/> backed by that container.
-    /// </summary>
     public async Task<(BlobContainerClient Container, AzureBlobContainerService Service)>
         CreateTestServiceAsync(CancellationToken cancellationToken = default)
     {
@@ -44,10 +30,6 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
         return (client, new AzureBlobContainerService(client));
     }
 
-    /// <summary>
-    /// Returns an <see cref="AzureBlobContainerService"/> backed by an existing container.
-    /// Used to attach a second fixture to an already-populated container (e.g. mixed-archive test).
-    /// </summary>
     public AzureBlobContainerService CreateTestServiceFromExistingContainer(BlobContainerClient container)
         => new(container);
 

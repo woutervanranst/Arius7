@@ -16,7 +16,8 @@
 		<PackageReference Include="TUnit" />
 	</ItemGroup>
 
-	<ItemGroup>
+ 	<ItemGroup>
+		<ProjectReference Include="..\Arius.Tests.Shared\Arius.Tests.Shared.csproj" />
 		<ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
 		<ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
 	</ItemGroup>

@@ -2,17 +2,11 @@ using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
-using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
+using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
-using Mediator;
-using Microsoft.Extensions.Logging.Testing;
-using NSubstitute;
 
 namespace Arius.E2E.Tests.Fixtures;
 
@@ -28,26 +22,23 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
-    private readonly IMediator _mediator;
+    private readonly RepositoryTestFixture _repository;
     private bool _disposed;
-    private readonly Action<string> _deleteTempRoot;
-    private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
-    private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
     internal E2EFixture(
         IBlobContainerService blobContainer,
         IEncryptionService encryption,
-        ChunkIndexService index,
-        IChunkStorageService chunkStorage,
-        FileTreeService fileTreeService,
-        SnapshotService snapshot,
+        Arius.Core.Shared.ChunkIndex.ChunkIndexService index,
+        Arius.Core.Shared.ChunkStorage.IChunkStorageService chunkStorage,
+        Arius.Core.Shared.FileTree.FileTreeService fileTreeService,
+        Arius.Core.Shared.Snapshot.SnapshotService snapshot,
         string tempRoot,
         string localRoot,
         string restoreRoot,
         string account,
         string containerName,
         BlobTier defaultTier,
-        Action<string>? deleteTempRoot = null)
+        RepositoryTestFixture repository)
     {
         BlobContainer = blobContainer;
         Encryption = encryption;
@@ -61,8 +52,7 @@ public sealed class E2EFixture : IAsyncDisposable
         _account = account;
         _container = containerName;
         _defaultTier = defaultTier;
-        _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
-        _mediator = Substitute.For<IMediator>();
+        _repository = repository;
 
         lock (RepositoryCacheLeaseLock)
         {
@@ -75,10 +65,10 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public IBlobContainerService BlobContainer { get; }
     public IEncryptionService Encryption { get; }
-    public ChunkIndexService Index { get; }
-    public IChunkStorageService ChunkStorage { get; }
-    public FileTreeService FileTreeService { get; }
-    public SnapshotService Snapshot { get; }
+    public Arius.Core.Shared.ChunkIndex.ChunkIndexService Index { get; }
+    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage { get; }
+    public Arius.Core.Shared.FileTree.FileTreeService FileTreeService { get; }
+    public Arius.Core.Shared.Snapshot.SnapshotService Snapshot { get; }
     public string LocalRoot { get; }
     public string RestoreRoot { get; }
 
@@ -90,33 +80,22 @@ public sealed class E2EFixture : IAsyncDisposable
         string? passphrase = null,
         CancellationToken ct = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-e2e-{Guid.NewGuid():N}");
-        var localRoot = Path.Combine(tempRoot, "source");
-        var restoreRoot = Path.Combine(tempRoot, "restore");
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
-
-        var encryption = passphrase is not null
-            ? (IEncryptionService)new PassphraseEncryptionService(passphrase)
-            : new PlaintextPassthroughService();
-        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
-        var chunkStorage = new ChunkStorageService(blobContainer, encryption);
-        var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
-        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, accountName, containerName, passphrase, ct: ct);
 
         return new E2EFixture(
             blobContainer,
-            encryption,
-            index,
-            chunkStorage,
-            fileTreeService,
-            snapshot,
-            tempRoot,
-            localRoot,
-            restoreRoot,
+            repository.Encryption,
+            repository.Index,
+            repository.ChunkStorage,
+            repository.FileTreeService,
+            repository.Snapshot,
+            repository.TempRoot,
+            repository.LocalRoot,
+            repository.RestoreRoot,
             accountName,
             containerName,
-            defaultTier);
+            defaultTier,
+            repository);
     }
 
     public static Task<E2EFixture> CreateAsync(
@@ -175,43 +154,19 @@ public sealed class E2EFixture : IAsyncDisposable
     }
 
     public string WriteFile(string relativePath, byte[] content)
-    {
-        var full = CombineValidatedRelativePath(LocalRoot, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllBytes(full, content);
-        return full;
-    }
+        => _repository.WriteFile(relativePath, content);
 
     public byte[] ReadRestored(string relativePath)
-        => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
+        => _repository.ReadRestored(relativePath);
 
     public bool RestoredExists(string relativePath)
-        => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
+        => _repository.RestoredExists(relativePath);
 
     internal ArchiveCommandHandler CreateArchiveHandler() =>
-        new(
-            BlobContainer,
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _archiveLogger,
-            _account,
-            _container);
+        _repository.CreateArchiveHandler();
 
     internal RestoreCommandHandler CreateRestoreHandler() =>
-        new(
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _restoreLogger,
-            _account,
-            _container);
+        _repository.CreateRestoreHandler();
 
     public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) =>
         CreateArchiveHandler().Handle(
@@ -241,8 +196,7 @@ public sealed class E2EFixture : IAsyncDisposable
         Exception? tempRootDeletionException = null;
         try
         {
-            if (Directory.Exists(_tempRoot))
-                _deleteTempRoot(_tempRoot);
+            await _repository.DisposeAsync();
         }
         catch (Exception ex)
         {
@@ -260,8 +214,6 @@ public sealed class E2EFixture : IAsyncDisposable
 
     internal static string CombineValidatedRelativePath(string rootPath, string relativePath)
     {
-        // These helpers should only touch files under the fixture roots; rejecting rooted
-        // and parent-traversal inputs keeps accidental path escapes out of test code.
         if (Path.IsPathRooted(relativePath))
             throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
 

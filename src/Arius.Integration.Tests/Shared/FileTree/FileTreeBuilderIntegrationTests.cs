@@ -2,7 +2,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
-using Arius.Integration.Tests.Storage;
+using Arius.Tests.Shared.Storage;
 
 namespace Arius.Integration.Tests.Shared.FileTree;
 

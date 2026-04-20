@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
+using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 using Shouldly;
 using TUnit.Core;
@@ -250,6 +251,19 @@ public class E2EFixtureCacheStateTests
         var chunkStorage = new Arius.Core.Shared.ChunkStorage.ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new Arius.Core.Shared.FileTree.FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot = new Arius.Core.Shared.Snapshot.SnapshotService(blobContainer, encryption, accountName, containerName);
+        var repository = new RepositoryTestFixture(
+            blobContainer,
+            encryption,
+            index,
+            chunkStorage,
+            fileTreeService,
+            snapshot,
+            tempRoot,
+            localRoot,
+            restoreRoot,
+            accountName,
+            containerName,
+            deleteTempRoot);
 
         return new E2EFixture(
             blobContainer,
@@ -264,6 +278,6 @@ public class E2EFixtureCacheStateTests
             accountName,
             containerName,
             BlobTier.Cool,
-            deleteTempRoot);
+            repository);
     }
 }
