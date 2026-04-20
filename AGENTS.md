@@ -124,6 +124,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
 - Put reusable test doubles in `Fakes/`.
 - Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
+- `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` is the dedicated live Azure representative coverage for archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup verification.
 - The representative Azure E2E cold-restore scenarios are temporarily skipped in `src/Arius.E2E.Tests/RepresentativeArchiveRestoreTests.cs` with a reference to issue `#65`. Do not remove that skip until the cold-cache restore performance issue is fixed and the Azure scenarios are re-verified.
 
 ## Code Style Preference

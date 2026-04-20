@@ -1,9 +1,21 @@
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.E2E.Tests.Services;
+using Mediator;
+using Microsoft.Extensions.Logging.Testing;
+using NSubstitute;
 
 namespace Arius.E2E.Tests.Scenarios;
 
@@ -37,7 +49,18 @@ internal sealed class RepresentativeScenarioRunnerDependencies
 
 internal sealed record RepresentativeScenarioRunResult(
     bool WasSkipped,
-    string? SkipReason = null);
+    string? SkipReason = null,
+    ArchiveTierScenarioOutcome? ArchiveTierOutcome = null);
+
+internal sealed record ArchiveTierScenarioOutcome(
+    bool WasCostEstimateCaptured,
+    int InitialPendingChunks,
+    int InitialFilesRestored,
+    int PendingChunksOnRerun,
+    int RerunCopyCalls,
+    int ReadyFilesRestored,
+    int ReadyPendingChunks,
+    int CleanupDeletedChunks);
 
 internal sealed record RestoreExecutionPlan(
     RestoreOptions Options,
@@ -83,6 +106,18 @@ internal static class RepresentativeScenarioRunner
 
         if (scenario.CacheState == ScenarioCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
+
+        if (scenario.Name == "archive-tier-planning")
+        {
+            var archiveTierOutcome = await ExecuteArchiveTierScenarioAsync(
+                context,
+                definition,
+                scenario,
+                seed,
+                cancellationToken);
+
+            return new RepresentativeScenarioRunResult(false, ArchiveTierOutcome: archiveTierOutcome);
+        }
 
         if (RequiresSetupArchive(scenario))
         {
@@ -269,6 +304,15 @@ internal static class RepresentativeScenarioRunner
         };
     }
 
+    private static ArchiveCommandOptions CreateArchiveTierOptions(IRepresentativeScenarioFixture fixture)
+    {
+        return new ArchiveCommandOptions
+        {
+            RootDirectory = fixture.LocalRoot,
+            UploadTier = BlobTier.Archive,
+        };
+    }
+
     private static IReadOnlyList<RestoreExecutionPlan> CreateRestorePlans(
         RepresentativeScenarioDefinition scenario,
         string? previousSnapshotVersion)
@@ -389,6 +433,255 @@ internal static class RepresentativeScenarioRunner
         var bytes = new byte[1024];
         new Random(HashCode.Combine(seed, path, "restore-conflict")).NextBytes(bytes);
         return bytes;
+    }
+
+    private static async Task<ArchiveTierScenarioOutcome> ExecuteArchiveTierScenarioAsync(
+        E2EStorageBackendContext context,
+        SyntheticRepositoryDefinition definition,
+        RepresentativeScenarioDefinition scenario,
+        int seed,
+        CancellationToken cancellationToken)
+    {
+        var azureBlobContainer = context.AzureBlobContainerService;
+        azureBlobContainer.ShouldNotBeNull();
+        context.Capabilities.SupportsArchiveTier.ShouldBeTrue();
+
+        await using var fixture = await E2EFixture.CreateAsync(
+            context.BlobContainer,
+            context.AccountName,
+            context.ContainerName,
+            BlobTier.Archive,
+            ct: cancellationToken);
+        await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalRoot,
+                UploadTier = BlobTier.Archive,
+            }),
+            cancellationToken).AsTask();
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var tarChunkHash = await PollForArchiveTierTarChunkAsync(azureBlobContainer, cancellationToken);
+        tarChunkHash.ShouldNotBeNullOrWhiteSpace();
+
+        var contentHashToBytes = await ReadArchiveTierContentBytesAsync(fixture.LocalRoot, "src");
+
+        var trackingSvc1 = new CopyTrackingBlobService(azureBlobContainer);
+        var firstEstimateCaptured = false;
+        var initialResult = await CreateArchiveTierRestoreHandler(
+                fixture,
+                context,
+                trackingSvc1)
+            .Handle(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                TargetPath = "src",
+                Overwrite = true,
+                NoPointers = true,
+                ConfirmRehydration = (estimate, _) =>
+                {
+                    firstEstimateCaptured = true;
+                    (estimate.ChunksNeedingRehydration + estimate.ChunksPendingRehydration).ShouldBeGreaterThan(0);
+                    return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
+                },
+            }), cancellationToken).AsTask();
+
+        initialResult.Success.ShouldBeTrue(initialResult.ErrorMessage);
+
+        var trackingSvc2 = new CopyTrackingBlobService(azureBlobContainer);
+        var rerunResult = await CreateArchiveTierRestoreHandler(
+                fixture,
+                context,
+                trackingSvc2)
+            .Handle(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                TargetPath = "src",
+                Overwrite = true,
+                NoPointers = true,
+                ConfirmRehydration = (_, _) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
+            }), cancellationToken).AsTask();
+
+        rerunResult.Success.ShouldBeTrue(rerunResult.ErrorMessage);
+
+        await SideloadRehydratedTarChunkAsync(
+            azureBlobContainer,
+            tarChunkHash!,
+            contentHashToBytes,
+            cancellationToken);
+
+        var cleanupDeletedChunks = 0;
+        var readyRestoreRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-ready-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(readyRestoreRoot);
+
+        try
+        {
+            var readyResult = await fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = readyRestoreRoot,
+                TargetPath = "src",
+                Overwrite = true,
+                NoPointers = true,
+                ConfirmCleanup = (count, _, _) =>
+                {
+                    cleanupDeletedChunks = count;
+                    return Task.FromResult(true);
+                },
+            }), cancellationToken).AsTask();
+
+            readyResult.Success.ShouldBeTrue(readyResult.ErrorMessage);
+
+            var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-expected-{Guid.NewGuid():N}");
+            try
+            {
+                var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
+                    definition,
+                    scenario.SourceVersion,
+                    seed,
+                    expectedRoot);
+
+                await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(
+                    FilterSnapshotToPrefix(expected, "src", trimPrefix: false),
+                    readyRestoreRoot);
+            }
+            finally
+            {
+                if (Directory.Exists(expectedRoot))
+                    Directory.Delete(expectedRoot, recursive: true);
+            }
+
+            return new ArchiveTierScenarioOutcome(
+                firstEstimateCaptured,
+                initialResult.ChunksPendingRehydration,
+                initialResult.FilesRestored,
+                rerunResult.ChunksPendingRehydration,
+                trackingSvc2.CopyCalls.Count,
+                readyResult.FilesRestored,
+                readyResult.ChunksPendingRehydration,
+                cleanupDeletedChunks);
+        }
+        finally
+        {
+            if (Directory.Exists(readyRestoreRoot))
+                Directory.Delete(readyRestoreRoot, recursive: true);
+        }
+    }
+
+    private static RestoreCommandHandler CreateArchiveTierRestoreHandler(
+        E2EFixture fixture,
+        E2EStorageBackendContext context,
+        IBlobContainerService blobContainer)
+    {
+        return new RestoreCommandHandler(
+            fixture.Encryption,
+            fixture.Index,
+            new ChunkStorageService(blobContainer, fixture.Encryption),
+            new FileTreeService(blobContainer, fixture.Encryption, fixture.Index, context.AccountName, context.ContainerName),
+            new SnapshotService(blobContainer, fixture.Encryption, context.AccountName, context.ContainerName),
+            Substitute.For<IMediator>(),
+            new FakeLogger<RestoreCommandHandler>(),
+            context.AccountName,
+            context.ContainerName);
+    }
+
+    private static async Task<string?> PollForArchiveTierTarChunkAsync(
+        AzureBlobContainerService blobContainer,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddMinutes(3);
+
+        while (!cancellationToken.IsCancellationRequested && DateTime.UtcNow < deadline)
+        {
+            await foreach (var blobName in blobContainer.ListAsync(BlobPaths.Chunks, cancellationToken))
+            {
+                var metadata = await blobContainer.GetMetadataAsync(blobName, cancellationToken);
+                if (metadata.Tier != BlobTier.Archive)
+                    continue;
+
+                if (metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType) &&
+                    ariusType == BlobMetadataKeys.TypeTar)
+                {
+                    return blobName[BlobPaths.Chunks.Length..];
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        }
+
+        return null;
+    }
+
+    private static async Task<Dictionary<string, byte[]>> ReadArchiveTierContentBytesAsync(
+        string localRoot,
+        string targetPath)
+    {
+        var contentHashToBytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+        foreach (var filePath in Directory.EnumerateFiles(
+            Path.Combine(localRoot, targetPath.Replace('/', Path.DirectorySeparatorChar)),
+            "*",
+            SearchOption.AllDirectories))
+        {
+            var bytes = await File.ReadAllBytesAsync(filePath);
+            contentHashToBytes[Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()] = bytes;
+        }
+
+        return contentHashToBytes;
+    }
+
+    private static async Task SideloadRehydratedTarChunkAsync(
+        AzureBlobContainerService blobContainer,
+        string tarChunkHash,
+        IReadOnlyDictionary<string, byte[]> contentHashToBytes,
+        CancellationToken cancellationToken)
+    {
+        var rehydratedBlobName = BlobPaths.ChunkRehydrated(tarChunkHash);
+        var rehydratedMeta = await blobContainer.GetMetadataAsync(rehydratedBlobName, cancellationToken);
+        if (rehydratedMeta.Exists && rehydratedMeta.Tier == BlobTier.Archive)
+            await blobContainer.DeleteAsync(rehydratedBlobName, cancellationToken);
+
+        var sourceMeta = await blobContainer.GetMetadataAsync(BlobPaths.Chunk(tarChunkHash), cancellationToken);
+
+        using var memoryStream = new MemoryStream();
+        await using (var gzip = new GZipStream(memoryStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await using var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: false);
+            foreach (var (contentHash, rawBytes) in contentHashToBytes)
+            {
+                var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, contentHash)
+                {
+                    DataStream = new MemoryStream(rawBytes),
+                };
+
+                await tar.WriteEntryAsync(tarEntry, cancellationToken);
+            }
+        }
+
+        memoryStream.Position = 0;
+        await blobContainer.UploadAsync(
+            rehydratedBlobName,
+            memoryStream,
+            sourceMeta.Metadata,
+            BlobTier.Hot,
+            overwrite: true,
+            cancellationToken: cancellationToken);
+    }
+
+    private static RepositoryTreeSnapshot FilterSnapshotToPrefix(
+        RepositoryTreeSnapshot snapshot,
+        string prefix,
+        bool trimPrefix)
+    {
+        var normalizedPrefix = prefix.TrimEnd('/') + "/";
+
+        return new RepositoryTreeSnapshot(snapshot.Files
+            .Where(pair => pair.Key.StartsWith(normalizedPrefix, StringComparison.Ordinal))
+            .ToDictionary(
+                pair => trimPrefix ? pair.Key[normalizedPrefix.Length..] : pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal));
     }
 
     private sealed class E2EScenarioFixtureAdapter(E2EFixture inner) : IRepresentativeScenarioFixture

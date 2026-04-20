@@ -27,9 +27,9 @@ public class RepresentativeScenarioRunnerTests
     }
 
     [Test]
-    public async Task ScenarioRunner_LatestRestore_WithV1Source_PreparesOnlyV1RemoteState()
+    public async Task ScenarioRunner_LatestRestore_WithV2Source_PreparesV1AndV2RemoteState()
     {
-        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-tier-planning");
+        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "restore-latest-warm-cache");
         await using var backend = new FakeBackend(supportsArchiveTier: true);
         var setupFixture = new FakeScenarioFixture();
         var restoreFixture = new FakeScenarioFixture();
@@ -48,8 +48,9 @@ public class RepresentativeScenarioRunnerTests
         result.WasSkipped.ShouldBeFalse();
         setupFixture.MaterializedVersions.ShouldBe([
             SyntheticRepositoryVersion.V1,
+            SyntheticRepositoryVersion.V2,
         ]);
-        setupFixture.ArchiveCallCount.ShouldBe(1);
+        setupFixture.ArchiveCallCount.ShouldBe(2);
         restoreFixture.RestoreOptions.ShouldHaveSingleItem().Version.ShouldBeNull();
     }
 

@@ -103,6 +103,7 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
 `src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
+`src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.
 The representative E2E suite currently skips the live Azure cold-restore scenarios tracked in issue `#65` because those cases time out while rebuilding remote repository metadata on a cold cache.
 
 ## Updating
