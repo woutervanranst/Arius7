@@ -41,14 +41,6 @@ function Test-IsWindowsOnlyProject {
     return ($TargetFrameworks | Where-Object { $_ -notmatch '-windows' }).Count -eq 0
 }
 
-function Test-RequiresLinuxRunner {
-    param([xml]$ProjectXml)
-
-    return ($ProjectXml.Project.ItemGroup.PackageReference | Where-Object {
-        [string]$_.Include -match '^Testcontainers(?:\.|$)'
-    }).Count -gt 0
-}
-
 $workspaceRoot = Resolve-Path (Join-Path $PSScriptRoot '..' '..')
 $srcRoot = Join-Path $workspaceRoot 'src'
 $isWindowsRunner = $RunnerOs -eq 'windows'
@@ -60,7 +52,6 @@ $projects = Get-ChildItem -Path $srcRoot -Recurse -Filter '*.csproj' |
         [xml]$projectXml = Get-Content -Path $projectPath -Raw
         $targetFrameworks = Get-ProjectTfms -ProjectXml $projectXml
         $isWindowsOnly = Test-IsWindowsOnlyProject -TargetFrameworks $targetFrameworks
-        $requiresLinuxRunner = Test-RequiresLinuxRunner -ProjectXml $projectXml
         $isTestProject = ($projectXml.Project.PropertyGroup | Where-Object {
             [string]$_.TestingPlatformDotnetTestSupport -eq 'true'
         }).Count -gt 0
@@ -69,16 +60,11 @@ $projects = Get-ChildItem -Path $srcRoot -Recurse -Filter '*.csproj' |
             RelativePath = [System.IO.Path]::GetRelativePath($workspaceRoot, $projectPath).Replace('\', '/')
             TargetFrameworks = $targetFrameworks
             IsWindowsOnly = $isWindowsOnly
-            RequiresLinuxRunner = $requiresLinuxRunner
             IsTestProject = $isTestProject
         }
     } |
     Where-Object {
         if ($Mode -eq 'test' -and -not $_.IsTestProject) {
-            return $false
-        }
-
-        if ($RunnerOs -ne 'linux' -and $_.RequiresLinuxRunner) {
             return $false
         }
 

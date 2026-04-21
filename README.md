@@ -102,7 +102,8 @@ dotnet user-secrets set "arius:<account>:key" "<key>"
 ### Running tests locally
 
 Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
-`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
+`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set for live Azure coverage.
+Azurite-backed integration and E2E tests now report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
 
 ## End-to-End Tests
 
@@ -113,6 +114,7 @@ The end-to-end tests use a shared representative scenario model across two stora
 
 The archive history is generated deterministically from a fixed seed and named dataset profile, so the same repository shape and mutations can be reproduced across runs.
 Reusable Docker-backed and repository-fixture test infrastructure now lives in `src/Arius.Tests.Shared/` so test projects do not depend on each other directly.
+Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable instead of being filtered out ahead of time.
 
 `src/Arius.E2E.Tests/E2ETests.cs` retains the live Azure credential sanity check and a small amount of unique live coverage.
 `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.
