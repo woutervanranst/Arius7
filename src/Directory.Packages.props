@@ -29,9 +29,9 @@
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Spectre.Console" Version="0.55.2" />
     <PackageVersion Include="System.Reactive" Version="6.1.0" />
-    <PackageVersion Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
+    <PackageVersion Include="System.CommandLine" Version="3.0.0-preview.3.26207.106" />
     <PackageVersion Include="Testcontainers.Azurite" Version="4.11.0" />
     <PackageVersion Include="TngTech.ArchUnitNET" Version="0.13.3" />
-    <PackageVersion Include="TUnit" Version="1.37.0" />
+    <PackageVersion Include="TUnit" Version="1.37.10" />
   </ItemGroup>
 </Project>
