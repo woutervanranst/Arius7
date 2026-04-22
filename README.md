@@ -115,6 +115,7 @@ The end-to-end tests use a shared representative scenario model across two stora
 The archive history is generated deterministically from a fixed seed and named dataset profile, so the same repository shape and mutations can be reproduced across runs.
 Reusable Docker-backed and repository-fixture test infrastructure now lives in `src/Arius.Tests.Shared/` so test projects do not depend on each other directly.
 Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable instead of being filtered out ahead of time.
+`src/Arius.E2E.Tests/` now focuses on actual end-to-end coverage only; helper and scenario support code stays in the project, but self-tests for that harness were removed to keep the suite focused on Arius behavior.
 
 `src/Arius.E2E.Tests/E2ETests.cs` retains the live Azure credential sanity check and a small amount of unique live coverage.
 `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.

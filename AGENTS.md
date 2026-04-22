@@ -133,6 +133,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Keep real archive-tier and rehydration semantics in Azure-capability-gated tests.
 - Reusable Azurite and repository-fixture wiring belongs in `src/Arius.Tests.Shared/`, not in another test project assembly.
 - Azurite-backed integration and E2E tests are discovered on every CI runner; when Docker is unavailable they should skip at runtime with a visible reason in the test report rather than being filtered out of the matrix.
+- `src/Arius.E2E.Tests/` is reserved for actual end-to-end Arius behavior coverage. Do not add self-tests for E2E datasets, fixtures, scenario catalogs, or scenario runners there unless explicitly requested.
 - `src/Arius.E2E.Tests/E2ETests.cs` is now only the live Azure credential/configuration sanity check; representative suites own archive and restore behavior coverage.
 - `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` is the dedicated live Azure representative coverage for archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup verification.
 - The representative Azure E2E cold-restore scenarios are temporarily skipped in `src/Arius.E2E.Tests/RepresentativeArchiveRestoreTests.cs` with a reference to issue `#65`. Do not remove that skip until the cold-cache restore performance issue is fixed and the Azure scenarios are re-verified.
