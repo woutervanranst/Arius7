@@ -7,6 +7,7 @@
     <Project Path="Arius.E2E.Tests/Arius.E2E.Tests.csproj" />
     <Project Path="Arius.Integration.Tests/Arius.Integration.Tests.csproj" />
     <Project Path="Arius.Explorer.Tests/Arius.Explorer.Tests.csproj" />
+    <Project Path="Arius.Tests.Shared/Arius.Tests.Shared.csproj" />
   </Folder>
   <Project Path="Arius.AzureBlob/Arius.AzureBlob.csproj" />
   <Project Path="Arius.Cli/Arius.Cli.csproj" />
