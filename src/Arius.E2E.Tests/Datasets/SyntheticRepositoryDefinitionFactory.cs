@@ -8,6 +8,8 @@ internal enum SyntheticRepositoryProfile
 
 internal static class SyntheticRepositoryDefinitionFactory
 {
+    const int RepresentativeScaleDivisor = 8;
+
     public static SyntheticRepositoryDefinition Create(SyntheticRepositoryProfile profile)
     {
         return profile switch
@@ -36,11 +38,9 @@ internal static class SyntheticRepositoryDefinitionFactory
 
     static SyntheticRepositoryDefinition CreateRepresentative()
     {
-        const int representativeScaleDivisor = 8;
-
         var files = new List<SyntheticFileDefinition>();
 
-        for (var i = 0; i < 1600 / representativeScaleDivisor; i++)
+        for (var i = 0; i < 1600 / RepresentativeScaleDivisor; i++)
         {
             files.Add(new SyntheticFileDefinition(
                 $"src/module-{i % 40:D2}/group-{i % 7:D2}/file-{i:D4}.bin",
@@ -48,7 +48,7 @@ internal static class SyntheticRepositoryDefinitionFactory
                 $"small-{i % 220:D3}"));
         }
 
-        for (var i = 0; i < 380 / representativeScaleDivisor; i++)
+        for (var i = 0; i < 380 / RepresentativeScaleDivisor; i++)
         {
             files.Add(new SyntheticFileDefinition(
                 $"docs/batch-{i % 12:D2}/doc-{i:D4}.txt",
@@ -56,8 +56,8 @@ internal static class SyntheticRepositoryDefinitionFactory
                 $"edge-{i % 90:D3}"));
         }
 
-        files.Add(new SyntheticFileDefinition("media/video/master-a.bin", 48 * 1024 * 1024 / representativeScaleDivisor, "large-001"));
-        files.Add(new SyntheticFileDefinition("media/video/master-b.bin", 72 * 1024 * 1024 / representativeScaleDivisor, "large-002"));
+        files.Add(new SyntheticFileDefinition("media/video/master-a.bin", 48 * 1024 * 1024 / RepresentativeScaleDivisor, "large-001"));
+        files.Add(new SyntheticFileDefinition("media/video/master-b.bin", 72 * 1024 * 1024 / RepresentativeScaleDivisor, "large-002"));
 
         files.Add(new SyntheticFileDefinition("archives/duplicates/copy-a.bin",         512 * 1024, "dup-small-001"));
         files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/copy-b.bin",     512 * 1024, "dup-small-001"));
@@ -71,7 +71,7 @@ internal static class SyntheticRepositoryDefinitionFactory
             new(SyntheticMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
             new(SyntheticMutationKind.Delete, "docs/batch-00/doc-0000.txt"),
             new(SyntheticMutationKind.Rename, "archives/duplicates/copy-a.bin", TargetPath: "archives/duplicates/copy-a-renamed.bin"),
-            new(SyntheticMutationKind.Add, "src/module-99/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
+            new(SyntheticMutationKind.Add, "src/module-00/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
         ];
 
         return new SyntheticRepositoryDefinition(
