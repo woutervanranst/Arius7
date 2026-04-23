@@ -8,6 +8,7 @@ using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Services;
+using Arius.E2E.Tests.Workflows;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -42,10 +43,6 @@ internal sealed class RepresentativeScenarioRunnerDependencies
     public bool AssertRestoreTrees { get; init; }
 }
 
-internal sealed record RepresentativeScenarioRunResult(bool WasSkipped, string? SkipReason = null, ArchiveTierScenarioOutcome? ArchiveTierOutcome = null);
-
-internal sealed record ArchiveTierScenarioOutcome(bool WasCostEstimateCaptured, int InitialPendingChunks, int InitialFilesRestored, int PendingChunksOnRerun, int RerunCopyCalls, int ReadyFilesRestored, int ReadyPendingChunks, int CleanupDeletedChunks);
-
 internal sealed record RestoreExecutionPlan(RestoreOptions Options, SyntheticRepositoryVersion ExpectedVersion);
 
 internal static class RepresentativeScenarioRunner
@@ -57,43 +54,43 @@ internal static class RepresentativeScenarioRunner
         return new E2EScenarioFixtureAdapter(fixture);
     }
 
-    public static async Task<RepresentativeScenarioRunResult> RunAsync(
+    public static async Task<RepresentativeWorkflowRunResult> RunAsync(
         IE2EStorageBackend backend,
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         SyntheticRepositoryProfile profile,
         int seed,
         RepresentativeScenarioRunnerDependencies? dependencies = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(backend);
-        ArgumentNullException.ThrowIfNull(scenario);
+        ArgumentNullException.ThrowIfNull(workflow);
         dependencies ??= new RepresentativeScenarioRunnerDependencies();
 
-        if (scenario.BackendRequirement == ScenarioBackendRequirement.AzureArchiveCapable && !backend.Capabilities.SupportsArchiveTier)
+        if (workflow.BackendRequirement == RepresentativeWorkflowBackendRequirement.AzureArchiveCapable && !backend.Capabilities.SupportsArchiveTier)
         {
-            return new RepresentativeScenarioRunResult(true, "Backend lacks archive-tier capability.");
+            return new RepresentativeWorkflowRunResult(true, "Backend lacks archive-tier capability.");
         }
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
         var definition = SyntheticRepositoryDefinitionFactory.Create(profile);
         string? previousSnapshotVersion = null;
 
-        if (scenario.CacheState == ScenarioCacheState.Cold)
+        if (workflow.CacheState == RepresentativeWorkflowCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
 
-        if (scenario == RepresentativeScenarioCatalog.ArchiveTierPlanning)
+        if (workflow == RepresentativeWorkflowCatalog.ArchiveTierPlanning)
         {
             var archiveTierOutcome = await ExecuteArchiveTierScenarioAsync(
                 context,
                 definition,
-                scenario,
+                workflow,
                 seed,
                 cancellationToken);
 
-            return new RepresentativeScenarioRunResult(false, ArchiveTierOutcome: archiveTierOutcome);
+            return new RepresentativeWorkflowRunResult(false, ArchiveTierOutcome: archiveTierOutcome);
         }
 
-        if (RequiresSetupArchive(scenario))
+        if (RequiresSetupArchive(workflow))
         {
             await using var setupFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
             await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V1, seed);
@@ -104,7 +101,7 @@ internal static class RepresentativeScenarioRunner
             initialArchive.Success.ShouldBeTrue(initialArchive.ErrorMessage);
             previousSnapshotVersion = FormatSnapshotVersion(initialArchive.SnapshotTime);
 
-            if (RequiresV2SetupArchive(scenario))
+            if (RequiresV2SetupArchive(workflow))
             {
                 await setupFixture.MaterializeSourceAsync(definition, SyntheticRepositoryVersion.V2, seed);
 
@@ -114,37 +111,37 @@ internal static class RepresentativeScenarioRunner
                 v2Archive.Success.ShouldBeTrue(v2Archive.ErrorMessage);
             }
 
-            if (scenario.CacheState == ScenarioCacheState.Warm)
+            if (workflow.CacheState == RepresentativeWorkflowCacheState.Warm)
                 await setupFixture.PreserveLocalCacheAsync();
         }
 
-        if (scenario.CacheState == ScenarioCacheState.Cold)
+        if (workflow.CacheState == RepresentativeWorkflowCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
 
-        switch (scenario.Operation)
+        switch (workflow.Operation)
         {
-            case ScenarioOperation.Archive:
+            case RepresentativeWorkflowOperation.Archive:
                 await using (var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken))
                 {
-                    await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+                    await fixture.MaterializeSourceAsync(definition, workflow.SourceVersion, seed);
 
-                    var archiveResult = await fixture.ArchiveAsync(CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal), cancellationToken);
+                    var archiveResult = await fixture.ArchiveAsync(CreateArchiveOptions(fixture, workflow.UseNoPointers, workflow.UseRemoveLocal), cancellationToken);
                     archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
                 }
 
                 break;
 
-            case ScenarioOperation.Restore:
-                await ExecuteRestoreOperationsAsync(context, definition, scenario, seed, previousSnapshotVersion, dependencies, cancellationToken);
+            case RepresentativeWorkflowOperation.Restore:
+                await ExecuteRestoreOperationsAsync(context, definition, workflow, seed, previousSnapshotVersion, dependencies, cancellationToken);
                 break;
 
-            case ScenarioOperation.ArchiveThenRestore:
+            case RepresentativeWorkflowOperation.ArchiveThenRestore:
                 await using (var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken))
                 {
-                    await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+                    await fixture.MaterializeSourceAsync(definition, workflow.SourceVersion, seed);
 
                     var archive = await fixture.ArchiveAsync(
-                        CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
+                        CreateArchiveOptions(fixture, workflow.UseNoPointers, workflow.UseRemoveLocal),
                         cancellationToken);
                     archive.Success.ShouldBeTrue(archive.ErrorMessage);
                 }
@@ -152,7 +149,7 @@ internal static class RepresentativeScenarioRunner
                 await ExecuteRestoreOperationsAsync(
                     context,
                     definition,
-                    scenario,
+                    workflow,
                     seed,
                     previousSnapshotVersion,
                     dependencies,
@@ -160,24 +157,24 @@ internal static class RepresentativeScenarioRunner
                 break;
 
             default:
-                throw new ArgumentOutOfRangeException(nameof(scenario.Operation));
+                throw new ArgumentOutOfRangeException(nameof(workflow.Operation));
         }
 
-        return new RepresentativeScenarioRunResult(false);
+        return new RepresentativeWorkflowRunResult(false);
     }
 
     private static async Task ExecuteRestoreOperationsAsync(
         E2EStorageBackendContext context,
         SyntheticRepositoryDefinition definition,
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         int seed,
         string? previousSnapshotVersion,
         RepresentativeScenarioRunnerDependencies dependencies,
         CancellationToken cancellationToken)
     {
-        var restorePlans = CreateRestorePlans(scenario, previousSnapshotVersion);
+        var restorePlans = CreateRestorePlans(workflow, previousSnapshotVersion);
 
-        if (scenario.CacheState == ScenarioCacheState.Warm && scenario.RestoreTarget == ScenarioRestoreTarget.MultipleVersions)
+        if (workflow.CacheState == RepresentativeWorkflowCacheState.Warm && workflow.RestoreTarget == RepresentativeWorkflowRestoreTarget.MultipleVersions)
         {
             var restoreFixtures = new List<IRepresentativeScenarioFixture>();
 
@@ -188,7 +185,7 @@ internal static class RepresentativeScenarioRunner
                     var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
                     restoreFixtures.Add(restoreFixture);
 
-                    await PrepareRestoreConflictAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed);
+                    await PrepareRestoreConflictAsync(restoreFixture, definition, workflow, restorePlan.ExpectedVersion, seed);
 
                     var restoreResult = await restoreFixture.RestoreAsync(
                         restorePlan.Options with { RootDirectory = restoreFixture.RestoreRoot },
@@ -197,7 +194,7 @@ internal static class RepresentativeScenarioRunner
 
                     if (dependencies.AssertRestoreTrees)
                     {
-                        await AssertRestoreOutcomeAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed, restoreResult);
+                        await AssertRestoreOutcomeAsync(restoreFixture, definition, workflow, restorePlan.ExpectedVersion, seed, restoreResult);
                     }
                 }
             }
@@ -214,7 +211,7 @@ internal static class RepresentativeScenarioRunner
         {
             await using var restoreFixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
 
-            await PrepareRestoreConflictAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed);
+            await PrepareRestoreConflictAsync(restoreFixture, definition, workflow, restorePlan.ExpectedVersion, seed);
 
             var restoreResult = await restoreFixture.RestoreAsync(
                 restorePlan.Options with { RootDirectory = restoreFixture.RestoreRoot },
@@ -223,35 +220,35 @@ internal static class RepresentativeScenarioRunner
 
             if (dependencies.AssertRestoreTrees)
             {
-                await AssertRestoreOutcomeAsync(restoreFixture, definition, scenario, restorePlan.ExpectedVersion, seed, restoreResult);
+                await AssertRestoreOutcomeAsync(restoreFixture, definition, workflow, restorePlan.ExpectedVersion, seed, restoreResult);
             }
         }
     }
 
-    private static bool RequiresV2SetupArchive(RepresentativeScenarioDefinition scenario)
+    private static bool RequiresV2SetupArchive(RepresentativeWorkflowDefinition workflow)
     {
-        return scenario.Operation switch
+        return workflow.Operation switch
         {
-            ScenarioOperation.Archive => scenario.ArchiveMode == ScenarioArchiveMode.NoChanges,
-            ScenarioOperation.Restore => scenario.RestoreTarget switch
+            RepresentativeWorkflowOperation.Archive => workflow.ArchiveMode == RepresentativeWorkflowArchiveMode.NoChanges,
+            RepresentativeWorkflowOperation.Restore => workflow.RestoreTarget switch
             {
-                ScenarioRestoreTarget.Previous or ScenarioRestoreTarget.MultipleVersions => true,
-                ScenarioRestoreTarget.Latest => scenario.SourceVersion == SyntheticRepositoryVersion.V2,
+                RepresentativeWorkflowRestoreTarget.Previous or RepresentativeWorkflowRestoreTarget.MultipleVersions => true,
+                RepresentativeWorkflowRestoreTarget.Latest => workflow.SourceVersion == SyntheticRepositoryVersion.V2,
                 _ => false,
             },
-            ScenarioOperation.ArchiveThenRestore => false,
-            _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
+            RepresentativeWorkflowOperation.ArchiveThenRestore => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(workflow.Operation)),
         };
     }
 
-    private static bool RequiresSetupArchive(RepresentativeScenarioDefinition scenario)
+    private static bool RequiresSetupArchive(RepresentativeWorkflowDefinition workflow)
     {
-        return scenario.Operation switch
+        return workflow.Operation switch
         {
-            ScenarioOperation.Archive => scenario.ArchiveMode != ScenarioArchiveMode.Initial,
-            ScenarioOperation.Restore => true,
-            ScenarioOperation.ArchiveThenRestore => false,
-            _ => throw new ArgumentOutOfRangeException(nameof(scenario.Operation)),
+            RepresentativeWorkflowOperation.Archive => workflow.ArchiveMode != RepresentativeWorkflowArchiveMode.Initial,
+            RepresentativeWorkflowOperation.Restore => true,
+            RepresentativeWorkflowOperation.ArchiveThenRestore => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(workflow.Operation)),
         };
     }
 
@@ -279,21 +276,21 @@ internal static class RepresentativeScenarioRunner
     }
 
     private static IReadOnlyList<RestoreExecutionPlan> CreateRestorePlans(
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         string? previousSnapshotVersion)
     {
         var latest = new RestoreOptions
         {
             RootDirectory = string.Empty,
-            Overwrite = scenario.UseOverwrite,
-            Version = scenario.RestoreTarget == ScenarioRestoreTarget.Previous
+            Overwrite = workflow.UseOverwrite,
+            Version = workflow.RestoreTarget == RepresentativeWorkflowRestoreTarget.Previous
                 ? previousSnapshotVersion
                 : null,
         };
 
-        return scenario.RestoreTarget switch
+        return workflow.RestoreTarget switch
         {
-            ScenarioRestoreTarget.MultipleVersions =>
+            RepresentativeWorkflowRestoreTarget.MultipleVersions =>
             [
                 new RestoreExecutionPlan(
                     latest with { Version = previousSnapshotVersion },
@@ -306,9 +303,9 @@ internal static class RepresentativeScenarioRunner
             [
                 new RestoreExecutionPlan(
                     latest,
-                    scenario.RestoreTarget == ScenarioRestoreTarget.Previous
+                    workflow.RestoreTarget == RepresentativeWorkflowRestoreTarget.Previous
                         ? SyntheticRepositoryVersion.V1
-                        : scenario.SourceVersion),
+                        : workflow.SourceVersion),
             ],
         };
     }
@@ -316,15 +313,15 @@ internal static class RepresentativeScenarioRunner
     private static async Task PrepareRestoreConflictAsync(
         IRepresentativeScenarioFixture fixture,
         SyntheticRepositoryDefinition definition,
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         SyntheticRepositoryVersion expectedVersion,
         int seed)
     {
-        if (scenario.RestoreTarget != ScenarioRestoreTarget.Latest)
+        if (workflow.RestoreTarget != RepresentativeWorkflowRestoreTarget.Latest)
             return;
 
-        if (scenario != RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite &&
-            scenario != RepresentativeScenarioCatalog.RestoreLocalConflictOverwrite)
+        if (workflow != RepresentativeWorkflowCatalog.RestoreLocalConflictNoOverwrite &&
+            workflow != RepresentativeWorkflowCatalog.RestoreLocalConflictOverwrite)
             return;
 
         var conflictPath = GetConflictPath(definition, expectedVersion);
@@ -338,15 +335,15 @@ internal static class RepresentativeScenarioRunner
     private static async Task AssertRestoreOutcomeAsync(
         IRepresentativeScenarioFixture fixture,
         SyntheticRepositoryDefinition definition,
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         SyntheticRepositoryVersion expectedVersion,
         int seed,
         RestoreResult restoreResult)
     {
-        if (scenario.RestoreTarget == ScenarioRestoreTarget.None)
+        if (workflow.RestoreTarget == RepresentativeWorkflowRestoreTarget.None)
             return;
 
-        if (scenario == RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite)
+        if (workflow == RepresentativeWorkflowCatalog.RestoreLocalConflictNoOverwrite)
         {
             var conflictPath = GetConflictPath(definition, expectedVersion);
             var restoredPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
@@ -368,7 +365,7 @@ internal static class RepresentativeScenarioRunner
 
             await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot, includePointerFiles: false);
 
-            if (!scenario.UseNoPointers)
+            if (!workflow.UseNoPointers)
             {
                 foreach (var relativePath in expected.Files.Keys)
                 {
@@ -412,10 +409,10 @@ internal static class RepresentativeScenarioRunner
         return bytes;
     }
 
-    private static async Task<ArchiveTierScenarioOutcome> ExecuteArchiveTierScenarioAsync(
+    private static async Task<ArchiveTierWorkflowOutcome> ExecuteArchiveTierScenarioAsync(
         E2EStorageBackendContext context,
         SyntheticRepositoryDefinition definition,
-        RepresentativeScenarioDefinition scenario,
+        RepresentativeWorkflowDefinition workflow,
         int seed,
         CancellationToken cancellationToken)
     {
@@ -429,7 +426,7 @@ internal static class RepresentativeScenarioRunner
             context.ContainerName,
             BlobTier.Archive,
             ct: cancellationToken);
-        await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
+        await fixture.MaterializeSourceAsync(definition, workflow.SourceVersion, seed);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
@@ -512,7 +509,7 @@ internal static class RepresentativeScenarioRunner
             {
                 var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
                     definition,
-                    scenario.SourceVersion,
+                    workflow.SourceVersion,
                     seed,
                     expectedRoot);
 
@@ -538,7 +535,7 @@ internal static class RepresentativeScenarioRunner
                     Directory.Delete(expectedRoot, recursive: true);
             }
 
-            return new ArchiveTierScenarioOutcome(
+            return new ArchiveTierWorkflowOutcome(
                 firstEstimateCaptured,
                 initialResult.ChunksPendingRehydration,
                 initialResult.FilesRestored,
