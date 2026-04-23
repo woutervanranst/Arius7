@@ -21,10 +21,6 @@ internal sealed class RepresentativeWorkflowRunnerDependencies
 {
     public Func<E2EStorageBackendContext, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
         async (context, cancellationToken) => await RepresentativeWorkflowRunner.CreateFixtureAsync(context, cancellationToken);
-
-    public Func<string, string, Task> ResetLocalCacheAsync { get; init; } = E2EFixture.ResetLocalCacheAsync;
-
-    public bool AssertRestoreTrees { get; init; }
 }
 
 internal static class RepresentativeWorkflowRunner
@@ -152,6 +148,10 @@ internal static class RepresentativeWorkflowRunner
 
         initialResult.Success.ShouldBeTrue(initialResult.ErrorMessage);
 
+        var pendingRehydratedBlobCount = 0;
+        await foreach (var _ in azureBlobContainer.ListAsync(BlobPaths.ChunksRehydrated, cancellationToken))
+            pendingRehydratedBlobCount++;
+
         var trackingSvc2 = new CopyTrackingBlobService(azureBlobContainer);
         var rerunResult = await CreateArchiveTierRestoreHandler(fixture, context, trackingSvc2)
             .Handle(new RestoreCommand(new RestoreOptions
@@ -230,7 +230,7 @@ internal static class RepresentativeWorkflowRunner
                 readyResult.FilesRestored,
                 readyResult.ChunksPendingRehydration,
                 cleanupDeletedChunks,
-                PendingRehydratedBlobCount: 0);
+                PendingRehydratedBlobCount: pendingRehydratedBlobCount);
         }
         finally
         {

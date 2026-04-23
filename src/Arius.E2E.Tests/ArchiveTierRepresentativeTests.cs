@@ -31,6 +31,7 @@ internal class ArchiveTierRepresentativeTests(AzureE2EBackendFixture backend)
         result.ArchiveTierOutcome.InitialPendingChunks.ShouldBeGreaterThan(0);
         result.ArchiveTierOutcome.InitialFilesRestored.ShouldBe(0);
         result.ArchiveTierOutcome.PendingChunksOnRerun.ShouldBeGreaterThan(0);
+        result.ArchiveTierOutcome.PendingRehydratedBlobCount.ShouldBeGreaterThan(0);
         result.ArchiveTierOutcome.RerunCopyCalls.ShouldBe(0);
         result.ArchiveTierOutcome.ReadyFilesRestored.ShouldBeGreaterThan(0);
         result.ArchiveTierOutcome.ReadyPendingChunks.ShouldBe(0);
