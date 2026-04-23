@@ -52,23 +52,23 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IEncryptionService              encryption,
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                fileTreeService,
+        FileTreeService                 fileTreeService,
         SnapshotService                 snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName)
     {
-        _blobs         = blobs;
-        _encryption    = encryption;
-        _chunkIndex         = index;
-        _chunkStorage  = chunkStorage;
-        _fileTreeService     = fileTreeService;
-        _snapshotSvc   = snapshotSvc;
-        _mediator      = mediator;
-        _logger        = logger;
-        _accountName   = accountName;
-        _containerName = containerName;
+        _blobs           = blobs;
+        _encryption      = encryption;
+        _chunkIndex      = index;
+        _chunkStorage    = chunkStorage;
+        _fileTreeService = fileTreeService;
+        _snapshotSvc     = snapshotSvc;
+        _mediator        = mediator;
+        _logger          = logger;
+        _accountName     = accountName;
+        _containerName   = containerName;
     }
 
     /// <summary>

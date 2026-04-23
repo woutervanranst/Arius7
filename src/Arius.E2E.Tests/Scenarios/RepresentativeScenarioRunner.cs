@@ -128,23 +128,14 @@ internal static class RepresentativeScenarioRunner
                 {
                     await fixture.MaterializeSourceAsync(definition, scenario.SourceVersion, seed);
 
-                    var archiveResult = await fixture.ArchiveAsync(
-                        CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal),
-                        cancellationToken);
+                    var archiveResult = await fixture.ArchiveAsync(CreateArchiveOptions(fixture, scenario.UseNoPointers, scenario.UseRemoveLocal), cancellationToken);
                     archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
                 }
 
                 break;
 
             case ScenarioOperation.Restore:
-                await ExecuteRestoreOperationsAsync(
-                    context,
-                    definition,
-                    scenario,
-                    seed,
-                    previousSnapshotVersion,
-                    dependencies,
-                    cancellationToken);
+                await ExecuteRestoreOperationsAsync(context, definition, scenario, seed, previousSnapshotVersion, dependencies, cancellationToken);
                 break;
 
             case ScenarioOperation.ArchiveThenRestore:
@@ -681,23 +672,25 @@ internal static class RepresentativeScenarioRunner
 
     private sealed class E2EScenarioFixtureAdapter(E2EFixture inner) : IRepresentativeScenarioFixture
     {
-        public string LocalRoot => inner.LocalRoot;
+        public string LocalRoot 
+            => inner.LocalRoot;
 
-        public string RestoreRoot => inner.RestoreRoot;
+        public string RestoreRoot 
+            => inner.RestoreRoot;
 
-        public Task PreserveLocalCacheAsync() => inner.PreserveLocalCacheAsync();
+        public Task PreserveLocalCacheAsync() 
+            => inner.PreserveLocalCacheAsync();
 
-        public Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
-            SyntheticRepositoryDefinition definition,
-            SyntheticRepositoryVersion version,
-            int seed) => inner.MaterializeSourceAsync(definition, version, seed);
+        public Task<RepositoryTreeSnapshot> MaterializeSourceAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed) 
+            => inner.MaterializeSourceAsync(definition, version, seed);
 
-        public Task<ArchiveResult> ArchiveAsync(ArchiveCommandOptions options, CancellationToken ct = default) =>
-            inner.CreateArchiveHandler().Handle(new ArchiveCommand(options), ct).AsTask();
+        public Task<ArchiveResult> ArchiveAsync(ArchiveCommandOptions options, CancellationToken ct = default) 
+            => inner.CreateArchiveHandler().Handle(new ArchiveCommand(options), ct).AsTask();
 
-        public Task<RestoreResult> RestoreAsync(RestoreOptions options, CancellationToken ct = default) =>
-            inner.CreateRestoreHandler().Handle(new RestoreCommand(options), ct).AsTask();
+        public Task<RestoreResult> RestoreAsync(RestoreOptions options, CancellationToken ct = default) 
+            => inner.CreateRestoreHandler().Handle(new RestoreCommand(options), ct).AsTask();
 
-        public ValueTask DisposeAsync() => inner.DisposeAsync();
+        public ValueTask DisposeAsync() 
+            => inner.DisposeAsync();
     }
 }

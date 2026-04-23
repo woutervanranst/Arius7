@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -5,11 +6,7 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryMaterializer
 {
-    public static async Task<RepositoryTreeSnapshot> MaterializeAsync(
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion version,
-        int seed,
-        string rootPath)
+    public static async Task<RepositoryTreeSnapshot> MaterializeAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed, string rootPath)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
@@ -28,7 +25,7 @@ internal static class SyntheticRepositoryMaterializer
         }
 
         if (version == SyntheticRepositoryVersion.V2)
-            await ApplyV2MutationsAsync(definition, seed, rootPath, files);
+            await ApplyV2MutationsAsync(definition, seed, rootPath, files.ToDictionary());
 
         return new RepositoryTreeSnapshot(files);
     }

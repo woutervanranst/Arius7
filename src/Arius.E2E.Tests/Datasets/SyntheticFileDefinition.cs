@@ -19,5 +19,9 @@ internal sealed record SyntheticFileDefinition
 
     public string  Path      { get; }
     public long    SizeBytes { get; }
+
+    /// <summary>
+    /// Synthetic Files with the same SizeBytes and ContentId will be given the same content (ie. identical files)
+    /// </summary>
     public string? ContentId { get; }
 }

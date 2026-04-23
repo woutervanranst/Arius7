@@ -2,11 +2,8 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal sealed record SyntheticRepositoryDefinition
 {
-    public SyntheticRepositoryDefinition(int SmallFileThresholdBytes, IReadOnlyList<string> RootDirectories, IReadOnlyList<SyntheticFileDefinition> Files, IReadOnlyList<SyntheticMutation> V2Mutations)
+    public SyntheticRepositoryDefinition(IReadOnlyList<string> RootDirectories, IReadOnlyList<SyntheticFileDefinition> Files, IReadOnlyList<SyntheticMutation> V2Mutations)
     {
-        if (SmallFileThresholdBytes <= 0)
-            throw new ArgumentOutOfRangeException(nameof(SmallFileThresholdBytes), "Threshold must be greater than zero.");
-
         ArgumentNullException.ThrowIfNull(RootDirectories);
         ArgumentNullException.ThrowIfNull(Files);
         ArgumentNullException.ThrowIfNull(V2Mutations);
@@ -108,13 +105,11 @@ internal sealed record SyntheticRepositoryDefinition
             }
         }
 
-        this.SmallFileThresholdBytes = SmallFileThresholdBytes;
         this.RootDirectories         = Array.AsReadOnly(rootDirectoriesCopy);
         this.Files                   = Array.AsReadOnly(filesCopy);
         this.V2Mutations             = Array.AsReadOnly(mutationsCopy);
     }
 
-    public int                                    SmallFileThresholdBytes { get; }
     public IReadOnlyList<string>                  RootDirectories         { get; }
     public IReadOnlyList<SyntheticFileDefinition> Files                   { get; }
     public IReadOnlyList<SyntheticMutation>       V2Mutations             { get; }

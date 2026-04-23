@@ -40,19 +40,19 @@ public sealed class E2EFixture : IAsyncDisposable
         BlobTier defaultTier,
         RepositoryTestFixture repository)
     {
-        BlobContainer = blobContainer;
-        Encryption = encryption;
-        Index = index;
-        ChunkStorage = chunkStorage;
+        BlobContainer   = blobContainer;
+        Encryption      = encryption;
+        Index           = index;
+        ChunkStorage    = chunkStorage;
         FileTreeService = fileTreeService;
-        Snapshot = snapshot;
-        _tempRoot = tempRoot;
-        LocalRoot = localRoot;
-        RestoreRoot = restoreRoot;
-        _account = account;
-        _container = containerName;
-        _defaultTier = defaultTier;
-        _repository = repository;
+        Snapshot        = snapshot;
+        _tempRoot       = tempRoot;
+        LocalRoot       = localRoot;
+        RestoreRoot     = restoreRoot;
+        _account        = account;
+        _container      = containerName;
+        _defaultTier    = defaultTier;
+        _repository     = repository;
 
         lock (RepositoryCacheLeaseLock)
         {
@@ -63,47 +63,23 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    public IBlobContainerService BlobContainer { get; }
-    public IEncryptionService Encryption { get; }
-    public Arius.Core.Shared.ChunkIndex.ChunkIndexService Index { get; }
-    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage { get; }
-    public Arius.Core.Shared.FileTree.FileTreeService FileTreeService { get; }
-    public Arius.Core.Shared.Snapshot.SnapshotService Snapshot { get; }
-    public string LocalRoot { get; }
-    public string RestoreRoot { get; }
+    public IBlobContainerService                               BlobContainer   { get; }
+    public IEncryptionService                                  Encryption      { get; }
+    public Arius.Core.Shared.ChunkIndex.ChunkIndexService      Index           { get; }
+    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage    { get; }
+    public Arius.Core.Shared.FileTree.FileTreeService          FileTreeService { get; }
+    public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
+    public string                                              LocalRoot       { get; }
+    public string                                              RestoreRoot     { get; }
 
-    public static async Task<E2EFixture> CreateAsync(
-        IBlobContainerService blobContainer,
-        string accountName,
-        string containerName,
-        BlobTier defaultTier,
-        string? passphrase = null,
-        CancellationToken ct = default)
+    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, CancellationToken ct = default)
     {
         var repository = await RepositoryTestFixture.CreateAsync(blobContainer, accountName, containerName, passphrase, ct: ct);
 
-        return new E2EFixture(
-            blobContainer,
-            repository.Encryption,
-            repository.Index,
-            repository.ChunkStorage,
-            repository.FileTreeService,
-            repository.Snapshot,
-            repository.TempRoot,
-            repository.LocalRoot,
-            repository.RestoreRoot,
-            accountName,
-            containerName,
-            defaultTier,
-            repository);
+        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
     }
 
-    public static Task<E2EFixture> CreateAsync(
-        BlobContainerClient container,
-        AzureBlobContainerService svc,
-        BlobTier defaultTier,
-        string? passphrase = null,
-        CancellationToken ct = default)
+    public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, CancellationToken ct = default)
     {
         return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, ct);
     }
@@ -140,10 +116,7 @@ public sealed class E2EFixture : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    internal Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion version,
-        int seed)
+    internal Task<RepositoryTreeSnapshot> MaterializeSourceAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed)
     {
         if (Directory.Exists(LocalRoot))
             Directory.Delete(LocalRoot, recursive: true);
@@ -162,14 +135,14 @@ public sealed class E2EFixture : IAsyncDisposable
     public bool RestoredExists(string relativePath)
         => _repository.RestoredExists(relativePath);
 
-    internal ArchiveCommandHandler CreateArchiveHandler() =>
-        _repository.CreateArchiveHandler();
+    internal ArchiveCommandHandler CreateArchiveHandler() 
+        => _repository.CreateArchiveHandler();
 
-    internal RestoreCommandHandler CreateRestoreHandler() =>
-        _repository.CreateRestoreHandler();
+    internal RestoreCommandHandler CreateRestoreHandler() 
+        => _repository.CreateRestoreHandler();
 
-    public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) =>
-        CreateArchiveHandler().Handle(
+    public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) 
+        => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = LocalRoot,
@@ -177,8 +150,8 @@ public sealed class E2EFixture : IAsyncDisposable
             }),
             ct).AsTask();
 
-    public Task<RestoreResult> RestoreAsync(CancellationToken ct = default) =>
-        CreateRestoreHandler().Handle(
+    public Task<RestoreResult> RestoreAsync(CancellationToken ct = default) 
+        => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = RestoreRoot,
@@ -245,8 +218,7 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    static string GetRepositoryCacheKey(string accountName, string containerName) =>
-        $"{accountName}\n{containerName}";
+    static string GetRepositoryCacheKey(string accountName, string containerName) => $"{accountName}\n{containerName}";
 
     struct RepositoryCacheLease
     {
