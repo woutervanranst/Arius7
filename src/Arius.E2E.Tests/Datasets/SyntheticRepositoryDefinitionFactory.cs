@@ -1,5 +1,11 @@
 namespace Arius.E2E.Tests.Datasets;
 
+internal enum SyntheticRepositoryProfile
+{
+    Small,
+    Representative,
+}
+
 internal static class SyntheticRepositoryDefinitionFactory
 {
     public static SyntheticRepositoryDefinition Create(SyntheticRepositoryProfile profile)
