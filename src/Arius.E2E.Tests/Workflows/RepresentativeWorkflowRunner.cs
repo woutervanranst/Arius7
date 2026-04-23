@@ -114,144 +114,6 @@ internal static class RepresentativeWorkflowRunner
         };
     }
 
-    internal static async Task<ArchiveTierWorkflowOutcome> ExecuteArchiveTierWorkflowAsync(
-        E2EStorageBackendContext context,
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion sourceVersion,
-        int seed,
-        CancellationToken cancellationToken)
-    {
-        var azureBlobContainer = context.AzureBlobContainerService;
-        azureBlobContainer.ShouldNotBeNull();
-        context.Capabilities.SupportsArchiveTier.ShouldBeTrue();
-
-        await using var fixture = await E2EFixture.CreateAsync(
-            context.BlobContainer,
-            context.AccountName,
-            context.ContainerName,
-            BlobTier.Archive,
-            ct: cancellationToken);
-        await fixture.MaterializeSourceAsync(definition, sourceVersion, seed);
-
-        var archiveResult = await fixture.CreateArchiveHandler().Handle(
-            new ArchiveCommand(CreateArchiveTierOptions(fixture)),
-            cancellationToken).AsTask();
-        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-        var tarChunkHash = await PollForArchiveTierTarChunkAsync(azureBlobContainer, cancellationToken);
-        tarChunkHash.ShouldNotBeNullOrWhiteSpace();
-
-        var contentHashToBytes = await ReadArchiveTierContentBytesAsync(fixture.LocalRoot, "src");
-
-        var trackingSvc1 = new CopyTrackingBlobService(azureBlobContainer);
-        var firstEstimateCaptured = false;
-        var initialResult = await CreateArchiveTierRestoreHandler(fixture, context, trackingSvc1)
-            .Handle(new RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = fixture.RestoreRoot,
-                TargetPath = "src",
-                Overwrite = true,
-                ConfirmRehydration = (estimate, _) =>
-                {
-                    firstEstimateCaptured = true;
-                    (estimate.ChunksNeedingRehydration + estimate.ChunksPendingRehydration).ShouldBeGreaterThan(0);
-                    return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
-                },
-            }), cancellationToken).AsTask();
-
-        initialResult.Success.ShouldBeTrue(initialResult.ErrorMessage);
-
-        var pendingRehydratedBlobCount = 0;
-        await foreach (var _ in azureBlobContainer.ListAsync(BlobPaths.ChunksRehydrated, cancellationToken))
-            pendingRehydratedBlobCount++;
-
-        var trackingSvc2 = new CopyTrackingBlobService(azureBlobContainer);
-        var rerunResult = await CreateArchiveTierRestoreHandler(fixture, context, trackingSvc2)
-            .Handle(new RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = fixture.RestoreRoot,
-                TargetPath = "src",
-                Overwrite = true,
-                ConfirmRehydration = (_, _) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
-            }), cancellationToken).AsTask();
-
-        rerunResult.Success.ShouldBeTrue(rerunResult.ErrorMessage);
-
-        await SideloadRehydratedTarChunkAsync(
-            azureBlobContainer,
-            tarChunkHash!,
-            contentHashToBytes,
-            cancellationToken);
-
-        var cleanupDeletedChunks = 0;
-        var readyRestoreRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-ready-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(readyRestoreRoot);
-
-        try
-        {
-            var readyResult = await fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = readyRestoreRoot,
-                TargetPath = "src",
-                Overwrite = true,
-                ConfirmCleanup = (count, _, _) =>
-                {
-                    cleanupDeletedChunks = count;
-                    return Task.FromResult(true);
-                },
-            }), cancellationToken).AsTask();
-
-            readyResult.Success.ShouldBeTrue(readyResult.ErrorMessage);
-
-            var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-expected-{Guid.NewGuid():N}");
-            try
-            {
-                var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
-                    definition,
-                    sourceVersion,
-                    seed,
-                    expectedRoot);
-
-                var expectedRestoreTree = FilterSnapshotToPrefix(expected, "src", trimPrefix: false);
-
-                await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(
-                    expectedRestoreTree,
-                    readyRestoreRoot,
-                    includePointerFiles: false);
-
-                foreach (var relativePath in expectedRestoreTree.Files.Keys)
-                {
-                    var pointerPath = Path.Combine(
-                        readyRestoreRoot,
-                        (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
-
-                    File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-                }
-            }
-            finally
-            {
-                if (Directory.Exists(expectedRoot))
-                    Directory.Delete(expectedRoot, recursive: true);
-            }
-
-            return new ArchiveTierWorkflowOutcome(
-                firstEstimateCaptured,
-                initialResult.ChunksPendingRehydration,
-                initialResult.FilesRestored,
-                rerunResult.ChunksPendingRehydration,
-                trackingSvc2.CopyCalls.Count,
-                readyResult.FilesRestored,
-                readyResult.ChunksPendingRehydration,
-                cleanupDeletedChunks,
-                PendingRehydratedBlobCount: pendingRehydratedBlobCount);
-        }
-        finally
-        {
-            if (Directory.Exists(readyRestoreRoot))
-                Directory.Delete(readyRestoreRoot, recursive: true);
-        }
-    }
-
     internal static async Task AssertRestoreOutcomeAsync(
         E2EFixture fixture,
         SyntheticRepositoryDefinition definition,
@@ -316,6 +178,45 @@ internal static class RepresentativeWorkflowRunner
         await File.WriteAllBytesAsync(fullPath, conflictBytes);
     }
 
+    internal static async Task AssertArchiveTierRestoreOutcomeAsync(
+        SyntheticRepositoryDefinition definition,
+        SyntheticRepositoryVersion sourceVersion,
+        int seed,
+        string targetPath,
+        string readyRestoreRoot)
+    {
+        var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-expected-{Guid.NewGuid():N}");
+        try
+        {
+            var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
+                definition,
+                sourceVersion,
+                seed,
+                expectedRoot);
+
+            var expectedRestoreTree = FilterSnapshotToPrefix(expected, targetPath, trimPrefix: false);
+
+            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(
+                expectedRestoreTree,
+                readyRestoreRoot,
+                includePointerFiles: false);
+
+            foreach (var relativePath in expectedRestoreTree.Files.Keys)
+            {
+                var pointerPath = Path.Combine(
+                    readyRestoreRoot,
+                    (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+
+                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(expectedRoot))
+                Directory.Delete(expectedRoot, recursive: true);
+        }
+    }
+
     internal static string FormatSnapshotVersion(DateTimeOffset snapshotTime) =>
         snapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
 
@@ -341,7 +242,7 @@ internal static class RepresentativeWorkflowRunner
         return bytes;
     }
 
-    static RestoreCommandHandler CreateArchiveTierRestoreHandler(
+    internal static RestoreCommandHandler CreateArchiveTierRestoreHandler(
         E2EFixture fixture,
         E2EStorageBackendContext context,
         IBlobContainerService blobContainer)
@@ -358,7 +259,7 @@ internal static class RepresentativeWorkflowRunner
             context.ContainerName);
     }
 
-    static async Task<string?> PollForArchiveTierTarChunkAsync(
+    internal static async Task<string?> PollForArchiveTierTarChunkAsync(
         AzureBlobContainerService blobContainer,
         CancellationToken cancellationToken)
     {
@@ -385,7 +286,7 @@ internal static class RepresentativeWorkflowRunner
         return null;
     }
 
-    static async Task<Dictionary<string, byte[]>> ReadArchiveTierContentBytesAsync(
+    internal static async Task<Dictionary<string, byte[]>> ReadArchiveTierContentBytesAsync(
         string localRoot,
         string targetPath)
     {
@@ -403,7 +304,7 @@ internal static class RepresentativeWorkflowRunner
         return contentHashToBytes;
     }
 
-    static async Task SideloadRehydratedTarChunkAsync(
+    internal static async Task SideloadRehydratedTarChunkAsync(
         AzureBlobContainerService blobContainer,
         string tarChunkHash,
         IReadOnlyDictionary<string, byte[]> contentHashToBytes,
@@ -439,6 +340,33 @@ internal static class RepresentativeWorkflowRunner
             BlobTier.Hot,
             overwrite: true,
             cancellationToken: cancellationToken);
+    }
+
+    internal static async Task<int> CountBlobsAsync(
+        IBlobContainerService blobContainer,
+        string prefix,
+        CancellationToken cancellationToken)
+    {
+        var count = 0;
+
+        await foreach (var _ in blobContainer.ListAsync(prefix, cancellationToken))
+            count++;
+
+        return count;
+    }
+
+    internal static async Task DeleteBlobsAsync(
+        IBlobContainerService blobContainer,
+        string prefix,
+        CancellationToken cancellationToken)
+    {
+        var blobNames = new List<string>();
+
+        await foreach (var blobName in blobContainer.ListAsync(prefix, cancellationToken))
+            blobNames.Add(blobName);
+
+        foreach (var blobName in blobNames)
+            await blobContainer.DeleteAsync(blobName, cancellationToken);
     }
 
     static RepositoryTreeSnapshot FilterSnapshotToPrefix(
