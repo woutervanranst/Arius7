@@ -1,7 +1,6 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Scenarios;
-using Arius.E2E.Tests.Workflows;
 
 namespace Arius.E2E.Tests;
 
@@ -17,11 +16,11 @@ internal class ArchiveTierRepresentativeTests(AzureE2EBackendFixture backend)
             return;
         }
 
-        var workflow = RepresentativeWorkflowCatalog.ArchiveTierPlanning;
+        var scenario = RepresentativeScenarioCatalog.ArchiveTierPlanning;
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
-            workflow,
+            scenario,
             SyntheticRepositoryProfile.Small,
             seed: 20260419,
             cancellationToken: cancellationToken);

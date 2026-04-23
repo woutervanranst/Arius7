@@ -1,41 +1,26 @@
 using Arius.E2E.Tests.Datasets;
+using Arius.E2E.Tests.Fixtures;
+using Arius.E2E.Tests.Scenarios;
 
 namespace Arius.E2E.Tests.Workflows;
 
-internal enum RepresentativeWorkflowOperation
+internal sealed class RepresentativeWorkflowState
 {
-    Archive,
-    Restore,
-    ArchiveThenRestore,
-}
+    public required E2EStorageBackendContext BackendContext { get; init; }
 
-internal enum RepresentativeWorkflowCacheState
-{
-    Cold,
-    Warm,
-}
+    public IRepresentativeScenarioFixture? Fixture { get; set; }
 
-internal enum RepresentativeWorkflowBackendRequirement
-{
-    Any,
-    AzureArchiveCapable,
-}
+    public required RepresentativeWorkflowDefinition Definition { get; init; }
 
-internal enum RepresentativeWorkflowArchiveMode
-{
-    Initial,
-    Incremental,
-    NoChanges,
-}
+    public required int Seed { get; init; }
 
-internal enum RepresentativeWorkflowRestoreTarget
-{
-    None,
-    Latest,
-    Previous,
-    MultipleVersions,
-}
+    public SyntheticRepositoryVersion CurrentSourceVersion { get; set; }
 
-internal sealed record RepresentativeWorkflowState(
-    SyntheticRepositoryVersion SourceVersion,
-    RepresentativeWorkflowCacheState CacheState);
+    public RepositoryTreeSnapshot? CurrentMaterializedSnapshot { get; set; }
+
+    public string? PreviousSnapshotVersion { get; set; }
+
+    public string? LatestSnapshotVersion { get; set; }
+
+    public ArchiveTierWorkflowOutcome? ArchiveTierOutcome { get; set; }
+}

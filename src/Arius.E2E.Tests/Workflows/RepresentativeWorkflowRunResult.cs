@@ -13,4 +13,5 @@ internal sealed record ArchiveTierWorkflowOutcome(
     int RerunCopyCalls,
     int ReadyFilesRestored,
     int ReadyPendingChunks,
+    int PendingRehydratedBlobCount,
     int CleanupDeletedChunks);

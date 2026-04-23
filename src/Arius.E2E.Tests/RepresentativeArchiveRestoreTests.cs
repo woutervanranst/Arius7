@@ -1,7 +1,6 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Scenarios;
-using Arius.E2E.Tests.Workflows;
 
 namespace Arius.E2E.Tests;
 
@@ -11,7 +10,7 @@ internal class RepresentativeArchiveRestoreTests
     [CombinedDataSources]
     public async Task Representative_Scenario_Runs_OnSupportedBackends(
         [ClassDataSource<AzuriteE2EBackendFixture>(Shared = SharedType.PerTestSession)] [ClassDataSource<AzureE2EBackendFixture>(Shared = SharedType.PerTestSession)] IE2EStorageBackend backend,
-        [MethodDataSource(typeof(RepresentativeWorkflowCatalog), nameof(RepresentativeWorkflowCatalog.All))] RepresentativeWorkflowDefinition workflow,
+        [MethodDataSource(typeof(RepresentativeScenarioCatalog), nameof(RepresentativeScenarioCatalog.All))] RepresentativeScenarioDefinition scenario,
         CancellationToken cancellationToken)
     {
         if (backend is AzureE2EBackendFixture && !AzureFixture.IsAvailable)
@@ -20,15 +19,15 @@ internal class RepresentativeArchiveRestoreTests
             return;
         }
 
-        if (ShouldSkipForAzureColdRestoreTimeout(backend, workflow))
+        if (ShouldSkipForAzureColdRestoreTimeout(backend, scenario))
         {
-            Skip.Unless(false, $"Azure cold restore representative scenario is tracked by issue #65: {workflow.Name}");
+            Skip.Unless(false, $"Azure cold restore representative scenario is tracked by issue #65: {scenario.Name}");
             return;
         }
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
-            workflow,
+            scenario,
             SyntheticRepositoryProfile.Representative,
             seed: 20260419,
             dependencies: new RepresentativeScenarioRunnerDependencies
@@ -37,19 +36,19 @@ internal class RepresentativeArchiveRestoreTests
             },
             cancellationToken: cancellationToken);
 
-        if (workflow.BackendRequirement == RepresentativeWorkflowBackendRequirement.Any)
+        if (scenario.BackendRequirement == ScenarioBackendRequirement.Any)
             result.WasSkipped.ShouldBeFalse();
     }
 
-    static bool ShouldSkipForAzureColdRestoreTimeout(IE2EStorageBackend backend, RepresentativeWorkflowDefinition workflow)
+    static bool ShouldSkipForAzureColdRestoreTimeout(IE2EStorageBackend backend, RepresentativeScenarioDefinition scenario)
     {
         if (backend is not AzureE2EBackendFixture)
             return false;
 
-        return workflow == RepresentativeWorkflowCatalog.RestoreLatestColdCache ||
-               workflow == RepresentativeWorkflowCatalog.RestorePreviousColdCache ||
-               workflow == RepresentativeWorkflowCatalog.RestoreLocalConflictNoOverwrite ||
-               workflow == RepresentativeWorkflowCatalog.RestoreLocalConflictOverwrite ||
-               workflow == RepresentativeWorkflowCatalog.ArchiveTierPlanning;
+        return scenario == RepresentativeScenarioCatalog.RestoreLatestColdCache ||
+               scenario == RepresentativeScenarioCatalog.RestorePreviousColdCache ||
+               scenario == RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite ||
+               scenario == RepresentativeScenarioCatalog.RestoreLocalConflictOverwrite ||
+               scenario == RepresentativeScenarioCatalog.ArchiveTierPlanning;
     }
 }
