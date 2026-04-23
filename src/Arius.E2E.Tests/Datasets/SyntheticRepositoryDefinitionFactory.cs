@@ -20,10 +20,7 @@ internal static class SyntheticRepositoryDefinitionFactory
 
     static SyntheticRepositoryDefinition CreateSmall()
     {
-        const int threshold = 256 * 1024;
-
         return new SyntheticRepositoryDefinition(
-            threshold,
             ["docs", "media", "src"],
             [
                 new SyntheticFileDefinition("src/simple/a.bin", 8 * 1024,  "small-001"),
@@ -39,8 +36,6 @@ internal static class SyntheticRepositoryDefinitionFactory
 
     static SyntheticRepositoryDefinition CreateRepresentative()
     {
-        const int threshold = 256 * 1024;
-
         var files = new List<SyntheticFileDefinition>();
 
         for (var i = 0; i < 1600; i++)
@@ -74,7 +69,6 @@ internal static class SyntheticRepositoryDefinitionFactory
         ];
 
         return new SyntheticRepositoryDefinition(
-            threshold,
             ["docs", "media", "src", "archives", "nested"],
             files,
             mutations);
