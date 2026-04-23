@@ -48,11 +48,11 @@ internal static class WorkflowBlobAssertions
     {
         var contentHash = AssertDuplicateContentHash(expectedSnapshot, DuplicateLargePathA, DuplicateLargePathB);
         var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
+        var metadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
 
         entry.ShouldNotBeNull($"Chunk index should resolve large duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldBe(contentHash, "Large duplicate files should resolve directly to a large chunk.");
 
-        var metadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(entry.ChunkHash), cancellationToken);
         metadata.Exists.ShouldBeTrue();
         metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType).ShouldBeTrue();
         ariusType.ShouldBe(BlobMetadataKeys.TypeLarge);
@@ -65,24 +65,25 @@ internal static class WorkflowBlobAssertions
     {
         var contentHash = AssertDuplicateContentHash(expectedSnapshot, DuplicateSmallPathA, DuplicateSmallPathB);
         var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
+        var thinBlobName = BlobPaths.Chunk(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldNotBe(contentHash, "Small bundled files should resolve to their parent tar chunk hash.");
 
-        var thinMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
+        var thinMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(thinBlobName, cancellationToken);
         thinMetadata.Exists.ShouldBeTrue();
         thinMetadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var thinType).ShouldBeTrue();
         thinType.ShouldBe(BlobMetadataKeys.TypeThin);
 
-        var tarMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(entry.ChunkHash), cancellationToken);
-        tarMetadata.Exists.ShouldBeTrue();
-        tarMetadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var tarType).ShouldBeTrue();
-        tarType.ShouldBe(BlobMetadataKeys.TypeTar);
-
-        await using var thinStream = await state.Fixture.BlobContainer.DownloadAsync(BlobPaths.Chunk(contentHash), cancellationToken);
+        await using var thinStream = await state.Fixture.BlobContainer.DownloadAsync(thinBlobName, cancellationToken);
         using var reader = new StreamReader(thinStream);
         var parentChunkHash = await reader.ReadToEndAsync(cancellationToken);
         parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk body should point at the tar chunk recorded in the chunk index.");
+
+        var tarMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(parentChunkHash), cancellationToken);
+        tarMetadata.Exists.ShouldBeTrue();
+        tarMetadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var tarType).ShouldBeTrue();
+        tarType.ShouldBe(BlobMetadataKeys.TypeTar);
     }
 
     static string AssertDuplicateContentHash(
