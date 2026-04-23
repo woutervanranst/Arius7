@@ -57,8 +57,13 @@ internal static class SyntheticRepositoryDefinitionFactory
         files.Add(new SyntheticFileDefinition("media/video/master-a.bin", 48 * 1024 * 1024, "large-001"));
         files.Add(new SyntheticFileDefinition("media/video/master-b.bin", 72 * 1024 * 1024, "large-002"));
         files.Add(new SyntheticFileDefinition("archives/duplicates/copy-a.bin", 512 * 1024, "dup-001"));
-        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/copy-b.bin", 512 * 1024, "dup-001"));
-        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/g/h/copy-c.bin", 512 * 1024, "dup-001"));
+
+        files.Add(new SyntheticFileDefinition("archives/duplicates/copy-a.bin",         512 * 1024, "dup-small-001"));
+        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/copy-b.bin",     512 * 1024, "dup-small-001"));
+        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/g/h/copy-c.bin", 512 * 1024, "dup-small-001"));
+
+        files.Add(new SyntheticFileDefinition("archives/duplicates/binary-a.bin", 2 * 1024 * 1024, "dup-large-001"));
+        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/binary-b.bin",   2 * 1024 * 1024, "dup-large-001"));
 
         IReadOnlyList<SyntheticMutation> mutations =
         [
