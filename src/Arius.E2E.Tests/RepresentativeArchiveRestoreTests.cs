@@ -1,7 +1,6 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Scenarios;
-using TUnit.Core;
 
 namespace Arius.E2E.Tests;
 
@@ -10,11 +9,8 @@ internal class RepresentativeArchiveRestoreTests
     [Test]
     [CombinedDataSources]
     public async Task Representative_Scenario_Runs_OnSupportedBackends(
-        [ClassDataSource<AzuriteE2EBackendFixture>(Shared = SharedType.PerTestSession)]
-        [ClassDataSource<AzureE2EBackendFixture>(Shared = SharedType.PerTestSession)]
-        IE2EStorageBackend backend,
-        [MethodDataSource(typeof(RepresentativeScenarioCatalog), nameof(RepresentativeScenarioCatalog.All))]
-        RepresentativeScenarioDefinition scenario,
+        [ClassDataSource<AzuriteE2EBackendFixture>(Shared = SharedType.PerTestSession)] [ClassDataSource<AzureE2EBackendFixture>(Shared = SharedType.PerTestSession)] IE2EStorageBackend backend,
+        [MethodDataSource(typeof(RepresentativeScenarioCatalog), nameof(RepresentativeScenarioCatalog.All))] RepresentativeScenarioDefinition scenario,
         CancellationToken cancellationToken)
     {
         if (backend is AzureE2EBackendFixture && !AzureFixture.IsAvailable)
