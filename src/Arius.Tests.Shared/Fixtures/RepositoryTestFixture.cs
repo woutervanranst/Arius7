@@ -15,6 +15,8 @@ namespace Arius.Tests.Shared.Fixtures;
 
 public sealed class RepositoryTestFixture : IAsyncDisposable
 {
+    internal const string DefaultPassphrase = "arius-test-passphrase";
+    private const string TempRootFolderName = "arius";
     private readonly string _tempRoot;
     private readonly string _account;
     private readonly string _container;
@@ -73,15 +75,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         Action<string>? deleteTempRoot = null,
         CancellationToken ct = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-test-{Guid.NewGuid():N}");
-        var localRoot = Path.Combine(tempRoot, "source");
-        var restoreRoot = Path.Combine(tempRoot, "restore");
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
-
-        var encryption = passphrase is not null
-            ? (IEncryptionService)new PassphraseEncryptionService(passphrase)
-            : new PlaintextPassthroughService();
+        var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
+        var encryption = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
         var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
@@ -110,11 +105,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         Action<string>? deleteTempRoot = null,
         CancellationToken ct = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-test-{Guid.NewGuid():N}");
-        var localRoot = Path.Combine(tempRoot, "source");
-        var restoreRoot = Path.Combine(tempRoot, "restore");
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
+        var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
 
         var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage = new ChunkStorageService(blobContainer, encryption);
@@ -211,5 +202,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         }
 
         return combined;
+    }
+
+    static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots()
+    {
+        var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
+        Directory.CreateDirectory(tempRootBase);
+
+        var tempRoot = Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
+        var localRoot = Path.Combine(tempRoot, "source");
+        var restoreRoot = Path.Combine(tempRoot, "restore");
+        Directory.CreateDirectory(localRoot);
+        Directory.CreateDirectory(restoreRoot);
+        return (tempRoot, localRoot, restoreRoot);
     }
 }
