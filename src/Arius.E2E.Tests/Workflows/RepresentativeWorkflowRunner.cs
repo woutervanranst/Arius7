@@ -80,13 +80,14 @@ internal static class RepresentativeWorkflowRunner
 
     internal static ArchiveCommandOptions CreateArchiveOptions(
         E2EFixture fixture,
-        bool useNoPointers,
-        bool useRemoveLocal)
+        bool useNoPointers = false,
+        bool useRemoveLocal = false,
+        BlobTier uploadTier = BlobTier.Cool)
     {
         return new ArchiveCommandOptions
         {
             RootDirectory = fixture.LocalRoot,
-            UploadTier = BlobTier.Cool,
+            UploadTier = uploadTier,
             NoPointers = useNoPointers,
             RemoveLocal = useRemoveLocal,
         };
