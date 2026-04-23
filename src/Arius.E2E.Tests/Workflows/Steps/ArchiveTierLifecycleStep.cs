@@ -10,9 +10,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
+        if (!state.Context.Capabilities.SupportsArchiveTier)
+            return;
+
         var azureBlobContainer = state.Context.AzureBlobContainerService;
         azureBlobContainer.ShouldNotBeNull($"{Name}: archive-tier workflow requires Azure blob storage.");
-        state.Context.Capabilities.SupportsArchiveTier.ShouldBeTrue($"{Name}: backend must support archive tier.");
 
         var sourceVersion = state.CurrentSourceVersion
             ?? throw new InvalidOperationException($"{Name}: current source version is not available.");
@@ -54,11 +56,14 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             }), cancellationToken).AsTask();
 
         initialResult.Success.ShouldBeTrue($"{Name}: pending restore failed: {initialResult.ErrorMessage}");
+        initialResult.ChunksPendingRehydration.ShouldBeGreaterThan(0, $"{Name}: pending restore should report pending chunks.");
+        initialResult.FilesRestored.ShouldBe(0, $"{Name}: pending restore should not restore files before rehydration is ready.");
 
         var pendingRehydratedBlobCount = await RepresentativeWorkflowRunner.CountBlobsAsync(
             azureBlobContainer,
             BlobPaths.ChunksRehydrated,
             cancellationToken);
+        pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
         var rerunTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
         var rerunResult = await RepresentativeWorkflowRunner.CreateArchiveTierRestoreHandler(state.Fixture, state.Context, rerunTrackingBlobService)
@@ -71,6 +76,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             }), cancellationToken).AsTask();
 
         rerunResult.Success.ShouldBeTrue($"{Name}: pending rerun failed: {rerunResult.ErrorMessage}");
+        rerunTrackingBlobService.CopyCalls.Count.ShouldBe(0, $"{Name}: rerun should not issue duplicate rehydration copy requests.");
 
         await RepresentativeWorkflowRunner.DeleteBlobsAsync(
             azureBlobContainer,
@@ -102,6 +108,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             }), cancellationToken).AsTask();
 
             readyResult.Success.ShouldBeTrue($"{Name}: ready restore failed: {readyResult.ErrorMessage}");
+            readyResult.ChunksPendingRehydration.ShouldBe(0, $"{Name}: ready restore should not leave pending rehydration chunks.");
 
             await RepresentativeWorkflowRunner.AssertArchiveTierRestoreOutcomeAsync(
                 state.Definition,
@@ -109,6 +116,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 state.Seed,
                 TargetPath,
                 readyRestoreRoot);
+
+            cleanupDeletedChunks.ShouldBeGreaterThan(0, $"{Name}: ready restore should clean up rehydrated tar chunks.");
 
             state.ArchiveTierOutcome = new ArchiveTierWorkflowOutcome(
                 firstEstimateCaptured,
