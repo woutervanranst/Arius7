@@ -15,13 +15,13 @@ namespace Arius.Tests.Shared.Fixtures;
 
 public sealed class RepositoryTestFixture : IAsyncDisposable
 {
-    internal const string DefaultPassphrase = "arius-test-passphrase";
-    private const string TempRootFolderName = "arius";
-    private readonly string _tempRoot;
-    private readonly string _account;
-    private readonly string _container;
-    private readonly IMediator _mediator;
-    private readonly Action<string> _deleteTempRoot;
+    internal const   string                            DefaultPassphrase  = "arius-test-passphrase";
+    private const    string                            TempRootFolderName = "arius";
+    private readonly string                            _tempRoot;
+    private readonly string                            _account;
+    private readonly string                            _container;
+    private readonly IMediator                         _mediator;
+    private readonly Action<string>                    _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
 
@@ -39,33 +39,33 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string containerName,
         Action<string>? deleteTempRoot = null)
     {
-        BlobContainer = blobContainer;
-        Encryption = encryption;
-        Index = index;
-        ChunkStorage = chunkStorage;
+        BlobContainer   = blobContainer;
+        Encryption      = encryption;
+        Index           = index;
+        ChunkStorage    = chunkStorage;
         FileTreeService = fileTreeService;
-        Snapshot = snapshot;
-        _tempRoot = tempRoot;
-        LocalRoot = localRoot;
-        RestoreRoot = restoreRoot;
-        _account = account;
-        _container = containerName;
+        Snapshot        = snapshot;
+        _tempRoot       = tempRoot;
+        LocalRoot       = localRoot;
+        RestoreRoot     = restoreRoot;
+        _account        = account;
+        _container      = containerName;
         _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
-        _mediator = Substitute.For<IMediator>();
+        _mediator       = Substitute.For<IMediator>();
     }
 
-    public IBlobContainerService BlobContainer { get; }
-    public IEncryptionService Encryption { get; }
-    public ChunkIndexService Index { get; }
-    public IChunkStorageService ChunkStorage { get; }
-    public FileTreeService FileTreeService { get; }
-    public SnapshotService Snapshot { get; }
-    public string LocalRoot { get; }
-    public string RestoreRoot { get; }
-    public string TempRoot => _tempRoot;
-    public IMediator Mediator => _mediator;
-    public string AccountName => _account;
-    public string ContainerName => _container;
+    public IBlobContainerService BlobContainer   { get; }
+    public IEncryptionService    Encryption      { get; }
+    public ChunkIndexService     Index           { get; }
+    public IChunkStorageService  ChunkStorage    { get; }
+    public FileTreeService       FileTreeService { get; }
+    public SnapshotService       Snapshot        { get; }
+    public string                LocalRoot       { get; }
+    public string                RestoreRoot     { get; }
+    public string                TempRoot        => _tempRoot;
+    public IMediator             Mediator        => _mediator;
+    public string                AccountName     => _account;
+    public string                ContainerName   => _container;
 
     public static Task<RepositoryTestFixture> CreateAsync(
         IBlobContainerService blobContainer,
@@ -76,25 +76,13 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         CancellationToken ct = default)
     {
         var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
-        var encryption = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
-        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
-        var chunkStorage = new ChunkStorageService(blobContainer, encryption);
+        var encryption      = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
+        var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
-        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(
-            blobContainer,
-            encryption,
-            index,
-            chunkStorage,
-            fileTreeService,
-            snapshot,
-            tempRoot,
-            localRoot,
-            restoreRoot,
-            accountName,
-            containerName,
-            deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
     }
 
     public static Task<RepositoryTestFixture> CreateAsync(
@@ -107,50 +95,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     {
         var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
 
-        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
-        var chunkStorage = new ChunkStorageService(blobContainer, encryption);
+        var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
-        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(
-            blobContainer,
-            encryption,
-            index,
-            chunkStorage,
-            fileTreeService,
-            snapshot,
-            tempRoot,
-            localRoot,
-            restoreRoot,
-            accountName,
-            containerName,
-            deleteTempRoot));
-    }
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot)); }
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
-        new(
-            BlobContainer,
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _archiveLogger,
-            _account,
-            _container);
+        new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _archiveLogger, _account, _container);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        new(
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _restoreLogger,
-            _account,
-            _container);
+        new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _restoreLogger, _account, _container);
 
     public string WriteFile(string relativePath, byte[] content)
     {
@@ -209,9 +165,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
         Directory.CreateDirectory(tempRootBase);
 
-        var tempRoot = Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
-        var localRoot = Path.Combine(tempRoot, "source");
-        var restoreRoot = Path.Combine(tempRoot, "restore");
+        var tempRoot    = Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
+        var localRoot   = Path.Combine(tempRoot,     "source");
+        var restoreRoot = Path.Combine(tempRoot,     "restore");
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
         return (tempRoot, localRoot, restoreRoot);
