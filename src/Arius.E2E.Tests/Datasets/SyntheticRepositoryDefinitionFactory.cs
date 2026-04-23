@@ -6,9 +6,9 @@ internal static class SyntheticRepositoryDefinitionFactory
     {
         return profile switch
         {
-            SyntheticRepositoryProfile.Small => CreateSmall(),
+            SyntheticRepositoryProfile.Small          => CreateSmall(),
             SyntheticRepositoryProfile.Representative => CreateRepresentative(),
-            _ => throw new ArgumentOutOfRangeException(nameof(profile)),
+            _                                         => throw new ArgumentOutOfRangeException(nameof(profile)),
         };
     }
 
@@ -20,10 +20,10 @@ internal static class SyntheticRepositoryDefinitionFactory
             threshold,
             ["docs", "media", "src"],
             [
-                new SyntheticFileDefinition("src/simple/a.bin", 8 * 1024, "small-001"),
-                new SyntheticFileDefinition("src/simple/b.bin", 8 * 1024, "small-001"),
-                new SyntheticFileDefinition("docs/readme.txt", 32 * 1024, "small-002"),
-                new SyntheticFileDefinition("media/large.bin", 2 * 1024 * 1024, "large-001"),
+                new SyntheticFileDefinition("src/simple/a.bin", 8 * 1024,  "small-001"),
+                new SyntheticFileDefinition("src/simple/b.bin", 8 * 1024,  "small-001"),
+                new SyntheticFileDefinition("docs/readme.txt",  32 * 1024, "small-002"),
+                new SyntheticFileDefinition("media/large.bin",  2 * 1024 * 1024, "large-001"),
             ],
             [
                 new SyntheticMutation(SyntheticMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 32 * 1024),

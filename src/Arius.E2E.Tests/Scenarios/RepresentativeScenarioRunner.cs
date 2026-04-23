@@ -1,12 +1,7 @@
-using System.Formats.Tar;
-using System.IO.Compression;
-using System.Security.Cryptography;
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -16,6 +11,9 @@ using Arius.E2E.Tests.Services;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 namespace Arius.E2E.Tests.Scenarios;
 
@@ -27,10 +25,7 @@ internal interface IRepresentativeScenarioFixture : IAsyncDisposable
 
     Task PreserveLocalCacheAsync();
 
-    Task<RepositoryTreeSnapshot> MaterializeSourceAsync(
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion version,
-        int seed);
+    Task<RepositoryTreeSnapshot> MaterializeSourceAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed);
 
     Task<ArchiveResult> ArchiveAsync(ArchiveCommandOptions options, CancellationToken ct = default);
 
@@ -47,37 +42,17 @@ internal sealed class RepresentativeScenarioRunnerDependencies
     public bool AssertRestoreTrees { get; init; }
 }
 
-internal sealed record RepresentativeScenarioRunResult(
-    bool WasSkipped,
-    string? SkipReason = null,
-    ArchiveTierScenarioOutcome? ArchiveTierOutcome = null);
+internal sealed record RepresentativeScenarioRunResult(bool WasSkipped, string? SkipReason = null, ArchiveTierScenarioOutcome? ArchiveTierOutcome = null);
 
-internal sealed record ArchiveTierScenarioOutcome(
-    bool WasCostEstimateCaptured,
-    int InitialPendingChunks,
-    int InitialFilesRestored,
-    int PendingChunksOnRerun,
-    int RerunCopyCalls,
-    int ReadyFilesRestored,
-    int ReadyPendingChunks,
-    int CleanupDeletedChunks);
+internal sealed record ArchiveTierScenarioOutcome(bool WasCostEstimateCaptured, int InitialPendingChunks, int InitialFilesRestored, int PendingChunksOnRerun, int RerunCopyCalls, int ReadyFilesRestored, int ReadyPendingChunks, int CleanupDeletedChunks);
 
-internal sealed record RestoreExecutionPlan(
-    RestoreOptions Options,
-    SyntheticRepositoryVersion ExpectedVersion);
+internal sealed record RestoreExecutionPlan(RestoreOptions Options, SyntheticRepositoryVersion ExpectedVersion);
 
 internal static class RepresentativeScenarioRunner
 {
-    internal static async Task<IRepresentativeScenarioFixture> CreateFixtureAsync(
-        E2EStorageBackendContext context,
-        CancellationToken cancellationToken)
+    internal static async Task<IRepresentativeScenarioFixture> CreateFixtureAsync(E2EStorageBackendContext context, CancellationToken cancellationToken)
     {
-        var fixture = await E2EFixture.CreateAsync(
-            context.BlobContainer,
-            context.AccountName,
-            context.ContainerName,
-            BlobTier.Cool,
-            ct: cancellationToken);
+        var fixture = await E2EFixture.CreateAsync(context.BlobContainer, context.AccountName, context.ContainerName, BlobTier.Cool, ct: cancellationToken);
 
         return new E2EScenarioFixtureAdapter(fixture);
     }
@@ -94,8 +69,7 @@ internal static class RepresentativeScenarioRunner
         ArgumentNullException.ThrowIfNull(scenario);
         dependencies ??= new RepresentativeScenarioRunnerDependencies();
 
-        if (scenario.BackendRequirement == ScenarioBackendRequirement.AzureArchiveCapable &&
-            !backend.Capabilities.SupportsArchiveTier)
+        if (scenario.BackendRequirement == ScenarioBackendRequirement.AzureArchiveCapable && !backend.Capabilities.SupportsArchiveTier)
         {
             return new RepresentativeScenarioRunResult(true, "Backend lacks archive-tier capability.");
         }

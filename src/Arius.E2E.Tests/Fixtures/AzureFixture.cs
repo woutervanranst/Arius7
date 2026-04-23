@@ -34,16 +34,13 @@ internal class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
     public static readonly string? AccountKey  = _config["ARIUS_E2E_KEY"];
 
     /// <summary>True when both credentials are available.</summary>
-    public static bool IsAvailable => !string.IsNullOrWhiteSpace(AccountName)
-                                   && !string.IsNullOrWhiteSpace(AccountKey);
+    public static bool IsAvailable => !string.IsNullOrWhiteSpace(AccountName) && !string.IsNullOrWhiteSpace(AccountKey);
 
     private BlobServiceClient? _serviceClient;
 
     public string Name => "Azure";
 
-    public E2EBackendCapabilities Capabilities { get; } = new(
-        SupportsArchiveTier: true,
-        SupportsRehydrationPlanning: true);
+    public E2EBackendCapabilities Capabilities { get; } = new(SupportsArchiveTier: true, SupportsRehydrationPlanning: true);
 
     public string Account    => AccountName ?? throw new InvalidOperationException("ARIUS_E2E_ACCOUNT not set.");
     public string Key        => AccountKey  ?? throw new InvalidOperationException("ARIUS_E2E_KEY not set.");
@@ -90,13 +87,13 @@ internal class AzureE2EBackendFixture : IE2EStorageBackend, IAsyncInitializer
 
         return new E2EStorageBackendContext
         {
-            BlobContainer = service,
-            AccountName = container.AccountName,
-            ContainerName = container.Name,
-            BlobContainerClient = container,
+            BlobContainer             = service,
+            AccountName               = container.AccountName,
+            ContainerName             = container.Name,
+            BlobContainerClient       = container,
             AzureBlobContainerService = service,
-            Capabilities = Capabilities,
-            CleanupAsync = async () => await cleanup(),
+            Capabilities              = Capabilities,
+            CleanupAsync              = async () => await cleanup(),
         };
     }
 
