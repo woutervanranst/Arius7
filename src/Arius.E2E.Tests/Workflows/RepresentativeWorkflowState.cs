@@ -1,5 +1,6 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.E2E.Tests.Scenarios;
 
 namespace Arius.E2E.Tests.Workflows;
 
