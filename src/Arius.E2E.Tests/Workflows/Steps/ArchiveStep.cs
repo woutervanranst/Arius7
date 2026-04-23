@@ -22,7 +22,5 @@ internal sealed record ArchiveStep(
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
         state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
         state.LatestSnapshotVersion = RepresentativeWorkflowRunner.FormatSnapshotVersion(result.SnapshotTime);
-        state.LatestRootHash = result.RootHash;
-        state.SnapshotCount++;
     }
 }

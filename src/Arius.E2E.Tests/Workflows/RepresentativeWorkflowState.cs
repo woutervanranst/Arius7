@@ -24,16 +24,9 @@ internal sealed class RepresentativeWorkflowState
 
     public string? LatestSnapshotVersion { get; set; }
 
-    public string? LatestRootHash { get; set; }
+    public int? ChunkBlobCountBeforeNoOpArchive { get; set; }
 
-    public int SnapshotCount { get; set; }
-
-    public WorkflowNoOpArchiveBaseline? NoOpArchiveBaseline { get; set; }
+    public int? FileTreeBlobCountBeforeNoOpArchive { get; set; }
 
     public ArchiveTierWorkflowOutcome? ArchiveTierOutcome { get; set; }
 }
-
-internal sealed record WorkflowNoOpArchiveBaseline(
-    string RootHash,
-    int ChunkCount,
-    int FileTreeCount);
