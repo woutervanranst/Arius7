@@ -1,6 +1,6 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
-using Arius.E2E.Tests.Workflows;
+using Arius.E2E.Tests.Scenarios;
 
 namespace Arius.E2E.Tests;
 
@@ -16,17 +16,24 @@ internal class ArchiveTierRepresentativeTests(AzureE2EBackendFixture backend)
             return;
         }
 
-        var workflow = new RepresentativeWorkflowDefinition(
-            "archive-tier-representative-workflow",
-            SyntheticRepositoryProfile.Small,
-            20260419,
-            []);
+        var scenario = RepresentativeScenarioCatalog.ArchiveTierPlanning;
 
-        var result = await RepresentativeWorkflowRunner.RunAsync(
+        var result = await RepresentativeScenarioRunner.RunAsync(
             backend,
-            workflow,
+            scenario,
+            SyntheticRepositoryProfile.Small,
+            seed: 20260419,
             cancellationToken: cancellationToken);
 
         result.WasSkipped.ShouldBeFalse();
+        result.ArchiveTierOutcome.ShouldNotBeNull();
+        result.ArchiveTierOutcome.WasCostEstimateCaptured.ShouldBeTrue();
+        result.ArchiveTierOutcome.InitialPendingChunks.ShouldBeGreaterThan(0);
+        result.ArchiveTierOutcome.InitialFilesRestored.ShouldBe(0);
+        result.ArchiveTierOutcome.PendingChunksOnRerun.ShouldBeGreaterThan(0);
+        result.ArchiveTierOutcome.RerunCopyCalls.ShouldBe(0);
+        result.ArchiveTierOutcome.ReadyFilesRestored.ShouldBeGreaterThan(0);
+        result.ArchiveTierOutcome.ReadyPendingChunks.ShouldBe(0);
+        result.ArchiveTierOutcome.CleanupDeletedChunks.ShouldBeGreaterThan(0);
     }
 }
