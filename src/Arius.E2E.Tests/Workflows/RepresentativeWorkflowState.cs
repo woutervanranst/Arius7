@@ -8,7 +8,9 @@ internal sealed class RepresentativeWorkflowState
 {
     public required E2EStorageBackendContext Context { get; init; }
 
-    public required E2EFixture Fixture { get; init; }
+    public required Func<E2EStorageBackendContext, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; }
+
+    public required E2EFixture Fixture { get; set; }
 
     public required SyntheticRepositoryDefinition Definition { get; init; }
 

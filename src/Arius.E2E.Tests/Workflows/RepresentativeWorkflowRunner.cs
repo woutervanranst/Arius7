@@ -46,20 +46,32 @@ internal static class RepresentativeWorkflowRunner
         dependencies ??= new RepresentativeWorkflowRunnerDependencies();
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
-        await using var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
+        var fixture = await dependencies.CreateFixtureAsync(context, cancellationToken);
+        RepresentativeWorkflowState? state = null;
 
-        var state = new RepresentativeWorkflowState
+        try
         {
-            Context = context,
-            Fixture = fixture,
-            Definition = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
-            Seed = workflow.Seed,
-        };
+            state = new RepresentativeWorkflowState
+            {
+                Context = context,
+                CreateFixtureAsync = dependencies.CreateFixtureAsync,
+                Fixture = fixture,
+                Definition = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
+                Seed = workflow.Seed,
+            };
 
-        foreach (var step in workflow.Steps)
-            await step.ExecuteAsync(state, cancellationToken);
+            foreach (var step in workflow.Steps)
+                await step.ExecuteAsync(state, cancellationToken);
 
-        return new RepresentativeWorkflowRunResult(false, ArchiveTierOutcome: state.ArchiveTierOutcome);
+            return new RepresentativeWorkflowRunResult(false, ArchiveTierOutcome: state.ArchiveTierOutcome);
+        }
+        finally
+        {
+            if (state is not null)
+                await state.Fixture.DisposeAsync();
+            else
+                await fixture.DisposeAsync();
+        }
     }
 
     internal static Task<ArchiveResult> ArchiveAsync(
