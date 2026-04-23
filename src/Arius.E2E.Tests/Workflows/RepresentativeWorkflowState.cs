@@ -6,11 +6,11 @@ namespace Arius.E2E.Tests.Workflows;
 
 internal sealed class RepresentativeWorkflowState
 {
-    public required E2EStorageBackendContext BackendContext { get; init; }
+    public required E2EStorageBackendContext Context { get; init; }
 
-    public IRepresentativeScenarioFixture? Fixture { get; set; }
+    public E2EFixture? Fixture { get; set; }
 
-    public required RepresentativeWorkflowDefinition Definition { get; init; }
+    public required SyntheticRepositoryDefinition Definition { get; init; }
 
     public required int Seed { get; init; }
 

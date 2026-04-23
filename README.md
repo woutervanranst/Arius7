@@ -28,9 +28,6 @@ Archive and restore at a glance:
 Download the binary for your platform from the
 [latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
-For OpenCode in this repository, `opencode.json` includes the `superpowers` plugin.
-Restart OpenCode after pulling the workspace if you want the plugin skills to load.
-
 ### Windows
 
 ```powershell
@@ -137,8 +134,6 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 - `RepresentativeArchiveRestoreTests.cs` runs the representative archive and restore matrix on Azurite and, when credentials are available, live Azure.
 - `ArchiveTierRepresentativeTests.cs` covers live Azure archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup.
 - `E2ETests.cs` keeps the live Azure credential sanity check and a small amount of unique live coverage.
-- `Workflows/` currently holds the new representative workflow shells while the active representative runner and tests still execute through the existing scenario catalog.
-
 Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
 Live Azure coverage is opt-in and currently skips the cold-restore representative scenarios tracked in issue `#65`.
 
