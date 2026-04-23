@@ -16,7 +16,7 @@ internal class ArchiveTierRepresentativeTests(AzureE2EBackendFixture backend)
             return;
         }
 
-        var scenario = RepresentativeScenarioCatalog.All.Single(x => x.Name == "archive-tier-planning");
+        var scenario = RepresentativeScenarioCatalog.ArchiveTierPlanning;
 
         var result = await RepresentativeScenarioRunner.RunAsync(
             backend,

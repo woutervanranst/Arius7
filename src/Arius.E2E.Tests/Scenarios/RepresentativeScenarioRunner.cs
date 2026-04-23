@@ -81,7 +81,7 @@ internal static class RepresentativeScenarioRunner
         if (scenario.CacheState == ScenarioCacheState.Cold)
             await dependencies.ResetLocalCacheAsync(context.AccountName, context.ContainerName);
 
-        if (scenario.Name == "archive-tier-planning")
+        if (scenario == RepresentativeScenarioCatalog.ArchiveTierPlanning)
         {
             var archiveTierOutcome = await ExecuteArchiveTierScenarioAsync(
                 context,
@@ -295,9 +295,9 @@ internal static class RepresentativeScenarioRunner
         {
             RootDirectory = string.Empty,
             Overwrite = scenario.UseOverwrite,
-            Version = scenario.RestoreVersion == "previous"
+            Version = scenario.RestoreTarget == ScenarioRestoreTarget.Previous
                 ? previousSnapshotVersion
-                : scenario.RestoreVersion,
+                : null,
         };
 
         return scenario.RestoreTarget switch
@@ -332,7 +332,8 @@ internal static class RepresentativeScenarioRunner
         if (scenario.RestoreTarget != ScenarioRestoreTarget.Latest)
             return;
 
-        if (scenario.Name is not "restore-local-conflict-no-overwrite" and not "restore-local-conflict-overwrite")
+        if (scenario != RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite &&
+            scenario != RepresentativeScenarioCatalog.RestoreLocalConflictOverwrite)
             return;
 
         var conflictPath = GetConflictPath(definition, expectedVersion);
@@ -354,7 +355,7 @@ internal static class RepresentativeScenarioRunner
         if (scenario.RestoreTarget == ScenarioRestoreTarget.None)
             return;
 
-        if (!scenario.UseOverwrite && scenario.Name == "restore-local-conflict-no-overwrite")
+        if (scenario == RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite)
         {
             var conflictPath = GetConflictPath(definition, expectedVersion);
             var restoredPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));

@@ -49,11 +49,10 @@ internal class RepresentativeArchiveRestoreTests
         if (backend is not AzureE2EBackendFixture)
             return false;
 
-        return scenario.Name is
-            "restore-latest-cold-cache" or
-            "restore-previous-cold-cache" or
-            "restore-local-conflict-no-overwrite" or
-            "restore-local-conflict-overwrite" or
-            "archive-tier-planning";
+        return scenario == RepresentativeScenarioCatalog.RestoreLatestColdCache ||
+               scenario == RepresentativeScenarioCatalog.RestorePreviousColdCache ||
+               scenario == RepresentativeScenarioCatalog.RestoreLocalConflictNoOverwrite ||
+               scenario == RepresentativeScenarioCatalog.RestoreLocalConflictOverwrite ||
+               scenario == RepresentativeScenarioCatalog.ArchiveTierPlanning;
     }
 }
