@@ -8,13 +8,13 @@ internal sealed class RepresentativeWorkflowState
 {
     public required E2EStorageBackendContext Context { get; init; }
 
-    public E2EFixture? Fixture { get; set; }
+    public required E2EFixture Fixture { get; init; }
 
     public required SyntheticRepositoryDefinition Definition { get; init; }
 
     public required int Seed { get; init; }
 
-    public SyntheticRepositoryVersion CurrentSourceVersion { get; set; }
+    public SyntheticRepositoryVersion? CurrentSourceVersion { get; set; }
 
     public RepositoryTreeSnapshot? CurrentMaterializedSnapshot { get; set; }
 

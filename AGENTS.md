@@ -97,6 +97,7 @@ Specialist agents
 ## Session Rules
 
 - Always update `README.md` (high level & accessible for humans - do not mention code concepts unless explicitly asked) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
+- Project-level OpenCode configuration lives in `opencode.json`. This workspace installs the `superpowers@git+https://github.com/obra/superpowers.git` plugin; restart OpenCode after config changes so the plugin is reloaded.
 
 ## Scale And Durability
 - Arius is a backup tool for important files. Correctness, durability, and recoverability matter more than raw throughput.
@@ -136,6 +137,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - `src/Arius.E2E.Tests/E2ETests.cs` is now only the live Azure credential/configuration sanity check; representative suites own archive and restore behavior coverage.
 - `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` is the dedicated live Azure representative coverage for archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup verification.
 - The representative Azure E2E cold-restore scenarios are temporarily skipped in `src/Arius.E2E.Tests/RepresentativeArchiveRestoreTests.cs` with a reference to issue `#65`. Do not remove that skip until the cold-cache restore performance issue is fixed and the Azure scenarios are re-verified.
+
 ## Code Style Preference
 
 - Make non-test classes `internal`. Only make them `public` when they must be consumed by another non-test assembly; for test access, prefer InternalsVisibleTo.

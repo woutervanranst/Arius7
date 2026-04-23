@@ -5,5 +5,5 @@ namespace Arius.E2E.Tests.Workflows;
 internal static class RepresentativeWorkflowCatalog
 {
     internal static readonly RepresentativeWorkflowDefinition Canonical =
-        new("canonical", SyntheticRepositoryProfile.Representative, 20260419, []);
+        new("canonical-representative-workflow", SyntheticRepositoryProfile.Representative, 20260419, []);
 }
