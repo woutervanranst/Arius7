@@ -6,4 +6,7 @@ internal static class RepresentativeWorkflowCatalog
 {
     internal static readonly RepresentativeWorkflowDefinition Canonical =
         new("canonical-representative-workflow", SyntheticRepositoryProfile.Representative, 20260419, []);
+
+    internal static readonly IReadOnlyList<RepresentativeWorkflowDefinition> All =
+        [Canonical];
 }
