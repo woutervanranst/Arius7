@@ -90,22 +90,37 @@ arius ls \
   -c photos-backup
 ```
 
-### Account key
+### Updating
 
-Pass `-k` on the command line, set `ARIUS_KEY` environment variable, or store it in
-[.NET user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets):
+Run:
 
-```bash
-dotnet user-secrets set "arius:<account>:key" "<key>"
+```
+arius update
 ```
 
-### Running tests locally
+This checks GitHub Releases for a newer version, downloads it, and replaces the binary in-place.
 
-Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
-`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set for live Azure coverage.
-Azurite-backed integration and E2E tests now report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
+### Account key
 
-## End-to-End Tests
+Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticate with the Azure CLI or store it in a `dotnet user-secrets set "arius:<account>:key" "<key>"`.
+
+## Development
+
+### Test Suite Architecture
+
+TODO list the purpose of every test project | requires real azure credentaisl Y/N | uses azurite Y/N
+
+Azurite-backed integration and E2E tests report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
+
+### Setup
+
+All test suites refer the same set of [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) and refer the same set of environment variables. To set up:
+
+```bash
+dotnet user-secrets set "ARIUS_E2E_ACCOUNT" <name> --project src/Arius.E2E.Tests
+dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
+```
+### End-to-End Tests
 
 The end-to-end tests use a shared representative scenario model across two storage backends:
 
@@ -120,17 +135,6 @@ Azurite-backed tests are discovered on every runner and skip at runtime when Doc
 `src/Arius.E2E.Tests/E2ETests.cs` retains the live Azure credential sanity check and a small amount of unique live coverage.
 `src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.
 The representative E2E suite currently skips the live Azure cold-restore scenarios tracked in issue `#65` because those cases time out while rebuilding remote repository metadata on a cold cache.
-
-
-## Updating
-
-Run:
-
-```
-arius update
-```
-
-This checks GitHub Releases for a newer version, downloads it, and replaces the binary in-place.
 
 ## Blob Storage Structure
 
