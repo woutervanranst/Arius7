@@ -108,7 +108,17 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ### Test Suite Architecture
 
-TODO list the purpose of every test project | requires real azure credentaisl Y/N | uses azurite Y/N
+| Test project | Purpose | Requires real Azure credentials | Uses Azurite |
+|-------|-------------|-------------------------------|--------------|
+| `src/Arius.Core.Tests` | Fast unit and feature-level tests for core archive, restore, list, snapshot, chunk, and tree behavior without a real storage emulator. | N | N |
+| `src/Arius.AzureBlob.Tests` | Tests the Azure Blob adapter and Azure-specific storage boundary behavior in isolation. | N | N |
+| `src/Arius.Cli.Tests` | Tests command-line parsing, option wiring, and CLI-facing behavior. | N | N |
+| `src/Arius.Architecture.Tests` | Enforces repository structure and architectural boundaries. | N | N |
+| `src/Arius.Explorer.Tests` | Windows-only tests for the Explorer application. | N | N |
+| `src/Arius.Integration.Tests` | Verifies Arius pipelines and shared services against an emulator-backed blob repository, including archive, restore, list, chunk-index, filetree, and crash-recovery paths. | N | Y |
+| `src/Arius.E2E.Tests` | End-to-end Arius behavior coverage across representative archive and restore scenarios, with Azurite for shared coverage and live Azure for opt-in real-service coverage. | Y | Y |
+
+`src/Arius.Tests.Shared` is not a test project. It contains reusable test infrastructure shared by the integration and E2E suites.
 
 Azurite-backed integration and E2E tests report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
 
@@ -122,19 +132,14 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 ```
 ### End-to-End Tests
 
-The end-to-end tests use a shared representative scenario model across two storage backends:
+`src/Arius.E2E.Tests/` contains the actual end-to-end Arius coverage.
 
-- Azurite for local and CI validation
-- Azure Blob Storage for opt-in real-service validation
+- `RepresentativeArchiveRestoreTests.cs` runs the representative archive and restore matrix on Azurite and, when credentials are available, live Azure.
+- `ArchiveTierRepresentativeTests.cs` covers live Azure archive-tier planning, pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup.
+- `E2ETests.cs` keeps the live Azure credential sanity check and a small amount of unique live coverage.
 
-The archive history is generated deterministically from a fixed seed and named dataset profile, so the same repository shape and mutations can be reproduced across runs.
-Reusable Docker-backed and repository-fixture test infrastructure now lives in `src/Arius.Tests.Shared/` so test projects do not depend on each other directly.
-Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable instead of being filtered out ahead of time.
-`src/Arius.E2E.Tests/` now focuses on actual end-to-end coverage only; helper and scenario support code stays in the project, but self-tests for that harness were removed to keep the suite focused on Arius behavior.
-
-`src/Arius.E2E.Tests/E2ETests.cs` retains the live Azure credential sanity check and a small amount of unique live coverage.
-`src/Arius.E2E.Tests/ArchiveTierRepresentativeTests.cs` covers the live Azure archive-tier planning path, including pending rehydration, ready restore from `chunks-rehydrated/`, and cleanup of rehydrated chunks.
-The representative E2E suite currently skips the live Azure cold-restore scenarios tracked in issue `#65` because those cases time out while rebuilding remote repository metadata on a cold cache.
+Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
+Live Azure coverage is opt-in and currently skips the cold-restore representative scenarios tracked in issue `#65`.
 
 ## Blob Storage Structure
 
