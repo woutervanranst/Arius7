@@ -7,7 +7,6 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
-using Arius.E2E.Tests.Services;
 using Arius.Tests.Shared.IO;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
@@ -43,18 +42,25 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
+        // 1. Reuse the existing archived source content from the canonical workflow.
         // Start from a clean fixture rooted at the preserved versioned source tree so the
         // archive-tier checks run against the same content the workflow archived earlier.
         FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);
 
+        // 2. Read the hydrated tar chunks backing the target subtree and keep their bytes around
+        // so we can later simulate the "rehydration is ready" path without waiting on Azure.
         // Identify the tar chunks backing the target subtree and move those existing chunks
         // to archive tier. The workflow reuses the canonical history instead of re-archiving.
         var tarChunks = await IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
+
+        // 3. Force those existing tar chunks into archive tier.
         await MoveChunksToArchiveAsync(
             azureBlobContainer,
             tarChunks.Select(chunk => chunk.ChunkHash),
             cancellationToken);
 
+        // 4. First restore run: verify that archive-tier restore prompts for rehydration and
+        // does not restore files while the chunks are still archived.
         // First restore pass should detect archived chunks, prompt for rehydration, and avoid
         // restoring files until ready rehydrated chunk blobs become available.
         var firstEstimateCaptured = false;
@@ -84,6 +90,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
+        // 5. Replace the pending staged blobs with the ready rehydrated blobs we saved earlier.
         // Replace the pending rehydrated blobs with ready blobs so the next restore observes
         // the post-rehydration path without waiting on Azure's real archive-tier timing.
         await DeleteBlobsAsync(
@@ -109,6 +116,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         try
         {
+            // 6. Second restore run: verify that restore now succeeds from chunks-rehydrated/
+            // and that it cleans up the temporary rehydrated blobs afterward.
             // Ready restore should now succeed, consume the rehydrated tar chunks, and clean
             // up the temporary rehydrated blobs after the target subtree is restored.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
