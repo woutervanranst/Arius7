@@ -8,6 +8,7 @@ using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Services;
+using Arius.Tests.Shared.IO;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -35,7 +36,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
-        await CopyDirectoryAsync(sourceState.RootPath, state.Fixture.LocalRoot, cancellationToken);
+        FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);
 
         var tarChunks = await IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
         await MoveChunksToArchiveAsync(
@@ -123,6 +124,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
             await AssertArchiveTierRestoreOutcomeAsync(
                 sourceState,
+                state.Fixture.Encryption,
                 TargetPath,
                 readyRestoreRoot);
 
@@ -270,6 +272,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         static async Task AssertArchiveTierRestoreOutcomeAsync(
             SyntheticRepositoryState sourceState,
+            IEncryptionService encryption,
             string targetPath,
             string readyRestoreRoot)
         {
@@ -278,6 +281,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(
                 expectedRestoreState,
                 readyRestoreRoot,
+                encryption,
                 includePointerFiles: false);
 
             foreach (var relativePath in expectedRestoreState.Files.Keys)
@@ -285,29 +289,6 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
                 File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-            }
-        }
-
-        static async Task CopyDirectoryAsync(string sourceRootPath, string targetRootPath, CancellationToken cancellationToken)
-        {
-            if (Directory.Exists(targetRootPath))
-                Directory.Delete(targetRootPath, recursive: true);
-
-            Directory.CreateDirectory(targetRootPath);
-
-            foreach (var directoryPath in Directory.EnumerateDirectories(sourceRootPath, "*", SearchOption.AllDirectories))
-            {
-                var relativePath = Path.GetRelativePath(sourceRootPath, directoryPath);
-                Directory.CreateDirectory(Path.Combine(targetRootPath, relativePath));
-            }
-
-            foreach (var filePath in Directory.EnumerateFiles(sourceRootPath, "*", SearchOption.AllDirectories))
-            {
-                var relativePath = Path.GetRelativePath(sourceRootPath, filePath);
-                var targetPath = Path.Combine(targetRootPath, relativePath);
-                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-
-                File.Copy(filePath, targetPath, overwrite: true);
             }
         }
 

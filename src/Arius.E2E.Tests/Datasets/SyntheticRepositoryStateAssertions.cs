@@ -6,18 +6,19 @@ internal static class SyntheticRepositoryStateAssertions
 {
     public static async Task AssertMatchesDiskTreeAsync(
         SyntheticRepositoryState expected,
-        string rootPath)
+        string rootPath,
+        IEncryptionService encryption)
     {
-        await AssertMatchesDiskTreeAsync(expected, rootPath, includePointerFiles: true);
+        await AssertMatchesDiskTreeAsync(expected, rootPath, encryption, includePointerFiles: true);
     }
 
     public static async Task AssertMatchesDiskTreeAsync(
         SyntheticRepositoryState expected,
         string rootPath,
+        IEncryptionService encryption,
         bool includePointerFiles)
     {
         var actual = new Dictionary<string, string>(StringComparer.Ordinal);
-        var hasher = new PlaintextPassthroughService();
 
         foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
         {
@@ -27,7 +28,8 @@ internal static class SyntheticRepositoryStateAssertions
             if (!includePointerFiles && relativePath.EndsWith(".pointer.arius", StringComparison.Ordinal))
                 continue;
 
-            var bytes = await hasher.ComputeHashAsync(File.OpenRead(filePath));
+            await using var stream = File.OpenRead(filePath);
+            var bytes = await encryption.ComputeHashAsync(stream);
             actual[relativePath] = Convert.ToHexString(bytes);
         }
 

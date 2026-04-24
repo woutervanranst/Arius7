@@ -13,7 +13,7 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("large.bin", 2 * 1024 * 1024);
-        var contentHash = env.ComputeHash(content);
+        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
 
         await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(contentHash), content, uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(contentHash));
@@ -31,9 +31,9 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("small.txt", 256);
-        var contentHash = env.ComputeHash(content);
+        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
 
-        var tarHash = env.ComputeHash(content);
+        var tarHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
         await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
 
@@ -48,7 +48,7 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
-        var contentHash = env.ComputeHash(content);
+        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
         var blobName = BlobPaths.Chunk(contentHash);
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);

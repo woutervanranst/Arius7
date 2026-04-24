@@ -37,6 +37,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public FakeInMemoryBlobContainerService Blobs { get; }
 
+    public IEncryptionService Encryption => _encryption;
+
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
         var content = new byte[sizeBytes];
@@ -46,8 +48,6 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         File.WriteAllBytes(fullPath, content);
         return content;
     }
-
-    public string ComputeHash(byte[] content) => Convert.ToHexString(_encryption.ComputeHash(content)).ToLowerInvariant();
 
     public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
     {

@@ -33,7 +33,7 @@ internal static class RepresentativeWorkflowRunner
 
         try
         {
-            var versionedSourceRoot = Path.Combine(Path.GetTempPath(), $"arius-representative-source-{Guid.NewGuid():N}");
+            var versionedSourceRoot = Path.Combine(Path.GetTempPath(), "arius", $"arius-representative-source-{Guid.NewGuid():N}");
             Directory.CreateDirectory(versionedSourceRoot);
 
             state = new RepresentativeWorkflowState

@@ -44,7 +44,7 @@ internal static class Helpers
         if (!state.VersionedSourceStates.TryGetValue(expectedVersion, out var expectedState))
             throw new InvalidOperationException($"Expected source state for version '{expectedVersion}' is not available.");
 
-        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreRoot, includePointerFiles: false);
+        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreRoot, fixture.Encryption, includePointerFiles: false);
 
         if (!useNoPointers)
         {
