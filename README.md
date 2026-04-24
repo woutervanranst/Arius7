@@ -106,7 +106,7 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
-The synthetic end-to-end repository generator now rejects invalid rename destinations and Windows-style absolute paths up front so representative workflow data stays inside the declared test roots.
+The end-to-end test helpers now reject invalid synthetic paths up front and clean up temporary workflow folders even when fixture startup fails.
 
 ### Test Suite Architecture
 

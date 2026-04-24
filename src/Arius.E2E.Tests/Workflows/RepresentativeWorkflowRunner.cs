@@ -41,12 +41,15 @@ internal static class RepresentativeWorkflowRunner
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
         var workflowRoot = Path.Combine(Path.GetTempPath(), "arius", $"arius-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(workflowRoot);
-        var fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
+        E2EFixture? fixture = null;
         RepresentativeWorkflowState? state = null;
+
+        Directory.CreateDirectory(workflowRoot);
 
         try
         {
+            fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
+
             var versionedSourceRoot = Path.Combine(workflowRoot, "representative-source");
             Directory.CreateDirectory(versionedSourceRoot);
 
@@ -71,8 +74,11 @@ internal static class RepresentativeWorkflowRunner
             {
                 await state.Fixture.DisposeAsync();
             }
-            else
+            else if (fixture is not null)
                 await fixture.DisposeAsync();
+
+            if (fixture is null && state is null && Directory.Exists(workflowRoot))
+                Directory.Delete(workflowRoot, recursive: true);
 
             if (Directory.Exists(workflowRoot))
                 Directory.Delete(workflowRoot, recursive: true);
