@@ -134,6 +134,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Keep representative workflow temp-root cleanup running even if fixture disposal throws during teardown.
 - Dispose shared test fixture index services before deleting temp roots so cache-backed resources are released in a safe order.
 - Recreate reused repository fixture temp roots from a clean state so stale source/restore files do not leak between workflow fixture instances.
+- Keep best-effort test cleanup paths observable with lightweight diagnostics instead of empty catch blocks.
 - Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
 - Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
 - Treat dataset versions (`V1` vs `V2`) and cache transitions (`Warm` vs `Cold`) as explicit workflow steps in one evolving repository history, not incidental fixture behavior.

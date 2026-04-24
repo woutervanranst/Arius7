@@ -25,8 +25,9 @@ internal sealed class AzuriteE2EBackendFixture : IE2EStorageBackend, IAsyncIniti
             {
                 await container.DeleteIfExistsAsync(cancellationToken: default);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine(ex);
                 // Best-effort cleanup; disposal should not fail the test path.
             }
         }

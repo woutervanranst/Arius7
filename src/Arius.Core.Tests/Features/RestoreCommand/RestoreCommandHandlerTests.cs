@@ -150,8 +150,9 @@ public class RestoreCommandHandlerTests
                 if (Directory.Exists(path))
                     Directory.Delete(path, recursive: true);
             }
-            catch (DirectoryNotFoundException)
+            catch (DirectoryNotFoundException ex)
             {
+                System.Diagnostics.Debug.WriteLine(ex);
             }
         }
     }
