@@ -72,17 +72,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string accountName,
         string containerName,
         string? passphrase = null,
+        string? tempRoot = null,
         Action<string>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
-        var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
+        var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var encryption      = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
         var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
     }
 
     public static Task<RepositoryTestFixture> CreateAsync(
@@ -90,17 +91,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string accountName,
         string containerName,
         IEncryptionService encryption,
+        string? tempRoot = null,
         Action<string>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
-        var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
+        var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
 
         var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, tempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot)); }
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot)); }
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _archiveLogger, _account, _container);
@@ -160,16 +162,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         return combined;
     }
 
-    static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots()
+    static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
     {
         var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
         Directory.CreateDirectory(tempRootBase);
 
-        var tempRoot    = Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
-        var localRoot   = Path.Combine(tempRoot,     "source");
-        var restoreRoot = Path.Combine(tempRoot,     "restore");
+        var resolvedTempRoot = tempRoot ?? Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
+        var localRoot        = Path.Combine(resolvedTempRoot, "source");
+        var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
+
+        Directory.CreateDirectory(resolvedTempRoot);
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
-        return (tempRoot, localRoot, restoreRoot);
+        return (resolvedTempRoot, localRoot, restoreRoot);
     }
 }
