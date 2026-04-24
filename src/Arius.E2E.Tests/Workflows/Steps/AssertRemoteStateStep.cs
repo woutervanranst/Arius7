@@ -9,9 +9,7 @@ internal enum RemoteAssertionKind
     NoOpArchive,
 }
 
-internal sealed record AssertRemoteStateStep(
-    string Name,
-    RemoteAssertionKind Kind) : IRepresentativeWorkflowStep
+internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Kind) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {

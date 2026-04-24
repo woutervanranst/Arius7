@@ -4,12 +4,7 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
-internal sealed record ArchiveStep(
-    string Name,
-    BlobTier UploadTier = BlobTier.Cool,
-    bool NoPointers = false,
-    bool RemoveLocal = false,
-    bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
+internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.Cool, bool NoPointers = false, bool RemoveLocal = false, bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
@@ -22,9 +17,9 @@ internal sealed record ArchiveStep(
         var options = new ArchiveCommandOptions
         {
             RootDirectory = state.Fixture.LocalRoot,
-            UploadTier = UploadTier,
-            NoPointers = NoPointers,
-            RemoveLocal = RemoveLocal,
+            UploadTier    = UploadTier,
+            NoPointers    = NoPointers,
+            RemoveLocal   = RemoveLocal,
         };
 
         var result = await state.Fixture.CreateArchiveHandler()

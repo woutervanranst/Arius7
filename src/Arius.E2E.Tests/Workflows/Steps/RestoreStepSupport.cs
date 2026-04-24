@@ -6,11 +6,7 @@ namespace Arius.E2E.Tests.Workflows.Steps;
 
 internal static class RestoreStepSupport
 {
-    public static Task<RestoreResult> RestoreAsync(
-        E2EFixture fixture,
-        bool overwrite,
-        string? version,
-        CancellationToken cancellationToken)
+    public static Task<RestoreResult> RestoreAsync(E2EFixture fixture, bool overwrite, string? version, CancellationToken cancellationToken)
     {
         var options = new RestoreOptions
         {

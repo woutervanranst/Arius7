@@ -1,4 +1,3 @@
-using Arius.Core.Features.RestoreCommand;
 using Arius.E2E.Tests.Datasets;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
@@ -9,12 +8,7 @@ internal enum WorkflowRestoreTarget
     Previous,
 }
 
-internal sealed record RestoreStep(
-    string Name,
-    WorkflowRestoreTarget Target,
-    SyntheticRepositoryVersion ExpectedVersion,
-    bool Overwrite = true,
-    bool ExpectPointers = true) : IRepresentativeWorkflowStep
+internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, SyntheticRepositoryVersion ExpectedVersion, bool Overwrite = true, bool ExpectPointers = true) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {

@@ -1,4 +1,3 @@
-using Arius.Core.Features.RestoreCommand;
 using Arius.E2E.Tests.Datasets;
 
 namespace Arius.E2E.Tests.Workflows.Steps;

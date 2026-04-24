@@ -4,7 +4,7 @@ using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 
-namespace Arius.E2E.Tests.Workflows;
+namespace Arius.E2E.Tests.Workflows.Steps;
 
 internal static class WorkflowBlobAssertions
 {
@@ -28,7 +28,7 @@ internal static class WorkflowBlobAssertions
     public static Task<SnapshotManifest?> ResolveVersionAsync(RepresentativeWorkflowState state, string version, CancellationToken cancellationToken)
         => state.Fixture.Snapshot.ResolveAsync(version, cancellationToken);
 
-    private static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, string contentHash, CancellationToken cancellationToken)
+    static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, string contentHash, CancellationToken cancellationToken)
         => state.Fixture.Index.LookupAsync(contentHash, cancellationToken);
 
     public static async Task AssertLargeDuplicateLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
