@@ -106,7 +106,7 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
-The end-to-end workflow harness now cleans up its temporary workflow folder even when fixture disposal throws during teardown.
+The end-to-end workflow harness now cleans up its temporary workflow folder even when fixture disposal throws during teardown, and reused workflow temp roots are recreated empty before a fresh fixture starts.
 
 ### Test Suite Architecture
 

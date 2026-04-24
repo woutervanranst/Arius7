@@ -173,6 +173,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var localRoot        = Path.Combine(resolvedTempRoot, "source");
         var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
 
+        if (Directory.Exists(resolvedTempRoot))
+            Directory.Delete(resolvedTempRoot, recursive: true);
+
         Directory.CreateDirectory(resolvedTempRoot);
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
