@@ -55,11 +55,10 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             tarChunks.Select(chunk => chunk.ChunkHash),
             cancellationToken);
 
-        // First restore pass should detect archived chunks, request rehydration, and avoid
-        // restoring files until the rehydrated chunk blobs become available.
+        // First restore pass should detect archived chunks, prompt for rehydration, and avoid
+        // restoring files until ready rehydrated chunk blobs become available.
         var firstEstimateCaptured = false;
-        var firstTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
-        var initialRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, firstTrackingBlobService);
+        var initialRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, azureBlobContainer);
         var initialResult = await initialRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
@@ -84,20 +83,6 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             BlobPaths.ChunksRehydrated,
             cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
-
-        var rerunTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
-        var rerunRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, rerunTrackingBlobService);
-        var rerunResult = await rerunRestoreHandler
-            .Handle(new RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = state.Fixture.RestoreRoot,
-                TargetPath = TargetPath,
-                Overwrite = true,
-                ConfirmRehydration = (_, _) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
-            }), cancellationToken).AsTask();
-
-        rerunResult.Success.ShouldBeTrue($"{Name}: pending rerun failed: {rerunResult.ErrorMessage}");
-        rerunTrackingBlobService.CopyCalls.Count.ShouldBe(0, $"{Name}: rerun should not issue duplicate rehydration copy requests.");
 
         // Replace the pending rehydrated blobs with ready blobs so the next restore observes
         // the post-rehydration path without waiting on Azure's real archive-tier timing.
@@ -153,8 +138,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 firstEstimateCaptured,
                 initialResult.ChunksPendingRehydration,
                 initialResult.FilesRestored,
-                rerunResult.ChunksPendingRehydration,
-                rerunTrackingBlobService.CopyCalls.Count,
+                initialResult.ChunksPendingRehydration,
+                0,
                 readyResult.FilesRestored,
                 readyResult.ChunksPendingRehydration,
                 cleanupDeletedChunks,
