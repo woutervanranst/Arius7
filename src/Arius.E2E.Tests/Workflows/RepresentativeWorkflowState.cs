@@ -17,7 +17,7 @@ internal sealed class RepresentativeWorkflowState
 
     public SyntheticRepositoryVersion? CurrentSourceVersion { get; set; }
 
-    public RepositoryTreeSnapshot? CurrentMaterializedSnapshot { get; set; }
+    public SyntheticRepositoryState? CurrentSyntheticRepositoryState { get; set; }
 
     public string? PreviousSnapshotVersion { get; set; }
 

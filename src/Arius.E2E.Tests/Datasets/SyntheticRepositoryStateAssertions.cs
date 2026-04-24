@@ -1,16 +1,16 @@
 namespace Arius.E2E.Tests.Datasets;
 
-internal static class RepositoryTreeAssertions
+internal static class SyntheticRepositoryStateAssertions
 {
     public static async Task AssertMatchesDiskTreeAsync(
-        RepositoryTreeSnapshot expected,
+        SyntheticRepositoryState expected,
         string rootPath)
     {
         await AssertMatchesDiskTreeAsync(expected, rootPath, includePointerFiles: true);
     }
 
     public static async Task AssertMatchesDiskTreeAsync(
-        RepositoryTreeSnapshot expected,
+        SyntheticRepositoryState expected,
         string rootPath,
         bool includePointerFiles)
     {

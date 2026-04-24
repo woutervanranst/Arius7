@@ -44,12 +44,12 @@ internal static class WorkflowBlobAssertions
 
     public static async Task AssertLargeDuplicateLookupAsync(
         RepresentativeWorkflowState state,
-        RepositoryTreeSnapshot expectedSnapshot,
+        SyntheticRepositoryState expectedState,
         CancellationToken cancellationToken)
     {
         var contentHash = await AssertDuplicateContentHashAsync(
             state,
-            expectedSnapshot,
+            expectedState,
             DuplicateLargePathA,
             DuplicateLargePathB,
             cancellationToken);
@@ -66,12 +66,12 @@ internal static class WorkflowBlobAssertions
 
     public static async Task AssertSmallFileTarLookupAsync(
         RepresentativeWorkflowState state,
-        RepositoryTreeSnapshot expectedSnapshot,
+        SyntheticRepositoryState expectedState,
         CancellationToken cancellationToken)
     {
         var contentHash = await AssertDuplicateContentHashAsync(
             state,
-            expectedSnapshot,
+            expectedState,
             DuplicateSmallPathA,
             DuplicateSmallPathB,
             cancellationToken);
@@ -99,13 +99,13 @@ internal static class WorkflowBlobAssertions
 
     static async Task<string> AssertDuplicateContentHashAsync(
         RepresentativeWorkflowState state,
-        RepositoryTreeSnapshot expectedSnapshot,
+        SyntheticRepositoryState expectedState,
         string pathA,
         string pathB,
         CancellationToken cancellationToken)
     {
-        expectedSnapshot.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected repository snapshot to contain '{pathA}'.");
-        expectedSnapshot.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected repository snapshot to contain '{pathB}'.");
+        expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
+        expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
         var contentHashA = await ComputeContentHashAsync(state, pathA, cancellationToken);

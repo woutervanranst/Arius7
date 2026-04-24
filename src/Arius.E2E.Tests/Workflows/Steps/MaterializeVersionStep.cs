@@ -8,7 +8,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        state.CurrentMaterializedSnapshot = await state.Fixture.MaterializeSourceAsync(
+        state.CurrentSyntheticRepositoryState = await state.Fixture.MaterializeSourceAsync(
             state.Definition,
             Version,
             state.Seed);

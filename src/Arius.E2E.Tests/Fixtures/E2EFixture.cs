@@ -116,7 +116,7 @@ public sealed class E2EFixture : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    internal Task<RepositoryTreeSnapshot> MaterializeSourceAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed)
+    internal Task<SyntheticRepositoryState> MaterializeSourceAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed)
     {
         if (Directory.Exists(LocalRoot))
             Directory.Delete(LocalRoot, recursive: true);
