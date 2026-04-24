@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -34,49 +35,64 @@ internal static class ArchiveTierStepSupport
             context.ContainerName));
     }
 
-    public static async Task<string?> PollForArchiveTierTarChunkAsync(AzureBlobContainerService blobContainer, CancellationToken cancellationToken)
+    internal sealed record ArchiveTierTarChunk(
+        string ChunkHash,
+        IReadOnlyDictionary<string, byte[]> ContentHashToBytes);
+
+    public static async Task<IReadOnlyList<ArchiveTierTarChunk>> IdentifyTarChunksAsync(
+        E2EFixture fixture,
+        string targetPath,
+        CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(3);
+        var targetRoot = E2EFixture.CombineValidatedRelativePath(fixture.LocalRoot, targetPath);
+        var contentByChunkHash = new Dictionary<string, Dictionary<string, byte[]>>(StringComparer.Ordinal);
 
-        while (!cancellationToken.IsCancellationRequested && DateTime.UtcNow < deadline)
+        foreach (var filePath in Directory.EnumerateFiles(targetRoot, "*", SearchOption.AllDirectories))
         {
-            await foreach (var blobName in blobContainer.ListAsync(BlobPaths.Chunks, cancellationToken))
-            {
-                var metadata = await blobContainer.GetMetadataAsync(blobName, cancellationToken);
-                if (metadata.Tier != BlobTier.Archive)
-                    continue;
+            var bytes = await File.ReadAllBytesAsync(filePath, cancellationToken);
+            var contentHash = Convert.ToHexString(fixture.Encryption.ComputeHash(bytes)).ToLowerInvariant();
+            var entry = await fixture.Index.LookupAsync(contentHash, cancellationToken);
 
-                if (metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType) &&
-                    ariusType == BlobMetadataKeys.TypeTar)
-                {
-                    return blobName[BlobPaths.Chunks.Length..];
-                }
+            entry.ShouldNotBeNull($"Expected chunk index entry for '{filePath}'.");
+            if (entry!.ChunkHash == contentHash)
+                continue;
+
+            if (!contentByChunkHash.TryGetValue(entry.ChunkHash, out var chunkContents))
+            {
+                chunkContents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+                contentByChunkHash[entry.ChunkHash] = chunkContents;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            chunkContents[contentHash] = bytes;
         }
 
-        return null;
+        contentByChunkHash.Count.ShouldBeGreaterThan(0, $"Expected at least one tar chunk under '{targetPath}'.");
+
+        return contentByChunkHash
+            .Select(pair => new ArchiveTierTarChunk(pair.Key, pair.Value))
+            .ToArray();
     }
 
-    public static async Task<Dictionary<string, byte[]>> ReadContentBytesAsync(string localRoot, string targetPath)
+    public static async Task MoveChunksToArchiveAsync(
+        AzureBlobContainerService blobContainer,
+        IEnumerable<string> chunkHashes,
+        CancellationToken cancellationToken)
     {
-        var contentHashToBytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-
-        foreach (var filePath in Directory.EnumerateFiles(
-                     Path.Combine(localRoot, targetPath.Replace('/', Path.DirectorySeparatorChar)),
-                     "*",
-                     SearchOption.AllDirectories))
+        foreach (var chunkHash in chunkHashes.Distinct(StringComparer.Ordinal))
         {
-            var bytes = await File.ReadAllBytesAsync(filePath);
-            contentHashToBytes[Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()] = bytes;
-        }
+            var blobName = BlobPaths.Chunk(chunkHash);
+            await blobContainer.SetTierAsync(blobName, BlobTier.Archive, cancellationToken);
 
-        return contentHashToBytes;
+            var metadata = await blobContainer.GetMetadataAsync(blobName, cancellationToken);
+            metadata.Tier.ShouldBe(BlobTier.Archive, $"Expected '{blobName}' to be moved to archive tier.");
+            metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType).ShouldBeTrue();
+            ariusType.ShouldBe(BlobMetadataKeys.TypeTar, $"Expected '{blobName}' to be a tar chunk.");
+        }
     }
 
     public static async Task SideloadRehydratedTarChunkAsync(
         AzureBlobContainerService blobContainer,
+        IEncryptionService encryption,
         string tarChunkHash,
         IReadOnlyDictionary<string, byte[]> contentHashToBytes,
         CancellationToken cancellationToken)
@@ -89,8 +105,9 @@ internal static class ArchiveTierStepSupport
         var sourceMeta = await blobContainer.GetMetadataAsync(BlobPaths.Chunk(tarChunkHash), cancellationToken);
 
         using var memoryStream = new MemoryStream();
-        await using (var gzip = new GZipStream(memoryStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var encryptionStream = encryption.WrapForEncryption(memoryStream))
         {
+            await using var gzip = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
             await using var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: false);
             foreach (var (contentHash, rawBytes) in contentHashToBytes)
             {

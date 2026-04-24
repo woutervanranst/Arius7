@@ -22,19 +22,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         await state.Fixture.MaterializeSourceAsync(state.Definition, sourceVersion, state.Seed);
 
-        var archiveResult = await ArchiveStepSupport.ArchiveAsync(
-            state.Fixture,
-            uploadTier: BlobTier.Archive,
-            cancellationToken: cancellationToken);
-
-        archiveResult.Success.ShouldBeTrue($"{Name}: archive failed: {archiveResult.ErrorMessage}");
-
-        var tarChunkHash = await ArchiveTierStepSupport.PollForArchiveTierTarChunkAsync(azureBlobContainer, cancellationToken);
-        tarChunkHash.ShouldNotBeNullOrWhiteSpace($"{Name}: expected at least one archive-tier tar chunk.");
-
-        var contentHashToBytes = await ArchiveTierStepSupport.ReadContentBytesAsync(
-            state.Fixture.LocalRoot,
-            TargetPath);
+        var tarChunks = await ArchiveTierStepSupport.IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
+        await ArchiveTierStepSupport.MoveChunksToArchiveAsync(
+            azureBlobContainer,
+            tarChunks.Select(chunk => chunk.ChunkHash),
+            cancellationToken);
 
         var firstEstimateCaptured = false;
         var firstTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
@@ -83,11 +75,15 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             BlobPaths.ChunksRehydrated,
             cancellationToken);
 
-        await ArchiveTierStepSupport.SideloadRehydratedTarChunkAsync(
-            azureBlobContainer,
-            tarChunkHash!,
-            contentHashToBytes,
-            cancellationToken);
+        foreach (var tarChunk in tarChunks)
+        {
+            await ArchiveTierStepSupport.SideloadRehydratedTarChunkAsync(
+                azureBlobContainer,
+                state.Fixture.Encryption,
+                tarChunk.ChunkHash,
+                tarChunk.ContentHashToBytes,
+                cancellationToken);
+        }
 
         var cleanupDeletedChunks = 0;
         var readyRestoreRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-ready-{Guid.NewGuid():N}");
