@@ -127,7 +127,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 ## E2E Test Guidance
 
-- Prefer the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` over ad hoc random files.
+- Use the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` instead of ad hoc random files for reproducibility.
 - Keep synthetic repository rename targets normalized and validated before root-containment checks so representative datasets cannot escape declared roots through path tricks.
 - Reject Windows-style absolute dataset paths after slash normalization so cross-platform path validation stays consistent.
 - Clean up representative workflow temp roots when fixture creation fails so failed E2E setup does not leak directories.
