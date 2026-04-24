@@ -2,7 +2,11 @@ using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.Tests.Shared.Fixtures;
@@ -28,10 +32,10 @@ public sealed class E2EFixture : IAsyncDisposable
     internal E2EFixture(
         IBlobContainerService blobContainer,
         IEncryptionService encryption,
-        Arius.Core.Shared.ChunkIndex.ChunkIndexService index,
-        Arius.Core.Shared.ChunkStorage.IChunkStorageService chunkStorage,
-        Arius.Core.Shared.FileTree.FileTreeService fileTreeService,
-        Arius.Core.Shared.Snapshot.SnapshotService snapshot,
+        ChunkIndexService index,
+        IChunkStorageService chunkStorage,
+        FileTreeService fileTreeService,
+        SnapshotService snapshot,
         string tempRoot,
         string localRoot,
         string restoreRoot,
@@ -88,13 +92,19 @@ public sealed class E2EFixture : IAsyncDisposable
     {
         var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
 
-        try
+        lock (RepositoryCacheLeaseLock)
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
+            if (HasActiveLease(accountName, containerName))
+                return Task.CompletedTask;
+
+            try
+            {
+                if (Directory.Exists(cacheDir))
+                    Directory.Delete(cacheDir, recursive: true);
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
         }
 
         return Task.CompletedTask;
@@ -216,6 +226,12 @@ public sealed class E2EFixture : IAsyncDisposable
             RepositoryCacheLeases.Remove(cacheKey);
             return !lease.PreserveRequested;
         }
+    }
+
+    static bool HasActiveLease(string accountName, string containerName)
+    {
+        var cacheKey = GetRepositoryCacheKey(accountName, containerName);
+        return RepositoryCacheLeases.TryGetValue(cacheKey, out var lease) && lease.LiveFixtureCount > 0;
     }
 
     static string GetRepositoryCacheKey(string accountName, string containerName) => $"{accountName}\n{containerName}";

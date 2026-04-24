@@ -33,13 +33,13 @@ internal sealed class AzuriteE2EBackendFixture : IE2EStorageBackend, IAsyncIniti
 
         return new E2EStorageBackendContext
         {
-            BlobContainer = service,
-            AccountName = container.AccountName,
-            ContainerName = container.Name,
-            BlobContainerClient = container,
+            BlobContainer             = service,
+            AccountName               = container.AccountName,
+            ContainerName             = container.Name,
+            BlobContainerClient       = container,
             AzureBlobContainerService = service,
-            Capabilities = Capabilities,
-            CleanupAsync = CleanupAsync,
+            Capabilities              = Capabilities,
+            CleanupAsync              = CleanupAsync,
         };
     }
 
