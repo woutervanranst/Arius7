@@ -17,31 +17,19 @@ internal sealed record AssertConflictBehaviorStep(
 
         Directory.CreateDirectory(state.Fixture.RestoreRoot);
 
-        await RepresentativeWorkflowRunner.WriteRestoreConflictAsync(
+        await RestoreStepSupport.WriteRestoreConflictAsync(
             state.Fixture,
             state.Definition,
             ExpectedVersion,
             state.Seed);
 
-        var version = Target switch
-        {
-            WorkflowRestoreTarget.Previous => state.PreviousSnapshotVersion ?? throw new InvalidOperationException("Previous snapshot version is not available."),
-            _ => null,
-        };
+        var version = RestoreStepSupport.ResolveVersion(state, Target);
 
-        var result = await RepresentativeWorkflowRunner.RestoreAsync(
-            state.Fixture,
-            new RestoreOptions
-            {
-                RootDirectory = state.Fixture.RestoreRoot,
-                Overwrite = Overwrite,
-                Version = version,
-            },
-            cancellationToken);
+        var result = await RestoreStepSupport.RestoreAsync(state.Fixture, Overwrite, version, cancellationToken);
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
 
-        await RepresentativeWorkflowRunner.AssertRestoreOutcomeAsync(
+        await RestoreStepSupport.AssertRestoreOutcomeAsync(
             state.Fixture,
             state.Definition,
             ExpectedVersion,

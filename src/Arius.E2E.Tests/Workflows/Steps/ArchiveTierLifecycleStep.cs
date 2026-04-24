@@ -22,23 +22,16 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         await state.Fixture.MaterializeSourceAsync(state.Definition, sourceVersion, state.Seed);
 
-        var archiveResult = await RepresentativeWorkflowRunner.ArchiveAsync(
-            state.Fixture,
-            RepresentativeWorkflowRunner.CreateArchiveTierOptions(state.Fixture),
+        var tarChunks = await ArchiveTierStepSupport.IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
+        await ArchiveTierStepSupport.MoveChunksToArchiveAsync(
+            azureBlobContainer,
+            tarChunks.Select(chunk => chunk.ChunkHash),
             cancellationToken);
-
-        archiveResult.Success.ShouldBeTrue($"{Name}: archive failed: {archiveResult.ErrorMessage}");
-
-        var tarChunkHash = await RepresentativeWorkflowRunner.PollForArchiveTierTarChunkAsync(azureBlobContainer, cancellationToken);
-        tarChunkHash.ShouldNotBeNullOrWhiteSpace($"{Name}: expected at least one archive-tier tar chunk.");
-
-        var contentHashToBytes = await RepresentativeWorkflowRunner.ReadArchiveTierContentBytesAsync(
-            state.Fixture.LocalRoot,
-            TargetPath);
 
         var firstEstimateCaptured = false;
         var firstTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
-        var initialResult = await RepresentativeWorkflowRunner.CreateArchiveTierRestoreHandler(state.Fixture, state.Context, firstTrackingBlobService)
+        var initialRestoreHandler = await ArchiveTierStepSupport.CreateRestoreHandlerAsync(state.Fixture, state.Context, firstTrackingBlobService);
+        var initialResult = await initialRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreRoot,
@@ -57,14 +50,15 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         initialResult.ChunksPendingRehydration.ShouldBeGreaterThan(0, $"{Name}: pending restore should report pending chunks.");
         initialResult.FilesRestored.ShouldBe(0, $"{Name}: pending restore should not restore files before rehydration is ready.");
 
-        var pendingRehydratedBlobCount = await RepresentativeWorkflowRunner.CountBlobsAsync(
+        var pendingRehydratedBlobCount = await ArchiveTierStepSupport.CountBlobsAsync(
             azureBlobContainer,
             BlobPaths.ChunksRehydrated,
             cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
         var rerunTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
-        var rerunResult = await RepresentativeWorkflowRunner.CreateArchiveTierRestoreHandler(state.Fixture, state.Context, rerunTrackingBlobService)
+        var rerunRestoreHandler = await ArchiveTierStepSupport.CreateRestoreHandlerAsync(state.Fixture, state.Context, rerunTrackingBlobService);
+        var rerunResult = await rerunRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreRoot,
@@ -76,16 +70,20 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         rerunResult.Success.ShouldBeTrue($"{Name}: pending rerun failed: {rerunResult.ErrorMessage}");
         rerunTrackingBlobService.CopyCalls.Count.ShouldBe(0, $"{Name}: rerun should not issue duplicate rehydration copy requests.");
 
-        await RepresentativeWorkflowRunner.DeleteBlobsAsync(
+        await ArchiveTierStepSupport.DeleteBlobsAsync(
             azureBlobContainer,
             BlobPaths.ChunksRehydrated,
             cancellationToken);
 
-        await RepresentativeWorkflowRunner.SideloadRehydratedTarChunkAsync(
-            azureBlobContainer,
-            tarChunkHash!,
-            contentHashToBytes,
-            cancellationToken);
+        foreach (var tarChunk in tarChunks)
+        {
+            await ArchiveTierStepSupport.SideloadRehydratedTarChunkAsync(
+                azureBlobContainer,
+                state.Fixture.Encryption,
+                tarChunk.ChunkHash,
+                tarChunk.ContentHashToBytes,
+                cancellationToken);
+        }
 
         var cleanupDeletedChunks = 0;
         var readyRestoreRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-ready-{Guid.NewGuid():N}");
@@ -108,7 +106,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             readyResult.Success.ShouldBeTrue($"{Name}: ready restore failed: {readyResult.ErrorMessage}");
             readyResult.ChunksPendingRehydration.ShouldBe(0, $"{Name}: ready restore should not leave pending rehydration chunks.");
 
-            await RepresentativeWorkflowRunner.AssertArchiveTierRestoreOutcomeAsync(
+            await ArchiveTierStepSupport.AssertRestoreOutcomeAsync(
                 state.Definition,
                 sourceVersion,
                 state.Seed,

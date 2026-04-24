@@ -17,12 +17,6 @@ internal class RepresentativeArchiveRestoreTests
             return;
         }
 
-        //if (backend is AzureE2EBackendFixture)
-        //{
-        //    Skip.Unless(false, "Azure canonical representative workflow still includes the cold-cache restore path tracked by issue #65");
-        //    return;
-        //}
-
         var result = await RepresentativeWorkflowRunner.RunAsync(
             backend,
             RepresentativeWorkflowCatalog.Canonical,
