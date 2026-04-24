@@ -52,11 +52,11 @@ internal static class RepresentativeWorkflowRunner
         {
             state = new RepresentativeWorkflowState
             {
-                Context = context,
+                Context            = context,
                 CreateFixtureAsync = dependencies.CreateFixtureAsync,
-                Fixture = fixture,
-                Definition = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
-                Seed = workflow.Seed,
+                Fixture            = fixture,
+                Definition         = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
+                Seed               = workflow.Seed,
             };
 
             foreach (var step in workflow.Steps)
@@ -73,27 +73,17 @@ internal static class RepresentativeWorkflowRunner
         }
     }
 
-    internal static Task<ArchiveResult> ArchiveAsync(
-        E2EFixture fixture,
-        ArchiveCommandOptions options,
-        CancellationToken cancellationToken = default)
+    internal static Task<ArchiveResult> ArchiveAsync(E2EFixture fixture, ArchiveCommandOptions options, CancellationToken cancellationToken = default)
     {
         return fixture.CreateArchiveHandler().Handle(new ArchiveCommand(options), cancellationToken).AsTask();
     }
 
-    internal static Task<RestoreResult> RestoreAsync(
-        E2EFixture fixture,
-        RestoreOptions options,
-        CancellationToken cancellationToken = default)
+    internal static Task<RestoreResult> RestoreAsync(E2EFixture fixture, RestoreOptions options, CancellationToken cancellationToken = default)
     {
         return fixture.CreateRestoreHandler().Handle(new RestoreCommand(options), cancellationToken).AsTask();
     }
 
-    internal static ArchiveCommandOptions CreateArchiveOptions(
-        E2EFixture fixture,
-        bool useNoPointers = false,
-        bool useRemoveLocal = false,
-        BlobTier uploadTier = BlobTier.Cool)
+    internal static ArchiveCommandOptions CreateArchiveOptions(E2EFixture fixture, bool useNoPointers = false, bool useRemoveLocal = false, BlobTier uploadTier = BlobTier.Cool)
     {
         return new ArchiveCommandOptions
         {
@@ -113,14 +103,7 @@ internal static class RepresentativeWorkflowRunner
         };
     }
 
-    internal static async Task AssertRestoreOutcomeAsync(
-        E2EFixture fixture,
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion expectedVersion,
-        int seed,
-        bool useNoPointers,
-        RestoreResult restoreResult,
-        bool preserveConflictBytes)
+    internal static async Task AssertRestoreOutcomeAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed, bool useNoPointers, RestoreResult restoreResult, bool preserveConflictBytes)
     {
         if (preserveConflictBytes)
         {
@@ -163,11 +146,7 @@ internal static class RepresentativeWorkflowRunner
         }
     }
 
-    internal static async Task WriteRestoreConflictAsync(
-        E2EFixture fixture,
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion expectedVersion,
-        int seed)
+    internal static async Task WriteRestoreConflictAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed)
     {
         var conflictPath = GetConflictPath(definition, expectedVersion);
         var fullPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
@@ -177,34 +156,20 @@ internal static class RepresentativeWorkflowRunner
         await File.WriteAllBytesAsync(fullPath, conflictBytes);
     }
 
-    internal static async Task AssertArchiveTierRestoreOutcomeAsync(
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion sourceVersion,
-        int seed,
-        string targetPath,
-        string readyRestoreRoot)
+    internal static async Task AssertArchiveTierRestoreOutcomeAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion sourceVersion, int seed, string targetPath, string readyRestoreRoot)
     {
         var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-expected-{Guid.NewGuid():N}");
         try
         {
-            var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
-                definition,
-                sourceVersion,
-                seed,
-                expectedRoot);
+            var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(definition, sourceVersion, seed, expectedRoot);
 
             var expectedRestoreTree = FilterSnapshotToPrefix(expected, targetPath, trimPrefix: false);
 
-            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(
-                expectedRestoreTree,
-                readyRestoreRoot,
-                includePointerFiles: false);
+            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expectedRestoreTree, readyRestoreRoot, includePointerFiles: false);
 
             foreach (var relativePath in expectedRestoreTree.Files.Keys)
             {
-                var pointerPath = Path.Combine(
-                    readyRestoreRoot,
-                    (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+                var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
                 File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
@@ -216,17 +181,13 @@ internal static class RepresentativeWorkflowRunner
         }
     }
 
-    internal static string FormatSnapshotVersion(DateTimeOffset snapshotTime) =>
-        snapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+    internal static string FormatSnapshotVersion(DateTimeOffset snapshotTime) => snapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
 
-    internal static string GetConflictPath(
-        SyntheticRepositoryDefinition definition,
-        SyntheticRepositoryVersion expectedVersion)
+    internal static string GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
     {
         const string v1ChangedPath = "src/module-00/group-00/file-0000.bin";
 
-        if (definition.Files.Any(file => file.Path == v1ChangedPath) &&
-            expectedVersion == SyntheticRepositoryVersion.V1)
+        if (definition.Files.Any(file => file.Path == v1ChangedPath) && expectedVersion == SyntheticRepositoryVersion.V1)
         {
             return v1ChangedPath;
         }
@@ -241,10 +202,7 @@ internal static class RepresentativeWorkflowRunner
         return bytes;
     }
 
-    internal static RestoreCommandHandler CreateArchiveTierRestoreHandler(
-        E2EFixture fixture,
-        E2EStorageBackendContext context,
-        IBlobContainerService blobContainer)
+    internal static RestoreCommandHandler CreateArchiveTierRestoreHandler(E2EFixture fixture, E2EStorageBackendContext context, IBlobContainerService blobContainer)
     {
         return new RestoreCommandHandler(
             fixture.Encryption,
@@ -258,9 +216,7 @@ internal static class RepresentativeWorkflowRunner
             context.ContainerName);
     }
 
-    internal static async Task<string?> PollForArchiveTierTarChunkAsync(
-        AzureBlobContainerService blobContainer,
-        CancellationToken cancellationToken)
+    internal static async Task<string?> PollForArchiveTierTarChunkAsync(AzureBlobContainerService blobContainer, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddMinutes(3);
 
@@ -285,9 +241,7 @@ internal static class RepresentativeWorkflowRunner
         return null;
     }
 
-    internal static async Task<Dictionary<string, byte[]>> ReadArchiveTierContentBytesAsync(
-        string localRoot,
-        string targetPath)
+    internal static async Task<Dictionary<string, byte[]>> ReadArchiveTierContentBytesAsync(string localRoot, string targetPath)
     {
         var contentHashToBytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
@@ -303,11 +257,7 @@ internal static class RepresentativeWorkflowRunner
         return contentHashToBytes;
     }
 
-    internal static async Task SideloadRehydratedTarChunkAsync(
-        AzureBlobContainerService blobContainer,
-        string tarChunkHash,
-        IReadOnlyDictionary<string, byte[]> contentHashToBytes,
-        CancellationToken cancellationToken)
+    internal static async Task SideloadRehydratedTarChunkAsync(AzureBlobContainerService blobContainer, string tarChunkHash, IReadOnlyDictionary<string, byte[]> contentHashToBytes, CancellationToken cancellationToken)
     {
         var rehydratedBlobName = BlobPaths.ChunkRehydrated(tarChunkHash);
         var rehydratedMeta = await blobContainer.GetMetadataAsync(rehydratedBlobName, cancellationToken);
@@ -332,19 +282,10 @@ internal static class RepresentativeWorkflowRunner
         }
 
         memoryStream.Position = 0;
-        await blobContainer.UploadAsync(
-            rehydratedBlobName,
-            memoryStream,
-            sourceMeta.Metadata,
-            BlobTier.Hot,
-            overwrite: true,
-            cancellationToken: cancellationToken);
+        await blobContainer.UploadAsync(rehydratedBlobName, memoryStream, sourceMeta.Metadata, BlobTier.Hot, overwrite: true, cancellationToken: cancellationToken);
     }
 
-    internal static async Task<int> CountBlobsAsync(
-        IBlobContainerService blobContainer,
-        string prefix,
-        CancellationToken cancellationToken)
+    internal static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
     {
         var count = 0;
 
@@ -354,10 +295,7 @@ internal static class RepresentativeWorkflowRunner
         return count;
     }
 
-    internal static async Task DeleteBlobsAsync(
-        IBlobContainerService blobContainer,
-        string prefix,
-        CancellationToken cancellationToken)
+    internal static async Task DeleteBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
     {
         var blobNames = new List<string>();
 
@@ -368,10 +306,7 @@ internal static class RepresentativeWorkflowRunner
             await blobContainer.DeleteAsync(blobName, cancellationToken);
     }
 
-    static RepositoryTreeSnapshot FilterSnapshotToPrefix(
-        RepositoryTreeSnapshot snapshot,
-        string prefix,
-        bool trimPrefix)
+    static RepositoryTreeSnapshot FilterSnapshotToPrefix(RepositoryTreeSnapshot snapshot, string prefix, bool trimPrefix)
     {
         var normalizedPrefix = prefix.TrimEnd('/') + "/";
 
