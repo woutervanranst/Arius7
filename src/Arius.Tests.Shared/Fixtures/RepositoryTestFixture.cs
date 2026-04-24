@@ -73,7 +73,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string containerName,
         string? passphrase = null,
         Action<string>? deleteTempRoot = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
         var encryption      = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
@@ -91,7 +91,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string containerName,
         IEncryptionService encryption,
         Action<string>? deleteTempRoot = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var (tempRoot, localRoot, restoreRoot) = CreateTempRoots();
 

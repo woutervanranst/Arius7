@@ -26,12 +26,7 @@ internal static class RepresentativeWorkflowRunner
 {
     internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, CancellationToken cancellationToken)
     {
-        return await E2EFixture.CreateAsync(
-            context.BlobContainer,
-            context.AccountName,
-            context.ContainerName,
-            BlobTier.Cool,
-            ct: cancellationToken);
+        return await E2EFixture.CreateAsync(context.BlobContainer, context.AccountName, context.ContainerName, BlobTier.Cool, cancellationToken: cancellationToken);
     }
 
     public static async Task<RepresentativeWorkflowRunResult> RunAsync(

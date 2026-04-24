@@ -47,7 +47,7 @@ public sealed class PipelineFixture : IAsyncDisposable
         CancellationToken ct = default)
     {
         var (container, svc) = await azurite.CreateTestServiceAsync(ct);
-        var repository = await RepositoryTestFixture.CreateAsync(svc, Account, container.Name, passphrase, ct: ct);
+        var repository = await RepositoryTestFixture.CreateAsync(svc, Account, container.Name, passphrase, cancellationToken: ct);
         return new PipelineFixture(container, repository);
     }
 
@@ -78,7 +78,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             blobContainer = created.Service;
         }
 
-        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, Account, container.Name, encryption, ct: ct);
+        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, Account, container.Name, encryption, cancellationToken: ct);
 
         return new PipelineFixture(container, repository);
     }
