@@ -13,10 +13,7 @@ internal static class WorkflowBlobAssertions
     private const string DuplicateSmallPathA = "nested/deep/a/b/c/d/e/f/copy-b.bin";
     private const string DuplicateSmallPathB = "nested/deep/a/b/c/d/e/f/g/h/copy-c.bin";
 
-    public static async Task<int> CountBlobsAsync(
-        IBlobContainerService blobContainer,
-        string prefix,
-        CancellationToken cancellationToken)
+    public static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
     {
         var count = 0;
         await foreach (var _ in blobContainer.ListAsync(prefix, cancellationToken))
@@ -25,36 +22,20 @@ internal static class WorkflowBlobAssertions
         return count;
     }
 
-    public static Task<SnapshotManifest?> ResolveLatestAsync(
-        RepresentativeWorkflowState state,
-        CancellationToken cancellationToken)
+    public static Task<SnapshotManifest?> ResolveLatestAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
         => state.Fixture.Snapshot.ResolveAsync(cancellationToken: cancellationToken);
 
-    public static Task<SnapshotManifest?> ResolveVersionAsync(
-        RepresentativeWorkflowState state,
-        string version,
-        CancellationToken cancellationToken)
+    public static Task<SnapshotManifest?> ResolveVersionAsync(RepresentativeWorkflowState state, string version, CancellationToken cancellationToken)
         => state.Fixture.Snapshot.ResolveAsync(version, cancellationToken);
 
-    public static Task<ShardEntry?> LookupChunkAsync(
-        RepresentativeWorkflowState state,
-        string contentHash,
-        CancellationToken cancellationToken)
+    private static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, string contentHash, CancellationToken cancellationToken)
         => state.Fixture.Index.LookupAsync(contentHash, cancellationToken);
 
-    public static async Task AssertLargeDuplicateLookupAsync(
-        RepresentativeWorkflowState state,
-        SyntheticRepositoryState expectedState,
-        CancellationToken cancellationToken)
+    public static async Task AssertLargeDuplicateLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
     {
-        var contentHash = await AssertDuplicateContentHashAsync(
-            state,
-            expectedState,
-            DuplicateLargePathA,
-            DuplicateLargePathB,
-            cancellationToken);
-        var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
-        var metadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
+        var contentHash = await AssertDuplicateContentHashAsync(state, expectedState, DuplicateLargePathA, DuplicateLargePathB, cancellationToken);
+        var entry       = await LookupChunkAsync(state, contentHash, cancellationToken);
+        var metadata    = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
 
         entry.ShouldNotBeNull($"Chunk index should resolve large duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldBe(contentHash, "Large duplicate files should resolve directly to a large chunk.");
@@ -64,18 +45,10 @@ internal static class WorkflowBlobAssertions
         ariusType.ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
-    public static async Task AssertSmallFileTarLookupAsync(
-        RepresentativeWorkflowState state,
-        SyntheticRepositoryState expectedState,
-        CancellationToken cancellationToken)
+    public static async Task AssertSmallFileTarLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
     {
-        var contentHash = await AssertDuplicateContentHashAsync(
-            state,
-            expectedState,
-            DuplicateSmallPathA,
-            DuplicateSmallPathB,
-            cancellationToken);
-        var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
+        var contentHash  = await AssertDuplicateContentHashAsync(state, expectedState, DuplicateSmallPathA, DuplicateSmallPathB, cancellationToken);
+        var entry        = await LookupChunkAsync(state, contentHash, cancellationToken);
         var thinBlobName = BlobPaths.Chunk(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
@@ -97,12 +70,7 @@ internal static class WorkflowBlobAssertions
         tarType.ShouldBe(BlobMetadataKeys.TypeTar);
     }
 
-    static async Task<string> AssertDuplicateContentHashAsync(
-        RepresentativeWorkflowState state,
-        SyntheticRepositoryState expectedState,
-        string pathA,
-        string pathB,
-        CancellationToken cancellationToken)
+    static async Task<string> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
     {
         expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
         expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
@@ -115,10 +83,7 @@ internal static class WorkflowBlobAssertions
         return contentHashA;
     }
 
-    static async Task<string> ComputeContentHashAsync(
-        RepresentativeWorkflowState state,
-        string relativePath,
-        CancellationToken cancellationToken)
+    static async Task<string> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
     {
         var fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, relativePath);
         var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
