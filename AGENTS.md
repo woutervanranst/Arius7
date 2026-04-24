@@ -129,6 +129,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Prefer the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` over ad hoc random files.
 - Keep synthetic repository rename targets normalized and validated before root-containment checks so representative datasets cannot escape declared roots through path tricks.
+- Reject Windows-style absolute dataset paths after slash normalization so cross-platform path validation stays consistent.
 - Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
 - Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
 - Treat dataset versions (`V1` vs `V2`) and cache transitions (`Warm` vs `Cold`) as explicit workflow steps in one evolving repository history, not incidental fixture behavior.

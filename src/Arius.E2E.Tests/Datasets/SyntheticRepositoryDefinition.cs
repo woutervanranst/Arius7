@@ -141,6 +141,14 @@ internal static class SyntheticRepositoryPath
 
         var normalized = path.Replace('\\', '/');
 
+        if (normalized.Length >= 3 &&
+            char.IsAsciiLetter(normalized[0]) &&
+            normalized[1] == ':' &&
+            normalized[2] == '/')
+        {
+            throw new ArgumentException($"Path '{path}' must be relative.", paramName);
+        }
+
         if (normalized.StartsWith("/", StringComparison.Ordinal))
             throw new ArgumentException($"Path '{path}' must be relative.", paramName);
 
