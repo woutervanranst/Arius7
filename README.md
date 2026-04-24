@@ -106,6 +106,8 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
+The synthetic end-to-end repository generator now rejects invalid rename destinations up front so representative workflow data stays inside the declared test roots.
+
 ### Test Suite Architecture
 
 | Test project | Purpose | Requires real Azure credentials | Uses Azurite |

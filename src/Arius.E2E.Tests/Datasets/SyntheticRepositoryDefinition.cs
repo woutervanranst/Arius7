@@ -67,21 +67,26 @@ internal sealed record SyntheticRepositoryDefinition
                     if (!v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Rename source '{mutation.Path}' must exist in V1.", nameof(V2Mutations));
 
-                    if (string.Equals(mutation.Path, mutation.TargetPath, StringComparison.Ordinal))
+                    if (mutation.TargetPath is null)
+                        throw new ArgumentException("Rename target is required.", nameof(V2Mutations));
+
+                    var normalizedTarget = SyntheticRepositoryPath.NormalizeRelativePath(mutation.TargetPath, nameof(V2Mutations));
+
+                    if (string.Equals(mutation.Path, normalizedTarget, StringComparison.Ordinal))
                         throw new ArgumentException("Rename target must differ from source.", nameof(V2Mutations));
 
-                    if (rootDirectorySet.Contains(mutation.TargetPath!))
-                        throw new ArgumentException($"Rename target '{mutation.TargetPath}' must not point at a declared root directory.", nameof(V2Mutations));
+                    if (rootDirectorySet.Contains(normalizedTarget))
+                        throw new ArgumentException($"Rename target '{normalizedTarget}' must not point at a declared root directory.", nameof(V2Mutations));
 
-                    if (!IsUnderDeclaredRoot(mutation.TargetPath!))
-                        throw new ArgumentException($"Rename target '{mutation.TargetPath}' is outside declared roots.", nameof(V2Mutations));
+                    if (!IsUnderDeclaredRoot(normalizedTarget))
+                        throw new ArgumentException($"Rename target '{normalizedTarget}' is outside declared roots.", nameof(V2Mutations));
 
-                    if (v1Paths.Contains(mutation.TargetPath!))
-                        throw new ArgumentException($"Rename target '{mutation.TargetPath}' must be absent in V1.", nameof(V2Mutations));
+                    if (v1Paths.Contains(normalizedTarget))
+                        throw new ArgumentException($"Rename target '{normalizedTarget}' must be absent in V1.", nameof(V2Mutations));
 
                     finalPaths.Remove(mutation.Path);
-                    if (!finalPaths.Add(mutation.TargetPath!))
-                        throw new ArgumentException($"Mutation set produces duplicate final path '{mutation.TargetPath}'.", nameof(V2Mutations));
+                    if (!finalPaths.Add(normalizedTarget))
+                        throw new ArgumentException($"Mutation set produces duplicate final path '{normalizedTarget}'.", nameof(V2Mutations));
 
                     break;
 
