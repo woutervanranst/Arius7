@@ -32,7 +32,10 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         await state.Fixture.DisposeAsync();
         state.Fixture = await state.CreateFixtureAsync(state.Context, cancellationToken);
 
-        await state.Fixture.MaterializeSourceAsync(state.Definition, sourceVersion, state.Seed);
+        if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
+            throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
+
+        await CopyDirectoryAsync(sourceState.RootPath, state.Fixture.LocalRoot, cancellationToken);
 
         var tarChunks = await IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
         await MoveChunksToArchiveAsync(
@@ -119,9 +122,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             readyResult.ChunksPendingRehydration.ShouldBe(0, $"{Name}: ready restore should not leave pending rehydration chunks.");
 
             await AssertArchiveTierRestoreOutcomeAsync(
-                state.Definition,
-                sourceVersion,
-                state.Seed,
+                sourceState,
                 TargetPath,
                 readyRestoreRoot);
 
@@ -268,35 +269,45 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
 
         static async Task AssertArchiveTierRestoreOutcomeAsync(
-            SyntheticRepositoryDefinition definition,
-            SyntheticRepositoryVersion sourceVersion,
-            int seed,
+            SyntheticRepositoryState sourceState,
             string targetPath,
             string readyRestoreRoot)
         {
-            var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-expected-{Guid.NewGuid():N}");
-            try
+            var expectedRestoreState = FilterSyntheticRepositoryStateToPrefix(sourceState, targetPath, trimPrefix: false);
+
+            await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(
+                expectedRestoreState,
+                readyRestoreRoot,
+                includePointerFiles: false);
+
+            foreach (var relativePath in expectedRestoreState.Files.Keys)
             {
-                var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(definition, sourceVersion, seed, expectedRoot);
+                var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
-                var expectedRestoreState = FilterSyntheticRepositoryStateToPrefix(expected, targetPath, trimPrefix: false);
-
-                await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(
-                    expectedRestoreState,
-                    readyRestoreRoot,
-                    includePointerFiles: false);
-
-                foreach (var relativePath in expectedRestoreState.Files.Keys)
-                {
-                    var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
-
-                    File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-                }
+                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
-            finally
+        }
+
+        static async Task CopyDirectoryAsync(string sourceRootPath, string targetRootPath, CancellationToken cancellationToken)
+        {
+            if (Directory.Exists(targetRootPath))
+                Directory.Delete(targetRootPath, recursive: true);
+
+            Directory.CreateDirectory(targetRootPath);
+
+            foreach (var directoryPath in Directory.EnumerateDirectories(sourceRootPath, "*", SearchOption.AllDirectories))
             {
-                if (Directory.Exists(expectedRoot))
-                    Directory.Delete(expectedRoot, recursive: true);
+                var relativePath = Path.GetRelativePath(sourceRootPath, directoryPath);
+                Directory.CreateDirectory(Path.Combine(targetRootPath, relativePath));
+            }
+
+            foreach (var filePath in Directory.EnumerateFiles(sourceRootPath, "*", SearchOption.AllDirectories))
+            {
+                var relativePath = Path.GetRelativePath(sourceRootPath, filePath);
+                var targetPath = Path.Combine(targetRootPath, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+
+                File.Copy(filePath, targetPath, overwrite: true);
             }
         }
 
@@ -307,7 +318,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         {
             var normalizedPrefix = prefix.TrimEnd('/') + "/";
 
-            return new SyntheticRepositoryState(state.Files
+            return new SyntheticRepositoryState(state.RootPath, state.Files
                 .Where(pair => pair.Key.StartsWith(normalizedPrefix, StringComparison.Ordinal))
                 .ToDictionary(
                     pair => trimPrefix ? pair.Key[normalizedPrefix.Length..] : pair.Key,

@@ -5,7 +5,7 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryMaterializer
 {
-    public static async Task<SyntheticRepositoryState> MaterializeAsync(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion version, int seed, string rootPath)
+    public static async Task<SyntheticRepositoryState> MaterializeV1Async(SyntheticRepositoryDefinition definition, int seed, string rootPath)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
@@ -23,10 +23,31 @@ internal static class SyntheticRepositoryMaterializer
             files[file.Path] = await ComputeHashAsync(rootPath, file.Path);
         }
 
-        if (version == SyntheticRepositoryVersion.V2)
-            await ApplyV2MutationsAsync(definition, seed, rootPath, files);
+        return new SyntheticRepositoryState(rootPath, files);
+    }
 
-        return new SyntheticRepositoryState(files);
+    public static async Task<SyntheticRepositoryState> MaterializeV2FromExistingAsync(SyntheticRepositoryDefinition definition, int seed, string sourceRootPath, string targetRootPath)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRootPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetRootPath);
+
+        if (Directory.Exists(targetRootPath))
+            Directory.Delete(targetRootPath, recursive: true);
+
+        await CopyDirectoryAsync(sourceRootPath, targetRootPath);
+
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var filePath in Directory.EnumerateFiles(targetRootPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(targetRootPath, filePath)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            files[relativePath] = await ComputeHashAsync(targetRootPath, relativePath);
+        }
+
+        await ApplyV2MutationsAsync(definition, seed, targetRootPath, files);
+
+        return new SyntheticRepositoryState(targetRootPath, files);
     }
 
     static byte[] CreateBytes(int seed, string contentId, long sizeBytes)
@@ -97,6 +118,26 @@ internal static class SyntheticRepositoryMaterializer
         var fullPath = GetFullPath(rootPath, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await File.WriteAllBytesAsync(fullPath, bytes);
+    }
+
+    static async Task CopyDirectoryAsync(string sourceRootPath, string targetRootPath)
+    {
+        Directory.CreateDirectory(targetRootPath);
+
+        foreach (var directoryPath in Directory.EnumerateDirectories(sourceRootPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceRootPath, directoryPath);
+            Directory.CreateDirectory(Path.Combine(targetRootPath, relativePath));
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(sourceRootPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceRootPath, filePath);
+            var targetPath = Path.Combine(targetRootPath, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+
+            File.Copy(filePath, targetPath, overwrite: true);
+        }
     }
 
     static async Task<string> ComputeHashAsync(string rootPath, string relativePath)
