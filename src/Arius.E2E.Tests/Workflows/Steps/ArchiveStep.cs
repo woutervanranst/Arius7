@@ -1,3 +1,5 @@
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
@@ -23,15 +25,20 @@ internal sealed record ArchiveStep(
                 cancellationToken);
         }
 
-        var result = await ArchiveStepSupport.ArchiveAsync(
-            state.Fixture,
-            useNoPointers: NoPointers,
-            useRemoveLocal: RemoveLocal,
-            uploadTier: UploadTier,
-            cancellationToken: cancellationToken);
+        var options = new ArchiveCommandOptions
+        {
+            RootDirectory = state.Fixture.LocalRoot,
+            UploadTier = UploadTier,
+            NoPointers = NoPointers,
+            RemoveLocal = RemoveLocal,
+        };
+
+        var result = await state.Fixture.CreateArchiveHandler()
+            .Handle(new ArchiveCommand(options), cancellationToken)
+            .AsTask();
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
         state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
-        state.LatestSnapshotVersion = ArchiveStepSupport.FormatSnapshotVersion(result.SnapshotTime);
+        state.LatestSnapshotVersion = result.SnapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
     }
 }
