@@ -2,6 +2,10 @@ using Arius.E2E.Tests.Datasets;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
+/// <summary>
+/// Seeds a conflicting local file in the restore target and verifies that restore
+/// either preserves or replaces that file depending on the requested overwrite mode.
+/// </summary>
 internal sealed record AssertConflictBehaviorStep(
     string Name,
     WorkflowRestoreTarget Target,
