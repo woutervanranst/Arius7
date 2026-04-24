@@ -198,8 +198,7 @@ public sealed class SnapshotService
     /// <summary>
     /// Lists all snapshot blob names sorted by timestamp (oldest → newest).
     /// </summary>
-    public async Task<IReadOnlyList<string>> ListBlobNamesAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
     {
         var names = new List<string>();
         await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
