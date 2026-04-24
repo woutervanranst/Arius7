@@ -106,6 +106,8 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
+The end-to-end workflow harness now cleans up its temporary workflow folder even when fixture disposal throws during teardown.
+
 ### Test Suite Architecture
 
 | Test project | Purpose | Requires real Azure credentials | Uses Azurite |

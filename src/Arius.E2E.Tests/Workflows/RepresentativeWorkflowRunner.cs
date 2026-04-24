@@ -70,15 +70,21 @@ internal static class RepresentativeWorkflowRunner
         }
         finally
         {
-            if (state is not null)
+            try
             {
-                await state.Fixture.DisposeAsync();
+                if (state is not null)
+                {
+                    await state.Fixture.DisposeAsync();
+                }
+                else if (fixture is not null)
+                {
+                    await fixture.DisposeAsync();
+                }
             }
-            else if (fixture is not null)
-                await fixture.DisposeAsync();
-
-            if (fixture is null && state is null && Directory.Exists(workflowRoot))
-                Directory.Delete(workflowRoot, recursive: true);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
 
             if (Directory.Exists(workflowRoot))
                 Directory.Delete(workflowRoot, recursive: true);

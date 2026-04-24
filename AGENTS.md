@@ -131,6 +131,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Keep synthetic repository rename targets normalized and validated before root-containment checks so representative datasets cannot escape declared roots through path tricks.
 - Reject Windows-style absolute dataset paths after slash normalization so cross-platform path validation stays consistent.
 - Clean up representative workflow temp roots when fixture creation fails so failed E2E setup does not leak directories.
+- Keep representative workflow temp-root cleanup running even if fixture disposal throws during teardown.
 - Dispose shared test fixture index services before deleting temp roots so cache-backed resources are released in a safe order.
 - Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
 - Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
