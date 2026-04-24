@@ -120,7 +120,7 @@ internal static class RepresentativeWorkflowRunner
                 seed,
                 expectedRoot);
 
-            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot, includePointerFiles: false);
+            await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot, includePointerFiles: false);
 
             if (!useNoPointers)
             {
@@ -158,11 +158,14 @@ internal static class RepresentativeWorkflowRunner
         {
             var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(definition, sourceVersion, seed, expectedRoot);
 
-            var expectedRestoreTree = FilterSnapshotToPrefix(expected, targetPath, trimPrefix: false);
+            var expectedRestoreState = FilterSyntheticRepositoryStateToPrefix(expected, targetPath, trimPrefix: false);
 
-            await RepositoryTreeAssertions.AssertMatchesDiskTreeAsync(expectedRestoreTree, readyRestoreRoot, includePointerFiles: false);
+            await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(
+                expectedRestoreState,
+                readyRestoreRoot,
+                includePointerFiles: false);
 
-            foreach (var relativePath in expectedRestoreTree.Files.Keys)
+            foreach (var relativePath in expectedRestoreState.Files.Keys)
             {
                 var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
@@ -301,11 +304,14 @@ internal static class RepresentativeWorkflowRunner
             await blobContainer.DeleteAsync(blobName, cancellationToken);
     }
 
-    static RepositoryTreeSnapshot FilterSnapshotToPrefix(RepositoryTreeSnapshot snapshot, string prefix, bool trimPrefix)
+    static SyntheticRepositoryState FilterSyntheticRepositoryStateToPrefix(
+        SyntheticRepositoryState state,
+        string prefix,
+        bool trimPrefix)
     {
         var normalizedPrefix = prefix.TrimEnd('/') + "/";
 
-        return new RepositoryTreeSnapshot(snapshot.Files
+        return new SyntheticRepositoryState(state.Files
             .Where(pair => pair.Key.StartsWith(normalizedPrefix, StringComparison.Ordinal))
             .ToDictionary(
                 pair => trimPrefix ? pair.Key[normalizedPrefix.Length..] : pair.Key,

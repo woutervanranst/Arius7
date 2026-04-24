@@ -18,8 +18,8 @@ internal sealed record AssertRemoteStateStep(
         var latest = await WorkflowBlobAssertions.ResolveLatestAsync(state, cancellationToken);
         latest.ShouldNotBeNull($"{Name}: latest snapshot should exist.");
 
-        var expectedSnapshot = state.CurrentMaterializedSnapshot
-            ?? throw new InvalidOperationException($"{Name}: current materialized snapshot is not available.");
+        var expectedState = state.CurrentSyntheticRepositoryState
+            ?? throw new InvalidOperationException($"{Name}: current synthetic repository state is not available.");
 
         state.LatestSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: latest snapshot version should be available.");
         Path.GetFileName((await state.Fixture.Snapshot.ListBlobNamesAsync(cancellationToken))[^1])
@@ -30,15 +30,15 @@ internal sealed record AssertRemoteStateStep(
             case RemoteAssertionKind.InitialArchive:
                 (await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
-                latest.FileCount.ShouldBe(expectedSnapshot.Files.Count, $"{Name}: latest snapshot file count should match the current materialized repository tree.");
+                latest.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 break;
 
             case RemoteAssertionKind.IncrementalArchive:
                 (await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
-                latest.FileCount.ShouldBe(expectedSnapshot.Files.Count, $"{Name}: latest snapshot file count should match the current materialized repository tree.");
-                await WorkflowBlobAssertions.AssertLargeDuplicateLookupAsync(state, expectedSnapshot, cancellationToken);
-                await WorkflowBlobAssertions.AssertSmallFileTarLookupAsync(state, expectedSnapshot, cancellationToken);
+                latest.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                await WorkflowBlobAssertions.AssertLargeDuplicateLookupAsync(state, expectedState, cancellationToken);
+                await WorkflowBlobAssertions.AssertSmallFileTarLookupAsync(state, expectedState, cancellationToken);
                 break;
 
             case RemoteAssertionKind.NoOpArchive:

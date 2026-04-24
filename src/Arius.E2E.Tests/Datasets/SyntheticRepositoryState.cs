@@ -2,9 +2,9 @@ using System.Collections.ObjectModel;
 
 namespace Arius.E2E.Tests.Datasets;
 
-internal sealed record RepositoryTreeSnapshot
+internal sealed record SyntheticRepositoryState
 {
-    public RepositoryTreeSnapshot(IReadOnlyDictionary<string, string> files)
+    public SyntheticRepositoryState(IReadOnlyDictionary<string, string> files)
     {
         ArgumentNullException.ThrowIfNull(files);
 
