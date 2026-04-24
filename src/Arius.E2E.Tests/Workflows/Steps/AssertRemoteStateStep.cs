@@ -11,8 +11,7 @@ internal enum RemoteAssertionKind
 
 internal sealed record AssertRemoteStateStep(
     string Name,
-    RemoteAssertionKind Kind,
-    bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
+    RemoteAssertionKind Kind) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
@@ -51,24 +50,16 @@ internal sealed record AssertRemoteStateStep(
                 var chunkCount = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken);
                 var fileTreeCount = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
 
-                chunkCount.ShouldBe(state.ChunkBlobCountBeforeNoOpArchive, $"{Name}: no-op archive should not create additional chunk blobs.");
-                fileTreeCount.ShouldBe(state.FileTreeBlobCountBeforeNoOpArchive, $"{Name}: no-op archive should not create additional filetree blobs.");
+                chunkCount.ShouldBe(
+                    state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."),
+                    $"{Name}: no-op archive should not create additional chunk blobs.");
+                fileTreeCount.ShouldBe(
+                    state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."),
+                    $"{Name}: no-op archive should not create additional filetree blobs.");
                 break;
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(Kind));
         }
-
-        if (!CaptureNoOpPreCounts)
-            return;
-
-        state.ChunkBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
-            state.Context.BlobContainer,
-            BlobPaths.Chunks,
-            cancellationToken);
-        state.FileTreeBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
-            state.Context.BlobContainer,
-            BlobPaths.FileTrees,
-            cancellationToken);
     }
 }

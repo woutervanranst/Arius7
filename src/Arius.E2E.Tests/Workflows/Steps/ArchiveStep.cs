@@ -6,10 +6,23 @@ internal sealed record ArchiveStep(
     string Name,
     BlobTier UploadTier = BlobTier.Cool,
     bool NoPointers = false,
-    bool RemoveLocal = false) : IRepresentativeWorkflowStep
+    bool RemoveLocal = false,
+    bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
+        if (CaptureNoOpPreCounts)
+        {
+            state.ChunkBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
+                state.Context.BlobContainer,
+                BlobPaths.Chunks,
+                cancellationToken);
+            state.FileTreeBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
+                state.Context.BlobContainer,
+                BlobPaths.FileTrees,
+                cancellationToken);
+        }
+
         var result = await RepresentativeWorkflowRunner.ArchiveAsync(
             state.Fixture,
             RepresentativeWorkflowRunner.CreateArchiveOptions(

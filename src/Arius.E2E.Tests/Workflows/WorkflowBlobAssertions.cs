@@ -2,6 +2,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
+using Arius.E2E.Tests.Fixtures;
 
 namespace Arius.E2E.Tests.Workflows;
 
@@ -46,7 +47,12 @@ internal static class WorkflowBlobAssertions
         RepositoryTreeSnapshot expectedSnapshot,
         CancellationToken cancellationToken)
     {
-        var contentHash = AssertDuplicateContentHash(expectedSnapshot, DuplicateLargePathA, DuplicateLargePathB);
+        var contentHash = await AssertDuplicateContentHashAsync(
+            state,
+            expectedSnapshot,
+            DuplicateLargePathA,
+            DuplicateLargePathB,
+            cancellationToken);
         var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
         var metadata = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
 
@@ -63,7 +69,12 @@ internal static class WorkflowBlobAssertions
         RepositoryTreeSnapshot expectedSnapshot,
         CancellationToken cancellationToken)
     {
-        var contentHash = AssertDuplicateContentHash(expectedSnapshot, DuplicateSmallPathA, DuplicateSmallPathB);
+        var contentHash = await AssertDuplicateContentHashAsync(
+            state,
+            expectedSnapshot,
+            DuplicateSmallPathA,
+            DuplicateSmallPathB,
+            cancellationToken);
         var entry = await LookupChunkAsync(state, contentHash, cancellationToken);
         var thinBlobName = BlobPaths.Chunk(contentHash);
 
@@ -86,15 +97,31 @@ internal static class WorkflowBlobAssertions
         tarType.ShouldBe(BlobMetadataKeys.TypeTar);
     }
 
-    static string AssertDuplicateContentHash(
+    static async Task<string> AssertDuplicateContentHashAsync(
+        RepresentativeWorkflowState state,
         RepositoryTreeSnapshot expectedSnapshot,
         string pathA,
-        string pathB)
+        string pathB,
+        CancellationToken cancellationToken)
     {
         expectedSnapshot.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected repository snapshot to contain '{pathA}'.");
         expectedSnapshot.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected repository snapshot to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
-        return hashA!;
+        var contentHashA = await ComputeContentHashAsync(state, pathA, cancellationToken);
+        var contentHashB = await ComputeContentHashAsync(state, pathB, cancellationToken);
+        contentHashA.ShouldBe(contentHashB, $"Expected '{pathA}' and '{pathB}' to hash to the same content-addressed chunk.");
+
+        return contentHashA;
+    }
+
+    static async Task<string> ComputeContentHashAsync(
+        RepresentativeWorkflowState state,
+        string relativePath,
+        CancellationToken cancellationToken)
+    {
+        var fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, relativePath);
+        var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+        return Convert.ToHexString(state.Fixture.Encryption.ComputeHash(bytes)).ToLowerInvariant();
     }
 }

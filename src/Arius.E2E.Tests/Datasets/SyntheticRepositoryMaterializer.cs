@@ -25,7 +25,7 @@ internal static class SyntheticRepositoryMaterializer
         }
 
         if (version == SyntheticRepositoryVersion.V2)
-            await ApplyV2MutationsAsync(definition, seed, rootPath, files.ToDictionary());
+            await ApplyV2MutationsAsync(definition, seed, rootPath, files);
 
         return new RepositoryTreeSnapshot(files);
     }
