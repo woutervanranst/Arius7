@@ -9,7 +9,7 @@ internal static class RepresentativeWorkflowCatalog
         new(
             "canonical-representative-workflow",
             SyntheticRepositoryProfile.Representative,
-            20260419,
+            20010523,
             [
                 new MaterializeVersionStep(SyntheticRepositoryVersion.V1),
                 new ArchiveStep("archive-v1"),
