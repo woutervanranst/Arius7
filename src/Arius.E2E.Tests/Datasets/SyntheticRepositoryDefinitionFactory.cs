@@ -8,7 +8,7 @@ internal enum SyntheticRepositoryProfile
 
 internal static class SyntheticRepositoryDefinitionFactory
 {
-    const int RepresentativeScaleDivisor = 8;
+    const int RepresentativeScaleDivisor = 8; // tweak this parameter to make the test data set larger or smaller. 8 = ~32 MB in 254 files
 
     public static SyntheticRepositoryDefinition Create(SyntheticRepositoryProfile profile)
     {
