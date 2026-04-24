@@ -106,7 +106,7 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
-The end-to-end test helpers now reject invalid synthetic paths up front and clean up temporary workflow folders even when fixture startup fails.
+The end-to-end test helpers now reject invalid synthetic paths up front, clean up failed workflow setup, and release shared cache/index resources before fixture folders are removed.
 
 ### Test Suite Architecture
 

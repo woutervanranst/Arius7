@@ -142,6 +142,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        Index.Dispose();
+
         if (Directory.Exists(_tempRoot))
             _deleteTempRoot(_tempRoot);
 
