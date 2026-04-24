@@ -2,7 +2,6 @@ using Arius.AzureBlob;
 using Azure.Storage.Blobs;
 using DotNet.Testcontainers.Builders;
 using Testcontainers.Azurite;
-using TUnit.Core;
 using TUnit.Core.Interfaces;
 
 namespace Arius.Tests.Shared.Storage;

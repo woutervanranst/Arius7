@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
