@@ -13,8 +13,8 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var latest = await Helpers.ResolveLatestAsync(state, cancellationToken);
-        latest.ShouldNotBeNull($"{Name}: latest snapshot should exist.");
+        var latestSnapshot = await Helpers.ResolveLatestSnapshotAsync(state, cancellationToken);
+        latestSnapshot.ShouldNotBeNull($"{Name}: latest snapshot should exist.");
 
         var expectedState = state.CurrentSyntheticRepositoryState
             ?? throw new InvalidOperationException($"{Name}: current synthetic repository state is not available.");
@@ -28,22 +28,22 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
             case RemoteAssertionKind.InitialArchive:
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
-                latest.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                latestSnapshot.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 break;
 
             case RemoteAssertionKind.IncrementalArchive:
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
-                latest.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                latestSnapshot.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 await Helpers.AssertLargeDuplicateLookupAsync(state, expectedState, cancellationToken);
                 await Helpers.AssertSmallFileTarLookupAsync(state, expectedState, cancellationToken);
                 break;
 
             case RemoteAssertionKind.NoOpArchive:
                 state.PreviousSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: previous snapshot version should be available.");
-                var previous = await Helpers.ResolveVersionAsync(state, state.PreviousSnapshotVersion, cancellationToken);
+                var previous = await Helpers.ResolveSnapshotByVersionAsync(state, state.PreviousSnapshotVersion, cancellationToken);
                 previous.ShouldNotBeNull($"{Name}: previous snapshot should exist.");
-                latest.RootHash.ShouldBe(previous.RootHash, $"{Name}: no-op archive should preserve the root hash.");
+                latestSnapshot.RootHash.ShouldBe(previous.RootHash, $"{Name}: no-op archive should preserve the root hash.");
 
                 var chunkCount = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken);
                 var fileTreeCount = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);

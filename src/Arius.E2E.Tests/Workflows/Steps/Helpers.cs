@@ -106,10 +106,10 @@ internal static class Helpers
         return count;
     }
 
-    public static Task<SnapshotManifest?> ResolveLatestAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
+    public static Task<SnapshotManifest?> ResolveLatestSnapshotAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
         => state.Fixture.Snapshot.ResolveAsync(cancellationToken: cancellationToken);
 
-    public static Task<SnapshotManifest?> ResolveVersionAsync(RepresentativeWorkflowState state, string version, CancellationToken cancellationToken)
+    public static Task<SnapshotManifest?> ResolveSnapshotByVersionAsync(RepresentativeWorkflowState state, string version, CancellationToken cancellationToken)
         => state.Fixture.Snapshot.ResolveAsync(version, cancellationToken);
 
     public static async Task AssertLargeDuplicateLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)

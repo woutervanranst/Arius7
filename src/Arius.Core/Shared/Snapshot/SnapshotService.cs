@@ -217,9 +217,7 @@ public sealed class SnapshotService
     /// otherwise returns the snapshot whose timestamp starts with the given version string.
     /// Returns <c>null</c> if no matching snapshot exists.
     /// </summary>
-    public async Task<SnapshotManifest?> ResolveAsync(
-        string?           version           = null,
-        CancellationToken cancellationToken = default)
+    public async Task<SnapshotManifest?> ResolveAsync(string? version = null, CancellationToken cancellationToken = default)
     {
         var names = await ListBlobNamesAsync(cancellationToken);
         if (names.Count == 0) return null;

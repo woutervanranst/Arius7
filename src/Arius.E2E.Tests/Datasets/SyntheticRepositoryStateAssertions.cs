@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Encryption;
+
 namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryStateAssertions
@@ -15,6 +17,7 @@ internal static class SyntheticRepositoryStateAssertions
         bool includePointerFiles)
     {
         var actual = new Dictionary<string, string>(StringComparer.Ordinal);
+        var hasher = new PlaintextPassthroughService();
 
         foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
         {
@@ -24,8 +27,8 @@ internal static class SyntheticRepositoryStateAssertions
             if (!includePointerFiles && relativePath.EndsWith(".pointer.arius", StringComparison.Ordinal))
                 continue;
 
-            var bytes = await File.ReadAllBytesAsync(filePath);
-            actual[relativePath] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+            var bytes = await hasher.ComputeHashAsync(File.OpenRead(filePath));
+            actual[relativePath] = Convert.ToHexString(bytes);
         }
 
         actual.OrderBy(x => x.Key, StringComparer.Ordinal).ToArray()
