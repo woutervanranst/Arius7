@@ -13,14 +13,8 @@ internal sealed record ArchiveStep(
     {
         if (CaptureNoOpPreCounts)
         {
-            state.ChunkBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
-                state.Context.BlobContainer,
-                BlobPaths.Chunks,
-                cancellationToken);
-            state.FileTreeBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(
-                state.Context.BlobContainer,
-                BlobPaths.FileTrees,
-                cancellationToken);
+            state.ChunkBlobCountBeforeNoOpArchive    = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks,    cancellationToken);
+            state.FileTreeBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
         }
 
         var result = await ArchiveStepSupport.ArchiveAsync(
