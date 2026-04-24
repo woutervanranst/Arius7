@@ -18,9 +18,11 @@ using System.IO.Compression;
 namespace Arius.E2E.Tests.Workflows.Steps;
 
 /// <summary>
-/// Exercises the Azure archive-tier lifecycle for one source subtree by forcing its
-/// tar chunks into archive tier, verifying the pending rehydration path, then
-/// sideloading ready rehydrated chunks and verifying the final restore plus cleanup.
+/// Exercises the Azure archive-tier lifecycle for one source subtree by
+/// 1. forcing its tar chunks into archive tier
+/// 2. verifying the pending rehydration path, then
+/// 3. sideloading ready rehydrated chunks and
+/// 4. verifying the final restore plus cleanup.
 /// </summary>
 internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath = "src") : IRepresentativeWorkflowStep
 {
@@ -43,7 +45,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         // Start from a clean fixture rooted at the preserved versioned source tree so the
         // archive-tier checks run against the same content the workflow archived earlier.
-        await CopyDirectoryAsync(sourceState.RootPath, state.Fixture.LocalRoot, cancellationToken);
+        FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);
 
         // Identify the tar chunks backing the target subtree and move those existing chunks
         // to archive tier. The workflow reuses the canonical history instead of re-archiving.

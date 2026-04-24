@@ -116,7 +116,7 @@ public sealed class ChunkIndexService : IDisposable
     public async Task<ShardEntry?> LookupAsync(string contentHash, CancellationToken cancellationToken = default)
     {
         var results = await LookupAsync([contentHash], cancellationToken);
-        return results.TryGetValue(contentHash, out var entry) ? entry : null;
+        return results.GetValueOrDefault(contentHash);
     }
 
     // ── Record new entry ──────────────────────────────────────────────────────

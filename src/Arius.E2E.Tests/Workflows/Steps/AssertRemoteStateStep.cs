@@ -28,32 +28,30 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
             case RemoteAssertionKind.InitialArchive:
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
-                latestSnapshot.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                latestSnapshot.FileCount
+                    .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 break;
 
             case RemoteAssertionKind.IncrementalArchive:
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
                     .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
-                latestSnapshot.FileCount.ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                latestSnapshot.FileCount
+                    .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 await Helpers.AssertLargeDuplicateLookupAsync(state, expectedState, cancellationToken);
                 await Helpers.AssertSmallFileTarLookupAsync(state, expectedState, cancellationToken);
                 break;
 
             case RemoteAssertionKind.NoOpArchive:
                 state.PreviousSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: previous snapshot version should be available.");
-                var previous = await Helpers.ResolveSnapshotByVersionAsync(state, state.PreviousSnapshotVersion, cancellationToken);
-                previous.ShouldNotBeNull($"{Name}: previous snapshot should exist.");
-                latestSnapshot.RootHash.ShouldBe(previous.RootHash, $"{Name}: no-op archive should preserve the root hash.");
+                
+                var previousSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.PreviousSnapshotVersion, cancellationToken);
+                previousSnapshot.ShouldNotBeNull($"{Name}: previous snapshot should exist.");
+                latestSnapshot.RootHash.ShouldBe(previousSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
 
-                var chunkCount = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken);
-                var fileTreeCount = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
-
-                chunkCount.ShouldBe(
-                    state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."),
-                    $"{Name}: no-op archive should not create additional chunk blobs.");
-                fileTreeCount.ShouldBe(
-                    state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."),
-                    $"{Name}: no-op archive should not create additional filetree blobs.");
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken))
+                    .ShouldBe(state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."), $"{Name}: no-op archive should not create additional chunk blobs.");
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken))
+                    .ShouldBe(state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."), $"{Name}: no-op archive should not create additional filetree blobs.");
                 break;
 
             default:
