@@ -134,14 +134,14 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 
 `src/Arius.E2E.Tests/` contains the actual end-to-end Arius coverage.
 
-- `RepresentativeArchiveRestoreTests.cs` runs one canonical representative workflow on Azurite and keeps the Azure path credential-gated.
+- `RepresentativeArchiveRestoreTests.cs` runs one canonical representative workflow on Azurite and, when credentials are available, live Azure.
 - The representative workflow exercises one evolving archive history instead of isolated one-off scenarios.
-- Archive-tier pending-versus-ready behavior lives inside the same workflow when the backend supports it.
+- The canonical workflow covers incremental archive, warm and cold restore, previous-version restore, no-op re-archive, `--no-pointers`, `--remove-local`, conflict handling, and archive-tier pending-versus-ready behavior when the backend supports it.
 - The synthetic representative repository size is controlled by one explicit constant in `SyntheticRepositoryDefinitionFactory` so development can keep the workflow smaller and tune it upward deliberately later.
-- `E2ETests.cs` keeps the live Azure credential sanity check and a small amount of unique live coverage.
+- `E2ETests.cs` keeps the live Azure credential sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
 
 Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
-Live Azure coverage is opt-in and the canonical representative workflow currently skips the cold-cache restore path tracked in issue `#65`.
+Live Azure coverage is opt-in and reuses the same canonical representative workflow when credentials are available.
 
 ## Blob Storage Structure
 

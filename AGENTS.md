@@ -128,9 +128,9 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 ## E2E Test Guidance
 
 - Prefer the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` over ad hoc random files.
-- Representative E2E coverage now runs one canonical workflow per backend instead of an isolated scenario matrix.
-- Shared representative scenarios should run against both Azurite and Azure when supported by backend capabilities.
-- Treat cache state (`Cold` vs `Warm`) and dataset version (`V1` vs `V2`) as explicit scenario inputs, not incidental fixture behavior.
+- Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
+- Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
+- Treat dataset versions (`V1` vs `V2`) and cache transitions (`Warm` vs `Cold`) as explicit workflow steps in one evolving repository history, not incidental fixture behavior.
 - Keep archive-tier behavior inside capability-gated workflow steps rather than separate top-level representative suites.
 - The representative synthetic dataset size is controlled by a single explicit constant in `SyntheticRepositoryDefinitionFactory`; tune it deliberately when changing runtime cost.
 - Remove obsolete representative workflow scaffolding when replacing it; do not keep both workflow and scenario models in parallel.
@@ -138,8 +138,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Reusable Azurite and repository-fixture wiring belongs in `src/Arius.Tests.Shared/`, not in another test project assembly.
 - Azurite-backed integration and E2E tests are discovered on every CI runner; when Docker is unavailable they should skip at runtime with a visible reason in the test report rather than being filtered out of the matrix.
 - `src/Arius.E2E.Tests/` is reserved for actual end-to-end Arius behavior coverage. Do not add self-tests for E2E datasets, fixtures, scenario catalogs, or scenario runners there unless explicitly requested.
-- `src/Arius.E2E.Tests/E2ETests.cs` is now only the live Azure credential/configuration sanity check; representative suites own archive and restore behavior coverage.
-- The representative Azure E2E cold-cache restore path is temporarily skipped in `src/Arius.E2E.Tests/RepresentativeArchiveRestoreTests.cs` with a reference to issue `#65`. Do not remove that skip until the cold-cache restore performance issue is fixed and the Azure workflow is re-verified.
+- `src/Arius.E2E.Tests/E2ETests.cs` keeps the live Azure credential/configuration sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
 
 ## Code Style Preference
 
