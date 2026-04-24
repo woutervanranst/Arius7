@@ -23,17 +23,15 @@ internal sealed record ArchiveStep(
                 cancellationToken);
         }
 
-        var result = await RepresentativeWorkflowRunner.ArchiveAsync(
+        var result = await ArchiveStepSupport.ArchiveAsync(
             state.Fixture,
-            RepresentativeWorkflowRunner.CreateArchiveOptions(
-                state.Fixture,
-                uploadTier: UploadTier,
-                useNoPointers: NoPointers,
-                useRemoveLocal: RemoveLocal),
-            cancellationToken);
+            useNoPointers: NoPointers,
+            useRemoveLocal: RemoveLocal,
+            uploadTier: UploadTier,
+            cancellationToken: cancellationToken);
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
         state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
-        state.LatestSnapshotVersion = RepresentativeWorkflowRunner.FormatSnapshotVersion(result.SnapshotTime);
+        state.LatestSnapshotVersion = ArchiveStepSupport.FormatSnapshotVersion(result.SnapshotTime);
     }
 }
