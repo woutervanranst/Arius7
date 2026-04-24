@@ -10,6 +10,14 @@ internal static class SyntheticRepositoryDefinitionFactory
 {
     const int RepresentativeScaleDivisor = 8; // tweak this parameter to make the test data set larger or smaller. 8 = ~32 MB in 254 files
 
+    public const string SmallDuplicateRenameSourcePath = "archives/duplicates/copy-a.bin";
+    public const string SmallDuplicateStablePathA      = "nested/deep/a/b/c/d/e/f/copy-b.bin";
+    public const string SmallDuplicateStablePathB      = "nested/deep/a/b/c/d/e/f/g/h/copy-c.bin";
+    public const string SmallDuplicateRenameTargetPath = "archives/duplicates/copy-a-renamed.bin";
+
+    public const string LargeDuplicatePathA = "archives/duplicates/binary-a.bin";
+    public const string LargeDuplicatePathB = "nested/deep/a/b/c/binary-b.bin";
+
     public static SyntheticRepositoryDefinition Create(SyntheticRepositoryProfile profile)
     {
         return profile switch
@@ -59,18 +67,18 @@ internal static class SyntheticRepositoryDefinitionFactory
         files.Add(new SyntheticFileDefinition("media/video/master-a.bin", 48 * 1024 * 1024 / RepresentativeScaleDivisor, "large-001"));
         files.Add(new SyntheticFileDefinition("media/video/master-b.bin", 72 * 1024 * 1024 / RepresentativeScaleDivisor, "large-002"));
 
-        files.Add(new SyntheticFileDefinition("archives/duplicates/copy-a.bin",         512 * 1024, "dup-small-001"));
-        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/copy-b.bin",     512 * 1024, "dup-small-001"));
-        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/d/e/f/g/h/copy-c.bin", 512 * 1024, "dup-small-001"));
+        files.Add(new SyntheticFileDefinition(SmallDuplicateRenameSourcePath, 512 * 1024, "dup-small-001"));
+        files.Add(new SyntheticFileDefinition(SmallDuplicateStablePathA,       512 * 1024, "dup-small-001"));
+        files.Add(new SyntheticFileDefinition(SmallDuplicateStablePathB,       512 * 1024, "dup-small-001"));
 
-        files.Add(new SyntheticFileDefinition("archives/duplicates/binary-a.bin", 2 * 1024 * 1024, "dup-large-001"));
-        files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/binary-b.bin",   2 * 1024 * 1024, "dup-large-001"));
+        files.Add(new SyntheticFileDefinition(LargeDuplicatePathA, 2 * 1024 * 1024, "dup-large-001"));
+        files.Add(new SyntheticFileDefinition(LargeDuplicatePathB, 2 * 1024 * 1024, "dup-large-001"));
 
         IReadOnlyList<SyntheticFileMutation> mutations =
         [
             new(SyntheticFileMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
             new(SyntheticFileMutationKind.Delete, "docs/batch-00/doc-0000.txt"),
-            new(SyntheticFileMutationKind.Rename, "archives/duplicates/copy-a.bin", TargetPath: "archives/duplicates/copy-a-renamed.bin"),
+            new(SyntheticFileMutationKind.Rename, SmallDuplicateRenameSourcePath, TargetPath: SmallDuplicateRenameTargetPath),
             new(SyntheticFileMutationKind.Add, "src/module-00/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
         ];
 

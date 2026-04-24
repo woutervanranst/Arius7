@@ -9,10 +9,6 @@ namespace Arius.E2E.Tests.Workflows.Steps;
 
 internal static class Helpers
 {
-    private const string DuplicateLargePathA = "archives/duplicates/binary-a.bin";
-    private const string DuplicateLargePathB = "nested/deep/a/b/c/binary-b.bin";
-    private const string DuplicateSmallPathA = "nested/deep/a/b/c/d/e/f/copy-b.bin";
-    private const string DuplicateSmallPathB = "nested/deep/a/b/c/d/e/f/g/h/copy-c.bin";
 
     public static Task<RestoreResult> RestoreAsync(E2EFixture fixture, bool overwrite, string? version, CancellationToken cancellationToken)
     {
@@ -114,7 +110,12 @@ internal static class Helpers
 
     public static async Task AssertLargeDuplicateLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
     {
-        var contentHash = await AssertDuplicateContentHashAsync(state, expectedState, DuplicateLargePathA, DuplicateLargePathB, cancellationToken);
+        var contentHash = await AssertDuplicateContentHashAsync(
+            state,
+            expectedState,
+            SyntheticRepositoryDefinitionFactory.LargeDuplicatePathA,
+            SyntheticRepositoryDefinitionFactory.LargeDuplicatePathB,
+            cancellationToken);
         var entry       = await LookupChunkAsync(state, contentHash, cancellationToken);
         var metadata    = await state.Fixture.BlobContainer.GetMetadataAsync(BlobPaths.Chunk(contentHash), cancellationToken);
 
@@ -128,7 +129,12 @@ internal static class Helpers
 
     public static async Task AssertSmallFileTarLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
     {
-        var contentHash  = await AssertDuplicateContentHashAsync(state, expectedState, DuplicateSmallPathA, DuplicateSmallPathB, cancellationToken);
+        var contentHash  = await AssertDuplicateContentHashAsync(
+            state,
+            expectedState,
+            SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathA,
+            SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathB,
+            cancellationToken);
         var entry        = await LookupChunkAsync(state, contentHash, cancellationToken);
         var thinBlobName = BlobPaths.Chunk(contentHash);
 
