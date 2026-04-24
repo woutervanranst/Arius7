@@ -16,6 +16,11 @@ using System.IO.Compression;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
+/// <summary>
+/// Exercises the Azure archive-tier lifecycle for one source subtree by forcing its
+/// tar chunks into archive tier, verifying the pending rehydration path, then
+/// sideloading ready rehydrated chunks and verifying the final restore plus cleanup.
+/// </summary>
 internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath = "src") : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
@@ -35,14 +40,20 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
+        // Start from a clean fixture rooted at the preserved versioned source tree so the
+        // archive-tier checks run against the same content the workflow archived earlier.
         await CopyDirectoryAsync(sourceState.RootPath, state.Fixture.LocalRoot, cancellationToken);
 
+        // Identify the tar chunks backing the target subtree and move those existing chunks
+        // to archive tier. The workflow reuses the canonical history instead of re-archiving.
         var tarChunks = await IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
         await MoveChunksToArchiveAsync(
             azureBlobContainer,
             tarChunks.Select(chunk => chunk.ChunkHash),
             cancellationToken);
 
+        // First restore pass should detect archived chunks, request rehydration, and avoid
+        // restoring files until the rehydrated chunk blobs become available.
         var firstEstimateCaptured = false;
         var firstTrackingBlobService = new CopyTrackingBlobService(azureBlobContainer);
         var initialRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, firstTrackingBlobService);
@@ -85,6 +96,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         rerunResult.Success.ShouldBeTrue($"{Name}: pending rerun failed: {rerunResult.ErrorMessage}");
         rerunTrackingBlobService.CopyCalls.Count.ShouldBe(0, $"{Name}: rerun should not issue duplicate rehydration copy requests.");
 
+        // Replace the pending rehydrated blobs with ready blobs so the next restore observes
+        // the post-rehydration path without waiting on Azure's real archive-tier timing.
         await DeleteBlobsAsync(
             azureBlobContainer,
             BlobPaths.ChunksRehydrated,
@@ -106,6 +119,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         try
         {
+            // Ready restore should now succeed, consume the rehydrated tar chunks, and clean
+            // up the temporary rehydrated blobs after the target subtree is restored.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = readyRestoreRoot,
@@ -167,6 +182,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             string targetPath,
             CancellationToken cancellationToken)
         {
+            // Map each content hash under the target subtree back to its tar chunk so the step
+            // can archive and later sideload exactly the chunks needed for this restore path.
             var targetRoot = E2EFixture.CombineValidatedRelativePath(fixture.LocalRoot, targetPath);
             var contentByChunkHash = new Dictionary<string, Dictionary<string, byte[]>>(StringComparer.Ordinal);
 
@@ -220,6 +237,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             IReadOnlyDictionary<string, byte[]> contentHashToBytes,
             CancellationToken cancellationToken)
         {
+            // Rebuild the rehydrated tar chunk in the same encrypted on-disk format Arius uses
+            // so the ready restore path exercises the real chunk reader and cleanup logic.
             var rehydratedBlobName = BlobPaths.ChunkRehydrated(tarChunkHash);
             var rehydratedMeta = await blobContainer.GetMetadataAsync(rehydratedBlobName, cancellationToken);
             if (rehydratedMeta.Exists && rehydratedMeta.Tier == BlobTier.Archive)
