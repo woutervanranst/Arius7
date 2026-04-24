@@ -2,7 +2,7 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal sealed record SyntheticRepositoryDefinition
 {
-    public SyntheticRepositoryDefinition(IReadOnlyList<string> RootDirectories, IReadOnlyList<SyntheticFileDefinition> Files, IReadOnlyList<SyntheticMutation> V2Mutations)
+    public SyntheticRepositoryDefinition(IReadOnlyList<string> RootDirectories, IReadOnlyList<SyntheticFileDefinition> Files, IReadOnlyList<SyntheticFileMutation> V2Mutations)
     {
         ArgumentNullException.ThrowIfNull(RootDirectories);
         ArgumentNullException.ThrowIfNull(Files);
@@ -53,17 +53,17 @@ internal sealed record SyntheticRepositoryDefinition
 
             switch (mutation.Kind)
             {
-                case SyntheticMutationKind.Delete:
-                case SyntheticMutationKind.ChangeContent:
+                case SyntheticFileMutationKind.Delete:
+                case SyntheticFileMutationKind.ChangeContent:
                     if (!v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Mutation source '{mutation.Path}' must exist in V1.", nameof(V2Mutations));
 
-                    if (mutation.Kind == SyntheticMutationKind.Delete)
+                    if (mutation.Kind == SyntheticFileMutationKind.Delete)
                         finalPaths.Remove(mutation.Path);
 
                     break;
 
-                case SyntheticMutationKind.Rename:
+                case SyntheticFileMutationKind.Rename:
                     if (!v1Paths.Contains(mutation.Path))
                         throw new ArgumentException($"Rename source '{mutation.Path}' must exist in V1.", nameof(V2Mutations));
 
@@ -85,7 +85,7 @@ internal sealed record SyntheticRepositoryDefinition
 
                     break;
 
-                case SyntheticMutationKind.Add:
+                case SyntheticFileMutationKind.Add:
                     if (rootDirectorySet.Contains(mutation.Path))
                         throw new ArgumentException($"Add target '{mutation.Path}' must not point at a declared root directory.", nameof(V2Mutations));
 
@@ -112,7 +112,7 @@ internal sealed record SyntheticRepositoryDefinition
 
     public IReadOnlyList<string>                  RootDirectories         { get; }
     public IReadOnlyList<SyntheticFileDefinition> Files                   { get; }
-    public IReadOnlyList<SyntheticMutation>       V2Mutations             { get; }
+    public IReadOnlyList<SyntheticFileMutation>       V2Mutations             { get; }
 }
 
 internal static class SyntheticRepositoryPath

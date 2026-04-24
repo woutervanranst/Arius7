@@ -1,6 +1,6 @@
 namespace Arius.E2E.Tests.Datasets;
 
-internal enum SyntheticMutationKind
+internal enum SyntheticFileMutationKind
 {
     Add,
     Delete,
@@ -8,9 +8,9 @@ internal enum SyntheticMutationKind
     ChangeContent,
 }
 
-internal sealed record SyntheticMutation
+internal sealed record SyntheticFileMutation
 {
-    public SyntheticMutation(SyntheticMutationKind Kind, string Path, string? TargetPath = null, string? ReplacementContentId = null, long? ReplacementSizeBytes = null)
+    public SyntheticFileMutation(SyntheticFileMutationKind Kind, string Path, string? TargetPath = null, string? ReplacementContentId = null, long? ReplacementSizeBytes = null)
     {
         var normalizedPath = SyntheticRepositoryPath.NormalizeRelativePath(Path, nameof(Path));
         var normalizedTargetPath = TargetPath is null
@@ -25,8 +25,8 @@ internal sealed record SyntheticMutation
 
         switch (Kind)
         {
-            case SyntheticMutationKind.Add:
-            case SyntheticMutationKind.ChangeContent:
+            case SyntheticFileMutationKind.Add:
+            case SyntheticFileMutationKind.ChangeContent:
                 ArgumentException.ThrowIfNullOrWhiteSpace(ReplacementContentId);
 
                 if (ReplacementSizeBytes is null)
@@ -40,7 +40,7 @@ internal sealed record SyntheticMutation
 
                 break;
 
-            case SyntheticMutationKind.Rename:
+            case SyntheticFileMutationKind.Rename:
                 ArgumentException.ThrowIfNullOrWhiteSpace(TargetPath);
 
                 if (ReplacementContentId is not null)
@@ -51,7 +51,7 @@ internal sealed record SyntheticMutation
 
                 break;
 
-            case SyntheticMutationKind.Delete:
+            case SyntheticFileMutationKind.Delete:
                 if (TargetPath is not null)
                     throw new ArgumentException("Target path is not valid for delete mutations.", nameof(TargetPath));
 
@@ -68,7 +68,7 @@ internal sealed record SyntheticMutation
         }
     }
 
-    public SyntheticMutationKind Kind                 { get; }
+    public SyntheticFileMutationKind Kind                 { get; }
     public string                Path                 { get; }
     public string?               TargetPath           { get; }
     public string?               ReplacementContentId { get; }

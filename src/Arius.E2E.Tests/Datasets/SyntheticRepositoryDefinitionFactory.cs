@@ -31,8 +31,8 @@ internal static class SyntheticRepositoryDefinitionFactory
                 new SyntheticFileDefinition("media/large.bin",  2 * 1024 * 1024, "large-001"),
             ],
             [
-                new SyntheticMutation(SyntheticMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 32 * 1024),
-                new SyntheticMutation(SyntheticMutationKind.Add, "src/simple/c.bin", ReplacementContentId: "small-004", ReplacementSizeBytes: 8 * 1024),
+                new SyntheticFileMutation(SyntheticFileMutationKind.ChangeContent, "docs/readme.txt", ReplacementContentId: "small-003", ReplacementSizeBytes: 32 * 1024),
+                new SyntheticFileMutation(SyntheticFileMutationKind.Add, "src/simple/c.bin", ReplacementContentId: "small-004", ReplacementSizeBytes: 8 * 1024),
             ]);
     }
 
@@ -66,12 +66,12 @@ internal static class SyntheticRepositoryDefinitionFactory
         files.Add(new SyntheticFileDefinition("archives/duplicates/binary-a.bin", 2 * 1024 * 1024, "dup-large-001"));
         files.Add(new SyntheticFileDefinition("nested/deep/a/b/c/binary-b.bin",   2 * 1024 * 1024, "dup-large-001"));
 
-        IReadOnlyList<SyntheticMutation> mutations =
+        IReadOnlyList<SyntheticFileMutation> mutations =
         [
-            new(SyntheticMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
-            new(SyntheticMutationKind.Delete, "docs/batch-00/doc-0000.txt"),
-            new(SyntheticMutationKind.Rename, "archives/duplicates/copy-a.bin", TargetPath: "archives/duplicates/copy-a-renamed.bin"),
-            new(SyntheticMutationKind.Add, "src/module-00/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
+            new(SyntheticFileMutationKind.ChangeContent, "src/module-00/group-00/file-0000.bin", ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
+            new(SyntheticFileMutationKind.Delete, "docs/batch-00/doc-0000.txt"),
+            new(SyntheticFileMutationKind.Rename, "archives/duplicates/copy-a.bin", TargetPath: "archives/duplicates/copy-a-renamed.bin"),
+            new(SyntheticFileMutationKind.Add, "src/module-00/group-00/new-file-0000.bin", ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
         ];
 
         return new SyntheticRepositoryDefinition(

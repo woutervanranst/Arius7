@@ -58,12 +58,12 @@ internal static class SyntheticRepositoryMaterializer
         {
             switch (mutation.Kind)
             {
-                case SyntheticMutationKind.Delete:
+                case SyntheticFileMutationKind.Delete:
                     File.Delete(GetFullPath(rootPath, mutation.Path));
                     files.Remove(mutation.Path);
                     break;
 
-                case SyntheticMutationKind.Rename:
+                case SyntheticFileMutationKind.Rename:
                     var sourcePath = GetFullPath(rootPath, mutation.Path);
                     var targetPath = GetFullPath(rootPath, mutation.TargetPath!);
                     Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
@@ -74,8 +74,8 @@ internal static class SyntheticRepositoryMaterializer
                     files[mutation.TargetPath!] = existingHash;
                     break;
 
-                case SyntheticMutationKind.ChangeContent:
-                case SyntheticMutationKind.Add:
+                case SyntheticFileMutationKind.ChangeContent:
+                case SyntheticFileMutationKind.Add:
                     var bytes = CreateBytes(seed, mutation.ReplacementContentId!, mutation.ReplacementSizeBytes!.Value);
                     await WriteFileAsync(rootPath, mutation.Path, bytes);
                     files[mutation.Path] = Convert.ToHexString(SHA256.HashData(bytes));
