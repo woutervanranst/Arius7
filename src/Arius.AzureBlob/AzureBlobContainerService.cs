@@ -136,16 +136,9 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── List ──────────────────────────────────────────────────────────────────
 
-    public async IAsyncEnumerable<string> ListAsync(
-        string            prefix,
-        [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var item in _container.GetBlobsAsync(
-                           traits: BlobTraits.None,
-                           states: BlobStates.None,
-                           prefix: prefix,
-                           cancellationToken: cancellationToken))
+        await foreach (var item in _container.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: prefix, cancellationToken: cancellationToken))
             yield return item.Name;
     }
 

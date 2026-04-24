@@ -4,26 +4,13 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryStateAssertions
 {
-    public static async Task AssertMatchesDiskTreeAsync(
-        SyntheticRepositoryState expected,
-        string rootPath,
-        IEncryptionService encryption)
-    {
-        await AssertMatchesDiskTreeAsync(expected, rootPath, encryption, includePointerFiles: true);
-    }
-
-    public static async Task AssertMatchesDiskTreeAsync(
-        SyntheticRepositoryState expected,
-        string rootPath,
-        IEncryptionService encryption,
-        bool includePointerFiles)
+    public static async Task AssertMatchesDiskTreeAsync(SyntheticRepositoryState expected, string rootPath, IEncryptionService encryption, bool includePointerFiles)
     {
         var actual = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
         {
-            var relativePath = Path.GetRelativePath(rootPath, filePath)
-                .Replace(Path.DirectorySeparatorChar, '/');
+            var relativePath = Path.GetRelativePath(rootPath, filePath).Replace(Path.DirectorySeparatorChar, '/');
 
             if (!includePointerFiles && relativePath.EndsWith(".pointer.arius", StringComparison.Ordinal))
                 continue;

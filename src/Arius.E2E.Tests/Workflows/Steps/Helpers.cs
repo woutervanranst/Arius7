@@ -50,9 +50,7 @@ internal static class Helpers
         {
             foreach (var relativePath in expectedState.Files.Keys)
             {
-                var pointerPath = Path.Combine(
-                    fixture.RestoreRoot,
-                    (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+                var pointerPath = Path.Combine(fixture.RestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
                 File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
@@ -82,11 +80,7 @@ internal static class Helpers
 
     public static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
     {
-        var count = 0;
-        await foreach (var _ in blobContainer.ListAsync(prefix, cancellationToken))
-            count++;
-
-        return count;
+        return await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
     }
 
     public static Task<SnapshotManifest?> ResolveLatestSnapshotAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)

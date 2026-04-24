@@ -102,7 +102,9 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
 
         var cleanupDeletedChunks = 0;
-        var readyRestoreRoot = Path.Combine(Path.GetTempPath(), $"arius-archive-tier-ready-{Guid.NewGuid():N}");
+        var workflowRoot = Path.GetDirectoryName(state.VersionedSourceRoot)
+            ?? throw new InvalidOperationException($"{Name}: representative workflow root is not available.");
+        var readyRestoreRoot = Path.Combine(workflowRoot, "archive-tier-ready");
         Directory.CreateDirectory(readyRestoreRoot);
 
         try
