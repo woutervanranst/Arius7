@@ -17,13 +17,13 @@ internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, Sy
 
         Directory.CreateDirectory(state.Fixture.RestoreRoot);
 
-        var version = RestoreStepSupport.ResolveVersion(state, Target);
+        var version = Helpers.ResolveVersion(state, Target);
 
-        var result = await RestoreStepSupport.RestoreAsync(state.Fixture, Overwrite, version, cancellationToken);
+        var result = await Helpers.RestoreAsync(state.Fixture, Overwrite, version, cancellationToken);
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
 
-        await RestoreStepSupport.AssertRestoreOutcomeAsync(
+        await Helpers.AssertRestoreOutcomeAsync(
             state.Fixture,
             state.Definition,
             ExpectedVersion,

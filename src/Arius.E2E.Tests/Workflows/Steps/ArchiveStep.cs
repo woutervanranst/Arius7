@@ -10,8 +10,8 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
     {
         if (CaptureNoOpPreCounts)
         {
-            state.ChunkBlobCountBeforeNoOpArchive    = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks,    cancellationToken);
-            state.FileTreeBlobCountBeforeNoOpArchive = await WorkflowBlobAssertions.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
+            state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks,    cancellationToken);
+            state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
         }
 
         var options = new ArchiveCommandOptions
@@ -28,6 +28,6 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
         state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
-        state.LatestSnapshotVersion = result.SnapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+        state.LatestSnapshotVersion   = result.SnapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
     }
 }
