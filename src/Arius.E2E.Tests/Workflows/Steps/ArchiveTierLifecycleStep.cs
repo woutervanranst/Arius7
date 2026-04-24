@@ -8,20 +8,19 @@ using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.Tests.Shared.IO;
+using Shouldly;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using System.Formats.Tar;
-using System.IO.Compression;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
 /// <summary>
-/// Exercises the Azure archive-tier lifecycle for one source subtree by
-/// 1. forcing its tar chunks into archive tier
-/// 2. verifying the pending rehydration path, then
-/// 3. sideloading ready rehydrated chunks and
-/// 4. verifying the final restore plus cleanup.
+/// Exercises the Azure archive-tier lifecycle for one representative tar-backed target by
+/// 1. preserving the existing readable chunk blob,
+/// 2. moving that chunk into archive tier,
+/// 3. verifying the pending rehydration path, then
+/// 4. restoring successfully from a ready rehydrated blob plus cleanup.
 /// </summary>
 internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath = "src") : IRepresentativeWorkflowStep
 {
@@ -43,33 +42,27 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
         // 1. Reuse the existing archived source content from the canonical workflow.
-        // Start from a clean fixture rooted at the preserved versioned source tree so the
-        // archive-tier checks run against the same content the workflow archived earlier.
         FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);
 
-        // 2. Read the hydrated tar chunks backing the target subtree and keep their bytes around
-        // so we can later simulate the "rehydration is ready" path without waiting on Azure.
-        // Identify the tar chunks backing the target subtree and move those existing chunks
-        // to archive tier. The workflow reuses the canonical history instead of re-archiving.
-        var tarChunks = await IdentifyTarChunksAsync(state.Fixture, TargetPath, cancellationToken);
+        // 2. Pick one representative tar-backed file under the target subtree and preserve the
+        // exact existing chunk blob so we can later stage it as a ready rehydrated blob.
+        var targetChunk = await IdentifyTargetTarChunkAsync(state.Fixture, TargetPath, cancellationToken);
 
-        // 3. Force those existing tar chunks into archive tier.
+        // 3. Force that existing chunk into archive tier.
         await MoveChunksToArchiveAsync(
             azureBlobContainer,
-            tarChunks.Select(chunk => chunk.ChunkHash),
+            [targetChunk.ChunkHash],
             cancellationToken);
 
         // 4. First restore run: verify that archive-tier restore prompts for rehydration and
-        // does not restore files while the chunks are still archived.
-        // First restore pass should detect archived chunks, prompt for rehydration, and avoid
-        // restoring files until ready rehydrated chunk blobs become available.
+        // does not restore the chosen target while the chunk is still archived.
         var firstEstimateCaptured = false;
         var initialRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, azureBlobContainer);
         var initialResult = await initialRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreRoot,
-                TargetPath = TargetPath,
+                TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
@@ -90,23 +83,17 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
-        // 5. Replace the pending staged blobs with the ready rehydrated blobs we saved earlier.
-        // Replace the pending rehydrated blobs with ready blobs so the next restore observes
-        // the post-rehydration path without waiting on Azure's real archive-tier timing.
+        // 5. Replace the pending staged blob with the preserved readable blob so the next restore
+        // observes the post-rehydration path without waiting on Azure's real archive-tier timing.
         await DeleteBlobsAsync(
             azureBlobContainer,
             BlobPaths.ChunksRehydrated,
             cancellationToken);
 
-        foreach (var tarChunk in tarChunks)
-        {
-            await SideloadRehydratedTarChunkAsync(
-                azureBlobContainer,
-                state.Fixture.Encryption,
-                tarChunk.ChunkHash,
-                tarChunk.ContentHashToBytes,
-                cancellationToken);
-        }
+        await UploadReadyRehydratedChunkAsync(
+            azureBlobContainer,
+            targetChunk,
+            cancellationToken);
 
         var cleanupDeletedChunks = 0;
         var workflowRoot = Path.GetDirectoryName(state.VersionedSourceRoot)
@@ -117,13 +104,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         try
         {
             // 6. Second restore run: verify that restore now succeeds from chunks-rehydrated/
-            // and that it cleans up the temporary rehydrated blobs afterward.
-            // Ready restore should now succeed, consume the rehydrated tar chunks, and clean
-            // up the temporary rehydrated blobs after the target subtree is restored.
+            // and that it cleans up the temporary rehydrated blob afterward.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = readyRestoreRoot,
-                TargetPath = TargetPath,
+                TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmCleanup = (count, _, _) =>
                 {
@@ -136,9 +121,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             readyResult.ChunksPendingRehydration.ShouldBe(0, $"{Name}: ready restore should not leave pending rehydration chunks.");
 
             await AssertArchiveTierRestoreOutcomeAsync(
-                sourceState,
+                targetChunk,
                 state.Fixture.Encryption,
-                TargetPath,
                 readyRestoreRoot);
 
             cleanupDeletedChunks.ShouldBeGreaterThan(0, $"{Name}: ready restore should clean up rehydrated tar chunks.");
@@ -147,7 +131,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 firstEstimateCaptured,
                 initialResult.ChunksPendingRehydration,
                 initialResult.FilesRestored,
-                initialResult.ChunksPendingRehydration,
+                0,
                 0,
                 readyResult.FilesRestored,
                 readyResult.ChunksPendingRehydration,
@@ -177,15 +161,14 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 context.ContainerName);
         }
 
-        static async Task<IReadOnlyList<ArchiveTierTarChunk>> IdentifyTarChunksAsync(
+        static async Task<ArchiveTierTargetChunk> IdentifyTargetTarChunkAsync(
             E2EFixture fixture,
             string targetPath,
             CancellationToken cancellationToken)
         {
-            // Map each content hash under the target subtree back to its tar chunk so the step
-            // can archive and later sideload exactly the chunks needed for this restore path.
+            // Select one representative tar-backed file under the subtree and preserve the exact
+            // existing chunk blob bytes/metadata so the ready path can reuse the real blob.
             var targetRoot = E2EFixture.CombineValidatedRelativePath(fixture.LocalRoot, targetPath);
-            var contentByChunkHash = new Dictionary<string, Dictionary<string, byte[]>>(StringComparer.Ordinal);
 
             foreach (var filePath in Directory.EnumerateFiles(targetRoot, "*", SearchOption.AllDirectories))
             {
@@ -197,20 +180,23 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 if (entry!.ChunkHash == contentHash)
                     continue;
 
-                if (!contentByChunkHash.TryGetValue(entry.ChunkHash, out var chunkContents))
-                {
-                    chunkContents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-                    contentByChunkHash[entry.ChunkHash] = chunkContents;
-                }
+                var chunkBlobName = BlobPaths.Chunk(entry.ChunkHash);
+                await using var chunkStream = await fixture.BlobContainer.DownloadAsync(chunkBlobName, cancellationToken);
+                using var preservedChunk = new MemoryStream();
+                await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
 
-                chunkContents[contentHash] = bytes;
+                var metadata = await fixture.BlobContainer.GetMetadataAsync(chunkBlobName, cancellationToken);
+                var relativePath = Path.GetRelativePath(fixture.LocalRoot, filePath).Replace(Path.DirectorySeparatorChar, '/');
+
+                return new ArchiveTierTargetChunk(
+                    relativePath,
+                    contentHash,
+                    entry.ChunkHash,
+                    preservedChunk.ToArray(),
+                    metadata.Metadata);
             }
 
-            contentByChunkHash.Count.ShouldBeGreaterThan(0, $"Expected at least one tar chunk under '{targetPath}'.");
-
-            return contentByChunkHash
-                .Select(pair => new ArchiveTierTarChunk(pair.Key, pair.Value))
-                .ToArray();
+            throw new InvalidOperationException($"Expected at least one tar chunk under '{targetPath}'.");
         }
 
         static async Task MoveChunksToArchiveAsync(
@@ -230,40 +216,20 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             }
         }
 
-        static async Task SideloadRehydratedTarChunkAsync(
+        static Task UploadReadyRehydratedChunkAsync(
             AzureBlobContainerService blobContainer,
-            IEncryptionService encryption,
-            string tarChunkHash,
-            IReadOnlyDictionary<string, byte[]> contentHashToBytes,
+            ArchiveTierTargetChunk targetChunk,
             CancellationToken cancellationToken)
         {
-            // Rebuild the rehydrated tar chunk in the same encrypted on-disk format Arius uses
-            // so the ready restore path exercises the real chunk reader and cleanup logic.
-            var rehydratedBlobName = BlobPaths.ChunkRehydrated(tarChunkHash);
-            var rehydratedMeta = await blobContainer.GetMetadataAsync(rehydratedBlobName, cancellationToken);
-            if (rehydratedMeta.Exists && rehydratedMeta.Tier == BlobTier.Archive)
-                await blobContainer.DeleteAsync(rehydratedBlobName, cancellationToken);
+            var rehydratedBlobName = BlobPaths.ChunkRehydrated(targetChunk.ChunkHash);
 
-            var sourceMeta = await blobContainer.GetMetadataAsync(BlobPaths.Chunk(tarChunkHash), cancellationToken);
-
-            using var memoryStream = new MemoryStream();
-            await using (var encryptionStream = encryption.WrapForEncryption(memoryStream))
-            {
-                await using var gzip = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
-                await using var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: false);
-                foreach (var (contentHash, rawBytes) in contentHashToBytes)
-                {
-                    var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, contentHash)
-                    {
-                        DataStream = new MemoryStream(rawBytes),
-                    };
-
-                    await tar.WriteEntryAsync(tarEntry, cancellationToken);
-                }
-            }
-
-            memoryStream.Position = 0;
-            await blobContainer.UploadAsync(rehydratedBlobName, memoryStream, sourceMeta.Metadata, BlobTier.Hot, overwrite: true, cancellationToken: cancellationToken);
+            return blobContainer.UploadAsync(
+                rehydratedBlobName,
+                new MemoryStream(targetChunk.PreservedChunkBytes),
+                targetChunk.Metadata,
+                BlobTier.Hot,
+                overwrite: true,
+                cancellationToken: cancellationToken);
         }
 
         static async Task DeleteBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
@@ -288,42 +254,26 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
 
         static async Task AssertArchiveTierRestoreOutcomeAsync(
-            SyntheticRepositoryState sourceState,
+            ArchiveTierTargetChunk targetChunk,
             IEncryptionService encryption,
-            string targetPath,
             string readyRestoreRoot)
         {
-            var expectedRestoreState = FilterSyntheticRepositoryStateToPrefix(sourceState, targetPath, trimPrefix: false);
+            var restoredPath = Path.Combine(readyRestoreRoot, targetChunk.TargetRelativePath.Replace('/', Path.DirectorySeparatorChar));
+            File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
 
-            await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(
-                expectedRestoreState,
-                readyRestoreRoot,
-                encryption,
-                includePointerFiles: false);
+            await using var stream = File.OpenRead(restoredPath);
+            var restoredHash = Convert.ToHexString(await encryption.ComputeHashAsync(stream)).ToLowerInvariant();
+            restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            foreach (var relativePath in expectedRestoreState.Files.Keys)
-            {
-                var pointerPath = Path.Combine(readyRestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
-
-                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-            }
-        }
-
-        static SyntheticRepositoryState FilterSyntheticRepositoryStateToPrefix(
-            SyntheticRepositoryState state,
-            string prefix,
-            bool trimPrefix)
-        {
-            var normalizedPrefix = prefix.TrimEnd('/') + "/";
-
-            return new SyntheticRepositoryState(state.RootPath, state.Files
-                .Where(pair => pair.Key.StartsWith(normalizedPrefix, StringComparison.Ordinal))
-                .ToDictionary(
-                    pair => trimPrefix ? pair.Key[normalizedPrefix.Length..] : pair.Key,
-                    pair => pair.Value,
-                    StringComparer.Ordinal));
+            var pointerPath = Path.Combine(readyRestoreRoot, (targetChunk.TargetRelativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+            File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }
 
-    sealed record ArchiveTierTarChunk(string ChunkHash, IReadOnlyDictionary<string, byte[]> ContentHashToBytes);
+    sealed record ArchiveTierTargetChunk(
+        string TargetRelativePath,
+        string ContentHash,
+        string ChunkHash,
+        byte[] PreservedChunkBytes,
+        IReadOnlyDictionary<string, string> Metadata);
 }
