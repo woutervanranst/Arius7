@@ -30,9 +30,8 @@ internal sealed record AssertConflictBehaviorStep(
 
         await Helpers.AssertRestoreOutcomeAsync(
             state.Fixture,
-            state.Definition,
+            state,
             ExpectedVersion,
-            state.Seed,
             useNoPointers: !ExpectPointers,
             result,
             preserveConflictBytes: !Overwrite);

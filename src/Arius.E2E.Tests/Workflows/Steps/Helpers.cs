@@ -24,51 +24,38 @@ internal static class Helpers
 
     public static async Task AssertRestoreOutcomeAsync(
         E2EFixture fixture,
-        SyntheticRepositoryDefinition definition,
+        RepresentativeWorkflowState state,
         SyntheticRepositoryVersion expectedVersion,
-        int seed,
         bool useNoPointers,
         RestoreResult restoreResult,
         bool preserveConflictBytes)
     {
         if (preserveConflictBytes)
         {
-            var conflictPath = GetConflictPath(definition, expectedVersion);
+            var conflictPath = GetConflictPath(state.Definition, expectedVersion);
             var restoredPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
-            var expectedConflictBytes = CreateConflictBytes(seed, conflictPath);
+            var expectedConflictBytes = CreateConflictBytes(state.Seed, conflictPath);
 
             restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
             (await File.ReadAllBytesAsync(restoredPath)).ShouldBe(expectedConflictBytes);
             return;
         }
 
-        var expectedRoot = Path.Combine(Path.GetTempPath(), $"arius-expected-{Guid.NewGuid():N}");
-        try
+        if (!state.VersionedSourceStates.TryGetValue(expectedVersion, out var expectedState))
+            throw new InvalidOperationException($"Expected source state for version '{expectedVersion}' is not available.");
+
+        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreRoot, includePointerFiles: false);
+
+        if (!useNoPointers)
         {
-            var expected = await SyntheticRepositoryMaterializer.MaterializeAsync(
-                definition,
-                expectedVersion,
-                seed,
-                expectedRoot);
-
-            await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expected, fixture.RestoreRoot, includePointerFiles: false);
-
-            if (!useNoPointers)
+            foreach (var relativePath in expectedState.Files.Keys)
             {
-                foreach (var relativePath in expected.Files.Keys)
-                {
-                    var pointerPath = Path.Combine(
-                        fixture.RestoreRoot,
-                        (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+                var pointerPath = Path.Combine(
+                    fixture.RestoreRoot,
+                    (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
 
-                    File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-                }
+                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
-        }
-        finally
-        {
-            if (Directory.Exists(expectedRoot))
-                Directory.Delete(expectedRoot, recursive: true);
         }
     }
 

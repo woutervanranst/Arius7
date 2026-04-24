@@ -33,6 +33,9 @@ internal static class RepresentativeWorkflowRunner
 
         try
         {
+            var versionedSourceRoot = Path.Combine(Path.GetTempPath(), $"arius-representative-source-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(versionedSourceRoot);
+
             state = new RepresentativeWorkflowState
             {
                 Context            = context,
@@ -40,6 +43,7 @@ internal static class RepresentativeWorkflowRunner
                 Fixture            = fixture,
                 Definition         = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
                 Seed               = workflow.Seed,
+                VersionedSourceRoot = versionedSourceRoot,
             };
 
             foreach (var step in workflow.Steps)
@@ -50,7 +54,11 @@ internal static class RepresentativeWorkflowRunner
         finally
         {
             if (state is not null)
+            {
                 await state.Fixture.DisposeAsync();
+                if (Directory.Exists(state.VersionedSourceRoot))
+                    Directory.Delete(state.VersionedSourceRoot, recursive: true);
+            }
             else
                 await fixture.DisposeAsync();
         }

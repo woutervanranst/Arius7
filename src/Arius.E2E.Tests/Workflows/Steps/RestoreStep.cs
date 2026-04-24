@@ -25,9 +25,8 @@ internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, Sy
 
         await Helpers.AssertRestoreOutcomeAsync(
             state.Fixture,
-            state.Definition,
+            state,
             ExpectedVersion,
-            state.Seed,
             useNoPointers: !ExpectPointers,
             result,
             preserveConflictBytes: false);

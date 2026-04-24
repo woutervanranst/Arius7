@@ -15,9 +15,13 @@ internal sealed class RepresentativeWorkflowState
 
     public required int Seed { get; init; }
 
+    public required string VersionedSourceRoot { get; init; }
+
     public SyntheticRepositoryVersion? CurrentSourceVersion { get; set; }
 
     public SyntheticRepositoryState? CurrentSyntheticRepositoryState { get; set; }
+
+    public Dictionary<SyntheticRepositoryVersion, SyntheticRepositoryState> VersionedSourceStates { get; } = new();
 
     public string? PreviousSnapshotVersion { get; set; }
 
