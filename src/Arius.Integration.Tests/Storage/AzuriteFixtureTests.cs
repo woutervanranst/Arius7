@@ -22,6 +22,14 @@ public class AzuriteFixtureTests
     }
 
     [Test]
+    public async Task Initialize_DoesNotThrow_WhenAzuriteImageIsMissingAfterUnsupportedPull()
+    {
+        await using var fixture = CreateMissingAzuriteImageFixture();
+
+        await fixture.InitializeAsync();
+    }
+
+    [Test]
     public async Task CreateTestService_Skips_WhenDockerIsUnavailable()
     {
         await using var fixture = CreateUnavailableFixture();
@@ -47,4 +55,9 @@ public class AzuriteFixtureTests
 
     static AzuriteFixture CreateUnsupportedImageFixture()
         => new(() => Task.FromException<Testcontainers.Azurite.AzuriteContainer>(new InvalidOperationException("no matching manifest for windows(10.0.26100)/amd64 in the manifest list entries")));
+
+    static AzuriteFixture CreateMissingAzuriteImageFixture()
+        => new(() => Task.FromException<Testcontainers.Azurite.AzuriteContainer>(new DockerImageNotFoundException("Docker API responded with status code=NotFound, response={\"message\":\"No such image: mcr.microsoft.com/azure-storage/azurite:latest\"}")));
+
+    private sealed class DockerImageNotFoundException(string message) : Exception(message);
 }

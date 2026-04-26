@@ -87,7 +87,9 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
     }
 
     static bool IsUnsupportedAzuriteImage(Exception exception)
-        => exception.Message.Contains("no matching manifest", StringComparison.OrdinalIgnoreCase);
+        => exception.Message.Contains("no matching manifest", StringComparison.OrdinalIgnoreCase)
+            || (exception.GetType().Name == "DockerImageNotFoundException"
+                && exception.Message.Contains("mcr.microsoft.com/azure-storage/azurite", StringComparison.OrdinalIgnoreCase));
 
     void EnsureAvailable()
     {
