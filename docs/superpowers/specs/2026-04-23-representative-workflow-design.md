@@ -135,7 +135,9 @@ Use cases:
 
 #### ArchiveStep
 
-Runs archive with explicit options and records the produced snapshot timestamp/version for later restore steps.
+Runs archive with explicit options and records the returned snapshot timestamp/version for later restore steps.
+
+When the archive result returns the same snapshot version already recorded as latest, the step must treat the archive as a no-op and leave `PreviousSnapshotVersion` and `LatestSnapshotVersion` unchanged. This keeps workflow state aligned with the product rule that unchanged archive runs preserve the existing latest snapshot instead of publishing a redundant snapshot.
 
 Configurable flags should be limited to current known needs:
 
@@ -217,7 +219,7 @@ These are stable enough for both Azurite and Azure.
 
 #### Snapshot creation
 
-After each successful archive, snapshot count increases by one.
+After each successful state-changing archive, snapshot count increases by one. No-op archive runs are the explicit exception: if the rebuilt filetree root is content-equivalent to the latest snapshot, Arius returns the existing latest snapshot timestamp/root hash and does not create another snapshot manifest.
 
 Observation options:
 
@@ -228,11 +230,12 @@ Observation options:
 
 After a no-change re-archive:
 
-- a new snapshot exists
-- latest and previous snapshots have different timestamps
-- latest and previous snapshots have the same `RootHash`
+- snapshot count remains unchanged
+- the latest snapshot version remains the same as before the no-op archive
+- the archive result points at that preserved snapshot timestamp/root hash
+- latest and previous snapshots still represent the two most recent distinct repository states, not the no-op command invocation
 
-This validates that Arius records a new point-in-time snapshot without manufacturing new repository structure.
+This validates that Arius treats snapshots as repository state changes rather than command-invocation history.
 
 #### Snapshot totals
 
@@ -242,6 +245,7 @@ Latest snapshot `FileCount` and `TotalSize` match the expected synthetic dataset
 
 After the no-change re-archive:
 
+- `snapshots/` blob count does not increase
 - `chunks/` blob count does not increase
 - `filetrees/` blob count does not increase
 
