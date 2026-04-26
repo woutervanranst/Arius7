@@ -95,7 +95,10 @@ public sealed class E2EFixture : IAsyncDisposable
         lock (RepositoryCacheLeaseLock)
         {
             if (HasActiveLease(accountName, containerName))
-                return Task.CompletedTask;
+            {
+                throw new InvalidOperationException(
+                    $"Cannot reset local repository cache for account '{accountName}' and container '{containerName}' because an active lease exists. Dispose the active fixture before resetting the cache so workflow transitions remain explicit.");
+            }
 
             try
             {
