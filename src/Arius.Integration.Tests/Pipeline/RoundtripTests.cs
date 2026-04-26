@@ -208,6 +208,48 @@ public class RoundtripTests(AzuriteFixture azurite)
         File.ReadAllBytes(Path.Combine(v2Dir, "file-b.bin")).ShouldBe(contentB);
     }
 
+    [Test]
+    public async Task Archive_UnchangedRepository_DoesNotCreateNewSnapshot()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        fix.WriteFile("file.bin", "stable"u8.ToArray());
+
+        var first = await fix.ArchiveAsync();
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+
+        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        snapshotCountAfterFirst.ShouldBe(1);
+
+        var second = await fix.ArchiveAsync();
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        snapshotCountAfterSecond.ShouldBe(1);
+        second.RootHash.ShouldBe(first.RootHash);
+        second.SnapshotTime.ShouldBe(first.SnapshotTime);
+    }
+
+    [Test]
+    public async Task Archive_WithExistingPointerFiles_DoesNotCreateNewSnapshot()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        fix.WriteFile("file.bin", "stable"u8.ToArray());
+
+        var first = await fix.ArchiveAsync();
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+        File.Exists(Path.Combine(fix.LocalRoot, "file.bin.pointer.arius")).ShouldBeTrue();
+
+        var second = await fix.ArchiveAsync();
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        snapshotCountAfterSecond.ShouldBe(1);
+        second.RootHash.ShouldBe(first.RootHash);
+        second.SnapshotTime.ShouldBe(first.SnapshotTime);
+    }
+
     // ── 13.7: Deduplication — two identical files ─────────────────────────────
 
     [Test]

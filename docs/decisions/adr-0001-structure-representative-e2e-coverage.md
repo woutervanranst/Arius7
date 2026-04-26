@@ -51,7 +51,7 @@ The decision is being followed when the representative suite demonstrates all of
 * Arius can restore the previous snapshot correctly after the archive history has advanced.
 * The same representative workflow runs on both Azurite and Azure for shared behavior.
 * Cold-cache and warm-cache restore behavior are both exercised against the same archive history.
-* No-op re-archive behavior preserves stable repository structure while still producing a new snapshot.
+* No-op re-archive behavior preserves stable repository structure and preserves the current latest snapshot when the root hash is unchanged, as refined by ADR-0002.
 * Pointer-file expectations are verified for normal archive behavior and for `--no-pointers` behavior.
 * Local conflict behavior is verified for both overwrite and no-overwrite restore paths.
 * `--remove-local` behavior is exercised as part of the archive lifecycle.
@@ -97,4 +97,3 @@ This ADR captures the implemented outcome of the PR after several iterations rec
 
 * `docs/superpowers/specs/2026-04-20-shared-test-infrastructure-design.md`
 * `docs/superpowers/specs/2026-04-23-representative-workflow-design.md`
-

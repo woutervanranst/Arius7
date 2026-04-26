@@ -133,7 +133,7 @@ public class FileTreeBlobSerializerTests
     }
 
     [Test]
-    public void ComputeHash_MetadataChange_ProducesNewHash()
+    public void ComputeHash_MetadataChange_PreservesHash()
     {
         var enc  = new PlaintextPassthroughService();
         var blob1 = new FileTreeBlob
@@ -164,7 +164,7 @@ public class FileTreeBlobSerializerTests
         var h1 = FileTreeBlobSerializer.ComputeHash(blob1, enc);
         var h2 = FileTreeBlobSerializer.ComputeHash(blob2, enc);
 
-        h1.ShouldNotBe(h2);
+        h1.ShouldBe(h2);
     }
 
     [Test]

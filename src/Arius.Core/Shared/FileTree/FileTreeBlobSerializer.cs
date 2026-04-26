@@ -197,8 +197,22 @@ public static class FileTreeBlobSerializer
     /// </summary>
     public static string ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
     {
-        var text = Serialize(tree);
+        var text = SerializeHashIdentity(tree);
         var hash = encryption.ComputeHash(text);
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static byte[] SerializeHashIdentity(FileTreeBlob tree)
+    {
+        var sb = new StringBuilder();
+
+        foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+        {
+            sb.Append(entry.Hash);
+            sb.Append(entry.Type == FileTreeEntryType.File ? " F " : " D ");
+            sb.AppendLine(entry.Name);
+        }
+
+        return s_utf8.GetBytes(sb.ToString());
     }
 }

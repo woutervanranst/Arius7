@@ -139,6 +139,7 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 - `RepresentativeArchiveRestoreTests.cs` runs one canonical representative workflow on Azurite and, when credentials are available, live Azure.
 - The representative workflow exercises one evolving archive history instead of isolated one-off scenarios.
 - The canonical workflow covers incremental archive, warm and cold restore, previous-version restore, no-op re-archive, `--no-pointers`, `--remove-local`, conflict handling, and archive-tier pending-versus-ready behavior when the backend supports it.
+- No-op archive runs preserve the current latest snapshot when nothing changed, so snapshot history represents repository state changes rather than repeated command invocations.
 - The synthetic representative repository size is controlled by one explicit constant in `SyntheticRepositoryDefinitionFactory` so development can keep the workflow smaller and tune it upward deliberately later.
 - `E2ETests.cs` keeps the live Azure credential sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
 

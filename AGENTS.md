@@ -138,6 +138,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
 - Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
 - Treat dataset versions (`V1` vs `V2`) and cache transitions (`Warm` vs `Cold`) as explicit workflow steps in one evolving repository history, not incidental fixture behavior.
+- No-op archive coverage should assert that unchanged repositories preserve the current latest snapshot rather than publishing a redundant snapshot.
 - Keep archive-tier behavior inside capability-gated workflow steps rather than separate top-level representative suites.
 - The representative synthetic dataset size is controlled by a single explicit constant in `SyntheticRepositoryDefinitionFactory`; tune it deliberately when changing runtime cost.
 - Remove obsolete representative workflow scaffolding when replacing it; do not keep both workflow and scenario models in parallel.

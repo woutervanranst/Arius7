@@ -25,6 +25,7 @@ internal static class RepresentativeWorkflowCatalog
                 new RestoreStep("restore-latest-v2-cold", WorkflowRestoreTarget.Latest, SyntheticRepositoryVersion.V2),
                 new RestoreStep("restore-previous-v1", WorkflowRestoreTarget.Previous, SyntheticRepositoryVersion.V1),
 
+                new MaterializeVersionStep(SyntheticRepositoryVersion.V2),
                 new ArchiveStep("archive-v2-noop", CaptureNoOpPreCounts: true),
                 new AssertRemoteStateStep("assert-noop-archive", RemoteAssertionKind.NoOpArchive),
 

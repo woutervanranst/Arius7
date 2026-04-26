@@ -5,6 +5,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.Tests.Shared.IO;
 using Mediator;
@@ -38,6 +39,14 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
+
+        if (!Directory.Exists(sourceState.RootPath) && sourceVersion == SyntheticRepositoryVersion.V2)
+        {
+            var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
+            var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V2));
+            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
+            state.VersionedSourceStates[SyntheticRepositoryVersion.V2] = sourceState;
+        }
 
         // 1. Reuse the existing archived source content from the canonical workflow.
         FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);

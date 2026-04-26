@@ -8,10 +8,13 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
+        var latestBeforeArchive = state.LatestSnapshotVersion;
+
         if (CaptureNoOpPreCounts)
         {
             state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks,    cancellationToken);
             state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
+            state.SnapshotVersionBeforeNoOpArchive = latestBeforeArchive;
         }
 
         var options = new ArchiveCommandOptions
@@ -27,7 +30,14 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
             .AsTask();
 
         result.Success.ShouldBeTrue($"{Name}: {result.ErrorMessage}");
-        state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
-        state.LatestSnapshotVersion   = result.SnapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+        var resultVersion = result.SnapshotTime.UtcDateTime.ToString(SnapshotService.TimestampFormat);
+        if (!string.Equals(resultVersion, state.LatestSnapshotVersion, StringComparison.Ordinal))
+        {
+            state.PreviousSnapshotVersion = state.LatestSnapshotVersion;
+            state.LatestSnapshotVersion = resultVersion;
+        }
+
+        if (CaptureNoOpPreCounts)
+            state.NoOpArchivePreservedSnapshot = string.Equals(resultVersion, latestBeforeArchive, StringComparison.Ordinal);
     }
 }

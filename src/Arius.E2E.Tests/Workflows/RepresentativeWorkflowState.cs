@@ -18,5 +18,7 @@ internal sealed class RepresentativeWorkflowState
     public          string?                                                             LatestSnapshotVersion              { get; set; }
     public          int?                                                                ChunkBlobCountBeforeNoOpArchive    { get; set; }
     public          int?                                                                FileTreeBlobCountBeforeNoOpArchive { get; set; }
+    public          string?                                                             SnapshotVersionBeforeNoOpArchive   { get; set; }
+    public          bool?                                                               NoOpArchivePreservedSnapshot       { get; set; }
     public          ArchiveTierWorkflowOutcome?                                         ArchiveTierOutcome                 { get; set; }
 }

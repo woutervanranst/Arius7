@@ -42,11 +42,14 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
                 break;
 
             case RemoteAssertionKind.NoOpArchive:
-                state.PreviousSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: previous snapshot version should be available.");
+                state.SnapshotVersionBeforeNoOpArchive.ShouldNotBeNullOrWhiteSpace($"{Name}: pre-no-op latest snapshot version should be available.");
+                state.NoOpArchivePreservedSnapshot.GetValueOrDefault().ShouldBeTrue($"{Name}: no-op archive should preserve the latest snapshot instead of publishing a redundant snapshot.");
                 
-                var previousSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.PreviousSnapshotVersion, cancellationToken);
-                previousSnapshot.ShouldNotBeNull($"{Name}: previous snapshot should exist.");
-                latestSnapshot.RootHash.ShouldBe(previousSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
+                var preservedSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.SnapshotVersionBeforeNoOpArchive, cancellationToken);
+                preservedSnapshot.ShouldNotBeNull($"{Name}: preserved snapshot should exist.");
+                latestSnapshot.RootHash.ShouldBe(preservedSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                    .ShouldBe(2, $"{Name}: no-op archive should preserve the latest snapshot without creating another snapshot.");
 
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken))
                     .ShouldBe(state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."), $"{Name}: no-op archive should not create additional chunk blobs.");

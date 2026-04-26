@@ -492,12 +492,24 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             if (rootHash is not null)
             {
-                var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
-                snapshotRootHash = snapshot.RootHash;
-                snapshotTime     = snapshot.Timestamp;
-                _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+                var latestSnapshot = await _snapshotSvc.ResolveAsync(cancellationToken: cancellationToken);
+                var isUnchangedSnapshot = latestSnapshot?.RootHash == rootHash
+                    || (await ResolveContentEquivalentSnapshotAsync(rootHash, latestSnapshot, cancellationToken)) is not null;
+                if (isUnchangedSnapshot)
+                {
+                    snapshotRootHash = latestSnapshot!.RootHash;
+                    snapshotTime     = latestSnapshot.Timestamp;
+                    _logger.LogInformation("[snapshot] Unchanged: {Timestamp} rootHash={RootHash}", latestSnapshot.Timestamp.ToString("o"), latestSnapshot.RootHash[..8]);
+                }
+                else
+                {
+                    var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
+                    snapshotRootHash = snapshot.RootHash;
+                    snapshotTime     = snapshot.Timestamp;
+                    _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
 
-                await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
+                    await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
+                }
             }
 
             // Task 8.12: Write pointer files ×N in parallel
@@ -566,6 +578,49 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 /* ignore */
             }
         }
+    }
+
+    async Task<SnapshotManifest?> ResolveContentEquivalentSnapshotAsync(string rootHash, SnapshotManifest? latestSnapshot, CancellationToken cancellationToken)
+    {
+        if (latestSnapshot is null)
+            return null;
+
+        return await ContentIdentityEqualsAsync(rootHash, latestSnapshot.RootHash, cancellationToken) ? latestSnapshot : null;
+    }
+
+    async Task<bool> ContentIdentityEqualsAsync(string leftHash, string rightHash, CancellationToken cancellationToken)
+    {
+        if (leftHash == rightHash)
+            return true;
+
+        var left = await _fileTreeService.ReadAsync(leftHash, cancellationToken);
+        var right = await _fileTreeService.ReadAsync(rightHash, cancellationToken);
+        var leftEntries = left.Entries.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Type).ToList();
+        var rightEntries = right.Entries.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Type).ToList();
+
+        if (leftEntries.Count != rightEntries.Count)
+            return false;
+
+        for (var i = 0; i < leftEntries.Count; i++)
+        {
+            var leftEntry = leftEntries[i];
+            var rightEntry = rightEntries[i];
+            if (leftEntry.Name != rightEntry.Name || leftEntry.Type != rightEntry.Type)
+                return false;
+
+            if (leftEntry.Type == FileTreeEntryType.File)
+            {
+                if (leftEntry.Hash != rightEntry.Hash)
+                    return false;
+
+                continue;
+            }
+
+            if (!await ContentIdentityEqualsAsync(leftEntry.Hash, rightEntry.Hash, cancellationToken))
+                return false;
+        }
+
+        return true;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
