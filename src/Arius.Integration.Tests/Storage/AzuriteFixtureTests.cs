@@ -14,6 +14,14 @@ public class AzuriteFixtureTests
     }
 
     [Test]
+    public async Task Initialize_DoesNotThrow_WhenAzuriteImageIsUnsupported()
+    {
+        await using var fixture = CreateUnsupportedImageFixture();
+
+        await fixture.InitializeAsync();
+    }
+
+    [Test]
     public async Task CreateTestService_Skips_WhenDockerIsUnavailable()
     {
         await using var fixture = CreateUnavailableFixture();
@@ -36,4 +44,7 @@ public class AzuriteFixtureTests
 
     static AzuriteFixture CreateUnavailableFixture()
         => new(() => Task.FromException<Testcontainers.Azurite.AzuriteContainer>(new DockerUnavailableException("Docker unavailable for test")));
+
+    static AzuriteFixture CreateUnsupportedImageFixture()
+        => new(() => Task.FromException<Testcontainers.Azurite.AzuriteContainer>(new InvalidOperationException("no matching manifest for windows(10.0.26100)/amd64 in the manifest list entries")));
 }

@@ -45,6 +45,11 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
             _azurite = null;
             _unavailableReason = $"Docker is unavailable for Azurite-backed tests: {exception.Message}";
         }
+        catch (Exception exception) when (IsUnsupportedAzuriteImage(exception))
+        {
+            _azurite = null;
+            _unavailableReason = $"Azurite Docker image is unsupported in this environment: {exception.Message}";
+        }
     }
 
     public async Task<(BlobContainerClient Container, AzureBlobContainerService Service)>
@@ -80,6 +85,9 @@ public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
         await azurite.StartAsync();
         return azurite;
     }
+
+    static bool IsUnsupportedAzuriteImage(Exception exception)
+        => exception.Message.Contains("no matching manifest", StringComparison.OrdinalIgnoreCase);
 
     void EnsureAvailable()
     {

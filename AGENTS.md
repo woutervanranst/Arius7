@@ -145,6 +145,7 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Keep real archive-tier and rehydration semantics in Azure-capability-gated tests.
 - Reusable Azurite and repository-fixture wiring belongs in `src/Arius.Tests.Shared/`, not in another test project assembly.
 - Azurite-backed integration and E2E tests are discovered on every CI runner; when Docker is unavailable they should skip at runtime with a visible reason in the test report rather than being filtered out of the matrix.
+- Windows CI may expose Docker in Windows container mode, where the Linux Azurite image has no matching manifest; treat that as an unsupported Azurite backend and skip with a visible reason.
 - `src/Arius.E2E.Tests/` is reserved for actual end-to-end Arius behavior coverage. Do not add self-tests for E2E datasets, fixtures, scenario catalogs, or scenario runners there unless explicitly requested.
 - `src/Arius.E2E.Tests/E2ETests.cs` keeps the live Azure credential/configuration sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
 
