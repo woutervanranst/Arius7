@@ -25,6 +25,8 @@ internal static class FileSystemHelper
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
             File.Copy(filePath, targetPath, overwrite: true);
+            File.SetCreationTimeUtc(targetPath, File.GetCreationTimeUtc(filePath));
+            File.SetLastWriteTimeUtc(targetPath, File.GetLastWriteTimeUtc(filePath));
         }
     }
 }

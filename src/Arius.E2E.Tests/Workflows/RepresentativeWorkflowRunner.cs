@@ -19,12 +19,14 @@ internal static class RepresentativeWorkflowRunner
 
     internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, string workflowRoot, CancellationToken cancellationToken)
     {
+        var fixtureRoot = Path.Combine(workflowRoot, "fixture");
+
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
             context.AccountName,
             context.ContainerName,
             BlobTier.Cool,
-            tempRoot: workflowRoot,
+            tempRoot: fixtureRoot,
             deleteTempRoot: static _ => { },
             cancellationToken: cancellationToken);
     }
