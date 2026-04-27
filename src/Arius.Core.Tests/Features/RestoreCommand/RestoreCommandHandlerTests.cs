@@ -5,6 +5,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -175,25 +176,24 @@ public class RestoreCommandHandlerTests
             var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
             var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
 
-            var rootTree = new FileTreeBlob
-            {
-                Entries =
-                [
-                    new FileTreeEntry { Name = "broken.txt", Type = FileTreeEntryType.File, Hash = "not-a-hash", Created = DateTimeOffset.UtcNow, Modified = DateTimeOffset.UtcNow }
-                ]
-            };
-
-            var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, encryption);
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes("root-broken")).ToString());
             var snapshot = new SnapshotManifest
             {
                 Timestamp = DateTimeOffset.UtcNow,
                 RootHash = rootHash,
-                FileCount = 1,
-                TotalSize = 1,
+                FileCount = 2,
+                TotalSize = 2,
                 AriusVersion = "test"
             };
 
-            blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, encryption));
+            var validHash = ContentHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes("healthy")).ToString());
+            var chunkHash = ChunkHash.Parse(validHash.ToString());
+            index.AddEntry(new ShardEntry(validHash.ToString(), chunkHash.ToString(), originalSize: 7, compressedSize: 7));
+
+            var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
+                $"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
+            blobs.AddBlob(BlobPaths.FileTree(rootHash), await CompressAsync(invalidTreePayload));
+            blobs.AddBlob(BlobPaths.Chunk(chunkHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes("healthy")));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
 
             var handler = new RestoreCommandHandler(
@@ -211,16 +211,30 @@ public class RestoreCommandHandlerTests
                 new RestoreCommandMessage(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }),
                 CancellationToken.None);
 
-            result.Success.ShouldBeTrue(result.ErrorMessage);
-            result.FilesRestored.ShouldBe(0);
+            result.Success.ShouldBeTrue();
+            result.FilesRestored.ShouldBe(1);
             result.FilesSkipped.ShouldBe(0);
+            result.ErrorMessage.ShouldBeNull();
             File.Exists(Path.Combine(restoreRoot, "broken.txt")).ShouldBeFalse();
+            File.Exists(Path.Combine(restoreRoot, "healthy.txt")).ShouldBeTrue();
+            (await File.ReadAllTextAsync(Path.Combine(restoreRoot, "healthy.txt"))).ShouldBe("healthy");
         }
         finally
         {
             if (Directory.Exists(restoreRoot))
                 Directory.Delete(restoreRoot, recursive: true);
         }
+    }
+
+    private static async Task<byte[]> CompressAsync(byte[] plaintext)
+    {
+        using var output = new MemoryStream();
+        await using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzip.WriteAsync(plaintext);
+        }
+
+        return output.ToArray();
     }
 
 }

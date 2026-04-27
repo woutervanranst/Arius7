@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -47,10 +48,17 @@ public static class FileTreeBlobSerializer
         {
             foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
             {
-                if (entry.Type == FileTreeEntryType.File)
-                    await writer.WriteLineAsync($"{entry.Hash} F {entry.Created!.Value:O} {entry.Modified!.Value:O} {entry.Name}");
-                else
-                    await writer.WriteLineAsync($"{entry.Hash} D {entry.Name}");
+                switch (entry)
+                {
+                    case FileEntry fileEntry:
+                        await writer.WriteLineAsync($"{fileEntry.ContentHash} F {fileEntry.Created:O} {fileEntry.Modified:O} {fileEntry.Name}");
+                        break;
+                    case DirectoryEntry directoryEntry:
+                        await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
+                }
             }
         }
 
@@ -96,23 +104,27 @@ public static class FileTreeBlobSerializer
 
         foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
         {
-            if (entry.Type == FileTreeEntryType.File)
+            if (entry is FileEntry fileEntry)
             {
                 // <hash> F <created> <modified> <name>
-                sb.Append(entry.Hash);
+                sb.Append(fileEntry.ContentHash);
                 sb.Append(" F ");
-                sb.Append(entry.Created!.Value.ToString("O"));
+                sb.Append(fileEntry.Created.ToString("O"));
                 sb.Append(' ');
-                sb.Append(entry.Modified!.Value.ToString("O"));
+                sb.Append(fileEntry.Modified.ToString("O"));
                 sb.Append(' ');
-                sb.AppendLine(entry.Name);
+                sb.AppendLine(fileEntry.Name);
+            }
+            else if (entry is DirectoryEntry directoryEntry)
+            {
+                // <hash> D <name>
+                sb.Append(directoryEntry.FileTreeHash);
+                sb.Append(" D ");
+                sb.AppendLine(directoryEntry.Name);
             }
             else
             {
-                // <hash> D <name>
-                sb.Append(entry.Hash);
-                sb.Append(" D ");
-                sb.AppendLine(entry.Name);
+                throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
             }
         }
 
@@ -129,59 +141,74 @@ public static class FileTreeBlobSerializer
             if (string.IsNullOrEmpty(line))
                 continue;
 
-            // All lines: first field = hash, second field = type marker (F or D)
-            // F line: <hash> F <created> <modified> <name...>
-            //         split on first 4 spaces → [hash, F, created, modified, name...]
-            // D line: <hash> D <name...>
-            //         split on first 2 spaces → [hash, D, name...]
-
-            var firstSpace = line.IndexOf(' ');
-            if (firstSpace < 0) throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
-
-            var hash       = line[..firstSpace];
-            var afterHash  = line[(firstSpace + 1)..];
-
-            if (afterHash.Length < 2 || afterHash[1] != ' ')
-                throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
-
-            var typeMarker = afterHash[0];
-            var afterType  = afterHash[2..];
-
-            if (typeMarker == 'F')
+            try
             {
-                // <created> <modified> <name...>
-                var s1 = afterType.IndexOf(' ');
-                if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
-                var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
+                // All lines: first field = hash, second field = type marker (F or D)
+                // F line: <hash> F <created> <modified> <name...>
+                //         split on first 4 spaces → [hash, F, created, modified, name...]
+                // D line: <hash> D <name...>
+                //         split on first 2 spaces → [hash, D, name...]
 
-                var afterCreated = afterType[(s1 + 1)..];
-                var s2           = afterCreated.IndexOf(' ');
-                if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
-                var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
+                var firstSpace = line.IndexOf(' ');
+                if (firstSpace < 0) throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
 
-                var name = afterCreated[(s2 + 1)..];
+                var hash       = line[..firstSpace];
+                var afterHash  = line[(firstSpace + 1)..];
 
-                entries.Add(new FileTreeEntry
+                if (afterHash.Length < 2 || afterHash[1] != ' ')
+                    throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
+
+                var typeMarker = afterHash[0];
+                var afterType  = afterHash[2..];
+
+                if (typeMarker == 'F')
                 {
-                    Hash     = hash,
-                    Type     = FileTreeEntryType.File,
-                    Created  = created,
-                    Modified = modified,
-                    Name     = name
-                });
-            }
-            else if (typeMarker == 'D')
-            {
-                entries.Add(new FileTreeEntry
+                    // <created> <modified> <name...>
+                    var s1 = afterType.IndexOf(' ');
+                    if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
+                    var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
+
+                    var afterCreated = afterType[(s1 + 1)..];
+                    var s2           = afterCreated.IndexOf(' ');
+                    if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
+                    var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
+
+                    var name = afterCreated[(s2 + 1)..];
+
+                    if (!ContentHash.TryParse(hash, out var contentHash))
+                    {
+                        continue;
+                    }
+
+                    entries.Add(new FileEntry
+                    {
+                        ContentHash = contentHash,
+                        Created  = created,
+                        Modified = modified,
+                        Name     = name
+                    });
+                }
+                else if (typeMarker == 'D')
                 {
-                    Hash = hash,
-                    Type = FileTreeEntryType.Dir,
-                    Name = afterType
-                });
+                    if (string.IsNullOrWhiteSpace(afterType) || !FileTreeHash.TryParse(hash, out var fileTreeHash))
+                    {
+                        continue;
+                    }
+
+                    entries.Add(new DirectoryEntry
+                    {
+                        FileTreeHash = fileTreeHash,
+                        Name         = afterType
+                    });
+                }
+                else
+                {
+                    throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
+                }
             }
-            else
+            catch (FormatException)
             {
-                throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
+                continue;
             }
         }
 
@@ -195,9 +222,9 @@ public static class FileTreeBlobSerializer
     /// the canonical text bytes. With passphrase: SHA256(passphrase + text); without: SHA256(text).
     /// Returns lowercase hex.
     /// </summary>
-    public static string ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
+    public static FileTreeHash ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
     {
         var text = Serialize(tree);
-        return encryption.ComputeHash(text).ToString();
+        return FileTreeHash.Parse(encryption.ComputeHash(text).ToString());
     }
 }

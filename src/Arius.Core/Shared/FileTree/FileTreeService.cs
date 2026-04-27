@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -79,6 +80,9 @@ public sealed class FileTreeService
     ///   <item>Cache miss: downloads from Azure, writes plaintext to disk, returns blob.</item>
     /// </list>
     /// </summary>
+    public Task<FileTreeBlob> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
+        => ReadAsync(hash.ToString(), cancellationToken);
+
     public async Task<FileTreeBlob> ReadAsync(string hash, CancellationToken cancellationToken = default)
     {
         var diskPath = Path.Combine(_diskCacheDir, hash);
@@ -194,6 +198,9 @@ public sealed class FileTreeService
     /// Uploads the tree blob to Azure (if not already present) and writes the plaintext
     /// representation to the local disk cache.
     /// </summary>
+    public Task WriteAsync(FileTreeHash hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
+        => WriteAsync(hash.ToString(), tree, cancellationToken);
+
     public async Task WriteAsync(string hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
     {
         var blobName     = BlobPaths.FileTree(hash);
@@ -321,6 +328,9 @@ public sealed class FileTreeService
     /// blobs that have not yet been fully downloaded.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when called before <see cref="ValidateAsync"/>.</exception>
+    public bool ExistsInRemote(FileTreeHash hash)
+        => ExistsInRemote(hash.ToString());
+
     public bool ExistsInRemote(string hash)
     {
         if (!_validated)

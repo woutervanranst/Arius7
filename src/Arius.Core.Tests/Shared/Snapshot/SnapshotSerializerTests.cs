@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 
 namespace Arius.Core.Tests.Shared.Snapshot;
@@ -12,10 +13,11 @@ public class SnapshotSerializerTests
     {
         var enc      = new PlaintextPassthroughService();
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
+        var rootHash = FileTreeHash.Parse("a1b2c3d4" + new string('0', 56));
         var manifest = new SnapshotManifest
         {
             Timestamp    = ts,
-            RootHash     = "a1b2c3d4" + new string('0', 56),
+            RootHash     = rootHash,
             FileCount    = 42,
             TotalSize    = 1024L * 1024 * 500,
             AriusVersion = "1.0.0"
@@ -38,10 +40,11 @@ public class SnapshotSerializerTests
     {
         var enc      = new PassphraseEncryptionService("my-snapshot-pass");
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
+        var rootHash = FileTreeHash.Parse("deadbeef" + new string('0', 56));
         var manifest = new SnapshotManifest
         {
             Timestamp    = ts,
-            RootHash     = "deadbeef" + new string('0', 56),
+            RootHash     = rootHash,
             FileCount    = 7,
             TotalSize    = 512,
             AriusVersion = "2.0.0-test"

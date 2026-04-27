@@ -484,9 +484,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
             var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
-            _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash is not null ? rootHash[..8] : "(none)");
+            _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
-            string?        snapshotRootHash = null;
+            FileTreeHash?  snapshotRootHash = null;
             var snapshotTime     = DateTimeOffset.UtcNow;
 
             if (rootHash is not null)
@@ -496,16 +496,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     snapshotRootHash = latestSnapshot.RootHash;
                     snapshotTime     = latestSnapshot.Timestamp;
-                    _logger.LogInformation("[snapshot] Unchanged: {Timestamp} rootHash={RootHash}", latestSnapshot.Timestamp.ToString("o"), latestSnapshot.RootHash[..8]);
+                    _logger.LogInformation("[snapshot] Unchanged: {Timestamp} rootHash={RootHash}", latestSnapshot.Timestamp.ToString("o"), latestSnapshot.RootHash.Short8);
                 }
                 else
                 {
-                    var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
+                    var snapshot = await _snapshotSvc.CreateAsync(rootHash.Value, filesScanned, totalSize, cancellationToken: cancellationToken);
                     snapshotRootHash = snapshot.RootHash;
                     snapshotTime     = snapshot.Timestamp;
-                    _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+                    _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
 
-                    await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
+                    await _mediator.Publish(new SnapshotCreatedEvent(rootHash.ToString(), snapshot.Timestamp, snapshot.FileCount), cancellationToken);
                 }
             }
 
@@ -545,7 +545,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 FilesUploaded = filesUploaded,
                 FilesDeduped  = filesDeduped,
                 TotalSize     = totalSize,
-                RootHash      = snapshotRootHash,
+                RootHash      = snapshotRootHash?.ToString(),
                 SnapshotTime  = snapshotTime
             };
         }

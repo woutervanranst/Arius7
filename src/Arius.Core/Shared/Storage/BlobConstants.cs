@@ -90,6 +90,7 @@ public static class BlobPaths
     public static string ChunkRehydrated(string hash) => $"{ChunksRehydrated}{hash}";
     public static string ChunkRehydrated(ChunkHash hash) => ChunkRehydrated(hash.ToString());
     public static string FileTree(string hash)        => $"{FileTrees}{hash}";
+    public static string FileTree(FileTreeHash hash)  => FileTree(hash.ToString());
     public static string Snapshot(string name)        => $"{Snapshots}{name}";
     public static string ChunkIndexShard(string prefix) => $"{ChunkIndex}{prefix}";
 }

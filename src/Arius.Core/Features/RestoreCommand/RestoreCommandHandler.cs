@@ -108,7 +108,7 @@ public sealed class RestoreCommandHandler
                 };
             }
 
-            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
 
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
@@ -117,7 +117,7 @@ public sealed class RestoreCommandHandler
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
             // Publish snapshot resolved after tree traversal so we include file count (from tree)
-            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, files.Count), cancellationToken);
+            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash.ToString(), files.Count), cancellationToken);
             await _mediator.Publish(new TreeTraversalCompleteEvent(files.Count, TotalOriginalSize: 0), cancellationToken);
             await _mediator.Publish(new RestoreStartedEvent(files.Count), cancellationToken);
 
@@ -474,7 +474,7 @@ public sealed class RestoreCommandHandler
     /// that match <paramref name="targetPath"/> (or all files if <c>null</c>).
     /// Emits batched <see cref="TreeTraversalProgressEvent"/> during traversal.
     /// </summary>
-    private async Task<List<FileToRestore>> CollectFilesAsync(string rootHash, string? targetPath, CancellationToken cancellationToken)
+    private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, string? targetPath, CancellationToken cancellationToken)
     {
         var result = new List<FileToRestore>();
         var prefix = NormalizePath(targetPath);
@@ -527,7 +527,7 @@ public sealed class RestoreCommandHandler
     }
 
     private async Task WalkTreeAsync(
-        string             treeHash,
+        FileTreeHash       treeHash,
         string             currentPath,     // forward-slash relative, no trailing slash
         string?            targetPrefix,
         List<FileToRestore> result,
@@ -547,22 +547,22 @@ public sealed class RestoreCommandHandler
                 ? entry.Name
                 : $"{currentPath}/{entry.Name}";
 
-            if (entry.Type == FileTreeEntryType.Dir)
+            if (entry is DirectoryEntry directoryEntry)
             {
                 // Strip trailing slash from directory name used in path assembly
                 var dirPath = entryPath.TrimEnd('/');
-                await WalkTreeAsync(entry.Hash, dirPath, targetPrefix, result, cancellationToken, onFileDiscovered);
+                await WalkTreeAsync(directoryEntry.FileTreeHash, dirPath, targetPrefix, result, cancellationToken, onFileDiscovered);
             }
-            else
+            else if (entry is FileEntry fileEntry)
             {
                 // File entry
                 if (targetPrefix is null || entryPath.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
                 {
                     result.Add(new FileToRestore(
                         RelativePath : entryPath,
-                        ContentHash  : entry.Hash,
-                        Created      : entry.Created  ?? DateTimeOffset.UtcNow,
-                        Modified     : entry.Modified ?? DateTimeOffset.UtcNow));
+                        ContentHash  : fileEntry.ContentHash.ToString(),
+                        Created      : fileEntry.Created,
+                        Modified     : fileEntry.Modified));
 
                     if (onFileDiscovered is not null)
                         await onFileDiscovered();
