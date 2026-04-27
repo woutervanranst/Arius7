@@ -9,15 +9,6 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;
 
-internal sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
-{
-    public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
-
-    public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.ToString());
-}
-
 /// <summary>
 /// Snapshot manifest: the root of a complete archive state.
 /// Stored (gzip + optional encrypt) at <c>snapshots/&lt;timestamp&gt;</c>.
@@ -28,7 +19,6 @@ public sealed record SnapshotManifest
     public required DateTimeOffset Timestamp   { get; init; }
 
     /// <summary>Root tree hash (SHA-256 hex, 64 chars) produced by the tree builder.</summary>
-    [JsonConverter(typeof(FileTreeHashJsonConverter))]
     public required FileTreeHash   RootHash    { get; init; }
 
     /// <summary>Total number of files in this snapshot.</summary>
@@ -53,7 +43,17 @@ public static class SnapshotSerializer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+        Converters             = { new FileTreeHashJsonConverter() },
     };
+
+    private sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
+    {
+        public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
+
+        public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
+            => writer.WriteStringValue(value.ToString());
+    }
 
     // ── Serialize ─────────────────────────────────────────────────────────────
 
@@ -124,6 +124,7 @@ public sealed class SnapshotService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+        Converters             = { new FileTreeHashJsonConverter() },
     };
 
     public SnapshotService(

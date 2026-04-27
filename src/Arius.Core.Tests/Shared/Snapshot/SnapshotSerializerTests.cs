@@ -58,6 +58,31 @@ public class SnapshotSerializerTests
     }
 
     [Test]
+    public async Task Serialize_Plaintext_UsesStringRootHashJsonShape()
+    {
+        var enc      = new PlaintextPassthroughService();
+        var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
+        var rootHash = FileTreeHash.Parse("cafebabe" + new string('0', 56));
+        var manifest = new SnapshotManifest
+        {
+            Timestamp    = ts,
+            RootHash     = rootHash,
+            FileCount    = 3,
+            TotalSize    = 123,
+            AriusVersion = "1.2.3"
+        };
+
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc);
+
+        using var compressed = new MemoryStream(bytes);
+        await using var gzip = new System.IO.Compression.GZipStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+        using var json = new MemoryStream();
+        await gzip.CopyToAsync(json);
+
+        System.Text.Encoding.UTF8.GetString(json.ToArray()).ShouldContain($"\"rootHash\":\"{rootHash}\"");
+    }
+
+    [Test]
     public void BlobName_TimestampFormat_MatchesSpec()
     {
         // Spec example: "2026-03-22T150000.000Z"
