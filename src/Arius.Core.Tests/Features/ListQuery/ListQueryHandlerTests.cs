@@ -570,9 +570,9 @@ public class ListQueryHandlerTests
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
-    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(ContentHashFor(label).ToString());
+    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(ContentHashFor(label));
 
-    private static FileTreeHash TreeHashFor(string label) => FileTreeHash.Parse(ContentHashFor(label).ToString());
+    private static FileTreeHash TreeHashFor(string label) => FileTreeHash.Parse(ContentHashFor(label));
 
     private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
     {

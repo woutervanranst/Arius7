@@ -90,7 +90,7 @@ internal static class Helpers
         var entry       = await LookupChunkAsync(state, contentHash, cancellationToken);
 
         entry.ShouldNotBeNull($"Chunk index should resolve large duplicate content hash '{contentHash}'.");
-        entry!.ChunkHash.ShouldBe(ChunkHash.Parse(contentHash.ToString()), "Large duplicate files should resolve directly to a large chunk.");
+        entry!.ChunkHash.ShouldBe(ChunkHash.Parse(contentHash), "Large duplicate files should resolve directly to a large chunk.");
     }
 
     public static async Task AssertSmallFileTarLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
@@ -100,7 +100,7 @@ internal static class Helpers
         var thinBlobName = BlobPaths.Chunk(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
-        entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash.ToString()), "Small bundled files should resolve to their parent tar chunk hash.");
+        entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash), "Small bundled files should resolve to their parent tar chunk hash.");
 
         // Assert that the ThinChunk is pointing to the correct TarChunk
         await using var thinStream = await state.Fixture.BlobContainer.DownloadAsync(thinBlobName, cancellationToken);

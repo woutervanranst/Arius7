@@ -18,6 +18,8 @@ public readonly record struct ContentHash
 
     public static ContentHash Parse(string value) => new(HashCodec.NormalizeHex(value));
 
+    public static ContentHash Parse(ChunkHash value) => new(value.ToString());
+
     public static bool TryParse(string? value, out ContentHash hash)
     {
         try

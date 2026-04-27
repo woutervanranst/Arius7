@@ -187,7 +187,7 @@ public class RestoreCommandHandlerTests
             };
 
             var validHash = ContentHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes("healthy")).ToString());
-            var chunkHash = ChunkHash.Parse(validHash.ToString());
+            var chunkHash = ChunkHash.Parse(validHash);
             index.AddEntry(new ShardEntry(validHash.ToString(), chunkHash.ToString(), originalSize: 7, compressedSize: 7));
 
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(

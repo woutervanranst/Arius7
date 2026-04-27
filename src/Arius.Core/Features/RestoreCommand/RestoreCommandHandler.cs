@@ -514,7 +514,7 @@ public sealed class RestoreCommandHandler
         return false;
     }
 
-    private static bool IsLargeChunk(ShardEntry entry) => ChunkHash.Parse(entry.ContentHash.ToString()) == entry.ChunkHash;
+    private static bool IsLargeChunk(ShardEntry entry) => ChunkHash.Parse(entry.ContentHash) == entry.ChunkHash;
 
     private async Task WalkTreeAsync(
         FileTreeHash       treeHash,

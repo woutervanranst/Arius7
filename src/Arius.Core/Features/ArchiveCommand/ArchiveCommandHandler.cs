@@ -288,7 +288,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize());
 
-                    var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash.ToString());
+                    var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
                     var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -347,7 +347,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         ChunkHash tarHash;
                         await using (var fs = File.OpenRead(currentTarPath!))
                         {
-                            tarHash = ChunkHash.Parse((await _encryption.ComputeHashAsync(fs, cancellationToken)).ToString());
+                            tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(fs, cancellationToken));
                         }
 
                         await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);

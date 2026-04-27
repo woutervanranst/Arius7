@@ -18,6 +18,8 @@ public readonly record struct FileTreeHash
 
     public static FileTreeHash Parse(string value) => new(HashCodec.NormalizeHex(value));
 
+    public static FileTreeHash Parse(ContentHash value) => new(value.ToString());
+
     public static bool TryParse(string? value, out FileTreeHash hash)
     {
         try

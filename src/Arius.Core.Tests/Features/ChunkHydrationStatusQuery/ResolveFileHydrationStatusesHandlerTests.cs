@@ -23,13 +23,13 @@ public class ResolveFileHydrationStatusesHandlerTests
         var testCase = StatusCaseFor(state);
         var key = $"{chunkType}-{state}";
         var contentHash = ContentHashFor($"content-{key}");
-        var largeChunkHash = chunkType == BlobMetadataKeys.TypeLarge ? ChunkHash.Parse(contentHash.ToString()) : ChunkHashFor($"large-{key}");
-        var tarChunkHash = chunkType == BlobMetadataKeys.TypeTar ? ChunkHash.Parse(contentHash.ToString()) : ChunkHashFor($"tar-{key}");
+        var largeChunkHash = chunkType == BlobMetadataKeys.TypeLarge ? ChunkHash.Parse(contentHash) : ChunkHashFor($"large-{key}");
+        var tarChunkHash = chunkType == BlobMetadataKeys.TypeTar ? ChunkHash.Parse(contentHash) : ChunkHashFor($"tar-{key}");
         var resolvedChunkHash = chunkType switch
         {
             BlobMetadataKeys.TypeLarge => largeChunkHash,
             BlobMetadataKeys.TypeThin => tarChunkHash,
-            BlobMetadataKeys.TypeTar => ChunkHash.Parse(contentHash.ToString()),
+            BlobMetadataKeys.TypeTar => ChunkHash.Parse(contentHash),
             _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
 
@@ -39,9 +39,9 @@ public class ResolveFileHydrationStatusesHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, $"acct-hydration-{key}", $"ctr-hydration-{key}", cacheBudgetBytes: 1024 * 1024);
         var entry = chunkType switch
         {
-            BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash.ToString()), 100, 25),
+            BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
             BlobMetadataKeys.TypeThin => new ShardEntry(contentHash, tarChunkHash, 100, 25),
-            BlobMetadataKeys.TypeTar => new ShardEntry(contentHash, ChunkHash.Parse(contentHash.ToString()), 100, 25),
+            BlobMetadataKeys.TypeTar => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
             _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
         index.AddEntry(entry);
@@ -184,7 +184,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
-    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)).ToString());
+    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)));
 
     private sealed record HydrationStatusCase(
         string Name,

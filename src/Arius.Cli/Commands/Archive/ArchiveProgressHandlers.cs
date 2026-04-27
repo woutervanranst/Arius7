@@ -134,7 +134,7 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
-        if (state.SetFileUploading(ContentHash.Parse(notification.ChunkHash.ToString())))
+        if (state.SetFileUploading(ContentHash.Parse(notification.ChunkHash)))
         {
             state.IncrementFilesUnique();
             return ValueTask.CompletedTask;
@@ -158,7 +158,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash.ToString()), out var paths))
+        if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash), out var paths))
             foreach (var path in paths)
                 state.RemoveFile(path);
         state.IncrementChunksUploaded(notification.CompressedSize);

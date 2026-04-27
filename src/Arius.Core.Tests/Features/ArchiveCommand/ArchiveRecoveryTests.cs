@@ -79,6 +79,6 @@ public class ArchiveRecoveryTests
             writer.WriteEntry(entry);
         }
 
-        return ChunkHash.Parse(env.Encryption.ComputeHash(tarStream.ToArray()).ToString());
+        return ChunkHash.Parse(env.Encryption.ComputeHash(tarStream.ToArray()));
     }
 }
