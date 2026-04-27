@@ -188,7 +188,7 @@ public class RestoreCommandHandlerTests
 
             var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8.ToArray()).ToString());
             var chunkHash = ChunkHash.Parse(validHash);
-            index.AddEntry(new ShardEntry(validHash.ToString(), chunkHash.ToString(), originalSize: 7, compressedSize: 7));
+            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7));
 
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
                 $"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
