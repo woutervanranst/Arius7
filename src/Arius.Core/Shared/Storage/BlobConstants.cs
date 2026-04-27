@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Core.Shared.Storage;
 
 /// <summary>
@@ -83,7 +85,10 @@ public static class BlobPaths
     public const string ChunkIndex        = "chunk-index/";
 
     public static string Chunk(string hash)           => $"{Chunks}{hash}";
+    public static string Chunk(ContentHash hash)      => Chunk(hash.ToString());
+    public static string Chunk(ChunkHash hash)        => Chunk(hash.ToString());
     public static string ChunkRehydrated(string hash) => $"{ChunksRehydrated}{hash}";
+    public static string ChunkRehydrated(ChunkHash hash) => ChunkRehydrated(hash.ToString());
     public static string FileTree(string hash)        => $"{FileTrees}{hash}";
     public static string Snapshot(string name)        => $"{Snapshots}{name}";
     public static string ChunkIndexShard(string prefix) => $"{ChunkIndex}{prefix}";

@@ -438,6 +438,34 @@ public class ListQueryHandlerTests
     }
 
     [Test]
+    public async Task Handle_InvalidCloudContentHash_LeavesOriginalSizeNullInsteadOfThrowing()
+    {
+        var rootTree = new FileTreeBlob
+        {
+            Entries =
+            [
+                new FileTreeEntry { Name = "broken.txt", Type = FileTreeEntryType.File, Hash = "not-a-hash", Created = s_created, Modified = s_modified }
+            ]
+        };
+        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
+        var snapshot = MakeSnapshot(rootHash);
+
+        var blobs = new FakeSeededBlobContainerService();
+        blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
+        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        using var index = new ChunkIndexService(blobs, s_encryption, "acct-invalid-ls", "ctr-invalid-ls", cacheBudgetBytes: 1024 * 1024);
+        var handler = MakeHandler(blobs, index, "acct-invalid-ls", "ctr-invalid-ls");
+
+        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None));
+        var file = results.OfType<RepositoryFileEntry>().Single();
+
+        file.RelativePath.ShouldBe("broken.txt");
+        file.ContentHash.ShouldBe("not-a-hash");
+        file.OriginalSize.ShouldBeNull();
+    }
+
+    [Test]
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
         var blobs = new FakeSeededBlobContainerService();

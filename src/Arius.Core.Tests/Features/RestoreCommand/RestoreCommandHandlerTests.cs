@@ -157,4 +157,70 @@ public class RestoreCommandHandlerTests
         }
     }
 
+    [Test]
+    public async Task Handle_InvalidSnapshotContentHash_SkipsFileInsteadOfThrowing()
+    {
+        var blobs = new FakeSeededBlobContainerService();
+        var encryption = new PlaintextPassthroughService();
+        var mediator = Substitute.For<IMediator>();
+        var accountName = $"acct-restore-invalid-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-invalid-{Guid.NewGuid():N}";
+        var restoreRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-invalid-{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(restoreRoot);
+
+        try
+        {
+            using var index = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
+
+            var rootTree = new FileTreeBlob
+            {
+                Entries =
+                [
+                    new FileTreeEntry { Name = "broken.txt", Type = FileTreeEntryType.File, Hash = "not-a-hash", Created = DateTimeOffset.UtcNow, Modified = DateTimeOffset.UtcNow }
+                ]
+            };
+
+            var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, encryption);
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp = DateTimeOffset.UtcNow,
+                RootHash = rootHash,
+                FileCount = 1,
+                TotalSize = 1,
+                AriusVersion = "test"
+            };
+
+            blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, encryption));
+            blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+
+            var handler = new RestoreCommandHandler(
+                encryption,
+                index,
+                new ChunkStorageService(blobs, encryption),
+                fileTreeService,
+                snapshotSvc,
+                mediator,
+                new FakeLogger<RestoreCommandHandler>(),
+                accountName,
+                containerName);
+
+            var result = await handler.Handle(
+                new RestoreCommandMessage(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }),
+                CancellationToken.None);
+
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.FilesRestored.ShouldBe(0);
+            result.FilesSkipped.ShouldBe(0);
+            File.Exists(Path.Combine(restoreRoot, "broken.txt")).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(restoreRoot))
+                Directory.Delete(restoreRoot, recursive: true);
+        }
+    }
+
 }

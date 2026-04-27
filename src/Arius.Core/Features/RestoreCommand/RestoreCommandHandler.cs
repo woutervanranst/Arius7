@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -178,16 +179,22 @@ public sealed class RestoreCommandHandler
 
             // ── Step 4: Chunk resolution ──────────────────────────────────────
 
-            var contentHashes = toRestore.Select(f => f.ContentHash).Distinct().ToList();
+            var contentHashes = toRestore
+                .Select(file => (File: file, ContentHash: TryParseContentHash(file.ContentHash, file.RelativePath)))
+                .Where(entry => entry.ContentHash is not null)
+                .Select(entry => entry.ContentHash!.Value)
+                .Distinct()
+                .ToList();
             var indexEntries  = await _index.LookupAsync(contentHashes, cancellationToken);
 
             // Group files by chunk hash
-            var filesByChunkHash = new Dictionary<string, List<FileToRestore>>(StringComparer.Ordinal);
+            var filesByChunkHash = new Dictionary<ChunkHash, List<FileToRestore>>();
             var unresolved = new List<FileToRestore>();
 
             foreach (var file in toRestore)
             {
-                if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
+                var parsedContentHash = TryParseContentHash(file.ContentHash, file.RelativePath);
+                if (parsedContentHash is null || !indexEntries.TryGetValue(parsedContentHash.Value, out var entry))
                 {
                     _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
                     unresolved.Add(file);
@@ -199,7 +206,7 @@ public sealed class RestoreCommandHandler
                 list.Add(file);
             }
 
-            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var ie) && ie.ContentHash == ie.ChunkHash);
+            var largeChunks = filesByChunkHash.Keys.Count(k => TryGetIndexEntry(filesByChunkHash[k][0], indexEntries, out var ie) && ie.ContentHash.ToString() == ie.ChunkHash.ToString());
             var tarChunks   = filesByChunkHash.Count - largeChunks;
 
             // Sum original and compressed sizes from index entries for the aggregate counters.
@@ -211,9 +218,9 @@ public sealed class RestoreCommandHandler
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
                 var firstFile = filesByChunkHash[chunkHash][0];
-                if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
+                if (TryGetIndexEntry(firstFile, indexEntries, out var ie2))
                 {
-                    var isLargeChunk = ie2.ContentHash == ie2.ChunkHash;
+                    var isLargeChunk = ie2.ContentHash.ToString() == ie2.ChunkHash.ToString();
                     if (isLargeChunk)
                     {
                         totalOriginalBytes   += ie2.OriginalSize;
@@ -224,7 +231,7 @@ public sealed class RestoreCommandHandler
                         // Tar bundle: sum across all files that map to this chunk
                         foreach (var file in filesByChunkHash[chunkHash])
                         {
-                            if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                            if (TryGetIndexEntry(file, indexEntries, out var fileEntry))
                             {
                                 totalOriginalBytes   += fileEntry.OriginalSize;
                                 totalCompressedBytes += fileEntry.CompressedSize;
@@ -239,9 +246,9 @@ public sealed class RestoreCommandHandler
 
             // ── Step 5: Rehydration status check ──────────────────────────────
 
-            var available          = new List<string>();   // chunk hashes ready to download
-            var needsRehydration   = new List<string>();   // archive-tier, not yet rehydrated
-            var rehydrationPending = new List<string>();   // copy already in progress
+            var available          = new List<ChunkHash>();   // chunk hashes ready to download
+            var needsRehydration   = new List<ChunkHash>();   // archive-tier, not yet rehydrated
+            var rehydrationPending = new List<ChunkHash>();   // copy already in progress
 
             foreach (var chunkHash in filesByChunkHash.Keys)
             {
@@ -276,13 +283,13 @@ public sealed class RestoreCommandHandler
             foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
                 rehydrationBytes += SumCompressedBytes(chunkHash);
 
-            long SumCompressedBytes(string chunkHash)
+            long SumCompressedBytes(ChunkHash chunkHash)
             {
                 var firstFile = filesByChunkHash[chunkHash][0];
-                if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
+                if (!TryGetIndexEntry(firstFile, indexEntries, out var ie))
                     return 0;
 
-                var isLargeChunk = ie.ContentHash == ie.ChunkHash;
+                var isLargeChunk = ie.ContentHash.ToString() == ie.ChunkHash.ToString();
                 if (isLargeChunk)
                     return ie.CompressedSize;
 
@@ -290,7 +297,7 @@ public sealed class RestoreCommandHandler
                 long sum = 0;
                 foreach (var file in filesByChunkHash[chunkHash])
                 {
-                    if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                    if (TryGetIndexEntry(file, indexEntries, out var fileEntry))
                         sum += fileEntry.CompressedSize;
                 }
                 return sum;
@@ -344,29 +351,29 @@ public sealed class RestoreCommandHandler
                     // If content-hash == chunk-hash → large file
                     // otherwise → thin/tar bundle
                     var firstFile   = filesForChunk[0];
-                    if (!indexEntries.TryGetValue(firstFile.ContentHash, out var indexEntry))
+                    if (!TryGetIndexEntry(firstFile, indexEntries, out var indexEntry))
                         return;
 
-                    var isLargeChunk = indexEntry.ContentHash == indexEntry.ChunkHash;
+                    var isLargeChunk = indexEntry.ContentHash.ToString() == indexEntry.ChunkHash.ToString();
 
                     // For large files, sizes come from the single index entry.
                     // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
                     // sum across all files to reconstruct the total tar.gz blob size.
                     var compressedSize = isLargeChunk
                         ? indexEntry.CompressedSize
-                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.CompressedSize : 0);
+                        : filesForChunk.Sum(f => TryGetIndexEntry(f, indexEntries, out var e) ? e.CompressedSize : 0);
                     var originalSize = isLargeChunk
                         ? indexEntry.OriginalSize
-                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.OriginalSize : 0);
+                        : filesForChunk.Sum(f => TryGetIndexEntry(f, indexEntries, out var e) ? e.OriginalSize : 0);
 
-                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash[..8], isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
+                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash.Short8, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
+                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash.ToString(), isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
 
                     if (isLargeChunk)
                     {
                         foreach (var file in filesForChunk)
                         {
-                            await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
+                            await RestoreLargeFileAsync(chunkHash.ToString(), file, opts, compressedSize, ct);
                             Interlocked.Increment(ref filesRestoredLong);
                             await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
                         }
@@ -379,7 +386,7 @@ public sealed class RestoreCommandHandler
                             .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
                             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                         var restored = await RestoreTarBundleAsync(
-                            chunkHash, filesByContentHash, opts, compressedSize, ct);
+                            chunkHash.ToString(), filesByContentHash, opts, compressedSize, ct);
                         Interlocked.Add(ref filesRestoredLong, restored);
                     }
                 });
@@ -404,7 +411,7 @@ public sealed class RestoreCommandHandler
                     {
                         await _chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
 
-                        if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
+                        if (TryGetIndexEntry(filesByChunkHash[chunkHash][0], indexEntries, out var ie))
                             totalRehydrateBytes += ie.CompressedSize;
                     }
                     catch (Exception ex)
@@ -498,6 +505,27 @@ public sealed class RestoreCommandHandler
         return result;
     }
 
+    private ContentHash? TryParseContentHash(string value, string relativePath)
+    {
+        if (ContentHash.TryParse(value, out var hash))
+            return hash;
+
+        _logger.LogWarning("Invalid content hash encountered while restoring repository data: {Hash} ({Path})", value, relativePath);
+        return null;
+    }
+
+    private bool TryGetIndexEntry(
+        FileToRestore file,
+        IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries,
+        out ShardEntry entry)
+    {
+        if (TryParseContentHash(file.ContentHash, file.RelativePath) is { } contentHash && indexEntries.TryGetValue(contentHash, out entry!))
+            return true;
+
+        entry = null!;
+        return false;
+    }
+
     private async Task WalkTreeAsync(
         string             treeHash,
         string             currentPath,     // forward-slash relative, no trailing slash
@@ -575,7 +603,7 @@ public sealed class RestoreCommandHandler
 
         {
             var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath, compressedSize, DownloadKind.LargeFile);
-            await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+            await using var payloadStream = await _chunkStorage.DownloadAsync(ChunkHash.Parse(chunkHash), progress, cancellationToken);
             await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
@@ -620,7 +648,7 @@ public sealed class RestoreCommandHandler
         var restored = 0;
 
         var progress = opts.CreateDownloadProgress?.Invoke(chunkHash, compressedSize, DownloadKind.TarBundle);
-        await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+        await using var payloadStream = await _chunkStorage.DownloadAsync(ChunkHash.Parse(chunkHash), progress, cancellationToken);
         var tarReader = new TarReader(payloadStream, leaveOpen: false);
 
         TarEntry? tarEntry;

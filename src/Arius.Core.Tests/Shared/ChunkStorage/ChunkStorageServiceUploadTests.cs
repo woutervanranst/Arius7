@@ -1,5 +1,6 @@
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
@@ -8,6 +9,10 @@ namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceUploadTests
 {
+    private static ChunkHash Chunk(string value) => ChunkHash.Parse(value);
+
+    private static ContentHash Content(string value) => ContentHash.Parse(value);
+
     [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
@@ -17,18 +22,18 @@ public class ChunkStorageServiceUploadTests
         Random.Shared.NextBytes(content);
 
         var result = await service.UploadLargeAsync(
-            chunkHash: "abc123",
+            chunkHash: Chunk("abc12300112233445566778899aabbccddeeff00112233445566778899aabb"),
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
             progress: null,
             cancellationToken: CancellationToken.None);
 
-        result.ChunkHash.ShouldBe("abc123");
+        result.ChunkHash.ShouldBe(Chunk("abc12300112233445566778899aabbccddeeff00112233445566778899aabb"));
         result.StoredSize.ShouldBeGreaterThan(0L);
         result.AlreadyExisted.ShouldBeFalse();
 
-        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk("abc123"));
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk(Chunk("abc12300112233445566778899aabbccddeeff00112233445566778899aabb")));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe(content.Length.ToString());
         metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
@@ -43,11 +48,11 @@ public class ChunkStorageServiceUploadTests
         var content = new byte[1024];
         Random.Shared.NextBytes(content);
 
-        await blobs.SeedTarBlobAsync(BlobPaths.Chunk("tar123"), [content], BlobTier.Cold);
-        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk("tar123"));
+        await blobs.SeedTarBlobAsync(BlobPaths.Chunk(Chunk("tar12300112233445566778899aabbccddeeff00112233445566778899aabb")), [content], BlobTier.Cold);
+        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(Chunk("tar12300112233445566778899aabbccddeeff00112233445566778899aabb")));
 
         var result = await service.UploadTarAsync(
-            chunkHash: "tar123",
+            chunkHash: Chunk("tar12300112233445566778899aabbccddeeff00112233445566778899aabb"),
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Cold,
@@ -56,7 +61,7 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeTrue();
         result.StoredSize.ShouldBeGreaterThan(0L);
-        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.Chunk("tar123"));
+        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.Chunk(Chunk("tar12300112233445566778899aabbccddeeff00112233445566778899aabb")));
     }
 
     [Test]
@@ -66,14 +71,14 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
-        var blobName = BlobPaths.Chunk("retry123");
+        var blobName = BlobPaths.Chunk(Chunk("abcabc00112233445566778899aabbccddeeff00112233445566778899aabb"));
 
         await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         blobs.ClearMetadata(blobName);
         blobs.ThrowAlreadyExistsOnOpenWrite(blobName, throwOnce: true);
 
         var result = await service.UploadLargeAsync(
-            chunkHash: "retry123",
+            chunkHash: Chunk("abcabc00112233445566778899aabbccddeeff00112233445566778899aabb"),
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
@@ -98,7 +103,7 @@ public class ChunkStorageServiceUploadTests
         await using var nonSeekable = new NonSeekableReadStream(content);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.UploadLargeAsync(
-            chunkHash: "retry-nonseek",
+            chunkHash: Chunk("feeded00112233445566778899aabbccddeeff00112233445566778899aabb"),
             content: nonSeekable,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
@@ -113,15 +118,15 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
 
         var created = await service.UploadThinAsync(
-            contentHash: "thin123",
-            parentChunkHash: "tar123",
+            contentHash: Content("11112300112233445566778899aabbccddeeff00112233445566778899aabb"),
+            parentChunkHash: Chunk("22212300112233445566778899aabbccddeeff00112233445566778899aabb"),
             originalSize: 512,
             compressedSize: 111,
             cancellationToken: CancellationToken.None);
 
         created.ShouldBeTrue();
 
-        var blobName = BlobPaths.Chunk("thin123");
+        var blobName = BlobPaths.Chunk(Content("11112300112233445566778899aabbccddeeff00112233445566778899aabb"));
         var metadata = await blobs.GetMetadataAsync(blobName);
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
@@ -130,7 +135,7 @@ public class ChunkStorageServiceUploadTests
 
         await using var payload = await blobs.DownloadAsync(blobName);
         using var reader = new StreamReader(payload);
-        (await reader.ReadToEndAsync()).ShouldBe("tar123");
+        (await reader.ReadToEndAsync()).ShouldBe("22212300112233445566778899aabbccddeeff00112233445566778899aabb");
     }
 
     [Test]
@@ -138,11 +143,11 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        var blobName = BlobPaths.Chunk("thin456");
+        var blobName = BlobPaths.Chunk(Content("11145600112233445566778899aabbccddeeff00112233445566778899aabb"));
 
         blobs.SeedBlob(
             blobName,
-            System.Text.Encoding.UTF8.GetBytes("tar456"),
+            System.Text.Encoding.UTF8.GetBytes("22245600112233445566778899aabbccddeeff00112233445566778899aabb"),
             BlobTier.Cool,
             new Dictionary<string, string>
             {
@@ -153,8 +158,8 @@ public class ChunkStorageServiceUploadTests
             ContentTypes.Thin);
 
         var created = await service.UploadThinAsync(
-            contentHash: "thin456",
-            parentChunkHash: "tar456",
+            contentHash: Content("11145600112233445566778899aabbccddeeff00112233445566778899aabb"),
+            parentChunkHash: Chunk("22245600112233445566778899aabbccddeeff00112233445566778899aabb"),
             originalSize: 123,
             compressedSize: 45,
             cancellationToken: CancellationToken.None);
@@ -168,13 +173,13 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        var blobName = BlobPaths.Chunk("thin789");
+        var blobName = BlobPaths.Chunk(Content("11178900112233445566778899aabbccddeeff00112233445566778899aabb"));
 
-        blobs.SeedBlob(blobName, System.Text.Encoding.UTF8.GetBytes("tar-old"), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
+        blobs.SeedBlob(blobName, System.Text.Encoding.UTF8.GetBytes("22200000112233445566778899aabbccddeeff00112233445566778899aabb"), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
 
         var created = await service.UploadThinAsync(
-            contentHash: "thin789",
-            parentChunkHash: "tar789",
+            contentHash: Content("11178900112233445566778899aabbccddeeff00112233445566778899aabb"),
+            parentChunkHash: Chunk("22278900112233445566778899aabbccddeeff00112233445566778899aabb"),
             originalSize: 789,
             compressedSize: 222,
             cancellationToken: CancellationToken.None);

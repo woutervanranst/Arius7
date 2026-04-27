@@ -157,10 +157,13 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
             .Select(candidate => candidate.Entry.Hash)
             .Distinct(StringComparer.Ordinal)
+            .Select(TryParseContentHash)
+            .Where(hash => hash is not null)
+            .Select(hash => hash!.Value)
             .ToList();
         var sizeLookup = hashes.Count == 0
-            ? new Dictionary<string, ShardEntry>(StringComparer.Ordinal)
-            : new Dictionary<string, ShardEntry>(await _index.LookupAsync(hashes, cancellationToken), StringComparer.Ordinal);
+            ? new Dictionary<ContentHash, ShardEntry>()
+            : new Dictionary<ContentHash, ShardEntry>(await _index.LookupAsync(hashes, cancellationToken));
 
         foreach (var candidate in visibleCloudFiles)
         {
@@ -171,9 +174,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var relativePath = CombineRelativePath(currentRelativeDirectory, candidate.Entry.Name);
             var localFile = candidate.LocalFile;
-            var originalSize = sizeLookup.TryGetValue(candidate.Entry.Hash, out var shardEntry)
-                ? shardEntry.OriginalSize
-                : localFile?.FileSize;
+            long? originalSize = localFile?.FileSize;
+            if (TryParseContentHash(candidate.Entry.Hash) is { } contentHash && sizeLookup.TryGetValue(contentHash, out var shardEntry))
+                originalSize = shardEntry.OriginalSize;
 
             yield return new RepositoryFileEntry(
                 RelativePath: relativePath,
@@ -372,6 +375,15 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         return path.Replace('\\', '/').Trim('/');
+    }
+
+    private ContentHash? TryParseContentHash(string value)
+    {
+        if (ContentHash.TryParse(value, out var hash))
+            return hash;
+
+        _logger.LogWarning("Invalid content hash encountered while listing repository data: {ContentHash}", value);
+        return null;
     }
 
     private static string? NormalizeLocalRoot(string? path) =>

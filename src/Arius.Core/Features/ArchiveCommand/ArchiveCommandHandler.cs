@@ -5,6 +5,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -296,7 +297,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         ? opts.CreateUploadProgress(upload.HashedPair.ContentHash, upload.FileSize)
                         : null;
                     var uploadResult = await _chunkStorage.UploadLargeAsync(
-                        upload.HashedPair.ContentHash,
+                        ChunkHash.Parse(upload.HashedPair.ContentHash),
                         fs,
                         upload.FileSize,
                         opts.UploadTier,
@@ -420,7 +421,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
                             : null;
                         var uploadResult = await _chunkStorage.UploadTarAsync(
-                            sealed_.TarHash,
+                            ChunkHash.Parse(sealed_.TarHash),
                             fs,
                             sealed_.UncompressedSize,
                             opts.UploadTier,
@@ -436,7 +437,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         foreach (var entry in sealed_.Entries)
                         {
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional, ct);
+                            await _chunkStorage.UploadThinAsync(ContentHash.Parse(entry.ContentHash), ChunkHash.Parse(sealed_.TarHash), entry.OriginalSize, proportional, ct);
 
                             _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
                             await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), ct);
