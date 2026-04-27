@@ -18,49 +18,6 @@ public sealed class ChunkStorageService : IChunkStorageService
     }
 
     public Task<ChunkUploadResult> UploadLargeAsync(
-        string chunkHash,
-        Stream content,
-        long sourceSize,
-        BlobTier tier,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        UploadLargeAsync(ChunkHash.Parse(chunkHash), content, sourceSize, tier, progress, cancellationToken);
-
-    public Task<ChunkUploadResult> UploadTarAsync(
-        string chunkHash,
-        Stream content,
-        long sourceSize,
-        BlobTier tier,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        UploadTarAsync(ChunkHash.Parse(chunkHash), content, sourceSize, tier, progress, cancellationToken);
-
-    public Task<bool> UploadThinAsync(
-        string contentHash,
-        string parentChunkHash,
-        long originalSize,
-        long compressedSize,
-        CancellationToken cancellationToken = default) =>
-        UploadThinAsync(ContentHash.Parse(contentHash), ChunkHash.Parse(parentChunkHash), originalSize, compressedSize, cancellationToken);
-
-    public Task<Stream> DownloadAsync(
-        string chunkHash,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        DownloadAsync(ChunkHash.Parse(chunkHash), progress, cancellationToken);
-
-    public Task<ChunkHydrationStatus> GetHydrationStatusAsync(
-        string chunkHash,
-        CancellationToken cancellationToken = default) =>
-        GetHydrationStatusAsync(ChunkHash.Parse(chunkHash), cancellationToken);
-
-    public Task StartRehydrationAsync(
-        string chunkHash,
-        RehydratePriority priority,
-        CancellationToken cancellationToken = default) =>
-        StartRehydrationAsync(ChunkHash.Parse(chunkHash), priority, cancellationToken);
-
-    public Task<ChunkUploadResult> UploadLargeAsync(
         ChunkHash chunkHash,
         Stream content,
         long sourceSize,
