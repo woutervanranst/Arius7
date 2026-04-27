@@ -17,8 +17,6 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     private const string Account = "devstoreaccount1";
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static string Content(char c) => new string(c, 64);
-
     private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string containerName)
     {
         var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
@@ -40,7 +38,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("readme.txt", Content('a'), now);
+            var entry = MakeEntry("readme.txt", "aaa", now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var builder  = CreateBuilder(blobs, container.Name);
@@ -60,7 +58,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             treeBlob.Entries.Count.ShouldBe(1);
             treeBlob.Entries[0].Name.ShouldBe("readme.txt");
-            treeBlob.Entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(ContentHash.Parse(Content('a')));
+            treeBlob.Entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(ContentHash.Parse("aaa"));
         }
         finally
         {
@@ -82,7 +80,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("photo.jpg", Content('b'), now);
+            var entry = MakeEntry("photo.jpg", "bbb", now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var builder1 = CreateBuilder(blobs, container.Name);
@@ -127,9 +125,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var lines = new[]
             {
-                MakeEntry("photos/2024/june/a.jpg", Content('c'), now).Serialize(),
-                MakeEntry("photos/2024/june/b.jpg", Content('d'), now).Serialize(),
-                MakeEntry("docs/report.pdf",         Content('e'), now).Serialize(),
+                MakeEntry("photos/2024/june/a.jpg", "ccc", now).Serialize(),
+                MakeEntry("photos/2024/june/b.jpg", "ddd", now).Serialize(),
+                MakeEntry("docs/report.pdf",        "eee", now).Serialize(),
             };
             await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
 
