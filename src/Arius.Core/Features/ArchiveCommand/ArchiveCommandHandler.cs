@@ -293,18 +293,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     var fullPath = Path.Combine(opts.RootDirectory, upload.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
-                    await using var fs = File.OpenRead(fullPath);
-                    var uploadProgress = opts.CreateUploadProgress is not null
-                        ? opts.CreateUploadProgress(largeChunkHash, upload.FileSize)
-                        : null;
-                    var uploadResult = await _chunkStorage.UploadLargeAsync(
-                        largeChunkHash,
-                        fs,
-                        upload.FileSize,
-                        opts.UploadTier,
-                        uploadProgress,
-                        ct);
-                    var compressedSize = uploadResult.StoredSize;
+                    await using var fs             = File.OpenRead(fullPath);
+                    var             uploadProgress = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
+                    var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, fs, upload.FileSize, opts.UploadTier, uploadProgress, ct);
+                    var             compressedSize = uploadResult.StoredSize;
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, upload.FileSize, compressedSize);
                     _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
@@ -417,18 +409,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
-                        await using var fs = File.OpenRead(sealed_.TarFilePath);
-                        var tarProgress = opts.CreateUploadProgress is not null
-                            ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
-                            : null;
-                        var uploadResult = await _chunkStorage.UploadTarAsync(
-                            sealed_.TarHash,
-                            fs,
-                            sealed_.UncompressedSize,
-                            opts.UploadTier,
-                            tarProgress,
-                            ct);
-                        var compressedSize = uploadResult.StoredSize;
+                        await using var fs             = File.OpenRead(sealed_.TarFilePath);
+                        var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealed_.TarHash, sealed_.UncompressedSize);
+                        var             uploadResult   = await _chunkStorage.UploadTarAsync(sealed_.TarHash, fs, sealed_.UncompressedSize, opts.UploadTier, tarProgress, ct);
+                        var             compressedSize = uploadResult.StoredSize;
 
                         var proportionalFactor = sealed_.UncompressedSize > 0
                             ? (double)compressedSize / sealed_.UncompressedSize
