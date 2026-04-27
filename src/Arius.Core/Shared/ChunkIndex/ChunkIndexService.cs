@@ -120,9 +120,6 @@ public sealed class ChunkIndexService : IDisposable
         return results.GetValueOrDefault(contentHash);
     }
 
-    public Task<ShardEntry?> LookupAsync(string contentHash, CancellationToken cancellationToken = default) =>
-        LookupAsync(ContentHash.Parse(contentHash), cancellationToken);
-
     // ── Record new entry ──────────────────────────────────────────────────────
 
     /// <summary>
