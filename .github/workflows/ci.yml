@@ -75,6 +75,7 @@ jobs:
           foreach ($project in $projects) {
             $coverageFile = [System.IO.Path]::GetFileNameWithoutExtension($project) + '.coverage.cobertura.xml'
             dotnet-coverage collect --output $coverageFile --output-format cobertura "dotnet test --project $project --no-build -c Release"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}
@@ -88,6 +89,7 @@ jobs:
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             dotnet test --project $project --no-build -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
         env:
           ARIUS_E2E_ACCOUNT: ${{ vars.ARIUS_E2E_ACCOUNT }}

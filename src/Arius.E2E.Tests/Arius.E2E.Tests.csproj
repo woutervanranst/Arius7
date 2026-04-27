@@ -9,17 +9,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="NSubstitute" />
     <PackageReference Include="Shouldly" />
-    <PackageReference Include="TUnit" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
     <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
     <ProjectReference Include="..\Arius.Cli\Arius.Cli.csproj" />
+    <ProjectReference Include="..\Arius.Tests.Shared\Arius.Tests.Shared.csproj" />
   </ItemGroup>
 
 </Project>

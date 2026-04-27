@@ -365,11 +365,12 @@ public sealed class RestoreCommandHandler
 
                     if (isLargeChunk)
                     {
-                        // Large file: single file maps to this chunk
-                        var file = filesForChunk[0]; // only one file per large chunk
-                        await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
-                        Interlocked.Increment(ref filesRestoredLong);
-                        await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
+                        foreach (var file in filesForChunk)
+                        {
+                            await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
+                            Interlocked.Increment(ref filesRestoredLong);
+                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
+                        }
                     }
                     else
                     {

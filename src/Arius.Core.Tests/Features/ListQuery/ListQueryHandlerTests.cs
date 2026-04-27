@@ -284,7 +284,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-33-nr", "ctr-33-nr");
 
         var nonRecursive = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None));
         nonRecursive.Count.ShouldBe(2);
@@ -293,7 +293,7 @@ public class ListQueryHandlerTests
         nonRecursive.ShouldNotContain(e => e.RelativePath == "child/deep.txt");
 
         using var index2 = new ChunkIndexService(blobs, s_encryption, "acct-33-r", "ctr-33-r", cacheBudgetBytes: 1024 * 1024);
-        var handler2 = MakeHandler(blobs, index2);
+        var handler2 = MakeHandler(blobs, index2, "acct-33-r", "ctr-33-r");
 
         var recursive = await CollectAsync(handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
         recursive.ShouldContain(e => e.RelativePath == "child/");
@@ -442,7 +442,7 @@ public class ListQueryHandlerTests
     {
         var blobs = new FakeSeededBlobContainerService();
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-310", "ctr-310", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-310", "ctr-310");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -463,7 +463,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-310b", "ctr-310b", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-310b", "ctr-310b");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -504,7 +504,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-311", "ctr-311", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index);
+        var handler = MakeHandler(blobs, index, "acct-311", "ctr-311");
 
         using var cts = new CancellationTokenSource();
         var collected = new List<RepositoryEntry>();

@@ -28,6 +28,9 @@ Archive and restore at a glance:
 Download the binary for your platform from the
 [latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
+For OpenCode in this repository, `opencode.json` includes the `superpowers` plugin.
+Restart OpenCode after pulling the workspace if you want the plugin skills to load.
+
 ### Windows
 
 ```powershell
@@ -87,21 +90,7 @@ arius ls \
   -c photos-backup
 ```
 
-### Account key
-
-Pass `-k` on the command line, set `ARIUS_KEY` environment variable, or store it in
-[.NET user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets):
-
-```bash
-dotnet user-secrets set "arius:<account>:key" "<key>"
-```
-
-### Running tests locally
-
-Most test projects can be run directly with `dotnet test --project <path-to-csproj>`.
-`src/Arius.E2E.Tests` also requires `ARIUS_E2E_ACCOUNT` and `ARIUS_E2E_KEY` to be set; otherwise the suite fails immediately with a configuration error.
-
-## Updating
+### Updating
 
 Run:
 
@@ -110,6 +99,50 @@ arius update
 ```
 
 This checks GitHub Releases for a newer version, downloads it, and replaces the binary in-place.
+
+### Account key
+
+Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticate with the Azure CLI or store it in a `dotnet user-secrets set "arius:<account>:key" "<key>"`.
+
+## Development
+
+### Test Suite Architecture
+
+| Test project | Purpose | Requires real Azure credentials | Uses Azurite |
+|-------|-------------|-------------------------------|--------------|
+| `src/Arius.Core.Tests` | Fast unit and feature-level tests for core archive, restore, list, snapshot, chunk, and tree behavior without a real storage emulator. | N | N |
+| `src/Arius.AzureBlob.Tests` | Tests the Azure Blob adapter and Azure-specific storage boundary behavior in isolation. | N | N |
+| `src/Arius.Cli.Tests` | Tests command-line parsing, option wiring, and CLI-facing behavior. | N | N |
+| `src/Arius.Architecture.Tests` | Enforces repository structure and architectural boundaries. | N | N |
+| `src/Arius.Explorer.Tests` | Windows-only tests for the Explorer application. | N | N |
+| `src/Arius.Integration.Tests` | Verifies Arius pipelines and shared services against an emulator-backed blob repository, including archive, restore, list, chunk-index, filetree, and crash-recovery paths. | N | Y |
+| `src/Arius.E2E.Tests` | End-to-end Arius behavior coverage across representative archive and restore scenarios, with Azurite for shared coverage and live Azure for opt-in real-service coverage. | Y | Y |
+
+`src/Arius.Tests.Shared` is not a test project. It contains reusable test infrastructure shared by the integration and E2E suites.
+
+Azurite-backed integration and E2E tests report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
+
+### Setup
+
+All test suites refer the same set of [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) and refer the same set of environment variables. To set up:
+
+```bash
+dotnet user-secrets set "ARIUS_E2E_ACCOUNT" <name> --project src/Arius.E2E.Tests
+dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
+```
+### End-to-End Tests
+
+`src/Arius.E2E.Tests/` contains the actual end-to-end Arius coverage.
+
+- `RepresentativeArchiveRestoreTests.cs` runs one canonical representative workflow on Azurite and, when credentials are available, live Azure.
+- The representative workflow exercises one evolving archive history instead of isolated one-off scenarios.
+- The canonical workflow covers incremental archive, warm and cold restore, previous-version restore, no-op re-archive, `--no-pointers`, `--remove-local`, conflict handling, and archive-tier pending-versus-ready behavior when the backend supports it.
+- No-op archive runs preserve the current latest snapshot when nothing changed, so snapshot history represents repository state changes rather than repeated command invocations.
+- The synthetic representative repository size is controlled by one explicit constant in `SyntheticRepositoryDefinitionFactory` so development can keep the workflow smaller and tune it upward deliberately later.
+- `E2ETests.cs` keeps the live Azure credential sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
+
+Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
+Live Azure coverage is opt-in and reuses the same canonical representative workflow when credentials are available.
 
 ## Blob Storage Structure
 

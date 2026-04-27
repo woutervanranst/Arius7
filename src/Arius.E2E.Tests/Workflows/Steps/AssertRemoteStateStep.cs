@@ -1,0 +1,64 @@
+using Arius.Core.Shared.Storage;
+
+namespace Arius.E2E.Tests.Workflows.Steps;
+
+internal enum RemoteAssertionKind
+{
+    InitialArchive,
+    IncrementalArchive,
+    NoOpArchive,
+}
+
+internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Kind) : IRepresentativeWorkflowStep
+{
+    public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
+    {
+        var latestSnapshot = await Helpers.ResolveLatestSnapshotAsync(state, cancellationToken);
+        latestSnapshot.ShouldNotBeNull($"{Name}: latest snapshot should exist.");
+
+        var expectedState = state.CurrentSyntheticRepositoryState
+            ?? throw new InvalidOperationException($"{Name}: current synthetic repository state is not available.");
+
+        state.LatestSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: latest snapshot version should be available.");
+        Path.GetFileName((await state.Fixture.Snapshot.ListBlobNamesAsync(cancellationToken))[^1])
+            .ShouldBe(state.LatestSnapshotVersion, $"{Name}: latest resolved snapshot should match the most recent archive result.");
+
+        switch (Kind)
+        {
+            case RemoteAssertionKind.InitialArchive:
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                    .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
+                latestSnapshot.FileCount
+                    .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                break;
+
+            case RemoteAssertionKind.IncrementalArchive:
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                    .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
+                latestSnapshot.FileCount
+                    .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
+                await Helpers.AssertLargeDuplicateLookupAsync(state, expectedState, cancellationToken);
+                await Helpers.AssertSmallFileTarLookupAsync(state, expectedState, cancellationToken);
+                break;
+
+            case RemoteAssertionKind.NoOpArchive:
+                state.SnapshotVersionBeforeNoOpArchive.ShouldNotBeNullOrWhiteSpace($"{Name}: pre-no-op latest snapshot version should be available.");
+                state.NoOpArchivePreservedSnapshot.GetValueOrDefault().ShouldBeTrue($"{Name}: no-op archive should preserve the latest snapshot instead of publishing a redundant snapshot.");
+                
+                var preservedSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.SnapshotVersionBeforeNoOpArchive, cancellationToken);
+                preservedSnapshot.ShouldNotBeNull($"{Name}: preserved snapshot should exist.");
+                latestSnapshot.RootHash.ShouldBe(preservedSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                    .ShouldBe(2, $"{Name}: no-op archive should preserve the latest snapshot without creating another snapshot.");
+
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken))
+                    .ShouldBe(state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."), $"{Name}: no-op archive should not create additional chunk blobs.");
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken))
+                    .ShouldBe(state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."), $"{Name}: no-op archive should not create additional filetree blobs.");
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(Kind));
+        }
+    }
+}

@@ -198,8 +198,7 @@ public sealed class SnapshotService
     /// <summary>
     /// Lists all snapshot blob names sorted by timestamp (oldest → newest).
     /// </summary>
-    public async Task<IReadOnlyList<string>> ListBlobNamesAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
     {
         var names = new List<string>();
         await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
@@ -218,9 +217,7 @@ public sealed class SnapshotService
     /// otherwise returns the snapshot whose timestamp starts with the given version string.
     /// Returns <c>null</c> if no matching snapshot exists.
     /// </summary>
-    public async Task<SnapshotManifest?> ResolveAsync(
-        string?           version           = null,
-        CancellationToken cancellationToken = default)
+    public async Task<SnapshotManifest?> ResolveAsync(string? version = null, CancellationToken cancellationToken = default)
     {
         var names = await ListBlobNamesAsync(cancellationToken);
         if (names.Count == 0) return null;

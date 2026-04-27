@@ -85,18 +85,23 @@ Quality gates (use when applicable)
 - crap-analysis: after tests added/changed in complex code
 
 Specialist agents
-- dotnet-concurrency-specialist, dotnet-performance-analyst, dotnet-benchmark-designer, akka-net-specialist, docfx-specialist
+- dotnet-concurrency-specialist, dotnet-performance-analyst, dotnet-benchmark-designer
 
 ## Way of Working
 
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
 - Avoid coupling the test to the implementation - test the behavior.
-- When making code changes, always run ALL the tests (on non-Windows you can skip Arius.Explorer.Tests since they are Windows-only).
+- When making code changes, always run the relevant tests:
+  - Unit test projects: Arius.Core.Tests / Arius.AzureBlob.Tests / Arius.Cli.Tests / Arius.Architecture.Tests / Arius.Explorer.Tests (skip this on non-Windows since it is Windows-only)
+  - Integration tests: Arius.Integration.Tests
+  - Slow (~ minutes) behavioral test to be run sparingly (eg. at the end of a PR or when making a big refactor) Arius.E2E.Tests
 - When the tests pass, make a conventional git commit.
 
 ## Session Rules
 
-- Always update `README.md` (high level & accessible for humans - do not mention code concepts unless explicitly asked) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
+- Update `README.md` with high signal & accessible for humans if applicable. Do not mention code concepts unless explicitly asked. Do not clutter it with implementation details.
+- Update `AGENTS.md` for AI coding agents to reflect the current state of the project if relevant. Do not clutter it with implementation details.
+- Project-level OpenCode configuration lives in `opencode.json`. This workspace installs the `superpowers@git+https://github.com/obra/superpowers.git` plugin; restart OpenCode after config changes so the plugin is reloaded.
 
 ## Scale And Durability
 - Arius is a backup tool for important files. Correctness, durability, and recoverability matter more than raw throughput.
@@ -123,6 +128,26 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Test projects should mirror the structure of the project they exercise so intent stays obvious.
 - Put reusable test doubles in `Fakes/`.
 - Put scenario-specific test doubles in a local `Fakes/` subfolder beside the tests that use them.
+
+## E2E Test Guidance
+
+- Use the deterministic synthetic repository generator in `src/Arius.E2E.Tests/Datasets/` instead of ad hoc random files for reproducibility.
+- Keep synthetic repository rename targets normalized and validated before root-containment checks so representative datasets cannot escape declared roots through path tricks.
+- Reject Windows-style absolute dataset paths after slash normalization so cross-platform path validation stays consistent.
+- Clean up representative workflow temp roots when fixture creation fails so failed E2E setup does not leak directories.
+- Dispose shared test fixture index services before deleting temp roots so cache-backed resources are released in a safe order.
+- Representative E2E coverage now runs one canonical workflow across Azurite and Azure instead of an isolated scenario matrix.
+- Shared representative workflow coverage should run against both Azurite and Azure when supported by backend capabilities.
+- Treat dataset versions (`V1` vs `V2`) and cache transitions (`Warm` vs `Cold`) as explicit workflow steps in one evolving repository history, not incidental fixture behavior.
+- No-op archive coverage should assert that unchanged repositories preserve the current latest snapshot rather than publishing a redundant snapshot.
+- Keep archive-tier behavior inside capability-gated workflow steps rather than separate top-level representative suites.
+- The representative synthetic dataset size is controlled by a single explicit constant in `SyntheticRepositoryDefinitionFactory`; tune it deliberately when changing runtime cost.
+- Remove obsolete representative workflow scaffolding when replacing it; do not keep both workflow and scenario models in parallel.
+- Keep real archive-tier and rehydration semantics in Azure-capability-gated tests.
+- Reusable Azurite and repository-fixture wiring belongs in `src/Arius.Tests.Shared/`, not in another test project assembly.
+- Azurite-backed integration and E2E tests are discovered on every CI runner; when Docker is unavailable they should skip at runtime with a visible reason in the test report rather than being filtered out of the matrix.
+- `src/Arius.E2E.Tests/` is reserved for actual end-to-end Arius behavior coverage. Do not add self-tests for E2E datasets, fixtures, scenario catalogs, or scenario runners there unless explicitly requested.
+- `src/Arius.E2E.Tests/E2ETests.cs` keeps the live Azure credential/configuration sanity check plus narrow hot-tier pointer-file and large-file probes that the representative workflow does not cover directly.
 
 ## Code Style Preference
 

@@ -8,10 +8,9 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.E2E.Tests.Datasets;
+using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
-using Mediator;
-using Microsoft.Extensions.Logging.Testing;
-using NSubstitute;
 
 namespace Arius.E2E.Tests.Fixtures;
 
@@ -21,15 +20,16 @@ namespace Arius.E2E.Tests.Fixtures;
 /// </summary>
 public sealed class E2EFixture : IAsyncDisposable
 {
+    private static readonly Lock RepositoryCacheLeaseLock = new();
+    private static readonly Dictionary<string, RepositoryCacheLease> RepositoryCacheLeases = new(StringComparer.Ordinal);
     private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
-    private readonly IMediator _mediator;
-    private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
-    private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
+    private readonly RepositoryTestFixture _repository;
+    private bool _disposed;
 
-    private E2EFixture(
+    internal E2EFixture(
         IBlobContainerService blobContainer,
         IEncryptionService encryption,
         ChunkIndexService index,
@@ -41,110 +41,122 @@ public sealed class E2EFixture : IAsyncDisposable
         string restoreRoot,
         string account,
         string containerName,
-        BlobTier defaultTier)
+        BlobTier defaultTier,
+        RepositoryTestFixture repository)
     {
-        BlobContainer = blobContainer;
-        Encryption = encryption;
-        Index = index;
-        ChunkStorage = chunkStorage;
+        BlobContainer   = blobContainer;
+        Encryption      = encryption;
+        Index           = index;
+        ChunkStorage    = chunkStorage;
         FileTreeService = fileTreeService;
-        Snapshot = snapshot;
-        _tempRoot = tempRoot;
-        LocalRoot = localRoot;
-        RestoreRoot = restoreRoot;
-        _account = account;
-        _container = containerName;
-        _defaultTier = defaultTier;
-        _mediator = Substitute.For<IMediator>();
+        Snapshot        = snapshot;
+        _tempRoot       = tempRoot;
+        LocalRoot       = localRoot;
+        RestoreRoot     = restoreRoot;
+        _account        = account;
+        _container      = containerName;
+        _defaultTier    = defaultTier;
+        _repository     = repository;
+
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(account, containerName);
+            var lease = RepositoryCacheLeases.GetValueOrDefault(cacheKey);
+            lease.LiveFixtureCount++;
+            RepositoryCacheLeases[cacheKey] = lease;
+        }
     }
 
-    public IBlobContainerService BlobContainer { get; }
-    public IEncryptionService Encryption { get; }
-    public ChunkIndexService Index { get; }
-    public IChunkStorageService ChunkStorage { get; }
-    public FileTreeService FileTreeService { get; }
-    public SnapshotService Snapshot { get; }
-    public string LocalRoot { get; }
-    public string RestoreRoot { get; }
+    public IBlobContainerService                               BlobContainer   { get; }
+    public IEncryptionService                                  Encryption      { get; }
+    public Arius.Core.Shared.ChunkIndex.ChunkIndexService      Index           { get; }
+    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage    { get; }
+    public Arius.Core.Shared.FileTree.FileTreeService          FileTreeService { get; }
+    public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
+    public string                                              LocalRoot       { get; }
+    public string                                              RestoreRoot     { get; }
 
-    public static async Task<E2EFixture> CreateAsync(
-        BlobContainerClient container,
-        AzureBlobContainerService svc,
-        BlobTier defaultTier,
-        string? passphrase = null,
-        CancellationToken ct = default)
+    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-e2e-{Guid.NewGuid():N}");
-        var localRoot = Path.Combine(tempRoot, "source");
-        var restoreRoot = Path.Combine(tempRoot, "restore");
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
+        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
 
-        var encryption = passphrase is not null
-            ? (IEncryptionService)new PassphraseEncryptionService(passphrase)
-            : new PlaintextPassthroughService();
-        var account = container.AccountName;
-        var index = new ChunkIndexService(svc, encryption, account, container.Name);
-        var chunkStorage = new ChunkStorageService(svc, encryption);
-        var fileTreeService = new FileTreeService(svc, encryption, index, account, container.Name);
-        var snapshot = new SnapshotService(svc, encryption, account, container.Name);
+        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
+    }
 
-        return new E2EFixture(
-            svc,
-            encryption,
-            index,
-            chunkStorage,
-            fileTreeService,
-            snapshot,
-            tempRoot,
-            localRoot,
-            restoreRoot,
-            account,
-            container.Name,
-            defaultTier);
+    public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)
+    {
+        return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, tempRoot, deleteTempRoot, ct);
+    }
+
+    public static Task ResetLocalCacheAsync(string accountName, string containerName)
+    {
+        var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+
+        lock (RepositoryCacheLeaseLock)
+        {
+            if (HasActiveLease(accountName, containerName))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot reset local repository cache for account '{accountName}' and container '{containerName}' because an active lease exists. Dispose the active fixture before resetting the cache so workflow transitions remain explicit.");
+            }
+
+            try
+            {
+                if (Directory.Exists(cacheDir))
+                    Directory.Delete(cacheDir, recursive: true);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task PreserveLocalCacheAsync()
+    {
+        if (_disposed)
+            throw new InvalidOperationException("Cannot preserve cache after fixture disposal.");
+
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(_account, _container);
+            var lease = RepositoryCacheLeases.GetValueOrDefault(cacheKey);
+            lease.PreserveRequested = true;
+            RepositoryCacheLeases[cacheKey] = lease;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
+    {
+        if (Directory.Exists(LocalRoot))
+            Directory.Delete(LocalRoot, recursive: true);
+
+        Directory.CreateDirectory(LocalRoot);
+
+        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
 
     public string WriteFile(string relativePath, byte[] content)
-    {
-        var full = CombineValidatedRelativePath(LocalRoot, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllBytes(full, content);
-        return full;
-    }
+        => _repository.WriteFile(relativePath, content);
 
     public byte[] ReadRestored(string relativePath)
-        => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
+        => _repository.ReadRestored(relativePath);
 
     public bool RestoredExists(string relativePath)
-        => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
+        => _repository.RestoredExists(relativePath);
 
-    private ArchiveCommandHandler CreateArchiveHandler() =>
-        new(
-            BlobContainer,
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _archiveLogger,
-            _account,
-            _container);
+    internal ArchiveCommandHandler CreateArchiveHandler() 
+        => _repository.CreateArchiveHandler();
 
-    private RestoreCommandHandler CreateRestoreHandler() =>
-        new(
-            Encryption,
-            Index,
-            ChunkStorage,
-            FileTreeService,
-            Snapshot,
-            _mediator,
-            _restoreLogger,
-            _account,
-            _container);
+    internal RestoreCommandHandler CreateRestoreHandler() 
+        => _repository.CreateRestoreHandler();
 
-    public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) =>
-        CreateArchiveHandler().Handle(
+    public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) 
+        => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = LocalRoot,
@@ -152,8 +164,8 @@ public sealed class E2EFixture : IAsyncDisposable
             }),
             ct).AsTask();
 
-    public Task<RestoreResult> RestoreAsync(CancellationToken ct = default) =>
-        CreateRestoreHandler().Handle(
+    public Task<RestoreResult> RestoreAsync(CancellationToken ct = default) 
+        => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = RestoreRoot,
@@ -163,20 +175,32 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_tempRoot))
-            Directory.Delete(_tempRoot, recursive: true);
+        if (_disposed)
+            return;
 
-        var cacheDir = RepositoryPaths.GetRepositoryDirectory(_account, _container);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        _disposed = true;
+
+        Exception? tempRootDeletionException = null;
+        try
+        {
+            await _repository.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            tempRootDeletionException = ex;
+        }
+
+        if (ShouldResetCacheOnDispose())
+            await ResetLocalCacheAsync(_account, _container);
+
+        if (tempRootDeletionException is not null)
+            throw tempRootDeletionException;
 
         await Task.CompletedTask;
     }
 
     internal static string CombineValidatedRelativePath(string rootPath, string relativePath)
     {
-        // These helpers should only touch files under the fixture roots; rejecting rooted
-        // and parent-traversal inputs keeps accidental path escapes out of test code.
         if (Path.IsPathRooted(relativePath))
             throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
 
@@ -185,5 +209,40 @@ public sealed class E2EFixture : IAsyncDisposable
             throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
 
         return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    bool ShouldResetCacheOnDispose()
+    {
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(_account, _container);
+            if (!RepositoryCacheLeases.TryGetValue(cacheKey, out var lease))
+                return true;
+
+            lease.LiveFixtureCount--;
+
+            if (lease.LiveFixtureCount > 0)
+            {
+                RepositoryCacheLeases[cacheKey] = lease;
+                return false;
+            }
+
+            RepositoryCacheLeases.Remove(cacheKey);
+            return !lease.PreserveRequested;
+        }
+    }
+
+    static bool HasActiveLease(string accountName, string containerName)
+    {
+        var cacheKey = GetRepositoryCacheKey(accountName, containerName);
+        return RepositoryCacheLeases.TryGetValue(cacheKey, out var lease) && lease.LiveFixtureCount > 0;
+    }
+
+    static string GetRepositoryCacheKey(string accountName, string containerName) => $"{accountName}\n{containerName}";
+
+    struct RepositoryCacheLease
+    {
+        public int LiveFixtureCount { get; set; }
+        public bool PreserveRequested { get; set; }
     }
 }

@@ -52,23 +52,23 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IEncryptionService              encryption,
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                fileTreeService,
+        FileTreeService                 fileTreeService,
         SnapshotService                 snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName)
     {
-        _blobs         = blobs;
-        _encryption    = encryption;
-        _chunkIndex         = index;
-        _chunkStorage  = chunkStorage;
-        _fileTreeService     = fileTreeService;
-        _snapshotSvc   = snapshotSvc;
-        _mediator      = mediator;
-        _logger        = logger;
-        _accountName   = accountName;
-        _containerName = containerName;
+        _blobs           = blobs;
+        _encryption      = encryption;
+        _chunkIndex      = index;
+        _chunkStorage    = chunkStorage;
+        _fileTreeService = fileTreeService;
+        _snapshotSvc     = snapshotSvc;
+        _mediator        = mediator;
+        _logger          = logger;
+        _accountName     = accountName;
+        _containerName   = containerName;
     }
 
     /// <summary>
@@ -492,12 +492,22 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             if (rootHash is not null)
             {
-                var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
-                snapshotRootHash = snapshot.RootHash;
-                snapshotTime     = snapshot.Timestamp;
-                _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
+                var latestSnapshot = await _snapshotSvc.ResolveAsync(cancellationToken: cancellationToken);
+                if (latestSnapshot?.RootHash == rootHash)
+                {
+                    snapshotRootHash = latestSnapshot.RootHash;
+                    snapshotTime     = latestSnapshot.Timestamp;
+                    _logger.LogInformation("[snapshot] Unchanged: {Timestamp} rootHash={RootHash}", latestSnapshot.Timestamp.ToString("o"), latestSnapshot.RootHash[..8]);
+                }
+                else
+                {
+                    var snapshot = await _snapshotSvc.CreateAsync(rootHash, filesScanned, totalSize, cancellationToken: cancellationToken);
+                    snapshotRootHash = snapshot.RootHash;
+                    snapshotTime     = snapshot.Timestamp;
+                    _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash[..8]);
 
-                await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
+                    await _mediator.Publish(new SnapshotCreatedEvent(rootHash, snapshot.Timestamp, snapshot.FileCount), cancellationToken);
+                }
             }
 
             // Task 8.12: Write pointer files ×N in parallel
