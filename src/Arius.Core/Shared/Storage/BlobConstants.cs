@@ -84,8 +84,8 @@ public static class BlobPaths
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
     public const string ChunkIndex        = "chunk-index/";
 
-    public static string Chunk(ContentHash hash)         => $"{Chunks}{hash}";
     public static string Chunk(ChunkHash hash)           => $"{Chunks}{hash}";
+    public static string ThinChunk(ContentHash hash)     => $"{Chunks}{hash}";
     public static string ChunkRehydrated(ChunkHash hash) => $"{ChunksRehydrated}{hash}";
     public static string FileTree(FileTreeHash hash)     => $"{FileTrees}{hash}";
     public static string Snapshot(string name)           => $"{Snapshots}{name}";

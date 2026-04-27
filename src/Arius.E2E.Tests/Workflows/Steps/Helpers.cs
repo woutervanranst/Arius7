@@ -97,7 +97,7 @@ internal static class Helpers
     {
         var contentHash  = await AssertDuplicateContentHashAsync(state, expectedState, SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathA, SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathB, cancellationToken);
         var entry        = await LookupChunkAsync(state, contentHash, cancellationToken);
-        var thinBlobName = BlobPaths.Chunk(contentHash);
+        var thinBlobName = BlobPaths.ThinChunk(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash), "Small bundled files should resolve to their parent tar chunk hash.");

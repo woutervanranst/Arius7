@@ -72,7 +72,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         var tarContentHash  = ContentHashFor("tar-content-special-case");
 
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.Chunk(thinContentHash)] = new BlobMetadata
+        blobs.Metadata[BlobPaths.ThinChunk(thinContentHash)] = new BlobMetadata
         {
             Exists = true,
             Tier = BlobTier.Hot,
@@ -108,7 +108,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         results.Count.ShouldBe(2);
         results.ShouldContain(result => result.RelativePath == "thin.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
         results.ShouldContain(result => result.RelativePath == "tar.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
-        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.Chunk(thinContentHash));
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ThinChunk(thinContentHash));
         blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
     }
 

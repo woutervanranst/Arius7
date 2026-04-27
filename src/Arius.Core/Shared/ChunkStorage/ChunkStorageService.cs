@@ -161,7 +161,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         long compressedSize,
         CancellationToken cancellationToken)
     {
-        var blobName = BlobPaths.Chunk(contentHash);
+        var blobName = BlobPaths.ThinChunk(contentHash);
         var metadata = new Dictionary<string, string>
         {
             [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
