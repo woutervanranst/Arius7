@@ -35,11 +35,9 @@ public class FileTreeBlobSerializerStorageTests
         var dirEntry = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
 
         fileEntry.ContentHash.ShouldBe(ContentHash.Parse(NormalizeHash("a1b2c3d4")));
-        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
         fileEntry.Created.ShouldBe(s_created);
         fileEntry.Modified.ShouldBe(s_modified);
 
-        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
         dirEntry.FileTreeHash.ShouldBe(FileTreeHash.Parse(NormalizeHash("e5f6a7b8")));
     }
 
@@ -57,11 +55,9 @@ public class FileTreeBlobSerializerStorageTests
         var dirEntry = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
 
         fileEntry.ContentHash.ShouldBe(ContentHash.Parse(NormalizeHash("a1b2c3d4")));
-        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
         fileEntry.Created.ShouldBe(s_created);
         fileEntry.Modified.ShouldBe(s_modified);
 
-        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
         dirEntry.FileTreeHash.ShouldBe(FileTreeHash.Parse(NormalizeHash("e5f6a7b8")));
     }
 
