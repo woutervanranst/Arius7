@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Tests.Shared.Streaming;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
@@ -87,7 +88,7 @@ public class PlaintextPassthroughServiceTests
         try
         {
             long reported = 0;
-            var progress = new Progress<long>(value => reported = value);
+            var progress = new SyncProgress<long>(value => reported = value);
 
             _ = await _svc.ComputeHashAsync(path, progress);
 

@@ -80,7 +80,7 @@ public class NotificationHandlerTests
         state.FilesHashed.ShouldBe(1L);
         state.TrackedFiles["a.bin"].ContentHash.ShouldBe(Content('a').ToString());
         state.TrackedFiles["a.bin"].State.ShouldBe(FileState.Hashed);
-        state.ContentHashToPath[Content('a').ToString()].ShouldContain("a.bin");
+        state.ContentHashToPath[Content('a')].ShouldContain("a.bin");
     }
 
     [Test]
@@ -161,7 +161,7 @@ public class NotificationHandlerTests
             CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
-        state.TrackedTars[1].TarHash.ShouldBe(Chunk('d').ToString());
+        state.TrackedTars[1].TarHash.ShouldBe(Chunk('d'));
         state.TrackedTars[1].TotalBytes.ShouldBe(300L);
     }
 

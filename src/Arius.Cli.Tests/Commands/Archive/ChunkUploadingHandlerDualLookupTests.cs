@@ -23,7 +23,7 @@ public class ChunkUploadingHandlerDualLookupTests
         var uploadingH = new ChunkUploadingHandler(state);
         var competingTar = new TrackedTar(1, state.TarTargetSize)
         {
-            TarHash = Chunk('a').ToString(),
+            TarHash = Chunk('a'),
             TotalBytes = 10_000_000,
             State = TarState.Sealing,
         };

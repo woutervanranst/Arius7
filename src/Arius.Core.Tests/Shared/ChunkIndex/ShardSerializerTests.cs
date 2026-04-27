@@ -6,14 +6,17 @@ namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardSerializerTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
+
     [Test]
     public async Task Serialize_ThenDeserialize_WithPassphrase_RoundTrips()
     {
         var svc   = new PassphraseEncryptionService("my-passphrase");
         var shard = new Shard().Merge([
             new ShardEntry(
-                ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"),
-                ChunkHash.Parse("ddeeff1100112233445566778899aabbccddeeff00112233445566778899aabb"),
+                Content('a'),
+                Chunk('b'),
                 512,
                 256)
         ]);
@@ -21,7 +24,7 @@ public class ShardSerializerTests
         var bytes  = await ShardSerializer.SerializeAsync(shard, svc);
         var loaded = ShardSerializer.Deserialize(bytes, svc);
 
-        loaded.TryLookup(ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"), out var e).ShouldBeTrue();
+        loaded.TryLookup(Content('a'), out var e).ShouldBeTrue();
         e!.OriginalSize.ShouldBe(512);
     }
 
@@ -31,8 +34,8 @@ public class ShardSerializerTests
         var svc   = new PlaintextPassthroughService();
         var shard = new Shard().Merge([
             new ShardEntry(
-                ContentHash.Parse("11223344556677889900aabbccddeeff00112233445566778899aabbccddeeff"),
-                ChunkHash.Parse("556677889900aabbccddeeff00112233445566778899aabbccddeeff00112233"),
+                Content('c'),
+                Chunk('d'),
                 100,
                 40)
         ]);
@@ -40,7 +43,7 @@ public class ShardSerializerTests
         var bytes  = await ShardSerializer.SerializeAsync(shard, svc);
         var loaded = ShardSerializer.Deserialize(bytes, svc);
 
-        loaded.TryLookup(ContentHash.Parse("11223344556677889900aabbccddeeff00112233445566778899aabbccddeeff"), out var e).ShouldBeTrue();
+        loaded.TryLookup(Content('c'), out var e).ShouldBeTrue();
         e!.CompressedSize.ShouldBe(40);
     }
 }

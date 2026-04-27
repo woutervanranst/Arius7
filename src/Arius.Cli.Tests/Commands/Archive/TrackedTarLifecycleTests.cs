@@ -46,7 +46,7 @@ public class TrackedTarLifecycleTests
             new TarBundleSealingEvent(2, 300, Chunk('c'), [Content('a'), Content('b')]),
             CancellationToken.None);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
-        state.TrackedTars[1].TarHash.ShouldBe(Chunk('c').ToString());
+        state.TrackedTars[1].TarHash.ShouldBe(Chunk('c'));
         state.TrackedTars[1].TotalBytes.ShouldBe(300L);
 
         // Upload starts

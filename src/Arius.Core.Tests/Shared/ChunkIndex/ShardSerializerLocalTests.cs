@@ -6,18 +6,21 @@ namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardSerializerLocalTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
+
     [Test]
     public void SerializeLocal_ThenDeserializeLocal_RoundTrips()
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"),
-                ChunkHash.Parse("ddeeff1100112233445566778899aabbccddeeff00112233445566778899aabb"),
+                Content('a'),
+                Chunk('b'),
                 512,
                 256),
             new ShardEntry(
-                ContentHash.Parse("11223344556677889900aabbccddeeff00112233445566778899aabbccddeeff"),
-                ChunkHash.Parse("556677889900aabbccddeeff00112233445566778899aabbccddeeff00112233"),
+                Content('c'),
+                Chunk('d'),
                 100,
                 40)
         ]);
@@ -25,10 +28,10 @@ public class ShardSerializerLocalTests
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
 
-        loaded.TryLookup(ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"), out var e1).ShouldBeTrue();
+        loaded.TryLookup(Content('a'), out var e1).ShouldBeTrue();
         e1!.OriginalSize.ShouldBe(512);
 
-        loaded.TryLookup(ContentHash.Parse("11223344556677889900aabbccddeeff00112233445566778899aabbccddeeff"), out var e2).ShouldBeTrue();
+        loaded.TryLookup(Content('c'), out var e2).ShouldBeTrue();
         e2!.CompressedSize.ShouldBe(40);
     }
 
@@ -37,8 +40,8 @@ public class ShardSerializerLocalTests
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"),
-                ChunkHash.Parse("ddeeff1100112233445566778899aabbccddeeff00112233445566778899aabb"),
+                Content('a'),
+                Chunk('b'),
                 512,
                 256)
         ]);
@@ -46,8 +49,8 @@ public class ShardSerializerLocalTests
         var bytes = ShardSerializer.SerializeLocal(shard);
         var text  = System.Text.Encoding.UTF8.GetString(bytes);
 
-        text.ShouldContain("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb");
-        text.ShouldContain("ddeeff1100112233445566778899aabbccddeeff00112233445566778899aabb");
+        text.ShouldContain(new string('a', 64));
+        text.ShouldContain(new string('b', 64));
         text.ShouldContain("512");
         text.ShouldContain("256");
     }
@@ -58,8 +61,8 @@ public class ShardSerializerLocalTests
         var encSvc = new PassphraseEncryptionService("my-passphrase");
         var shard  = new Shard().Merge([
             new ShardEntry(
-                ContentHash.Parse("aabbcc00112233445566778899aabbccddeeff00112233445566778899aabb"),
-                ChunkHash.Parse("ddeeff1100112233445566778899aabbccddeeff00112233445566778899aabb"),
+                Content('a'),
+                Chunk('b'),
                 512,
                 256)
         ]);

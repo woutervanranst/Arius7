@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -139,7 +140,8 @@ internal static class ArchiveVerb
 
                     CreateUploadProgress = (contentHash, size) =>
                     {
-                        if (progressState.ContentHashToPath.TryGetValue(contentHash, out var paths))
+                        if (ContentHash.TryParse(contentHash, out var typedContentHash)
+                            && progressState.ContentHashToPath.TryGetValue(typedContentHash, out var paths))
                         {
                             var files = paths
                                 .Select(p => progressState.TrackedFiles.TryGetValue(p, out var f) ? f : null)
@@ -152,7 +154,9 @@ internal static class ArchiveVerb
                             }
                         }
 
-                        var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == contentHash);
+                        var tar = ChunkHash.TryParse(contentHash, out var typedChunkHash)
+                            ? progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == typedChunkHash)
+                            : null;
                         if (tar != null)
                         {
                             tar.SetBytesUploaded(0);

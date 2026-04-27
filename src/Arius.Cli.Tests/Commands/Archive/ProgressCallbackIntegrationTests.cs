@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class ProgressCallbackIntegrationTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+
     private static void WaitFor(Func<bool> condition) =>
         SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(1)).ShouldBeTrue();
 
@@ -15,7 +19,7 @@ public class ProgressCallbackIntegrationTests
     {
         var state = new ProgressState();
         state.AddFile("large.bin", 5_000_000);
-        state.SetFileHashed("large.bin", "lhash1");
+        state.SetFileHashed("large.bin", Content('a'));
 
         // Simulate what CliBuilder wires: look up TrackedFile by relative path
         IProgress<long>? hashProgress = null;
@@ -35,11 +39,11 @@ public class ProgressCallbackIntegrationTests
     {
         var state = new ProgressState();
         state.AddFile("chunk.bin", 1_000_000);
-        state.SetFileHashed("chunk.bin", "chash1");
-        state.SetFileUploading("chash1");
+        state.SetFileHashed("chunk.bin", Content('b'));
+        state.SetFileUploading(Content('b'));
 
         IProgress<long>? uploadProgress = null;
-        if (state.ContentHashToPath.TryGetValue("chash1", out var paths))
+        if (state.ContentHashToPath.TryGetValue(Content('b'), out var paths))
         {
             var files = paths
                 .Select(p => state.TrackedFiles.TryGetValue(p, out var f) ? f : null)
@@ -65,12 +69,12 @@ public class ProgressCallbackIntegrationTests
     {
         var state = new ProgressState();
         var tar   = new TrackedTar(1, 64L * 1024 * 1024);
-        tar.TarHash = "tarhash1";
+        tar.TarHash = ChunkHash.Parse(new string('c', 64));
         tar.TotalBytes = 300L;
         state.TrackedTars.TryAdd(1, tar);
 
         // Simulate TAR branch of CreateUploadProgress
-        var foundTar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == "tarhash1");
+        var foundTar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == ChunkHash.Parse(new string('c', 64)));
         foundTar.ShouldNotBeNull();
 
         IProgress<long> uploadProgress = new Progress<long>(bytes => foundTar!.SetBytesUploaded(bytes));

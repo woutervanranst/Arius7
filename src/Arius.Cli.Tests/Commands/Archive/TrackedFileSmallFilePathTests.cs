@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
@@ -6,6 +8,8 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class TrackedFileSmallFilePathTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+
     [Test]
     public void SmallFilePath_StateTransitions_Correct()
     {
@@ -17,10 +21,10 @@ public class TrackedFileSmallFilePathTests
         state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.Hashing);
 
         // FileHashedEvent → SetFileHashed → State=Hashed, reverse map populated
-        state.SetFileHashed("notes.txt", "def456");
-        state.TrackedFiles["notes.txt"].ContentHash.ShouldBe("def456");
+        state.SetFileHashed("notes.txt", Content('d'));
+        state.TrackedFiles["notes.txt"].ContentHash.ShouldBe(Content('d').ToString());
         state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.Hashed);
-        state.ContentHashToPath["def456"].ShouldContain("notes.txt");
+        state.ContentHashToPath[Content('d')].ShouldContain("notes.txt");
         state.FilesHashed.ShouldBe(1L);
 
         // TarEntryAddedEvent → RemoveFile (small file moves into TAR)

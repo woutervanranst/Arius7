@@ -178,8 +178,8 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("large.bin", 10_000_000);
-        state.SetFileHashed("large.bin", "lhash");
-        state.SetFileUploading("lhash");
+        state.SetFileHashed("large.bin", Content('1'));
+        state.SetFileUploading(Content('1'));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("large.bin");
@@ -192,7 +192,7 @@ public class BuildArchiveDisplayTests
         // Hashed state is invisible
         var state = new ProgressState();
         state.AddFile("pending.bin", 1000);
-        state.SetFileHashed("pending.bin", "ph1");
+        state.SetFileHashed("pending.bin", Content('2'));
         // State is now Hashed — should not appear
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -204,7 +204,7 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", "done1");
+        state.SetFileHashed("completed.bin", Content('3'));
         state.RemoveFile("completed.bin");
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));

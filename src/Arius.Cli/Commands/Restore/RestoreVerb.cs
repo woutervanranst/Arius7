@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -148,7 +149,8 @@ internal static class RestoreVerb
 
                         if (kind == DownloadKind.TarBundle)
                         {
-                            if (restoreProgress.TarBundleMetadata.TryGetValue(identifier, out var meta))
+                            if (ChunkHash.TryParse(identifier, out var typedChunkHash)
+                                && restoreProgress.TarBundleMetadata.TryGetValue(typedChunkHash, out var meta))
                             {
                                 displayName  = $"TAR bundle ({meta.FileCount} files, {meta.OriginalSize.Bytes().Humanize()})";
                                 originalSize = meta.OriginalSize;

@@ -21,7 +21,7 @@ public class RestoreNotificationHandlerTests
         await handler.Handle(new SnapshotResolvedEvent(ts, Tree('a'), 9), CancellationToken.None);
 
         state.SnapshotTimestamp.ShouldBe(ts);
-        state.SnapshotRootHash.ShouldBe(Tree('a').ToString());
+        state.SnapshotRootHash.ShouldBe(Tree('a'));
     }
 
     [Test]

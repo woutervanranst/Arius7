@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
@@ -6,20 +8,22 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class ContentHashToPathTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+
     [Test]
     public void ReverseMap_PopulatedOnHash_UsedForDownstreamEvents()
     {
         var state = new ProgressState();
 
         state.AddFile("dir/file.bin", 500);
-        state.SetFileHashed("dir/file.bin", "aabbcc");
+        state.SetFileHashed("dir/file.bin", Content('a'));
 
         // Reverse map populated
-        state.ContentHashToPath.ContainsKey("aabbcc").ShouldBeTrue();
-        state.ContentHashToPath["aabbcc"].ShouldContain("dir/file.bin");
+        state.ContentHashToPath.ContainsKey(Content('a')).ShouldBeTrue();
+        state.ContentHashToPath[Content('a')].ShouldContain("dir/file.bin");
 
         // Downstream event via reverse map: SetFileUploading transitions Hashed → Uploading
-        state.SetFileUploading("aabbcc");
+        state.SetFileUploading(Content('a'));
         state.TrackedFiles["dir/file.bin"].State.ShouldBe(FileState.Uploading);
     }
 
@@ -29,8 +33,8 @@ public class ContentHashToPathTests
         // FileHashedEvent sets both ContentHash and reverse map atomically
         var state = new ProgressState();
         state.AddFile("config.yml", 200);
-        state.SetFileHashed("config.yml", "xxyyzz");
+        state.SetFileHashed("config.yml", Content('b'));
 
-        state.ContentHashToPath.ContainsKey("xxyyzz").ShouldBeTrue();
+        state.ContentHashToPath.ContainsKey(Content('b')).ShouldBeTrue();
     }
 }
