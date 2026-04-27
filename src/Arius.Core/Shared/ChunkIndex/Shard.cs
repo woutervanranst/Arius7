@@ -73,8 +73,6 @@ public sealed class Shard
 
     public bool TryLookup(ContentHash contentHash, out ShardEntry? entry) => _entries.TryGetValue(contentHash, out entry);
 
-    public bool TryLookup(string contentHash, out ShardEntry? entry) => TryLookup(ContentHash.Parse(contentHash), out entry);
-
     // ── Merge ──────────────────────────────────────────────────────────────────
 
     /// <summary>
