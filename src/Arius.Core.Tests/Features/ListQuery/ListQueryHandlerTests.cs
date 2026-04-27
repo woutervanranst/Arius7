@@ -24,8 +24,8 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("docs/", HashFor("docs")),
-                FileEntryOf("readme.txt", HashFor("readme"))
+                Dir("docs/", TreeHashFor("docs")),
+                FileEntryOf("readme.txt", ContentHashFor("readme"))
             ]
         };
 
@@ -44,7 +44,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(HashFor("readme"), HashFor("chunk"), 123, 50));
+        index.AddEntry(new ShardEntry(ContentHashFor("readme"), ChunkHashFor("chunk"), 123, 50));
 
         var fileTreeService   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
@@ -69,11 +69,11 @@ public class ListQueryHandlerTests
         directory.RelativePath.ShouldBe("docs/");
         directory.ExistsInCloud.ShouldBeTrue();
         directory.ExistsLocally.ShouldBeFalse();
-        directory.TreeHash.ShouldBe(HashFor("docs"));
+        directory.TreeHash.ShouldBe(TreeHashFor("docs").ToString());
 
         var file = results.OfType<RepositoryFileEntry>().Single();
         file.RelativePath.ShouldBe("readme.txt");
-        file.ContentHash.ShouldBe(HashFor("readme"));
+        file.ContentHash.ShouldBe(ContentHashFor("readme").ToString());
         file.OriginalSize.ShouldBe(123);
         file.Created.ShouldBe(s_created);
         file.Modified.ShouldBe(s_modified);
@@ -90,8 +90,8 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("nested/", HashFor("nested")),
-                FileEntryOf("guide.txt", HashFor("guide"))
+                Dir("nested/", TreeHashFor("nested")),
+                FileEntryOf("guide.txt", ContentHashFor("guide"))
             ]
         };
 
@@ -101,7 +101,7 @@ public class ListQueryHandlerTests
             Entries =
             [
                 Dir("docs/", docsHash),
-                FileEntryOf("root.txt", HashFor("root"))
+                FileEntryOf("root.txt", ContentHashFor("root"))
             ]
         };
 
@@ -121,7 +121,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(HashFor("guide"), HashFor("chunk-guide"), 456, 200));
+        index.AddEntry(new ShardEntry(ContentHashFor("guide"), ChunkHashFor("chunk-guide"), 456, 200));
 
         var treeCache2   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
         var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
@@ -154,15 +154,15 @@ public class ListQueryHandlerTests
         try
         {
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt"), "local-shared");
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt.pointer.arius"), HashFor("shared"));
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt.pointer.arius"), ContentHashFor("shared").ToString());
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "local-only.txt"), "local-only");
 
             var rootTree = new FileTreeBlob
             {
                 Entries =
                 [
-                    FileEntryOf("cloud-only.txt", HashFor("cloud-only")),
-                    FileEntryOf("shared.txt", HashFor("shared"))
+                    FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
+                    FileEntryOf("shared.txt", ContentHashFor("shared"))
                 ]
             };
 
@@ -181,8 +181,8 @@ public class ListQueryHandlerTests
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3", cacheBudgetBytes: 1024 * 1024);
-            index.AddEntry(new ShardEntry(HashFor("cloud-only"), HashFor("chunk-cloud"), 10, 5));
-            index.AddEntry(new ShardEntry(HashFor("shared"), HashFor("chunk-shared"), 20, 10));
+            index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), ChunkHashFor("chunk-cloud"), 10, 5));
+            index.AddEntry(new ShardEntry(ContentHashFor("shared"), ChunkHashFor("chunk-shared"), 20, 10));
 
             var treeCache3   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
             var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
@@ -264,7 +264,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                FileEntryOf("deep.txt", HashFor("deep"))
+                FileEntryOf("deep.txt", ContentHashFor("deep"))
             ]
         };
         var childHash = FileTreeBlobSerializer.ComputeHash(childTree, s_encryption);
@@ -273,7 +273,7 @@ public class ListQueryHandlerTests
             Entries =
             [
                 Dir("child/", childHash),
-                FileEntryOf("root.txt", HashFor("root"))
+                FileEntryOf("root.txt", ContentHashFor("root"))
             ]
         };
         var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
@@ -309,10 +309,10 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("Photos/", HashFor("photos-dir")),
-                FileEntryOf("VACATION.jpg", HashFor("vac")),
-                FileEntryOf("sunset.jpg", HashFor("sun")),
-                FileEntryOf("readme.txt", HashFor("rdm")),
+                Dir("Photos/", TreeHashFor("photos-dir")),
+                FileEntryOf("VACATION.jpg", ContentHashFor("vac")),
+                FileEntryOf("sunset.jpg", ContentHashFor("sun")),
+                FileEntryOf("readme.txt", ContentHashFor("rdm")),
             ]
         };
         var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
@@ -401,7 +401,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                FileEntryOf("child-file.txt", HashFor("child-file"))
+                FileEntryOf("child-file.txt", ContentHashFor("child-file"))
             ]
         };
         var childHash = FileTreeBlobSerializer.ComputeHash(childTree, s_encryption);
@@ -410,8 +410,8 @@ public class ListQueryHandlerTests
             Entries =
             [
                 Dir("child/", childHash),
-                FileEntryOf("known.txt", HashFor("known")),
-                FileEntryOf("unknown.txt", HashFor("unknown")),
+                FileEntryOf("known.txt", ContentHashFor("known")),
+                FileEntryOf("unknown.txt", ContentHashFor("unknown")),
             ]
         };
         var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
@@ -423,7 +423,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(HashFor("known"), HashFor("chunk-known"), 999, 500));
+        index.AddEntry(new ShardEntry(ContentHashFor("known"), ChunkHashFor("chunk-known"), 999, 500));
 
         var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
         var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
@@ -441,11 +441,11 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_InvalidCloudContentHash_SkipsBrokenEntryInsteadOfThrowing()
     {
-        var rootHash = FileTreeHash.Parse(HashFor("root-broken"));
+        var rootHash = TreeHashFor("root-broken");
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
-        var validHash = HashFor("valid");
+        var validHash = ContentHashFor("valid");
         var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
             $"not-a-hash F {s_created:O} {s_modified:O} broken.txt\n{validHash} F {s_created:O} {s_modified:O} healthy.txt\n");
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await CompressAsync(invalidTreePayload));
@@ -516,7 +516,7 @@ public class ListQueryHandlerTests
                 Entries =
                 [
                     Dir($"level{i + 1}/", currentHash),
-                    FileEntryOf($"file{i}.txt", HashFor($"f{i}"))
+                    FileEntryOf($"file{i}.txt", ContentHashFor($"f{i}"))
                 ]
             };
             currentHash = FileTreeBlobSerializer.ComputeHash(tree, s_encryption);
@@ -568,20 +568,18 @@ public class ListQueryHandlerTests
         return list;
     }
 
-    private static string HashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)).ToString();
+    private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
-    private static FileEntry FileEntryOf(string name, string hash) => new()
+    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(ContentHashFor(label).ToString());
+
+    private static FileTreeHash TreeHashFor(string label) => FileTreeHash.Parse(ContentHashFor(label).ToString());
+
+    private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
     {
         Name = name,
-        ContentHash = ContentHash.Parse(hash),
+        ContentHash = hash,
         Created = s_created,
         Modified = s_modified
-    };
-
-    private static DirectoryEntry Dir(string name, string hash) => new()
-    {
-        Name = name,
-        FileTreeHash = FileTreeHash.Parse(hash)
     };
 
     private static DirectoryEntry Dir(string name, FileTreeHash hash) => new()
