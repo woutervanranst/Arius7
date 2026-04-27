@@ -166,7 +166,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 var entry       = await fixture.Index.LookupAsync(contentHash, cancellationToken);
 
                 entry.ShouldNotBeNull($"Expected chunk index entry for '{filePath}'.");
-                if (entry!.ChunkHash == ChunkHash.Parse(contentHash))
+                if (entry!.IsLargeChunk)
                     continue;
 
                 var             chunkBlobName  = BlobPaths.Chunk(entry.ChunkHash);
