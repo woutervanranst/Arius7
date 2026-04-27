@@ -203,9 +203,7 @@ public sealed class RestoreCommandHandler
                 list.Add(file);
             }
 
-            var largeChunks = filesByChunkHash.Keys.Count(k =>
-                indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry)
-                && ChunkHash.Parse(entry.ContentHash) == entry.ChunkHash);
+            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && ChunkHash.Parse(entry.ContentHash) == entry.ChunkHash);
             var tarChunks   = filesByChunkHash.Count - largeChunks;
 
             // Sum original and compressed sizes from index entries for the aggregate counters.
