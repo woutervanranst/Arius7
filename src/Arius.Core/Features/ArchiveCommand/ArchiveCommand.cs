@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
@@ -47,11 +48,11 @@ public sealed record ArchiveCommandOptions
 
     /// <summary>
     /// Optional factory invoked when a chunk begins uploading.
-    /// Parameters: content hash, uncompressed size in bytes.
+    /// Parameters: chunk hash, uncompressed size in bytes.
     /// Returns an <see cref="IProgress{T}"/> that receives cumulative bytes read from the source stream.
     /// When <c>null</c>, no byte-level progress is reported for uploads.
     /// </summary>
-    public Func<string, long, IProgress<long>>? CreateUploadProgress { get; init; }
+    public Func<ChunkHash, long, IProgress<long>>? CreateUploadProgress { get; init; }
 
     /// <summary>
     /// Optional callback invoked after the hash-stage input channel is created.

@@ -138,10 +138,9 @@ internal static class ArchiveVerb
                         return new Progress<long>();
                     },
 
-                    CreateUploadProgress = (contentHash, size) =>
+                    CreateUploadProgress = (chunkHash, size) =>
                     {
-                        if (ContentHash.TryParse(contentHash, out var typedContentHash)
-                            && progressState.ContentHashToPath.TryGetValue(typedContentHash, out var paths))
+                        if (progressState.ContentHashToPath.TryGetValue(ContentHash.Parse(chunkHash), out var paths))
                         {
                             var files = paths
                                 .Select(p => progressState.TrackedFiles.TryGetValue(p, out var f) ? f : null)
@@ -154,9 +153,7 @@ internal static class ArchiveVerb
                             }
                         }
 
-                        var tar = ChunkHash.TryParse(contentHash, out var typedChunkHash)
-                            ? progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == typedChunkHash)
-                            : null;
+                        var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == chunkHash);
                         if (tar != null)
                         {
                             tar.SetBytesUploaded(0);

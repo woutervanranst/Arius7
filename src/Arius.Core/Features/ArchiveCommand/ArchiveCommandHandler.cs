@@ -295,7 +295,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     await using var fs = File.OpenRead(fullPath);
                     var uploadProgress = opts.CreateUploadProgress is not null
-                        ? opts.CreateUploadProgress(upload.HashedPair.ContentHash.ToString(), upload.FileSize)
+                        ? opts.CreateUploadProgress(largeChunkHash, upload.FileSize)
                         : null;
                     var uploadResult = await _chunkStorage.UploadLargeAsync(
                         largeChunkHash,
@@ -419,7 +419,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         await using var fs = File.OpenRead(sealed_.TarFilePath);
                         var tarProgress = opts.CreateUploadProgress is not null
-                            ? opts.CreateUploadProgress(sealed_.TarHash.ToString(), sealed_.UncompressedSize)
+                            ? opts.CreateUploadProgress(sealed_.TarHash, sealed_.UncompressedSize)
                             : null;
                         var uploadResult = await _chunkStorage.UploadTarAsync(
                             sealed_.TarHash,
