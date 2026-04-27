@@ -31,36 +31,36 @@ namespace Arius.Core.Features.RestoreCommand;
 public sealed class RestoreCommandHandler
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
-    private readonly IEncryptionService               _encryption;
-    private readonly ChunkIndexService                _index;
-    private readonly IChunkStorageService             _chunkStorage;
-    private readonly FileTreeService                 _fileTreeService;
-    private readonly SnapshotService                  _snapshotSvc;
-    private readonly IMediator                        _mediator;
-    private readonly ILogger<RestoreCommandHandler>  _logger;
-    private readonly string                           _accountName;
-    private readonly string                           _containerName;
+    private readonly IEncryptionService             _encryption;
+    private readonly ChunkIndexService              _index;
+    private readonly IChunkStorageService           _chunkStorage;
+    private readonly FileTreeService                _fileTreeService;
+    private readonly SnapshotService                _snapshotSvc;
+    private readonly IMediator                      _mediator;
+    private readonly ILogger<RestoreCommandHandler> _logger;
+    private readonly string                         _accountName;
+    private readonly string                         _containerName;
 
     public RestoreCommandHandler(
         IEncryptionService             encryption,
         ChunkIndexService              index,
         IChunkStorageService           chunkStorage,
-        FileTreeService               fileTreeService,
+        FileTreeService                fileTreeService,
         SnapshotService                snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
         string                         accountName,
         string                         containerName)
     {
-        _encryption    = encryption;
-        _index         = index;
-        _chunkStorage  = chunkStorage;
-        _fileTreeService     = fileTreeService;
-        _snapshotSvc   = snapshotSvc;
-        _mediator      = mediator;
-        _logger        = logger;
-        _accountName   = accountName;
-        _containerName = containerName;
+        _encryption      = encryption;
+        _index           = index;
+        _chunkStorage    = chunkStorage;
+        _fileTreeService = fileTreeService;
+        _snapshotSvc     = snapshotSvc;
+        _mediator        = mediator;
+        _logger          = logger;
+        _accountName     = accountName;
+        _containerName   = containerName;
     }
 
     /// <summary>
@@ -502,10 +502,7 @@ public sealed class RestoreCommandHandler
         return result;
     }
 
-    private bool TryGetIndexEntry(
-        FileToRestore file,
-        IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries,
-        out ShardEntry entry)
+    private bool TryGetIndexEntry(FileToRestore file, IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries, out ShardEntry entry)
     {
         if (indexEntries.TryGetValue(file.ContentHash, out entry!))
             return true;
