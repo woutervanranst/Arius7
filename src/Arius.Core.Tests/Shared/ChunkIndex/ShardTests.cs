@@ -98,6 +98,19 @@ public class ShardTests
     }
 
     [Test]
+    public void ShardEntry_Serialize_LargeChunk_UsesIsLargeChunkDecision()
+    {
+        var entry = new ShardEntry(
+            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            4200000,
+            1870432);
+
+        entry.IsLargeChunk.ShouldBeTrue();
+        entry.Serialize().ShouldBe("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011 4200000 1870432");
+    }
+
+    [Test]
     public void ShardEntry_TryParse_BlankLine_ReturnsNull()
     {
         ShardEntry.TryParse("").ShouldBeNull();

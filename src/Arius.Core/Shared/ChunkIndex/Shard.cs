@@ -21,7 +21,7 @@ public sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, lo
     /// 4 fields otherwise (small/tar-bundled file).
     /// </summary>
     public string Serialize() =>
-        ContentHash.ToString() == ChunkHash.ToString()
+        IsLargeChunk
             ? $"{ContentHash} {OriginalSize} {CompressedSize}"
             : $"{ContentHash} {ChunkHash} {OriginalSize} {CompressedSize}";
 
