@@ -11,6 +11,8 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// </summary>
 public sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, long OriginalSize, long CompressedSize)
 {
+    public bool IsLargeChunk => ChunkHash.Parse(ContentHash) == ChunkHash;
+
     // ── Serialization ──────────────────────────────────────────────────────────
 
     /// <summary>

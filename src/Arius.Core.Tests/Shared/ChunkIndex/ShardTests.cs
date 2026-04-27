@@ -74,6 +74,30 @@ public class ShardTests
     }
 
     [Test]
+    public void ShardEntry_IsLargeChunk_IsTrueWhenChunkHashMatchesContentHash()
+    {
+        var entry = new ShardEntry(
+            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            4200000,
+            1870432);
+
+        entry.IsLargeChunk.ShouldBeTrue();
+    }
+
+    [Test]
+    public void ShardEntry_IsLargeChunk_IsFalseWhenChunkHashDiffersFromContentHash()
+    {
+        var entry = new ShardEntry(
+            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            Chunk("ddeeff0011223344ddeeff0011223344ddeeff0011223344ddeeff0011223344"),
+            1024,
+            512);
+
+        entry.IsLargeChunk.ShouldBeFalse();
+    }
+
+    [Test]
     public void ShardEntry_TryParse_BlankLine_ReturnsNull()
     {
         ShardEntry.TryParse("").ShouldBeNull();

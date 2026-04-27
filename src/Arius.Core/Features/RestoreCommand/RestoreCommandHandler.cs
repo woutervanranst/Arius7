@@ -203,7 +203,7 @@ public sealed class RestoreCommandHandler
                 list.Add(file);
             }
 
-            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && ChunkHash.Parse(entry.ContentHash) == entry.ChunkHash);
+            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && entry.IsLargeChunk);
             var tarChunks   = filesByChunkHash.Count - largeChunks;
 
             // Sum original and compressed sizes from index entries for the aggregate counters.
@@ -217,7 +217,7 @@ public sealed class RestoreCommandHandler
                 var firstFile = filesByChunkHash[chunkHash][0];
                 if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
                 {
-                    var isLargeChunk = ChunkHash.Parse(ie2.ContentHash) == ie2.ChunkHash;
+                    var isLargeChunk = ie2.IsLargeChunk;
                     if (isLargeChunk)
                     {
                         totalOriginalBytes   += ie2.OriginalSize;
@@ -286,7 +286,7 @@ public sealed class RestoreCommandHandler
                 if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
                     return 0;
 
-                var isLargeChunk = ChunkHash.Parse(ie.ContentHash) == ie.ChunkHash;
+                var isLargeChunk = ie.IsLargeChunk;
                 if (isLargeChunk)
                     return ie.CompressedSize;
 
@@ -351,7 +351,7 @@ public sealed class RestoreCommandHandler
                     if (!indexEntries.TryGetValue(firstFile.ContentHash, out var indexEntry))
                         return;
 
-                    var isLargeChunk = ChunkHash.Parse(indexEntry.ContentHash) == indexEntry.ChunkHash;
+                    var isLargeChunk = indexEntry.IsLargeChunk;
 
                     // For large files, sizes come from the single index entry.
                     // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
