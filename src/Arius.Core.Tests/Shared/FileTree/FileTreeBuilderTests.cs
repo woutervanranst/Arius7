@@ -113,7 +113,7 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_MetadataChange_PreservesRootHash()
+    public async Task BuildAsync_MetadataChange_DifferentRootHash()
     {
         const string acct = "acc-meta", cont = "con-meta";
         var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
@@ -136,7 +136,7 @@ public class FileTreeBuilderTests
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
             var root2  = await CreateBuilder(blobs2, acct, cont).BuildAsync(manifestPath2);
 
-            root1.ShouldBe(root2);
+            root1.ShouldNotBe(root2);
         }
         finally
         {

@@ -9,15 +9,25 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        SyntheticRepositoryState versionState;
+        var versionState = state.VersionedSourceStates.TryGetValue(Version, out var existingState) && Directory.Exists(existingState.RootPath)
+            ? existingState
+            : await MaterializeVersionAsync(state, cancellationToken);
 
+        FileSystemHelper.CopyDirectory(versionState.RootPath, state.Fixture.LocalRoot);
+
+        state.CurrentSyntheticRepositoryState = versionState;
+        state.VersionedSourceStates[Version]  = versionState;
+        state.CurrentSourceVersion            = Version;
+    }
+
+    private async Task<SyntheticRepositoryState> MaterializeVersionAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
+    {
         switch (Version)
         {
             case SyntheticRepositoryVersion.V1:
             {
                 var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V1));
-                versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
-                break;
+                return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
             }
             case SyntheticRepositoryVersion.V2:
             {
@@ -28,18 +38,11 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
                     v1State = await RematerializeV1Async(state, cancellationToken);
 
                 var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V2));
-                versionState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
-                break;
+                return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
             }
             default:
                 throw new ArgumentOutOfRangeException();
         }
-
-        FileSystemHelper.CopyDirectory(versionState.RootPath, state.Fixture.LocalRoot);
-
-        state.CurrentSyntheticRepositoryState = versionState;
-        state.VersionedSourceStates[Version]  = versionState;
-        state.CurrentSourceVersion            = Version;
     }
 
     internal static async Task<SyntheticRepositoryState> RematerializeV1Async(RepresentativeWorkflowState state, CancellationToken cancellationToken)

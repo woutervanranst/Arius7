@@ -17,7 +17,7 @@ The question for this ADR is whether an archive run that produces the same root 
 * snapshots should represent durable repository state changes
 * unchanged archive runs should be idempotent and avoid creating redundant repository history
 * snapshot history should remain meaningful for restore and list operations
-* file timestamp metadata drift should not turn unchanged backup content into a new repository version
+* file timestamp metadata is restore-relevant and should remain part of filetree identity
 * no-op behavior should be explicit in integration and representative end-to-end coverage
 * archive must still complete all durability work before deciding whether a new snapshot is needed
 
@@ -29,11 +29,12 @@ The question for this ADR is whether an archive run that produces the same root 
 
 ## Decision Outcome
 
-Chosen option: "Skip snapshot publication when the newly built root hash matches the latest snapshot", because it keeps snapshots as meaningful commit points while preserving idempotent archive behavior for unchanged repositories. Filetree root identity is based on entry names, entry types, and content hashes; timestamp metadata remains serialized for restore/list consumers, but timestamp-only drift does not create a new root hash.
+Chosen option: "Skip snapshot publication when the newly built root hash matches the latest snapshot", because it keeps snapshots as meaningful commit points while preserving idempotent archive behavior for unchanged repositories. Filetree root identity is based on the canonical serialized filetree, including entry names, entry types, content hashes, and restore-relevant timestamp metadata.
 
 ### Consequences
 
-* Good, because repeated archives of unchanged data do not create redundant snapshot manifests, even when local filesystem timestamps drift.
+* Good, because repeated archives of unchanged data and metadata do not create redundant snapshot manifests.
+* Good, because timestamp-only metadata changes still produce a new root hash and can be restored accurately.
 * Good, because restore and list history remains focused on actual repository state changes.
 * Good, because no-op archive results can point at the existing latest snapshot for compatibility with callers that expect a successful archive to have a snapshot timestamp.
 * Bad, because callers cannot infer that a new snapshot was created purely from archive success; they must compare the returned snapshot version with the previously known latest version when that distinction matters.
