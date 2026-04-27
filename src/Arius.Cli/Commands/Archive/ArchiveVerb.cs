@@ -143,7 +143,7 @@ internal static class ArchiveVerb
                         if (progressState.ContentHashToPath.TryGetValue(ContentHash.Parse(chunkHash), out var paths))
                         {
                             var files = paths
-                                .Select(p => progressState.TrackedFiles.TryGetValue(p, out var f) ? f : null)
+                                .Select(p => progressState.TrackedFiles.GetValueOrDefault(p))
                                 .Where(f => f != null)
                                 .ToList();
                             if (files.Count > 0)
@@ -157,7 +157,7 @@ internal static class ArchiveVerb
                         if (tar != null)
                         {
                             tar.SetBytesUploaded(0);
-                            return new Progress<long>(bytes => tar.SetBytesUploaded(bytes));
+                            return new Progress<long>(tar.SetBytesUploaded);
                         }
 
                         return new Progress<long>();
