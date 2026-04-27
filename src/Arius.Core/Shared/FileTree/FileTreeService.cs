@@ -100,7 +100,7 @@ public sealed class FileTreeService
         var lazyRead = _inFlightReads.GetOrAdd(
             hash,
             _ => new Lazy<Task<FileTreeBlob>>(
-                () => DownloadAndCacheAsync(hashText, diskPath),
+                () => DownloadAndCacheAsync(hash, diskPath),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
         try
@@ -148,7 +148,7 @@ public sealed class FileTreeService
         return null;
     }
 
-    private async Task<FileTreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
+    private async Task<FileTreeBlob> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
     {
         var blobName = BlobPaths.FileTree(hash);
         await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
@@ -199,7 +199,7 @@ public sealed class FileTreeService
     public async Task WriteAsync(FileTreeHash hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
     {
         var hashText     = hash.ToString();
-        var blobName     = BlobPaths.FileTree(hashText);
+        var blobName     = BlobPaths.FileTree(hash);
         var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted

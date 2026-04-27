@@ -31,6 +31,15 @@ public sealed record SnapshotManifest
     public required string         AriusVersion { get; init; }
 }
 
+internal sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
+{
+    public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
+
+    public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
+}
+
 /// <summary>
 /// Serialization/deserialization for <see cref="SnapshotManifest"/>.
 /// On-disk (Azure) format: JSON → gzip → optional encrypt.
@@ -45,15 +54,6 @@ public static class SnapshotSerializer
         PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
         Converters             = { new FileTreeHashJsonConverter() },
     };
-
-    private sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
-    {
-        public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-            => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
-
-        public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
-            => writer.WriteStringValue(value.ToString());
-    }
 
     // ── Serialize ─────────────────────────────────────────────────────────────
 
