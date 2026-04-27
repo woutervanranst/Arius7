@@ -24,7 +24,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("docs/", TreeHashFor("docs")),
+                DirectoryEntryOf("docs/", TreeHashFor("docs")),
                 FileEntryOf("readme.txt", ContentHashFor("readme"))
             ]
         };
@@ -90,7 +90,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("nested/", TreeHashFor("nested")),
+                DirectoryEntryOf("nested/", TreeHashFor("nested")),
                 FileEntryOf("guide.txt", ContentHashFor("guide"))
             ]
         };
@@ -100,7 +100,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("docs/", docsHash),
+                DirectoryEntryOf("docs/", docsHash),
                 FileEntryOf("root.txt", ContentHashFor("root"))
             ]
         };
@@ -272,7 +272,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("child/", childHash),
+                DirectoryEntryOf("child/", childHash),
                 FileEntryOf("root.txt", ContentHashFor("root"))
             ]
         };
@@ -309,7 +309,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("Photos/", TreeHashFor("photos-dir")),
+                DirectoryEntryOf("Photos/", TreeHashFor("photos-dir")),
                 FileEntryOf("VACATION.jpg", ContentHashFor("vac")),
                 FileEntryOf("sunset.jpg", ContentHashFor("sun")),
                 FileEntryOf("readme.txt", ContentHashFor("rdm")),
@@ -354,8 +354,8 @@ public class ListQueryHandlerTests
             {
                 Entries =
                 [
-                    Dir("cloud-local-dir/", cloudLocalHash),
-                    Dir("cloud-only-dir/", cloudOnlyHash),
+                    DirectoryEntryOf("cloud-local-dir/", cloudLocalHash),
+                    DirectoryEntryOf("cloud-only-dir/", cloudOnlyHash),
                 ]
             };
             var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, s_encryption);
@@ -409,7 +409,7 @@ public class ListQueryHandlerTests
         {
             Entries =
             [
-                Dir("child/", childHash),
+                DirectoryEntryOf("child/", childHash),
                 FileEntryOf("known.txt", ContentHashFor("known")),
                 FileEntryOf("unknown.txt", ContentHashFor("unknown")),
             ]
@@ -493,7 +493,7 @@ public class ListQueryHandlerTests
             {
                 Entries =
                 [
-                    Dir($"level{i + 1}/", currentHash),
+                    DirectoryEntryOf($"level{i + 1}/", currentHash),
                     FileEntryOf($"file{i}.txt", ContentHashFor($"f{i}"))
                 ]
             };
@@ -560,21 +560,9 @@ public class ListQueryHandlerTests
         Modified = s_modified
     };
 
-    private static DirectoryEntry Dir(string name, FileTreeHash hash) => new()
+    private static DirectoryEntry DirectoryEntryOf(string name, FileTreeHash hash) => new()
     {
         Name = name,
         FileTreeHash = hash
     };
-
-    private static async Task<byte[]> CompressAsync(byte[] plaintext)
-    {
-        using var output = new MemoryStream();
-        await using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
-        {
-            await gzip.WriteAsync(plaintext);
-        }
-
-        return output.ToArray();
-    }
-
 }
