@@ -1,7 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
-using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -12,13 +11,13 @@ public class ShardSerializerLocalTests
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                HashTestData.Content('a'),
-                HashTestData.Chunk('b'),
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
                 512,
                 256),
             new ShardEntry(
-                HashTestData.Content('c'),
-                HashTestData.Chunk('d'),
+                FakeContentHash('c'),
+                FakeChunkHash('d'),
                 100,
                 40)
         ]);
@@ -26,10 +25,10 @@ public class ShardSerializerLocalTests
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
 
-        loaded.TryLookup(HashTestData.Content('a'), out var e1).ShouldBeTrue();
+        loaded.TryLookup(FakeContentHash('a'), out var e1).ShouldBeTrue();
         e1!.OriginalSize.ShouldBe(512);
 
-        loaded.TryLookup(HashTestData.Content('c'), out var e2).ShouldBeTrue();
+        loaded.TryLookup(FakeContentHash('c'), out var e2).ShouldBeTrue();
         e2!.CompressedSize.ShouldBe(40);
     }
 
@@ -38,8 +37,8 @@ public class ShardSerializerLocalTests
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                HashTestData.Content('a'),
-                HashTestData.Chunk('b'),
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
                 512,
                 256)
         ]);
@@ -59,8 +58,8 @@ public class ShardSerializerLocalTests
         var encSvc = new PassphraseEncryptionService("my-passphrase");
         var shard  = new Shard().Merge([
             new ShardEntry(
-                HashTestData.Content('a'),
-                HashTestData.Chunk('b'),
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
                 512,
                 256)
         ]);

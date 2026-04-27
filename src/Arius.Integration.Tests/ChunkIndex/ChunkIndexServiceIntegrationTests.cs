@@ -2,7 +2,6 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
-using Arius.Tests.Shared.Hashes;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
@@ -38,7 +37,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task Lookup_NewPrefix_ReturnsEmpty()
     {
         var (svc, _) = await CreateServiceAsync();
-        var hash = HashTestData.Content('0');
+        var hash = FakeContentHash('0');
 
         var result = await svc.LookupAsync(hash);
 
@@ -56,8 +55,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         var svc1 = new ChunkIndexService(blobs, encryption, Account, containerName);
 
-        var contentHash = HashTestData.Content('1');
-        var chunkHash   = HashTestData.Chunk('a');
+        var contentHash = FakeContentHash('1');
+        var chunkHash   = FakeChunkHash('a');
         var entry       = new ShardEntry(contentHash, chunkHash, 1024, 512);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
@@ -76,8 +75,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task InFlightEntry_FoundWithoutBlob_ReturnsEntry()
     {
         var (svc, _) = await CreateServiceAsync();
-        var contentHash = HashTestData.Content('2');
-        var chunkHash   = HashTestData.Chunk('b');
+        var contentHash = FakeContentHash('2');
+        var chunkHash   = FakeChunkHash('b');
         var entry       = new ShardEntry(contentHash, chunkHash, 500, 200);
 
         svc.AddEntry(entry); // goes to in-flight, NOT yet uploaded
@@ -99,8 +98,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 1: record + flush a real entry so the shard exists in L3
         var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var contentHash = HashTestData.Content('3');
-        var chunkHash   = HashTestData.Chunk('c');
+        var contentHash = FakeContentHash('3');
+        var chunkHash   = FakeChunkHash('c');
         var entry       = new ShardEntry(contentHash, chunkHash, 800, 400);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();

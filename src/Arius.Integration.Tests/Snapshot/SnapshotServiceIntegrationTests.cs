@@ -1,7 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
-using Arius.Tests.Shared.Hashes;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Integration.Tests.Snapshot;
@@ -14,7 +13,7 @@ namespace Arius.Integration.Tests.Snapshot;
 public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
 {
     private static readonly PlaintextPassthroughService s_enc = new();
-    private static readonly FileTreeHash s_rootHash = HashTestData.FileTree('0');
+    private static readonly FileTreeHash s_rootHash = FakeFileTreeHash('0');
 
     // ── Create + resolve latest ───────────────────────────────────────────────
 
@@ -71,8 +70,8 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
         var ts1 = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var ts2 = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
 
-        await svc.CreateAsync(HashTestData.FileTree('1'), 1, 10, ts1);
-        await svc.CreateAsync(HashTestData.FileTree('2'), 2, 20, ts2);
+        await svc.CreateAsync(FakeFileTreeHash('1'), 1, 10, ts1);
+        await svc.CreateAsync(FakeFileTreeHash('2'), 2, 20, ts2);
 
         // Resolve by year prefix
         var resolved = await svc.ResolveAsync("2024");

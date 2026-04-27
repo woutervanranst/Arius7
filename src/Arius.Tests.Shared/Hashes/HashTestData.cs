@@ -4,9 +4,9 @@ namespace Arius.Tests.Shared.Hashes;
 
 internal static class HashTestData
 {
-    public static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+    public static ContentHash FakeContentHash(char c) => ContentHash.Parse(new string(c, 64));
 
-    public static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
+    public static ChunkHash FakeChunkHash(char c) => ChunkHash.Parse(new string(c, 64));
 
-    public static FileTreeHash FileTree(char c) => FileTreeHash.Parse(new string(c, 64));
+    public static FileTreeHash FakeFileTreeHash(char c) => FileTreeHash.Parse(new string(c, 64));
 }

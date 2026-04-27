@@ -1,7 +1,6 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
-using Arius.Tests.Shared.Hashes;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -176,8 +175,8 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("large.bin", 10_000_000);
-        state.SetFileHashed("large.bin", HashTestData.Content('1'));
-        state.SetFileUploading(HashTestData.Content('1'));
+        state.SetFileHashed("large.bin", FakeContentHash('1'));
+        state.SetFileUploading(FakeContentHash('1'));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("large.bin");
@@ -190,7 +189,7 @@ public class BuildArchiveDisplayTests
         // Hashed state is invisible
         var state = new ProgressState();
         state.AddFile("pending.bin", 1000);
-        state.SetFileHashed("pending.bin", HashTestData.Content('2'));
+        state.SetFileHashed("pending.bin", FakeContentHash('2'));
         // State is now Hashed — should not appear
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -202,7 +201,7 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", HashTestData.Content('3'));
+        state.SetFileHashed("completed.bin", FakeContentHash('3'));
         state.RemoveFile("completed.bin");
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -231,7 +230,7 @@ public class BuildArchiveDisplayTests
         var sealingH = new TarBundleSealingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, HashTestData.Chunk('a'), [HashTestData.Content('a'), HashTestData.Content('b'), HashTestData.Content('c')]),
+            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -248,9 +247,9 @@ public class BuildArchiveDisplayTests
         var uploadingH = new ChunkUploadingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, HashTestData.Chunk('b'), [HashTestData.Content('d'), HashTestData.Content('e')]),
+            new TarBundleSealingEvent(2, 200, FakeChunkHash('b'), [FakeContentHash('d'), FakeContentHash('e')]),
             CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent(HashTestData.Chunk('b'), 200), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('b'), 200), CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         var tarLine = GetLineContaining(output, "TAR #1");

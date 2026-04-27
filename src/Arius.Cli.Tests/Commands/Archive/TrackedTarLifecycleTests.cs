@@ -1,7 +1,6 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
-using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Cli.Tests.Commands.Archive;
 
@@ -29,30 +28,30 @@ public class TrackedTarLifecycleTests
         var hashingH = new FileHashingHandler(state);
         var hashedH  = new FileHashedHandler(state);
         await hashingH.Handle(new FileHashingEvent("f1.txt", 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("f1.txt", HashTestData.Content('a')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("f1.txt", FakeContentHash('a')), CancellationToken.None);
         await hashingH.Handle(new FileHashingEvent("f2.txt", 200), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("f2.txt", HashTestData.Content('b')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("f2.txt", FakeContentHash('b')), CancellationToken.None);
 
-        await entryH.Handle(new TarEntryAddedEvent(HashTestData.Content('a'), 1, 100), CancellationToken.None);
-        await entryH.Handle(new TarEntryAddedEvent(HashTestData.Content('b'), 2, 300), CancellationToken.None);
+        await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100), CancellationToken.None);
+        await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 2, 300), CancellationToken.None);
 
         state.TrackedTars[1].FileCount.ShouldBe(2);
         state.TrackedTars[1].AccumulatedBytes.ShouldBeGreaterThan(0);
 
         // Seal
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 300, HashTestData.Chunk('c'), [HashTestData.Content('a'), HashTestData.Content('b')]),
+            new TarBundleSealingEvent(2, 300, FakeChunkHash('c'), [FakeContentHash('a'), FakeContentHash('b')]),
             CancellationToken.None);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
-        state.TrackedTars[1].TarHash.ShouldBe(HashTestData.Chunk('c'));
+        state.TrackedTars[1].TarHash.ShouldBe(FakeChunkHash('c'));
         state.TrackedTars[1].TotalBytes.ShouldBe(300L);
 
         // Upload starts
-        await uploadingH.Handle(new ChunkUploadingEvent(HashTestData.Chunk('c'), 300), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('c'), 300), CancellationToken.None);
         state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
 
         // Upload complete → removed
-        await uploadedH.Handle(new TarBundleUploadedEvent(HashTestData.Chunk('c'), 200, 2), CancellationToken.None);
+        await uploadedH.Handle(new TarBundleUploadedEvent(FakeChunkHash('c'), 200, 2), CancellationToken.None);
         state.TrackedTars.ContainsKey(1).ShouldBeFalse();
         state.TarsUploaded.ShouldBe(1L);
     }
