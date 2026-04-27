@@ -1,4 +1,6 @@
+using System.Formats.Tar;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -13,7 +15,7 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("large.bin", 2 * 1024 * 1024);
-        var contentHash = env.Encryption.ComputeHash(content).ToString();
+        var contentHash = env.Encryption.ComputeHash(content);
 
         await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(contentHash), content, uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(contentHash));
@@ -31,9 +33,9 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("small.txt", 256);
-        var contentHash = env.Encryption.ComputeHash(content).ToString();
+        var contentHash = env.Encryption.ComputeHash(content);
 
-        var tarHash = env.Encryption.ComputeHash(content).ToString();
+        var tarHash = ComputeTarHash(env, contentHash, content);
         await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
 
@@ -48,7 +50,7 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
-        var contentHash = env.Encryption.ComputeHash(content).ToString();
+        var contentHash = env.Encryption.ComputeHash(content);
         var blobName = BlobPaths.Chunk(contentHash);
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
@@ -64,4 +66,19 @@ public class ArchiveRecoveryTests
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
+    private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)
+    {
+        using var tarStream = new MemoryStream();
+        using (var writer = new TarWriter(tarStream, leaveOpen: true))
+        {
+            var entry = new PaxTarEntry(TarEntryType.RegularFile, contentHash.ToString())
+            {
+                DataStream = new MemoryStream(content, writable: false)
+            };
+
+            writer.WriteEntry(entry);
+        }
+
+        return ChunkHash.Parse(env.Encryption.ComputeHash(tarStream.ToArray()).ToString());
+    }
 }

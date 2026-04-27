@@ -89,7 +89,7 @@ public class GoldenFileDecryptionTests
     {
         var plaintext = await DecryptAndDecompressAsync(LargeChunkFile);
 
-        var hashHex = Convert.ToHexString(SHA256.HashData(plaintext)).ToLowerInvariant();
+        var hashHex = Arius.Core.Shared.Hashes.ContentHash.FromDigest(SHA256.HashData(plaintext)).ToString();
         hashHex.ShouldBe(LenaPlaintextSha256);
     }
 

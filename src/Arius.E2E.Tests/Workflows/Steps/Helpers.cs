@@ -1,5 +1,6 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -89,7 +90,7 @@ internal static class Helpers
         var entry       = await LookupChunkAsync(state, contentHash, cancellationToken);
 
         entry.ShouldNotBeNull($"Chunk index should resolve large duplicate content hash '{contentHash}'.");
-        entry!.ChunkHash.ShouldBe(contentHash, "Large duplicate files should resolve directly to a large chunk.");
+        entry!.ChunkHash.ShouldBe(ChunkHash.Parse(contentHash.ToString()), "Large duplicate files should resolve directly to a large chunk.");
     }
 
     public static async Task AssertSmallFileTarLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
@@ -99,16 +100,16 @@ internal static class Helpers
         var thinBlobName = BlobPaths.Chunk(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
-        entry!.ChunkHash.ShouldNotBe(contentHash, "Small bundled files should resolve to their parent tar chunk hash.");
+        entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash.ToString()), "Small bundled files should resolve to their parent tar chunk hash.");
 
         // Assert that the ThinChunk is pointing to the correct TarChunk
         await using var thinStream = await state.Fixture.BlobContainer.DownloadAsync(thinBlobName, cancellationToken);
         using var reader = new StreamReader(thinStream);
-        var parentChunkHash = await reader.ReadToEndAsync(cancellationToken);
+        var parentChunkHash = ChunkHash.Parse(await reader.ReadToEndAsync(cancellationToken));
         parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk body should point at the tar chunk recorded in the chunk index.");
     }
 
-    static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, string contentHash, CancellationToken cancellationToken)
+    static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)
         => state.Fixture.Index.LookupAsync(contentHash, cancellationToken);
 
     static string GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
@@ -128,7 +129,7 @@ internal static class Helpers
         return bytes;
     }
 
-    static async Task<string> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
+    static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
     {
         expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
         expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
@@ -141,10 +142,10 @@ internal static class Helpers
         return contentHashA;
     }
 
-    static async Task<string> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
+    static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
     {
         var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, relativePath);
         await using var f        = File.OpenRead(fullPath);
-        return Convert.ToHexString(await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken)).ToLowerInvariant();
+        return await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken);
     }
 }
