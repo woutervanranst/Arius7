@@ -176,7 +176,7 @@ public class RestoreCommandHandlerTests
             var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
             var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
 
-            var rootHash = FileTreeHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes("root-broken")).ToString());
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8.ToArray()).ToString());
             var snapshot = new SnapshotManifest
             {
                 Timestamp = DateTimeOffset.UtcNow,
@@ -186,14 +186,14 @@ public class RestoreCommandHandlerTests
                 AriusVersion = "test"
             };
 
-            var validHash = ContentHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes("healthy")).ToString());
+            var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8.ToArray()).ToString());
             var chunkHash = ChunkHash.Parse(validHash);
             index.AddEntry(new ShardEntry(validHash.ToString(), chunkHash.ToString(), originalSize: 7, compressedSize: 7));
 
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
                 $"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
-            blobs.AddBlob(BlobPaths.FileTree(rootHash), await CompressAsync(invalidTreePayload));
-            blobs.AddBlob(BlobPaths.Chunk(chunkHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes("healthy")));
+            blobs.AddBlob(BlobPaths.FileTree(rootHash),                 await CompressAsync(invalidTreePayload));
+            blobs.AddBlob(BlobPaths.Chunk(chunkHash),                   await CompressAsync("healthy"u8.ToArray()));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
 
             var handler = new RestoreCommandHandler(

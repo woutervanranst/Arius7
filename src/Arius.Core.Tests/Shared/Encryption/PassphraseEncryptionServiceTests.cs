@@ -16,7 +16,7 @@ public class PassphraseEncryptionServiceTests
     public async Task EncryptDecrypt_Roundtrip_ProducesBytIdenticalOutput()
     {
         var svc      = new PassphraseEncryptionService(Passphrase);
-        var original = Encoding.UTF8.GetBytes("Hello, Arius! This is a test payload.");
+        var original = "Hello, Arius! This is a test payload."u8.ToArray();
 
         // Encrypt
         var cipherMs = new MemoryStream();

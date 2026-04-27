@@ -18,8 +18,8 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task Upload_ThenDownload_ProducesBytIdenticalContent()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
-        var content  = Encoding.UTF8.GetBytes("Hello blob roundtrip!");
-        var meta     = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge };
+        var content = "Hello blob roundtrip!"u8.ToArray();
+        var meta    = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge };
 
         await svc.UploadAsync(BlobPaths.Chunk("abc123"), new MemoryStream(content), meta, BlobTier.Hot);
 
@@ -140,7 +140,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task OpenWrite_ThenDownload_ProducesByteIdenticalContent()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
-        var payload  = Encoding.UTF8.GetBytes("streaming upload roundtrip");
+        var payload  = "streaming upload roundtrip"u8.ToArray();
 
         await using (var ws = await svc.OpenWriteAsync("chunks/ow-roundtrip"))
             await new MemoryStream(payload).CopyToAsync(ws);

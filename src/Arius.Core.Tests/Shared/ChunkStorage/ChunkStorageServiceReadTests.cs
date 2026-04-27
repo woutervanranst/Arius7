@@ -68,14 +68,14 @@ public class ChunkStorageServiceReadTests
     [Test]
     public async Task DownloadAsync_UsesRehydratedBlobWhenAvailable_AndReturnsPlaintext()
     {
-        var blobs = new FakeInMemoryBlobContainerService();
+        var blobs      = new FakeInMemoryBlobContainerService();
         var encryption = new PlaintextPassthroughService();
-        var service = new ChunkStorageService(blobs, encryption);
-        var content = System.Text.Encoding.UTF8.GetBytes("hello from rehydrated");
-        var chunkHash = TestChunkHash;
+        var service    = new ChunkStorageService(blobs, encryption);
+        var content    = "hello from rehydrated"u8.ToArray();
+        var chunkHash  = TestChunkHash;
 
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(chunkHash), content, BlobTier.Cold);
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), System.Text.Encoding.UTF8.GetBytes("old"), BlobTier.Archive);
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash),           "old"u8.ToArray(), BlobTier.Archive);
 
         await using var stream = await service.DownloadAsync(chunkHash, cancellationToken: CancellationToken.None);
         using var reader = new StreamReader(stream);
@@ -89,7 +89,7 @@ public class ChunkStorageServiceReadTests
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var chunkHash = TestChunkHash;
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), System.Text.Encoding.UTF8.GetBytes("hello"), BlobTier.Hot);
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), "hello"u8.ToArray(), BlobTier.Hot);
 
         var stream = await service.DownloadAsync(chunkHash, cancellationToken: CancellationToken.None);
         stream.Dispose();
@@ -101,7 +101,7 @@ public class ChunkStorageServiceReadTests
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var chunkHash = TestChunkHash;
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), System.Text.Encoding.UTF8.GetBytes("rehydrate"), BlobTier.Archive);
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), "rehydrate"u8.ToArray(), BlobTier.Archive);
 
         await service.StartRehydrationAsync(chunkHash, RehydratePriority.High, CancellationToken.None);
 
@@ -115,8 +115,8 @@ public class ChunkStorageServiceReadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("a"), System.Text.Encoding.UTF8.GetBytes("aaa"), BlobTier.Cold);
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("b"), System.Text.Encoding.UTF8.GetBytes("bbbb"), BlobTier.Cold);
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("a"), "aaa"u8.ToArray(),                          BlobTier.Cold);
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("b"), "bbbb"u8.ToArray(), BlobTier.Cold);
 
         await using var plan = await service.PlanRehydratedCleanupAsync(CancellationToken.None);
 

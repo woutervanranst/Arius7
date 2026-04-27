@@ -66,7 +66,7 @@ public class ShardSerializerLocalTests
 
         var localBytes = ShardSerializer.SerializeLocal(shard);
 
-        var salted = System.Text.Encoding.ASCII.GetBytes("Salted__");
+        var salted = "Salted__"u8.ToArray();
         localBytes.Take(8).ShouldNotBe(salted);
         localBytes[0].ShouldNotBe((byte)0x1f);
     }
