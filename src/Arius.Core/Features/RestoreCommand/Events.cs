@@ -1,4 +1,5 @@
-﻿using Mediator;
+﻿using Arius.Core.Shared.Hashes;
+using Mediator;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -17,7 +18,7 @@ public sealed record FileSkippedEvent(string RelativePath, long FileSize) : INot
 public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : INotification;
 
 /// <summary>Emitted after snapshot resolution and tree traversal gives the file count.</summary>
-public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, string RootHash, int FileCount) : INotification;
+public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, FileTreeHash RootHash, int FileCount) : INotification;
 
 /// <summary>Emitted after all file entries are collected from the tree.</summary>
 public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification;
@@ -38,10 +39,10 @@ public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCoun
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
 /// <summary>Emitted when a chunk download begins.</summary>
-public sealed record ChunkDownloadStartedEvent(string ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize) : INotification;
+public sealed record ChunkDownloadStartedEvent(ChunkHash ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize) : INotification;
 
 /// <summary>Emitted after a tar bundle has been fully downloaded and extracted.</summary>
-public sealed record ChunkDownloadCompletedEvent(string ChunkHash, int FilesRestored, long CompressedSize) : INotification;
+public sealed record ChunkDownloadCompletedEvent(ChunkHash ChunkHash, int FilesRestored, long CompressedSize) : INotification;
 
 /// <summary>Emitted after rehydrated blob cleanup finishes.</summary>
 public sealed record CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification;

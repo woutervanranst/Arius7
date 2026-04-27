@@ -72,7 +72,7 @@ public sealed class SnapshotResolvedHandler(ProgressState state) : INotification
     public ValueTask Handle(SnapshotResolvedEvent notification, CancellationToken cancellationToken)
     {
         state.SnapshotTimestamp = notification.Timestamp;
-        state.SnapshotRootHash  = notification.RootHash;
+        state.SnapshotRootHash  = notification.RootHash.ToString();
         return ValueTask.CompletedTask;
     }
 }
@@ -150,7 +150,7 @@ public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotifica
     public ValueTask Handle(ChunkDownloadStartedEvent notification, CancellationToken cancellationToken)
     {
         if (notification.Type == "tar")
-            state.TarBundleMetadata[notification.ChunkHash] = (notification.FileCount, notification.OriginalSize);
+            state.TarBundleMetadata[notification.ChunkHash.ToString()] = (notification.FileCount, notification.OriginalSize);
         return ValueTask.CompletedTask;
     }
 }
@@ -162,7 +162,7 @@ public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotifi
 {
     public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
     {
-        state.TrackedDownloads.TryRemove(notification.ChunkHash, out _);
+        state.TrackedDownloads.TryRemove(notification.ChunkHash.ToString(), out _);
         state.AddRestoreBytesDownloaded(notification.CompressedSize);
         return ValueTask.CompletedTask;
     }

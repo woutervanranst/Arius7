@@ -1,4 +1,5 @@
 using Arius.Core.Shared.LocalFile;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Features.ArchiveCommand;
 
@@ -10,7 +11,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// </summary>
 public sealed record HashedFilePair(
     FilePair       FilePair,
-    string         ContentHash,   // hex SHA-256 (64 chars)
+    ContentHash    ContentHash,
     string         LocalRootPath  // absolute path to archive root (for stream reading)
 );
 
@@ -27,8 +28,8 @@ public sealed record FileToUpload(
 /// An index entry recording the content-hash → chunk-hash mapping after upload.
 /// </summary>
 public sealed record IndexEntry(
-    string ContentHash,
-    string ChunkHash,
+    ContentHash ContentHash,
+    ChunkHash ChunkHash,
     long   OriginalSize,
     long   CompressedSize
 );
@@ -39,7 +40,7 @@ public sealed record IndexEntry(
 /// and the full <see cref="HashedFilePair"/> for manifest-entry writing.
 /// </summary>
 public sealed record TarEntry(
-    string         ContentHash,
+    ContentHash    ContentHash,
     long           OriginalSize,
     HashedFilePair HashedPair
 );
@@ -49,7 +50,7 @@ public sealed record TarEntry(
 /// </summary>
 public sealed record SealedTar(
     string          TarFilePath,       // temp file on disk
-    string          TarHash,           // hash of the tar body (before gzip+encrypt)
+    ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
     long            UncompressedSize,  // sum of file sizes
     IReadOnlyList<TarEntry> Entries    // per-file info for thin chunk creation
 );

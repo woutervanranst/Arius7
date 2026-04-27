@@ -49,7 +49,7 @@ public sealed class FileHashedHandler(ProgressState state) : INotificationHandle
 {
     public ValueTask Handle(FileHashedEvent notification, CancellationToken cancellationToken)
     {
-        state.SetFileHashed(notification.RelativePath, notification.ContentHash);
+        state.SetFileHashed(notification.RelativePath, notification.ContentHash.ToString());
         return ValueTask.CompletedTask;
     }
 }
@@ -79,7 +79,7 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(TarEntryAddedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
+        if (state.ContentHashToPath.TryGetValue(notification.ContentHash.ToString(), out var paths))
             foreach (var path in paths)
                 state.RemoveFile(path);
 
@@ -114,7 +114,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
 
         if (tar != null)
         {
-            tar.TarHash    = notification.TarHash;
+            tar.TarHash    = notification.TarHash.ToString();
             tar.TotalBytes = notification.UncompressedSize;
             tar.State      = TarState.Sealing;
         }
@@ -133,13 +133,13 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
-        if (state.SetFileUploading(notification.ContentHash))
+        if (state.SetFileUploading(notification.ChunkHash.ToString()))
         {
             state.IncrementFilesUnique();
             return ValueTask.CompletedTask;
         }
 
-        var tar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == notification.ContentHash);
+        var tar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == notification.ChunkHash.ToString());
         if (tar != null)
             tar.State = TarState.Uploading;
 
@@ -157,7 +157,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
+        if (state.ContentHashToPath.TryGetValue(notification.ChunkHash.ToString(), out var paths))
             foreach (var path in paths)
                 state.RemoveFile(path);
         state.IncrementChunksUploaded(notification.CompressedSize);
@@ -175,7 +175,7 @@ public sealed class TarBundleUploadedHandler(ProgressState state) : INotificatio
 {
     public ValueTask Handle(TarBundleUploadedEvent notification, CancellationToken cancellationToken)
     {
-        var entry = state.TrackedTars.FirstOrDefault(kv => kv.Value.TarHash == notification.TarHash);
+        var entry = state.TrackedTars.FirstOrDefault(kv => kv.Value.TarHash == notification.TarHash.ToString());
         if (entry.Value != null)
             state.TrackedTars.TryRemove(entry.Key, out _);
 

@@ -1,4 +1,5 @@
 using Arius.Cli.Commands.Archive;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Features.ArchiveCommand;
 using Spectre.Console;
 using Spectre.Console.Rendering;
@@ -12,6 +13,9 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class BuildArchiveDisplayTests
 {
+    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
+    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
+
     private static string RenderToString(IRenderable renderable)
     {
         var writer = new StringWriter();
@@ -229,7 +233,7 @@ public class BuildArchiveDisplayTests
         var sealingH = new TarBundleSealingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, "t1", ["h1", "h2", "h3"]),
+            new TarBundleSealingEvent(3, 300, Chunk('a'), [Content('a'), Content('b'), Content('c')]),
             CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -246,9 +250,9 @@ public class BuildArchiveDisplayTests
         var uploadingH = new ChunkUploadingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, "t2", ["ha", "hb"]),
+            new TarBundleSealingEvent(2, 200, Chunk('b'), [Content('d'), Content('e')]),
             CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent("t2", 200), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(Chunk('b'), 200), CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         var tarLine = GetLineContaining(output, "TAR #1");

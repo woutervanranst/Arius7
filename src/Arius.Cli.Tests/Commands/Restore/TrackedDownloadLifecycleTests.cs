@@ -1,5 +1,6 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
@@ -9,6 +10,9 @@ namespace Arius.Cli.Tests.Commands.Restore;
 /// </summary>
 public class TrackedDownloadLifecycleTests
 {
+    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
+
+
     [Test]
     public async Task LargeFile_TrackedDownload_AddUpdateRemove()
     {
@@ -44,13 +48,14 @@ public class TrackedDownloadLifecycleTests
     public async Task TarBundle_TrackedDownload_AddUpdateRemove()
     {
         var state = new ProgressState();
+        var chunkHash = Chunk('a').ToString();
 
         // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
-        var td = new TrackedDownload("ab12cd34", DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
-        state.TrackedDownloads.TryAdd("ab12cd34", td);
+        var td = new TrackedDownload(chunkHash, DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
+        state.TrackedDownloads.TryAdd(chunkHash, td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
-        state.TrackedDownloads["ab12cd34"].Kind.ShouldBe(DownloadKind.TarBundle);
+        state.TrackedDownloads[chunkHash].Kind.ShouldBe(DownloadKind.TarBundle);
 
         // Simulate byte-level progress
         td.SetBytesDownloaded(4_800_000);
@@ -58,9 +63,9 @@ public class TrackedDownloadLifecycleTests
 
         // ChunkDownloadCompletedHandler should remove the TrackedDownload
         var handler = new ChunkDownloadCompletedHandler(state);
-        await handler.Handle(new ChunkDownloadCompletedEvent("ab12cd34", 3, 15_200_000), CancellationToken.None);
+        await handler.Handle(new ChunkDownloadCompletedEvent(Chunk('a'), 3, 15_200_000), CancellationToken.None);
 
-        state.TrackedDownloads.ContainsKey("ab12cd34").ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
+        state.TrackedDownloads.ContainsKey(chunkHash).ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
         state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
     }
 

@@ -117,7 +117,7 @@ public sealed class RestoreCommandHandler
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
             // Publish snapshot resolved after tree traversal so we include file count (from tree)
-            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash.ToString(), files.Count), cancellationToken);
+            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, files.Count), cancellationToken);
             await _mediator.Publish(new TreeTraversalCompleteEvent(files.Count, TotalOriginalSize: 0), cancellationToken);
             await _mediator.Publish(new RestoreStartedEvent(files.Count), cancellationToken);
 
@@ -136,7 +136,7 @@ public sealed class RestoreCommandHandler
                     {
                         // Hash local file to check if already correct
                         await using var fs = File.OpenRead(localPath);
-                        var localHash = (await _encryption.ComputeHashAsync(fs, cancellationToken)).ToString();
+                        var localHash = await _encryption.ComputeHashAsync(fs, cancellationToken);
 
                         if (localHash == file.ContentHash)
                         {
@@ -180,9 +180,7 @@ public sealed class RestoreCommandHandler
             // ── Step 4: Chunk resolution ──────────────────────────────────────
 
             var contentHashes = toRestore
-                .Select(file => (File: file, ContentHash: TryParseContentHash(file.ContentHash, file.RelativePath)))
-                .Where(entry => entry.ContentHash is not null)
-                .Select(entry => entry.ContentHash!.Value)
+                .Select(file => file.ContentHash)
                 .Distinct()
                 .ToList();
             var indexEntries  = await _index.LookupAsync(contentHashes, cancellationToken);
@@ -193,8 +191,7 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in toRestore)
             {
-                var parsedContentHash = TryParseContentHash(file.ContentHash, file.RelativePath);
-                if (parsedContentHash is null || !indexEntries.TryGetValue(parsedContentHash.Value, out var entry))
+                if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
                 {
                     _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
                     unresolved.Add(file);
@@ -206,7 +203,7 @@ public sealed class RestoreCommandHandler
                 list.Add(file);
             }
 
-            var largeChunks = filesByChunkHash.Keys.Count(k => TryGetIndexEntry(filesByChunkHash[k][0], indexEntries, out var ie) && ie.ContentHash.ToString() == ie.ChunkHash.ToString());
+            var largeChunks = filesByChunkHash.Keys.Count(k => TryGetIndexEntry(filesByChunkHash[k][0], indexEntries, out var ie) && IsLargeChunk(ie));
             var tarChunks   = filesByChunkHash.Count - largeChunks;
 
             // Sum original and compressed sizes from index entries for the aggregate counters.
@@ -220,7 +217,7 @@ public sealed class RestoreCommandHandler
                 var firstFile = filesByChunkHash[chunkHash][0];
                 if (TryGetIndexEntry(firstFile, indexEntries, out var ie2))
                 {
-                    var isLargeChunk = ie2.ContentHash.ToString() == ie2.ChunkHash.ToString();
+                    var isLargeChunk = IsLargeChunk(ie2);
                     if (isLargeChunk)
                     {
                         totalOriginalBytes   += ie2.OriginalSize;
@@ -289,7 +286,7 @@ public sealed class RestoreCommandHandler
                 if (!TryGetIndexEntry(firstFile, indexEntries, out var ie))
                     return 0;
 
-                var isLargeChunk = ie.ContentHash.ToString() == ie.ChunkHash.ToString();
+                var isLargeChunk = IsLargeChunk(ie);
                 if (isLargeChunk)
                     return ie.CompressedSize;
 
@@ -354,7 +351,7 @@ public sealed class RestoreCommandHandler
                     if (!TryGetIndexEntry(firstFile, indexEntries, out var indexEntry))
                         return;
 
-                    var isLargeChunk = indexEntry.ContentHash.ToString() == indexEntry.ChunkHash.ToString();
+                    var isLargeChunk = IsLargeChunk(indexEntry);
 
                     // For large files, sizes come from the single index entry.
                     // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
@@ -367,13 +364,13 @@ public sealed class RestoreCommandHandler
                         : filesForChunk.Sum(f => TryGetIndexEntry(f, indexEntries, out var e) ? e.OriginalSize : 0);
 
                     _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash.Short8, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash.ToString(), isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
+                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
 
                     if (isLargeChunk)
                     {
                         foreach (var file in filesForChunk)
                         {
-                            await RestoreLargeFileAsync(chunkHash.ToString(), file, opts, compressedSize, ct);
+                            await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
                             Interlocked.Increment(ref filesRestoredLong);
                             await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
                         }
@@ -383,10 +380,10 @@ public sealed class RestoreCommandHandler
                         // Tar bundle: stream through tar, extract matching entries.
                         // Multiple files may share the same content hash (duplicates), so use a lookup.
                         var filesByContentHash = filesForChunk
-                            .GroupBy(f => f.ContentHash, StringComparer.Ordinal)
-                            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+                            .GroupBy(f => f.ContentHash)
+                            .ToDictionary(g => g.Key, g => g.ToList());
                         var restored = await RestoreTarBundleAsync(
-                            chunkHash.ToString(), filesByContentHash, opts, compressedSize, ct);
+                            chunkHash, filesByContentHash, opts, compressedSize, ct);
                         Interlocked.Add(ref filesRestoredLong, restored);
                     }
                 });
@@ -505,26 +502,19 @@ public sealed class RestoreCommandHandler
         return result;
     }
 
-    private ContentHash? TryParseContentHash(string value, string relativePath)
-    {
-        if (ContentHash.TryParse(value, out var hash))
-            return hash;
-
-        _logger.LogWarning("Invalid content hash encountered while restoring repository data: {Hash} ({Path})", value, relativePath);
-        return null;
-    }
-
     private bool TryGetIndexEntry(
         FileToRestore file,
         IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries,
         out ShardEntry entry)
     {
-        if (TryParseContentHash(file.ContentHash, file.RelativePath) is { } contentHash && indexEntries.TryGetValue(contentHash, out entry!))
+        if (indexEntries.TryGetValue(file.ContentHash, out entry!))
             return true;
 
         entry = null!;
         return false;
     }
+
+    private static bool IsLargeChunk(ShardEntry entry) => ChunkHash.Parse(entry.ContentHash.ToString()) == entry.ChunkHash;
 
     private async Task WalkTreeAsync(
         FileTreeHash       treeHash,
@@ -560,7 +550,7 @@ public sealed class RestoreCommandHandler
                 {
                     result.Add(new FileToRestore(
                         RelativePath : entryPath,
-                        ContentHash  : fileEntry.ContentHash.ToString(),
+                        ContentHash  : fileEntry.ContentHash,
                         Created      : fileEntry.Created,
                         Modified     : fileEntry.Modified));
 
@@ -591,7 +581,7 @@ public sealed class RestoreCommandHandler
     // ── Large file restore (task 10.7) ────────────────────────────────────────
 
     private async Task RestoreLargeFileAsync(
-        string         chunkHash,
+        ChunkHash      chunkHash,
         FileToRestore  file,
         RestoreOptions opts,
         long           compressedSize,
@@ -603,7 +593,7 @@ public sealed class RestoreCommandHandler
 
         {
             var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath, compressedSize, DownloadKind.LargeFile);
-            await using var payloadStream = await _chunkStorage.DownloadAsync(ChunkHash.Parse(chunkHash), progress, cancellationToken);
+            await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
             await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
@@ -617,7 +607,7 @@ public sealed class RestoreCommandHandler
         if (!opts.NoPointers)
         {
             var pointerPath = localPath + ".pointer.arius";
-            await File.WriteAllTextAsync(pointerPath, file.ContentHash, cancellationToken);
+            await File.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
             File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
             File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
         }
@@ -639,22 +629,23 @@ public sealed class RestoreCommandHandler
     /// <param name="cancellationToken">Token to observe for cancellation.</param>
     /// <returns>The number of files written to disk.</returns>
     private async Task<int> RestoreTarBundleAsync(
-        string                                    chunkHash,
-        Dictionary<string, List<FileToRestore>>   filesNeeded,
+        ChunkHash                                 chunkHash,
+        Dictionary<ContentHash, List<FileToRestore>> filesNeeded,
         RestoreOptions                            opts,
         long                                      compressedSize,
         CancellationToken                         cancellationToken)
     {
         var restored = 0;
 
-        var progress = opts.CreateDownloadProgress?.Invoke(chunkHash, compressedSize, DownloadKind.TarBundle);
-        await using var payloadStream = await _chunkStorage.DownloadAsync(ChunkHash.Parse(chunkHash), progress, cancellationToken);
+        var progress = opts.CreateDownloadProgress?.Invoke(chunkHash.ToString(), compressedSize, DownloadKind.TarBundle);
+        await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         var tarReader = new TarReader(payloadStream, leaveOpen: false);
 
         TarEntry? tarEntry;
         while ((tarEntry = await tarReader.GetNextEntryAsync(copyData: false, cancellationToken)) is not null)
         {
-            var contentHash = tarEntry.Name; // entries are named by content-hash
+            if (!ContentHash.TryParse(tarEntry.Name, out var contentHash))
+                continue;
 
             if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
@@ -692,7 +683,7 @@ public sealed class RestoreCommandHandler
                 if (!opts.NoPointers)
                 {
                     var pointerPath = localPath + ".pointer.arius";
-                    await File.WriteAllTextAsync(pointerPath, contentHash, cancellationToken);
+                    await File.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
                     File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
                     File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
                 }
