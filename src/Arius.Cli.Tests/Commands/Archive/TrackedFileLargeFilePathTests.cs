@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Cli.Tests.Commands.Archive;
 
@@ -8,8 +9,6 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class TrackedFileLargeFilePathTests
 {
-    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
-
     [Test]
     public void LargeFilePath_StateTransitions_Correct()
     {
@@ -20,12 +19,12 @@ public class TrackedFileLargeFilePathTests
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Hashing);
 
         // FileHashedEvent → State=Hashed (invisible)
-        state.SetFileHashed("video.mp4", Content('a'));
-        state.TrackedFiles["video.mp4"].ContentHash.ShouldBe(Content('a').ToString());
+        state.SetFileHashed("video.mp4", HashTestData.Content('a'));
+        state.TrackedFiles["video.mp4"].ContentHash.ShouldBe(HashTestData.Content('a').ToString());
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Hashed);
 
         // ChunkUploadingEvent → SetFileUploading (only Hashed files promoted to Uploading)
-        state.SetFileUploading(Content('a'));
+        state.SetFileUploading(HashTestData.Content('a'));
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Uploading);
 
         // ChunkUploadedEvent → RemoveFile
@@ -43,7 +42,7 @@ public class TrackedFileLargeFilePathTests
         state.TrackedFiles["pending.txt"].State.ShouldBe(FileState.Hashing);
 
         // No ContentHashToPath entry yet, so SetFileUploading won't find it
-        state.SetFileUploading(Content('b'));
+        state.SetFileUploading(HashTestData.Content('b'));
         state.TrackedFiles["pending.txt"].State.ShouldBe(FileState.Hashing);
     }
 }

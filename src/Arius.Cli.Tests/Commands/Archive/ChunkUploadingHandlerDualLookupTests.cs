@@ -1,6 +1,7 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Cli.Tests.Commands.Archive;
 
@@ -11,9 +12,6 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class ChunkUploadingHandlerDualLookupTests
 {
-    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
-    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
-
     [Test]
     public async Task DualLookup_LargeFile_TakesPrecedence()
     {
@@ -23,16 +21,16 @@ public class ChunkUploadingHandlerDualLookupTests
         var uploadingH = new ChunkUploadingHandler(state);
         var competingTar = new TrackedTar(1, state.TarTargetSize)
         {
-            TarHash = Chunk('a'),
+            TarHash = HashTestData.Chunk('a'),
             TotalBytes = 10_000_000,
             State = TarState.Sealing,
         };
         state.TrackedTars.TryAdd(competingTar.BundleNumber, competingTar);
 
         await hashingH.Handle(new FileHashingEvent("big.bin", 10_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("big.bin", Content('a')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("big.bin", HashTestData.Content('a')), CancellationToken.None);
 
-        await uploadingH.Handle(new ChunkUploadingEvent(Chunk('a'), 10_000_000), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(HashTestData.Chunk('a'), 10_000_000), CancellationToken.None);
 
         state.TrackedFiles["big.bin"].State.ShouldBe(FileState.Uploading);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
@@ -49,10 +47,10 @@ public class ChunkUploadingHandlerDualLookupTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(1, 100, Chunk('b'), [Content('b')]),
+            new TarBundleSealingEvent(1, 100, HashTestData.Chunk('b'), [HashTestData.Content('b')]),
             CancellationToken.None);
 
-        await uploadingH.Handle(new ChunkUploadingEvent(Chunk('b'), 100), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(HashTestData.Chunk('b'), 100), CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
         state.FilesUnique.ShouldBe(0L);  // TAR path does NOT increment FilesUnique

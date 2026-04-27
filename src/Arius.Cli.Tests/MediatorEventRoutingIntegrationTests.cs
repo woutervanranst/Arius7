@@ -3,6 +3,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Hashes;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -17,10 +18,6 @@ namespace Arius.Cli.Tests;
 /// </summary>
 public class MediatorEventRoutingIntegrationTests
 {
-    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
-    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
-    private static FileTreeHash Tree(char c) => FileTreeHash.Parse(new string(c, 64));
-
     private static IServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
@@ -53,13 +50,13 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileScannedEvent("a.bin", 100));
         await mediator.Publish(new ScanCompleteEvent(1, 100));
         await mediator.Publish(new FileHashingEvent("a.bin", 100));
-        await mediator.Publish(new FileHashedEvent("a.bin", Content('a')));
+        await mediator.Publish(new FileHashedEvent("a.bin", HashTestData.Content('a')));
         await mediator.Publish(new TarBundleStartedEvent());
-        await mediator.Publish(new TarEntryAddedEvent(Content('a'), 1, 100));
-        await mediator.Publish(new TarBundleSealingEvent(1, 100, Chunk('b'), [Content('a')]));
-        await mediator.Publish(new ChunkUploadingEvent(Chunk('b'), 100));
-        await mediator.Publish(new TarBundleUploadedEvent(Chunk('b'), 80, 1));
-        await mediator.Publish(new SnapshotCreatedEvent(Tree('c'), DateTimeOffset.UtcNow, 1));
+        await mediator.Publish(new TarEntryAddedEvent(HashTestData.Content('a'), 1, 100));
+        await mediator.Publish(new TarBundleSealingEvent(1, 100, HashTestData.Chunk('b'), [HashTestData.Content('a')]));
+        await mediator.Publish(new ChunkUploadingEvent(HashTestData.Chunk('b'), 100));
+        await mediator.Publish(new TarBundleUploadedEvent(HashTestData.Chunk('b'), 80, 1));
+        await mediator.Publish(new SnapshotCreatedEvent(HashTestData.FileTree('c'), DateTimeOffset.UtcNow, 1));
 
         // Verify ProgressState was updated
         state.FilesScanned.ShouldBe(1L);

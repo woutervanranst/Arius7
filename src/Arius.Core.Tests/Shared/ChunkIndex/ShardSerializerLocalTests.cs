@@ -1,26 +1,24 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardSerializerLocalTests
 {
-    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
-    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
-
     [Test]
     public void SerializeLocal_ThenDeserializeLocal_RoundTrips()
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                Content('a'),
-                Chunk('b'),
+                HashTestData.Content('a'),
+                HashTestData.Chunk('b'),
                 512,
                 256),
             new ShardEntry(
-                Content('c'),
-                Chunk('d'),
+                HashTestData.Content('c'),
+                HashTestData.Chunk('d'),
                 100,
                 40)
         ]);
@@ -28,10 +26,10 @@ public class ShardSerializerLocalTests
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
 
-        loaded.TryLookup(Content('a'), out var e1).ShouldBeTrue();
+        loaded.TryLookup(HashTestData.Content('a'), out var e1).ShouldBeTrue();
         e1!.OriginalSize.ShouldBe(512);
 
-        loaded.TryLookup(Content('c'), out var e2).ShouldBeTrue();
+        loaded.TryLookup(HashTestData.Content('c'), out var e2).ShouldBeTrue();
         e2!.CompressedSize.ShouldBe(40);
     }
 
@@ -40,8 +38,8 @@ public class ShardSerializerLocalTests
     {
         var shard = new Shard().Merge([
             new ShardEntry(
-                Content('a'),
-                Chunk('b'),
+                HashTestData.Content('a'),
+                HashTestData.Chunk('b'),
                 512,
                 256)
         ]);
@@ -61,8 +59,8 @@ public class ShardSerializerLocalTests
         var encSvc = new PassphraseEncryptionService("my-passphrase");
         var shard  = new Shard().Merge([
             new ShardEntry(
-                Content('a'),
-                Chunk('b'),
+                HashTestData.Content('a'),
+                HashTestData.Chunk('b'),
                 512,
                 256)
         ]);

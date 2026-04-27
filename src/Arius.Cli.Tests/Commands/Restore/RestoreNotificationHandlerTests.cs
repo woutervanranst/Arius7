@@ -1,6 +1,7 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Hashes;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
@@ -9,8 +10,6 @@ namespace Arius.Cli.Tests.Commands.Restore;
 /// </summary>
 public class RestoreNotificationHandlerTests
 {
-    private static FileTreeHash Tree(char c) => FileTreeHash.Parse(new string(c, 64));
-
     [Test]
     public async Task SnapshotResolvedHandler_SetsTimestampAndRootHash()
     {
@@ -18,10 +17,10 @@ public class RestoreNotificationHandlerTests
         var handler = new SnapshotResolvedHandler(state);
         var ts      = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
 
-        await handler.Handle(new SnapshotResolvedEvent(ts, Tree('a'), 9), CancellationToken.None);
+        await handler.Handle(new SnapshotResolvedEvent(ts, HashTestData.FileTree('a'), 9), CancellationToken.None);
 
         state.SnapshotTimestamp.ShouldBe(ts);
-        state.SnapshotRootHash.ShouldBe(Tree('a'));
+        state.SnapshotRootHash.ShouldBe(HashTestData.FileTree('a'));
     }
 
     [Test]

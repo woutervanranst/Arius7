@@ -2,6 +2,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Hashes;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
@@ -15,10 +16,6 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 {
     private const string Account   = "devstoreaccount1";
     private const string Passphrase = "test-passphrase";
-
-    private static ContentHash Content(char c) => ContentHash.Parse(new string(c, 64));
-
-    private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
 
     private async Task<(ChunkIndexService service, string tempDir)> CreateServiceAsync()
     {
@@ -41,7 +38,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task Lookup_NewPrefix_ReturnsEmpty()
     {
         var (svc, _) = await CreateServiceAsync();
-        var hash = Content('0');
+        var hash = HashTestData.Content('0');
 
         var result = await svc.LookupAsync(hash);
 
@@ -59,8 +56,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         var svc1 = new ChunkIndexService(blobs, encryption, Account, containerName);
 
-        var contentHash = Content('1');
-        var chunkHash   = Chunk('a');
+        var contentHash = HashTestData.Content('1');
+        var chunkHash   = HashTestData.Chunk('a');
         var entry       = new ShardEntry(contentHash, chunkHash, 1024, 512);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
@@ -79,8 +76,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task InFlightEntry_FoundWithoutBlob_ReturnsEntry()
     {
         var (svc, _) = await CreateServiceAsync();
-        var contentHash = Content('2');
-        var chunkHash   = Chunk('b');
+        var contentHash = HashTestData.Content('2');
+        var chunkHash   = HashTestData.Chunk('b');
         var entry       = new ShardEntry(contentHash, chunkHash, 500, 200);
 
         svc.AddEntry(entry); // goes to in-flight, NOT yet uploaded
@@ -102,8 +99,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 1: record + flush a real entry so the shard exists in L3
         var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var contentHash = Content('3');
-        var chunkHash   = Chunk('c');
+        var contentHash = HashTestData.Content('3');
+        var chunkHash   = HashTestData.Chunk('c');
         var entry       = new ShardEntry(contentHash, chunkHash, 800, 400);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
