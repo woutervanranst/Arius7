@@ -131,7 +131,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
         // Used by the dedup stage to detect duplicates within the same run before the
         // index is updated.
-        var inFlightHashes = new ConcurrentDictionary<ContentHash, ContentHash>();
+        var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
         // Channels between stages (task 8.2)
         var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
@@ -257,7 +257,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         else
                         {
                             // Needs upload → mark in-flight, route by size
-                            inFlightHashes.TryAdd(hashed.ContentHash, hashed.ContentHash);
+                            inFlightHashes.TryAdd(hashed.ContentHash, true);
                             var fileSize = hashed.FilePair.FileSize ?? 0;
                             Interlocked.Add(ref totalSize, fileSize);
                             var upload = new FileToUpload(hashed, fileSize);
