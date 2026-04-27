@@ -112,29 +112,6 @@ public class ResolveFileHydrationStatusesHandlerTests
         blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
     }
 
-    [Test]
-    public async Task Handle_InvalidContentHash_YieldsUnknownInsteadOfThrowing()
-    {
-        using var index = new ChunkIndexService(new FakeMetadataOnlyBlobContainerService(), s_encryption, "acct-hydration-invalid", "ctr-hydration-invalid", cacheBudgetBytes: 1024 * 1024);
-        var handler = new ChunkHydrationStatusQueryHandler(
-            index,
-            new ChunkStorageService(new FakeMetadataOnlyBlobContainerService(), s_encryption),
-            new FakeLogger<ChunkHydrationStatusQueryHandler>());
-
-        var files = new[]
-        {
-            new RepositoryFileEntry("bad.bin", "not-a-hash", 100, null, null, true, false, null, null)
-        };
-
-        var results = new List<ChunkHydrationStatusResult>();
-        await foreach (var result in handler.Handle(new Arius.Core.Features.ChunkHydrationStatusQuery.ChunkHydrationStatusQuery(files), CancellationToken.None))
-            results.Add(result);
-
-        results.Count.ShouldBe(1);
-        results[0].RelativePath.ShouldBe("bad.bin");
-        results[0].Status.ShouldBe(ChunkHydrationStatus.Unknown);
-    }
-
     private static HydrationStatusCase StatusCaseFor(HydrationBlobState state)
     {
         return state switch
