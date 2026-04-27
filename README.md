@@ -106,8 +106,6 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
-The end-to-end and shared test helpers now keep best-effort cleanup behavior while emitting debug diagnostics instead of silently swallowing filesystem cleanup failures.
-
 ### Test Suite Architecture
 
 | Test project | Purpose | Requires real Azure credentials | Uses Azurite |

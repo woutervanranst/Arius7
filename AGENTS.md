@@ -99,7 +99,8 @@ Specialist agents
 
 ## Session Rules
 
-- Always update `README.md` (high level & accessible for humans - do not mention code concepts unless explicitly asked) and `AGENTS.md` (for AI coding agents) to reflect the current state of the project
+- Update `README.md` with high signal & accessible for humans if applicable. Do not mention code concepts unless explicitly asked. Do not clutter it with implementation details.
+- Update `AGENTS.md` for AI coding agents to reflect the current state of the project if relevant. Do not clutter it with implementation details.
 - Project-level OpenCode configuration lives in `opencode.json`. This workspace installs the `superpowers@git+https://github.com/obra/superpowers.git` plugin; restart OpenCode after config changes so the plugin is reloaded.
 
 ## Scale And Durability
