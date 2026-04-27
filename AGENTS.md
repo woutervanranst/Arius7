@@ -173,6 +173,16 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
 
+## Hash type guidance
+
+- Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, and `FileTreeHash`.
+- Do not collapse those types into one generic hash abstraction and do not use inheritance between them.
+- Keep persisted and wire formats as canonical lowercase hex strings.
+- Use typed hashes inside the domain and as dictionary/set keys when hash identity is the key.
+- Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
+- Do not add implicit conversions between hash types or between hash types and `string`.
+- Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
+
 ## Architecture
 
 ### Arius.Core shape
