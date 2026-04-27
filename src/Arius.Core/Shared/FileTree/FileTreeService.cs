@@ -38,7 +38,7 @@ public sealed class FileTreeService
     /// </summary>
     private bool _validated;
 
-    private readonly ConcurrentDictionary<string, Lazy<Task<FileTreeBlob>>> _inFlightReads = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<FileTreeHash, Lazy<Task<FileTreeBlob>>> _inFlightReads = [];
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
@@ -98,7 +98,7 @@ public sealed class FileTreeService
             return cachedTree;
 
         var lazyRead = _inFlightReads.GetOrAdd(
-            hashText,
+            hash,
             _ => new Lazy<Task<FileTreeBlob>>(
                 () => DownloadAndCacheAsync(hashText, diskPath),
                 LazyThreadSafetyMode.ExecutionAndPublication));
@@ -109,8 +109,8 @@ public sealed class FileTreeService
         }
         finally
         {
-            if (lazyRead.IsValueCreated && lazyRead.Value.IsCompleted)
-                _inFlightReads.TryRemove(new KeyValuePair<string, Lazy<Task<FileTreeBlob>>>(hashText, lazyRead));
+            if (lazyRead is { IsValueCreated: true, Value.IsCompleted: true })
+                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
         }
     }
 
@@ -207,14 +207,7 @@ public sealed class FileTreeService
 
         try
         {
-            await _blobs.UploadAsync(
-                blobName,
-                new MemoryStream(storageBytes),
-                new Dictionary<string, string>(),
-                BlobTier.Cool,
-                contentType,
-                overwrite: false,
-                cancellationToken: cancellationToken);
+            await _blobs.UploadAsync(blobName, new MemoryStream(storageBytes), new Dictionary<string, string>(), BlobTier.Cool, contentType, overwrite: false, cancellationToken: cancellationToken);
         }
         catch (BlobAlreadyExistsException)
         {
