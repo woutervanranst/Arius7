@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -343,18 +344,18 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         return new LocalDirectorySnapshot(directories, files);
     }
 
-    private string? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(string fullPath, string relPath)
     {
         try
         {
             var content = File.ReadAllText(fullPath).Trim();
-            if (content.Length == 0 || !content.All(IsHex))
+            if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
                 return null;
             }
 
-            return content;
+            return hash;
         }
         catch (Exception ex)
         {
@@ -362,9 +363,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             return null;
         }
     }
-
-    private static bool IsHex(char c) =>
-        (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 
     private static string? NormalizePath(string? path)
     {
@@ -400,7 +398,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         string Name,
         bool BinaryExists,
         bool PointerExists,
-        string? PointerHash,
+        ContentHash? PointerHash,
         long? FileSize,
         DateTimeOffset? Created,
         DateTimeOffset? Modified);

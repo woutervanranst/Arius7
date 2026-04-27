@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
 
 namespace Arius.Core.Tests.Shared.Encryption;
@@ -113,6 +114,28 @@ public class PassphraseEncryptionServiceTests
     }
 
     [Test]
+    public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
+    {
+        var svc  = new PassphraseEncryptionService(Passphrase);
+        var path = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(path, "streaming determinism"u8.ToArray());
+
+        try
+        {
+            await using var stream = File.OpenRead(path);
+
+            var fromPath   = await svc.ComputeHashAsync(path);
+            var fromStream = await svc.ComputeHashAsync(stream);
+
+            fromPath.ShouldBe(fromStream);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
     public void ComputeHash_ByteArray_MatchesStreamVariant()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
@@ -160,7 +183,7 @@ public class PassphraseEncryptionServiceTests
         var combined  = new byte[passBytes.Length + data.Length];
         passBytes.CopyTo(combined, 0);
         data.CopyTo(combined, passBytes.Length);
-        var expected = SHA256.HashData(combined);
+        var expected = ContentHash.FromDigest(SHA256.HashData(combined));
 
         svc.ComputeHash(data).ShouldBe(expected);
     }

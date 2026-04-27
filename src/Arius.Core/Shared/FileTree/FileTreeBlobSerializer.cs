@@ -198,7 +198,6 @@ public static class FileTreeBlobSerializer
     public static string ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
     {
         var text = Serialize(tree);
-        var hash = encryption.ComputeHash(text);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        return encryption.ComputeHash(text).ToString();
     }
 }

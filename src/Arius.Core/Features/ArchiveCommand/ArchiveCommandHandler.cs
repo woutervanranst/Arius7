@@ -195,15 +195,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     if (pair is { BinaryExists: false, PointerHash: not null })
                     {
                         // Pointer-only: use pointer hash directly (no re-hash)
-                        contentHash = pair.PointerHash;
+                        contentHash = pair.PointerHash.Value.ToString();
                     }
                     else if (pair.BinaryExists)
                     {
                         await using var fs           = File.OpenRead(fullBinaryPath!);
                         var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
                         await using var ps           = new ProgressStream(fs, hashProgress);
-                        var             hashBytes    = await _encryption.ComputeHashAsync(ps, ct);
-                        contentHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                        contentHash = (await _encryption.ComputeHashAsync(ps, ct)).ToString();
                     }
                     else
                     {
@@ -346,8 +345,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         string tarHash;
                         await using (var fs = File.OpenRead(currentTarPath!))
                         {
-                            var hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
-                            tarHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                            tarHash = (await _encryption.ComputeHashAsync(fs, cancellationToken)).ToString();
                         }
 
                         await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);

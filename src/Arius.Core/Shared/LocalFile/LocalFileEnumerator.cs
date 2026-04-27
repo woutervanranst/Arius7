@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Shared.LocalFile;
@@ -32,7 +33,7 @@ public sealed record FilePair
     /// The hash stored in the pointer file, if the pointer exists and contains a valid hex hash.
     /// <c>null</c> when no pointer or when pointer content is invalid.
     /// </summary>
-    public          string? PointerHash { get; init; }
+    public          ContentHash? PointerHash { get; init; }
 
     /// <summary>File size in bytes of the binary. <c>null</c> for pointer-only entries.</summary>
     public          long?   FileSize { get; init; }
@@ -114,7 +115,7 @@ public sealed class LocalFileEnumerator
                 var pointerRel  = rel + PointerSuffix;
                 var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
                 var hasPointer  = File.Exists(pointerPath);
-                string? pointerHash = null;
+                ContentHash? pointerHash = null;
 
                 if (hasPointer)
                     pointerHash = ReadPointerHash(pointerPath, pointerRel);
@@ -136,17 +137,18 @@ public sealed class LocalFileEnumerator
     // ── Task 7.3: Pointer detection ───────────────────────────────────────────
 
     /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
-    private string? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(string fullPath, string relPath)
     {
         try
         {
             var content = File.ReadAllText(fullPath).Trim();
-            if (!IsValidHex(content))
+            if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
                 return null;
             }
-            return content;
+
+            return hash;
         }
         catch (Exception ex)
         {
@@ -154,9 +156,6 @@ public sealed class LocalFileEnumerator
             return null;
         }
     }
-
-    private static bool IsValidHex(string s) =>
-        s.Length > 0 && s.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 
     // ── Task 7.5: Path normalization ──────────────────────────────────────────
 

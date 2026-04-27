@@ -135,8 +135,7 @@ public sealed class RestoreCommandHandler
                     {
                         // Hash local file to check if already correct
                         await using var fs = File.OpenRead(localPath);
-                        var hashBytes = await _encryption.ComputeHashAsync(fs, cancellationToken);
-                        var localHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                        var localHash = (await _encryption.ComputeHashAsync(fs, cancellationToken)).ToString();
 
                         if (localHash == file.ContentHash)
                         {

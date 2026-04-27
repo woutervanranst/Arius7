@@ -107,8 +107,7 @@ public class GoldenFileDecryptionTests
         var plaintext = await DecryptAndDecompressAsync(LargeChunkFile);
 
         var svc     = new PassphraseEncryptionService(Passphrase);
-        var hash    = svc.ComputeHash(plaintext);
-        var hashHex = Convert.ToHexString(hash).ToLowerInvariant();
+        var hashHex = svc.ComputeHash(plaintext).ToString();
 
         hashHex.ShouldBe(LenaContentHash);
     }
@@ -165,8 +164,8 @@ public class GoldenFileDecryptionTests
     {
         var svc = new PassphraseEncryptionService(Passphrase);
 
-        var worldHash    = Convert.ToHexString(svc.ComputeHash("world"u8.ToArray())).ToLowerInvariant();
-        var fortyTwoHash = Convert.ToHexString(svc.ComputeHash("42"u8.ToArray())).ToLowerInvariant();
+        var worldHash    = svc.ComputeHash("world"u8.ToArray()).ToString();
+        var fortyTwoHash = svc.ComputeHash("42"u8.ToArray()).ToString();
 
         worldHash.ShouldBe(WorldContentHash);
         fortyTwoHash.ShouldBe(FortyTwoContentHash);

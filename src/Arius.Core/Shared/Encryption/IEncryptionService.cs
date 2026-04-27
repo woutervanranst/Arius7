@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Core.Shared.Encryption;
 
 /// <summary>
@@ -32,11 +34,20 @@ public interface IEncryptionService
     /// With a passphrase: SHA256(passphrase_bytes + data_bytes).
     /// Without a passphrase: SHA256(data_bytes).
     /// </summary>
-    byte[] ComputeHash(byte[] data);
+    ContentHash ComputeHash(byte[] data);
 
     /// <summary>
     /// Streaming variant of <see cref="ComputeHash(byte[])"/>.
     /// Reads the entire stream to compute the hash; does not seek or reset the stream.
     /// </summary>
-    Task<byte[]> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default);
+    Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// File-path variant of <see cref="ComputeHashAsync(Stream, CancellationToken)"/>.
+    /// Opens the file for reading and optionally reports cumulative bytes read.
+    /// </summary>
+    Task<ContentHash> ComputeHashAsync(
+        string filePath,
+        IProgress<long>? progress = null,
+        CancellationToken cancellationToken = default);
 }

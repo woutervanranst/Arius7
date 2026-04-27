@@ -158,7 +158,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
     }
 
-    private static string HashFor(string label) => Convert.ToHexString(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label))).ToLowerInvariant();
+    private static string HashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)).ToString();
 
     private sealed record HydrationStatusCase(
         string Name,
