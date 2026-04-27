@@ -447,7 +447,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Should not throw and should be marked validated (ExistsInRemote works)
-            Should.NotThrow(() => svc.ExistsInRemote("anyhash"));
+            Should.NotThrow(() => svc.ExistsInRemote(FakeFileTreeHash('a')));
         }
         finally
         {
@@ -465,10 +465,11 @@ public class FileTreeServiceTests
         try
         {
             await svc.ValidateAsync();
-            var diskPath = Path.Combine(cacheDir, "knowhash");
+            var hash = FakeFileTreeHash('a');
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             await File.WriteAllBytesAsync(diskPath, []);
 
-            svc.ExistsInRemote("knowhash").ShouldBeTrue();
+            svc.ExistsInRemote(hash).ShouldBeTrue();
         }
         finally
         {
@@ -485,7 +486,7 @@ public class FileTreeServiceTests
         {
             await svc.ValidateAsync();
 
-            svc.ExistsInRemote("nohash").ShouldBeFalse();
+            svc.ExistsInRemote(FakeFileTreeHash('b')).ShouldBeFalse();
         }
         finally
         {
@@ -502,7 +503,7 @@ public class FileTreeServiceTests
         var (svc, _, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            Should.Throw<InvalidOperationException>(() => svc.ExistsInRemote("anyhash"));
+            Should.Throw<InvalidOperationException>(() => svc.ExistsInRemote(FakeFileTreeHash('a')));
         }
         finally
         {
