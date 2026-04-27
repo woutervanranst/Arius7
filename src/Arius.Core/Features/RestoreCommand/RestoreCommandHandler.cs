@@ -217,8 +217,7 @@ public sealed class RestoreCommandHandler
                 var firstFile = filesByChunkHash[chunkHash][0];
                 if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
                 {
-                    var isLargeChunk = ie2.IsLargeChunk;
-                    if (isLargeChunk)
+                    if (ie2.IsLargeChunk)
                     {
                         totalOriginalBytes   += ie2.OriginalSize;
                         totalCompressedBytes += ie2.CompressedSize;
