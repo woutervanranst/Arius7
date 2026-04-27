@@ -96,6 +96,24 @@ public class FileTreeBlobSerializerTests
     }
 
     [Test]
+    public void Deserialize_SkipsFileEntriesWithEmptyOrWhitespaceNames_AndPreservesValidSiblings()
+    {
+        var text = string.Join(
+            '\n',
+            [
+                $"{new string('a', 64)} F {s_created:O} {s_modified:O} ",
+                $"{new string('b', 64)} F {s_created:O} {s_modified:O}    ",
+                $"{new string('c', 64)} F {s_created:O} {s_modified:O} healthy.txt",
+                $"{new string('d', 64)} D photos/"
+            ]);
+
+        var blob = FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n"));
+
+        blob.Entries.Count.ShouldBe(2);
+        blob.Entries.Select(entry => entry.Name).ShouldBe(["healthy.txt", "photos/"]);
+    }
+
+    [Test]
     public async Task Serialize_ThenDeserialize_RoundTrips()
     {
         var blob = MakeBlob(

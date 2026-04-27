@@ -175,6 +175,11 @@ public static class FileTreeBlobSerializer
 
                     var name = afterCreated[(s2 + 1)..];
 
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+
                     if (!ContentHash.TryParse(hash, out var contentHash))
                     {
                         continue;
