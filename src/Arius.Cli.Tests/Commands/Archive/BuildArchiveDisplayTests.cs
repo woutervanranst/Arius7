@@ -1,6 +1,5 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.Hashes;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 

@@ -1,5 +1,4 @@
 using Arius.Cli.Commands.Archive;
-using Arius.Core.Shared.Hashes;
 using Spectre.Console;
 
 namespace Arius.Cli.Tests.Commands.Archive;
@@ -15,7 +14,7 @@ public class BuildArchiveDisplayDoneTests
     {
         var state = new ProgressState();
         state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", ContentHash.Parse(new string('d', 64)));
+        state.SetFileHashed("completed.bin", FakeContentHash('d'));
         state.RemoveFile("completed.bin");
 
         var writer  = new StringWriter();

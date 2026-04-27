@@ -1,5 +1,3 @@
-using Arius.Core.Shared.Hashes;
-
 namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
