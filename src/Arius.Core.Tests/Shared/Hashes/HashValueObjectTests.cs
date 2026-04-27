@@ -150,6 +150,41 @@ public class HashValueObjectTests
         Should.Throw<FormatException>(() => Parse(kind, "zzbbccddeeff00112233445566778899aabbccddeeff00112233445566778899"));
     }
 
+    [Test]
+    [MatrixDataSource]
+    public void EqualHashes_WorkAsDictionaryKeys([Matrix(HashKind.Content, HashKind.Chunk, HashKind.FileTree)] HashKind kind)
+    {
+        var uppercase = new string(kind switch
+        {
+            HashKind.Content  => 'A',
+            HashKind.Chunk    => 'B',
+            HashKind.FileTree => 'C',
+            _                 => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        }, 64);
+
+        var lowercase = uppercase.ToLowerInvariant();
+
+        var actual = kind switch
+        {
+            HashKind.Content  => LookupByEquivalentKey(ContentHash.Parse(uppercase), ContentHash.Parse(lowercase)),
+            HashKind.Chunk    => LookupByEquivalentKey(ChunkHash.Parse(uppercase), ChunkHash.Parse(lowercase)),
+            HashKind.FileTree => LookupByEquivalentKey(FileTreeHash.Parse(uppercase), FileTreeHash.Parse(lowercase)),
+            _                 => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
+
+        actual.ShouldBe("value");
+
+        static string LookupByEquivalentKey<T>(T first, T second) where T : struct
+        {
+            var dictionary = new Dictionary<T, string>
+            {
+                [first] = "value"
+            };
+
+            return dictionary[second];
+        }
+    }
+
     private static object Parse(HashKind kind, string value) => kind switch
     {
         HashKind.Content  => ContentHash.Parse(value),
