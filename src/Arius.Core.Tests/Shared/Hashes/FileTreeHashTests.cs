@@ -19,4 +19,19 @@ public class FileTreeHashTests
 
         hash.Short8.ShouldBe("ffeeddcc");
     }
+
+    [Test]
+    public void DefaultValue_ToString_ThrowsInvalidOperationException()
+    {
+        var hash = default(FileTreeHash);
+
+        var ex = Should.Throw<InvalidOperationException>(() => hash.ToString());
+        ex.Message.ShouldContain("FileTreeHash");
+    }
+
+    [Test]
+    public void Parse_RejectsEmptyString()
+    {
+        Should.Throw<ArgumentException>(() => FileTreeHash.Parse(string.Empty));
+    }
 }

@@ -19,4 +19,19 @@ public class ChunkHashTests
 
         hash.Prefix4.ShouldBe("0011");
     }
+
+    [Test]
+    public void DefaultValue_ToString_ThrowsInvalidOperationException()
+    {
+        var hash = default(ChunkHash);
+
+        var ex = Should.Throw<InvalidOperationException>(() => hash.ToString());
+        ex.Message.ShouldContain("ChunkHash");
+    }
+
+    [Test]
+    public void Parse_RejectsEmptyString()
+    {
+        Should.Throw<ArgumentException>(() => ChunkHash.Parse(string.Empty));
+    }
 }

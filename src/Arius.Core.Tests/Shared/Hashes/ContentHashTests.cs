@@ -34,4 +34,19 @@ public class ContentHashTests
 
         hash.ToString().ShouldBe("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899");
     }
+
+    [Test]
+    public void DefaultValue_ToString_ThrowsInvalidOperationException()
+    {
+        var hash = default(ContentHash);
+
+        var ex = Should.Throw<InvalidOperationException>(() => hash.ToString());
+        ex.Message.ShouldContain("ContentHash");
+    }
+
+    [Test]
+    public void Parse_RejectsEmptyString()
+    {
+        Should.Throw<ArgumentException>(() => ContentHash.Parse(string.Empty));
+    }
 }

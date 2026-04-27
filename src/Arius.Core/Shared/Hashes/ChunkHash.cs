@@ -4,13 +4,17 @@ public readonly record struct ChunkHash
 {
     private readonly string _value;
 
-    private ChunkHash(string value) => _value = value;
+    private ChunkHash(string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        _value = value;
+    }
 
     public string Prefix4 => Value[..4];
 
     public string Short8 => Value[..8];
 
-    private string Value => _value ?? string.Empty;
+    private string Value => _value ?? throw new InvalidOperationException("ChunkHash is uninitialized.");
 
     public static ChunkHash Parse(string value) => new(HashCodec.NormalizeHex(value));
 
