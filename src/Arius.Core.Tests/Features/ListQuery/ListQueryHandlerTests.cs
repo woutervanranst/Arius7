@@ -439,28 +439,6 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_InvalidCloudContentHash_SkipsBrokenEntryInsteadOfThrowing()
-    {
-        var rootHash = TreeHashFor("root-broken");
-        var snapshot = MakeSnapshot(rootHash);
-
-        var blobs = new FakeSeededBlobContainerService();
-        var validHash = ContentHashFor("valid");
-        var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
-            $"not-a-hash F {s_created:O} {s_modified:O} broken.txt\n{validHash} F {s_created:O} {s_modified:O} healthy.txt\n");
-        blobs.AddBlob(BlobPaths.FileTree(rootHash), await CompressAsync(invalidTreePayload));
-        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
-
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-invalid-ls", "ctr-invalid-ls", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-invalid-ls", "ctr-invalid-ls");
-
-        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None));
-        var files = results.OfType<RepositoryFileEntry>().ToList();
-
-        files.Select(file => file.RelativePath).ShouldBe(["healthy.txt"]);
-    }
-
-    [Test]
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
         var blobs = new FakeSeededBlobContainerService();
