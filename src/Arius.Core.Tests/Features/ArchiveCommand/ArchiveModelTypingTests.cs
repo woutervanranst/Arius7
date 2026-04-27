@@ -21,7 +21,7 @@ public class ArchiveModelTypingTests
     public void HashedFilePair_StoresTypedContentHash()
     {
         var pair = CreateFilePair();
-        var contentHash = ContentHash.Parse(new string('a', 64));
+        var contentHash = FakeContentHash('a');
 
         var hashed = new HashedFilePair(pair, contentHash, @"C:\repo");
 
@@ -31,40 +31,45 @@ public class ArchiveModelTypingTests
     [Test]
     public void IndexEntry_StoresTypedHashes()
     {
+        var contentHash = FakeContentHash('a');
+        var chunkHash = FakeChunkHash('b');
+
         var entry = new IndexEntry(
-            ContentHash.Parse(new string('a', 64)),
-            ChunkHash.Parse(new string('b', 64)),
+            contentHash,
+            chunkHash,
             10,
             8);
 
-        entry.ContentHash.ShouldBe(ContentHash.Parse(new string('a', 64)));
-        entry.ChunkHash.ShouldBe(ChunkHash.Parse(new string('b', 64)));
+        entry.ContentHash.ShouldBe(contentHash);
+        entry.ChunkHash.ShouldBe(chunkHash);
     }
 
     [Test]
     public void TarEntry_StoresTypedContentHash()
     {
         var pair = CreateFilePair();
-        var hashed = new HashedFilePair(pair, ContentHash.Parse(new string('a', 64)), @"C:\repo");
-        var entry = new TarEntry(ContentHash.Parse(new string('a', 64)), 12, hashed);
+        var contentHash = FakeContentHash('a');
+        var hashed = new HashedFilePair(pair, contentHash, @"C:\repo");
+        var entry = new TarEntry(contentHash, 12, hashed);
 
-        entry.ContentHash.ShouldBe(ContentHash.Parse(new string('a', 64)));
+        entry.ContentHash.ShouldBe(contentHash);
     }
 
     [Test]
     public void SealedTar_StoresTypedChunkHash()
     {
-        var sealedTar = new SealedTar(@"C:\temp\bundle.tar", ChunkHash.Parse(new string('c', 64)), 12, []);
+        var chunkHash = FakeChunkHash('c');
+        var sealedTar = new SealedTar(@"C:\temp\bundle.tar", chunkHash, 12, []);
 
-        sealedTar.TarHash.ShouldBe(ChunkHash.Parse(new string('c', 64)));
+        sealedTar.TarHash.ShouldBe(chunkHash);
     }
 
     [Test]
     public void ArchiveEvents_StoreTypedHashes()
     {
-        var contentHash = ContentHash.Parse(new string('a', 64));
-        var chunkHash = ChunkHash.Parse(new string('b', 64));
-        var rootHash = FileTreeHash.Parse(new string('c', 64));
+        var contentHash = FakeContentHash('a');
+        var chunkHash = FakeChunkHash('b');
+        var rootHash = FakeFileTreeHash('c');
 
         new FileHashedEvent("file.txt", contentHash).ContentHash.ShouldBe(contentHash);
         new ChunkUploadingEvent(chunkHash, 12).ChunkHash.ShouldBe(chunkHash);
