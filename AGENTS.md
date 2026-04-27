@@ -89,13 +89,12 @@ Specialist agents
 
 ## Way of Working
 
-- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
+- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
   - Unit test projects: Arius.Core.Tests / Arius.AzureBlob.Tests / Arius.Cli.Tests / Arius.Architecture.Tests / Arius.Explorer.Tests (skip this on non-Windows since it is Windows-only)
   - Integration tests: Arius.Integration.Tests
   - Slow (~ minutes) behavioral test to be run sparingly (eg. at the end of a PR or when making a big refactor) Arius.E2E.Tests
-- When the tests pass, make a conventional git commit.
 
 ## Session Rules
 
