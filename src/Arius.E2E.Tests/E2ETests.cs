@@ -70,7 +70,7 @@ internal class E2ETests(AzureFixture azure)
     }
 
     [Test]
-    [Timeout(300_000)]
+    [Timeout(30_000)]
     public async Task E2E_LargeFile_Streaming_RemainsCovered(CancellationToken cancellationToken)
     {
         if (!AzureFixture.IsAvailable)
