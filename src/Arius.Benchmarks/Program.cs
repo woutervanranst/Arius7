@@ -33,5 +33,5 @@ BenchmarkTailLog.Append(
         GitHead: GitHeadResolver.Resolve(options.RepositoryRoot),
         RepresentativeScaleDivisor: SyntheticRepositoryDefinitionFactory.RepresentativeScaleDivisor,
         Iterations: BenchmarkRunOptions.Iterations,
-        RawOutputPath: rawOutputDirectory),
+        RawOutputPath: Path.GetRelativePath(options.RepositoryRoot, rawOutputDirectory)),
     summary);

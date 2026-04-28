@@ -10,10 +10,11 @@ internal sealed record BenchmarkRunOptions(
     public static BenchmarkRunOptions Parse(IReadOnlyList<string> args)
     {
         var repositoryRoot = FindRepositoryRoot();
-        var defaultRawOutputRoot = Path.Combine(repositoryRoot, "BenchmarkDotNet.Artifacts", "representative-workflow");
+        var defaultBenchmarkRoot = Path.Combine(repositoryRoot, "src", "Arius.Benchmarks");
+        var defaultRawOutputRoot = Path.Combine(defaultBenchmarkRoot, "raw");
 
         var rawOutputRoot = defaultRawOutputRoot;
-        var tailLogPath = Path.Combine(defaultRawOutputRoot, "benchmark-tail.log");
+        var tailLogPath = Path.Combine(defaultBenchmarkRoot, "benchmark-tail.log");
 
         for (var i = 0; i < args.Count; i++)
         {
