@@ -179,7 +179,7 @@ public class ShardTests
     }
 
     [Test]
-    public void Shard_PrefixOf_ShortHash_Throws()
+    public void ContentHash_Parse_ShortHash_Throws()
     {
         Should.Throw<FormatException>(() => ContentHash.Parse("abc"));
     }
