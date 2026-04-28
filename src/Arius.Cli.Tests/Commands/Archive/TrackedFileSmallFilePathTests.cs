@@ -18,7 +18,7 @@ public class TrackedFileSmallFilePathTests
 
         // FileHashedEvent → SetFileHashed → State=Hashed, reverse map populated
         state.SetFileHashed("notes.txt", FakeContentHash('d'));
-        state.TrackedFiles["notes.txt"].ContentHash.ShouldBe(FakeContentHash('d').ToString());
+        state.TrackedFiles["notes.txt"].ContentHash.ShouldBe(FakeContentHash('d'));
         state.TrackedFiles["notes.txt"].State.ShouldBe(FileState.Hashed);
         state.ContentHashToPath[FakeContentHash('d')].ShouldContain("notes.txt");
         state.FilesHashed.ShouldBe(1L);

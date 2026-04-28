@@ -50,12 +50,16 @@ public sealed class TrackedFile
     public long TotalBytes { get; }
 
     /// <summary>Content hash, set when hashing completes.</summary>
-    public string? ContentHash
+    public ContentHash? ContentHash
     {
-        get => Volatile.Read(ref _contentHash);
-        set => Volatile.Write(ref _contentHash, value);
+        get
+        {
+            var box = Volatile.Read(ref _contentHashBox);
+            return box is ContentHash hash ? hash : null;
+        }
+        set => Volatile.Write(ref _contentHashBox, value.HasValue ? (object)value.Value : null);
     }
-    private string? _contentHash;
+    private object? _contentHashBox;
 
     /// <summary>Current lifecycle state.</summary>
     public FileState State
@@ -266,7 +270,7 @@ public sealed class ProgressState
     {
         if (TrackedFiles.TryGetValue(relativePath, out var file))
         {
-            file.ContentHash = contentHash.ToString();
+            file.ContentHash = contentHash;
             file.State       = FileState.Hashed;
         }
         ContentHashToPath.GetOrAdd(contentHash, _ => new ConcurrentBag<string>()).Add(relativePath);

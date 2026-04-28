@@ -79,7 +79,7 @@ public sealed record ArchiveResult
     public required long FilesUploaded { get; init; }
     public required long FilesDeduped { get; init; }
     public required long TotalSize { get; init; }
-    public required string? RootHash { get; init; }
+    public required FileTreeHash? RootHash { get; init; }
     public required DateTimeOffset SnapshotTime { get; init; }
     public string? ErrorMessage { get; init; }
 }

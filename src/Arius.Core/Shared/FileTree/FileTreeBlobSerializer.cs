@@ -230,6 +230,6 @@ public static class FileTreeBlobSerializer
     public static FileTreeHash ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
     {
         var text = Serialize(tree);
-        return FileTreeHash.Parse(encryption.ComputeHash(text).ToString());
+        return FileTreeHash.Parse(encryption.ComputeHash(text));
     }
 }

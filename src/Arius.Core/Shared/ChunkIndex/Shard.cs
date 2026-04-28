@@ -119,6 +119,4 @@ public sealed class Shard
     /// With 65,536 shards this is the first 4 hex chars (2 bytes) of the hash.
     /// </summary>
     public static string PrefixOf(ContentHash contentHash) => contentHash.Prefix4;
-
-    public static string PrefixOf(string contentHash) => PrefixOf(ContentHash.Parse(contentHash));
 }

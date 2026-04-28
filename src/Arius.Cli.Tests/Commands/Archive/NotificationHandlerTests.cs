@@ -73,7 +73,7 @@ public class NotificationHandlerTests
         await hashedH.Handle(new FileHashedEvent("a.bin", FakeContentHash('a')), CancellationToken.None);
 
         state.FilesHashed.ShouldBe(1L);
-        state.TrackedFiles["a.bin"].ContentHash.ShouldBe(FakeContentHash('a').ToString());
+        state.TrackedFiles["a.bin"].ContentHash.ShouldBe(FakeContentHash('a'));
         state.TrackedFiles["a.bin"].State.ShouldBe(FileState.Hashed);
         state.ContentHashToPath[FakeContentHash('a')].ShouldContain("a.bin");
     }

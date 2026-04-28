@@ -17,7 +17,7 @@ public class TrackedFileLargeFilePathTests
 
         // FileHashedEvent → State=Hashed (invisible)
         state.SetFileHashed("video.mp4", FakeContentHash('a'));
-        state.TrackedFiles["video.mp4"].ContentHash.ShouldBe(FakeContentHash('a').ToString());
+        state.TrackedFiles["video.mp4"].ContentHash.ShouldBe(FakeContentHash('a'));
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Hashed);
 
         // ChunkUploadingEvent → SetFileUploading (only Hashed files promoted to Uploading)

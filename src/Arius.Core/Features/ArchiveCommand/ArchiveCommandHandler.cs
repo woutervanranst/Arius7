@@ -530,7 +530,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 FilesUploaded = filesUploaded,
                 FilesDeduped  = filesDeduped,
                 TotalSize     = totalSize,
-                RootHash      = snapshotRootHash?.ToString(),
+                RootHash      = snapshotRootHash,
                 SnapshotTime  = snapshotTime
             };
         }
