@@ -49,7 +49,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_Restores_All_Files_Sharing_A_Large_Chunk()
+    public async Task Handle_Restores_DuplicateLargeChunkContent_ToAllPaths()
     {
         var blobs         = new FakeInMemoryBlobContainerService();
         var encryption    = new PlaintextPassthroughService();
@@ -72,10 +72,10 @@ public class RestoreCommandHandlerTests
             WriteFile("archives/duplicates/binary-a.bin", content);
             WriteFile("nested/deep/a/b/c/binary-b.bin", content);
 
-            using var index = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var chunkStorage = new ChunkStorageService(blobs, encryption);
-            var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
-            var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var       chunkStorage    = new ChunkStorageService(blobs, encryption);
+            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
 
             var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
 
@@ -139,15 +139,15 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_Restores_All_Files_Sharing_A_Tar_Entry_With_Per_Path_Metadata()
+    public async Task Handle_Restores_DuplicateTarEntryContent_ToAllPaths_WithPerPathMetadata()
     {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var encryption = new PlaintextPassthroughService();
-        var mediator = Substitute.For<IMediator>();
-        var accountName = $"acct-restore-tar-duplicates-{Guid.NewGuid():N}";
+        var blobs         = new FakeInMemoryBlobContainerService();
+        var encryption    = new PlaintextPassthroughService();
+        var mediator      = Substitute.For<IMediator>();
+        var accountName   = $"acct-restore-tar-duplicates-{Guid.NewGuid():N}";
         var containerName = $"ctr-restore-tar-duplicates-{Guid.NewGuid():N}";
-        var localRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-local-{Guid.NewGuid():N}");
-        var restoreRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-output-{Guid.NewGuid():N}");
+        var localRoot     = Path.Combine(Path.GetTempPath(), $"arius-restore-local-{Guid.NewGuid():N}");
+        var restoreRoot   = Path.Combine(Path.GetTempPath(), $"arius-restore-output-{Guid.NewGuid():N}");
 
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
@@ -159,30 +159,20 @@ public class RestoreCommandHandlerTests
             var content = new byte[512 * 1024];
             Random.Shared.NextBytes(content);
 
-            var firstCreated = new DateTime(2021, 4, 5, 6, 7, 8, DateTimeKind.Utc);
-            var firstModified = new DateTime(2022, 5, 6, 7, 8, 9, DateTimeKind.Utc);
-            var secondCreated = new DateTime(2023, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+            var firstCreated   = new DateTime(2021, 4, 5, 6, 7,  8,  DateTimeKind.Utc);
+            var firstModified  = new DateTime(2022, 5, 6, 7, 8,  9,  DateTimeKind.Utc);
+            var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
             var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
 
             WriteFile("archives/duplicates/copy-a.bin", content, firstCreated, firstModified);
             WriteFile("nested/deep/a/b/c/copy-b.bin", content, secondCreated, secondModified);
 
-            using var index = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var chunkStorage = new ChunkStorageService(blobs, encryption);
-            var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
-            var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var       chunkStorage    = new ChunkStorageService(blobs, encryption);
+            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
 
-            var archiveHandler = new ArchiveCommandHandler(
-                blobs,
-                encryption,
-                index,
-                chunkStorage,
-                fileTreeService,
-                snapshotSvc,
-                mediator,
-                new FakeLogger<ArchiveCommandHandler>(),
-                accountName,
-                containerName);
+            var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
 
             var archiveResult = await archiveHandler.Handle(
                 new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -195,19 +185,9 @@ public class RestoreCommandHandlerTests
 
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-            var restoreHandler = new RestoreCommandHandler(
-                encryption,
-                index,
-                chunkStorage,
-                fileTreeService,
-                snapshotSvc,
-                mediator,
-                new FakeLogger<RestoreCommandHandler>(),
-                accountName,
-                containerName);
-
+            var restoreHandler = new RestoreCommandHandler(encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
             var restoreResult = await restoreHandler.Handle(
-                new RestoreCommandMessage(new RestoreOptions
+                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
                 {
                     RootDirectory = restoreRoot,
                     Overwrite = true,
@@ -295,10 +275,10 @@ public class RestoreCommandHandlerTests
             var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8.ToArray()).ToString());
             var snapshot = new SnapshotManifest
             {
-                Timestamp = DateTimeOffset.UtcNow,
-                RootHash = rootHash,
-                FileCount = 2,
-                TotalSize = 2,
+                Timestamp    = DateTimeOffset.UtcNow,
+                RootHash     = rootHash,
+                FileCount    = 2,
+                TotalSize    = 2,
                 AriusVersion = "test"
             };
 
@@ -306,26 +286,14 @@ public class RestoreCommandHandlerTests
             var chunkHash = ChunkHash.Parse(validHash);
             index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7));
 
-            var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
-                $"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
+            var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes($"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
             blobs.AddBlob(BlobPaths.FileTree(rootHash),                 await CompressAsync(invalidTreePayload));
             blobs.AddBlob(BlobPaths.Chunk(chunkHash),                   await CompressAsync("healthy"u8.ToArray()));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
 
-            var handler = new RestoreCommandHandler(
-                encryption,
-                index,
-                new ChunkStorageService(blobs, encryption),
-                fileTreeService,
-                snapshotSvc,
-                mediator,
-                new FakeLogger<RestoreCommandHandler>(),
-                accountName,
-                containerName);
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
-            var result = await handler.Handle(
-                new RestoreCommandMessage(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }),
-                CancellationToken.None);
+            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }), CancellationToken.None);
 
             result.Success.ShouldBeFalse();
             result.FilesRestored.ShouldBe(0);
