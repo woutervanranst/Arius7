@@ -22,22 +22,9 @@ public class FileTreeBlobSerializerTests
     private static IReadOnlyList<FileTreeEntry> BuildEntries((string name, bool isDirectory, string hash)[] items)
     {
         var entries = new List<FileTreeEntry>(items.Length);
-        foreach (var item in items)
-        {
-            entries.Add(item.isDirectory
-                ? new DirectoryEntry
-                {
-                    Name = item.name,
-                    FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash))
-                }
-                : new FileEntry
-                {
-                    Name = item.name,
-                    ContentHash = ContentHash.Parse(NormalizeHash(item.hash)),
-                    Created = s_created,
-                    Modified = s_modified
-                });
-        }
+        entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
+            ? new DirectoryEntry { Name = item.name, FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash)) }
+            : new FileEntry { Name      = item.name, ContentHash  = ContentHash.Parse(NormalizeHash(item.hash)), Created = s_created, Modified = s_modified })));
 
         return entries;
     }

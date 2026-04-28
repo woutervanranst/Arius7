@@ -6,8 +6,6 @@ namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 public class ArchiveRecoveryTests
 {
-    private const string AccountName = "test-account";
-
     [Test]
     [MatrixDataSource]
     public async Task Archive_LargeBlobAlreadyExistsWithMetadata_Rerun_Continues(
