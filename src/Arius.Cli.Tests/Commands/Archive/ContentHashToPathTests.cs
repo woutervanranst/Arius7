@@ -19,7 +19,7 @@ public class ContentHashToPathTests
         state.ContentHashToPath[FakeContentHash('a')].ShouldContain("dir/file.bin");
 
         // Downstream event via reverse map: SetFileUploading transitions Hashed → Uploading
-        state.SetFileUploading(FakeChunkHash('a'));
+        state.SetFileUploading(FakeContentHash('a'));
         state.TrackedFiles["dir/file.bin"].State.ShouldBe(FileState.Uploading);
     }
 

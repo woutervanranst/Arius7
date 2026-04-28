@@ -274,17 +274,16 @@ public sealed class ProgressState
     }
 
     /// <summary>
-    /// Transitions the file identified by <paramref name="chunkHash"/> to State=Uploading
+    /// Transitions the file identified by <paramref name="contentHash"/> to State=Uploading
     /// and resets its BytesProcessed to 0. Only applies to large-file path (State == Hashed).
     /// </summary>
     /// <summary>
-    /// Transitions all <see cref="TrackedFile"/> entries for the large-file <paramref name="chunkHash"/> from
+    /// Transitions all <see cref="TrackedFile"/> entries for <paramref name="contentHash"/> from
     /// <see cref="FileState.Hashed"/> to <see cref="FileState.Uploading"/>.
     /// </summary>
     /// <returns><c>true</c> if at least one file was transitioned; <c>false</c> if the hash is unknown (TAR path).</returns>
-    public bool SetFileUploading(ChunkHash chunkHash)
+    public bool SetFileUploading(ContentHash contentHash)
     {
-        var contentHash = ContentHash.Parse(chunkHash);
         if (!ContentHashToPath.TryGetValue(contentHash, out var paths))
             return false;
 

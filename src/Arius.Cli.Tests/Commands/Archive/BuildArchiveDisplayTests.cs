@@ -175,7 +175,7 @@ public class BuildArchiveDisplayTests
         var state = new ProgressState();
         state.AddFile("large.bin", 10_000_000);
         state.SetFileHashed("large.bin", FakeContentHash('1'));
-        state.SetFileUploading(FakeChunkHash('1'));
+        state.SetFileUploading(FakeContentHash('1'));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("large.bin");
