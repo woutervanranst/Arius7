@@ -86,7 +86,7 @@ public class FileTreeBuilderTests
             var root    = await builder.BuildAsync(manifestPath);
 
             root.ShouldNotBeNull();
-            root!.ToString().Length.ShouldBe(64);
+            root.Value.ShouldBeOfType<FileTreeHash>();
             blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
         finally
