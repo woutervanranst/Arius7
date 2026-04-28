@@ -287,7 +287,7 @@ public class ListQueryHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
         var handler = MakeHandler(blobs, index, "acct-33-nr", "ctr-33-nr");
 
-        var nonRecursive = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None));
+        var nonRecursive = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None).ToListAsync();
         nonRecursive.Count.ShouldBe(2);
         nonRecursive.ShouldContain(e => e.RelativePath == "child/");
         nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
@@ -296,7 +296,7 @@ public class ListQueryHandlerTests
         using var index2 = new ChunkIndexService(blobs, s_encryption, "acct-33-r", "ctr-33-r", cacheBudgetBytes: 1024 * 1024);
         var handler2 = MakeHandler(blobs, index2, "acct-33-r", "ctr-33-r");
 
-        var recursive = await CollectAsync(handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
+        var recursive = await handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None).ToListAsync();
         recursive.ShouldContain(e => e.RelativePath == "child/");
         recursive.ShouldContain(e => e.RelativePath == "root.txt");
         recursive.ShouldContain(e => e.RelativePath == "child/deep.txt");
@@ -326,7 +326,7 @@ public class ListQueryHandlerTests
         var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
-        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None));
+        var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None).ToListAsync();
 
          // Directories are NOT filtered — Photos/ should still appear
         results.ShouldContain(e => e.RelativePath == "Photos/");
@@ -370,8 +370,9 @@ public class ListQueryHandlerTests
             using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
             var handler = MakeHandler(blobs, index, "acct-38", "ctr-38");
 
-            var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None));
-            var dirs = results.OfType<RepositoryDirectoryEntry>().ToList();
+            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
+                .OfType<RepositoryDirectoryEntry>()
+                .ToListAsync();
 
             dirs.Count.ShouldBe(3);
 
@@ -426,8 +427,9 @@ public class ListQueryHandlerTests
         index.AddEntry(new ShardEntry(ContentHashFor("known"), ChunkHashFor("chunk-known"), 999, 500));
 
         var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
-        var results = await CollectAsync(handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None));
-        var files = results.OfType<RepositoryFileEntry>().ToList();
+        var files   = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None)
+            .OfType<RepositoryFileEntry>()
+            .ToListAsync();
 
         var known   = files.Single(f => f.RelativePath == "known.txt");
         var unknown = files.Single(f => f.RelativePath == "unknown.txt");
@@ -537,14 +539,6 @@ public class ListQueryHandlerTests
 
     private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
         new(index, new FileTreeService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), new FakeLogger<ListQueryHandler>(), account, container);
-
-    private static async Task<List<RepositoryEntry>> CollectAsync(IAsyncEnumerable<RepositoryEntry> source)
-    {
-        var list = new List<RepositoryEntry>();
-        await foreach (var entry in source)
-            list.Add(entry);
-        return list;
-    }
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
