@@ -20,10 +20,6 @@ public class ChunkStorageServiceUploadTests
     private static readonly ContentHash RetryThinContentHash = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
     private static readonly ChunkHash RetryThinParentChunkHash = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
-    private static ChunkHash Chunk(string value) => ChunkHash.Parse(value);
-
-    private static ContentHash Content(string value) => ContentHash.Parse(value);
-
     [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {

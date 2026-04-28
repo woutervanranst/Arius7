@@ -5,18 +5,10 @@ namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ShardTests
 {
-    private static ContentHash Content(string value) => ContentHash.Parse(value);
-
-    private static ChunkHash Chunk(string value) => ChunkHash.Parse(value);
-
     [Test]
     public void ShardEntry_Serialize_ThenParse_RoundTrips_SmallFile()
     {
-        var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("ddeeff0011223344ddeeff0011223344ddeeff0011223344ddeeff0011223344"),
-            1024,
-            512);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('d'), 1024, 512);
         var line  = entry.Serialize();
         var back  = ShardEntry.TryParse(line)!;
 
@@ -29,11 +21,7 @@ public class ShardTests
     [Test]
     public void ShardEntry_Serialize_ThenParse_RoundTrips_LargeFile()
     {
-        var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            4200000,
-            1870432);
+        var entry = new ShardEntry(FakeContentHash('a'), ChunkHash.Parse(FakeContentHash('a')), 4200000, 1870432);
         var line  = entry.Serialize();
         var back  = ShardEntry.TryParse(line)!;
 
@@ -47,8 +35,8 @@ public class ShardTests
     public void ShardEntry_Serialize_LargeFile_Emits3Fields()
     {
         var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            ContentHash.Parse("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            ChunkHash.Parse("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
             4200000,
             1870432);
         var line  = entry.Serialize();
@@ -67,8 +55,8 @@ public class ShardTests
         var line = $"{hash} 4200000 1870432";
         var entry = ShardEntry.TryParse(line)!;
 
-        entry.ContentHash.ShouldBe(Content(hash));
-        entry.ChunkHash.ShouldBe(Chunk(hash));
+        entry.ContentHash.ShouldBe(ContentHash.Parse(hash));
+        entry.ChunkHash.ShouldBe(ChunkHash.Parse(hash));
         entry.OriginalSize.ShouldBe(4200000L);
         entry.CompressedSize.ShouldBe(1870432L);
     }
@@ -76,11 +64,7 @@ public class ShardTests
     [Test]
     public void ShardEntry_IsLargeChunk_IsTrueWhenChunkHashMatchesContentHash()
     {
-        var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            4200000,
-            1870432);
+        var entry = new ShardEntry(FakeContentHash('a'), ChunkHash.Parse(FakeContentHash('a')), 4200000, 1870432);
 
         entry.IsLargeChunk.ShouldBeTrue();
     }
@@ -88,11 +72,7 @@ public class ShardTests
     [Test]
     public void ShardEntry_IsLargeChunk_IsFalseWhenChunkHashDiffersFromContentHash()
     {
-        var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("ddeeff0011223344ddeeff0011223344ddeeff0011223344ddeeff0011223344"),
-            1024,
-            512);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('d'), 1024, 512);
 
         entry.IsLargeChunk.ShouldBeFalse();
     }
@@ -101,8 +81,8 @@ public class ShardTests
     public void ShardEntry_Serialize_LargeChunk_UsesIsLargeChunkDecision()
     {
         var entry = new ShardEntry(
-            Content("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
-            Chunk("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            ContentHash.Parse("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
+            ChunkHash.Parse("aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011"),
             4200000,
             1870432);
 
@@ -133,13 +113,13 @@ public class ShardTests
         var entries = new[]
         {
             new ShardEntry(
-                Content("aaaa000111111111111111111111111111111111111111111111111111111111"),
-                Chunk("bbbb000111111111111111111111111111111111111111111111111111111111"),
+                ContentHash.Parse("aaaa000111111111111111111111111111111111111111111111111111111111"),
+                ChunkHash.Parse("bbbb000111111111111111111111111111111111111111111111111111111111"),
                 100,
                 50),
             new ShardEntry(
-                Content("aaaa000222222222222222222222222222222222222222222222222222222222"),
-                Chunk("bbbb000222222222222222222222222222222222222222222222222222222222"),
+                ContentHash.Parse("aaaa000222222222222222222222222222222222222222222222222222222222"),
+                ChunkHash.Parse("bbbb000222222222222222222222222222222222222222222222222222222222"),
                 200,
                 80)
         };
@@ -152,73 +132,49 @@ public class ShardTests
         var reader  = new StringReader(text);
         var loaded  = Shard.ReadFrom(reader);
 
-        loaded.TryLookup(Content("aaaa000111111111111111111111111111111111111111111111111111111111"), out var e1).ShouldBeTrue();
+        loaded.TryLookup(ContentHash.Parse("aaaa000111111111111111111111111111111111111111111111111111111111"), out var e1).ShouldBeTrue();
         e1!.OriginalSize.ShouldBe(100);
 
-        loaded.TryLookup(Content("aaaa000222222222222222222222222222222222222222222222222222222222"), out var e2).ShouldBeTrue();
+        loaded.TryLookup(ContentHash.Parse("aaaa000222222222222222222222222222222222222222222222222222222222"), out var e2).ShouldBeTrue();
         e2!.CompressedSize.ShouldBe(80);
     }
 
     [Test]
     public void Shard_Merge_NewEntriesAddedToExisting()
     {
-        var original = new Shard().Merge([
-            new ShardEntry(
-                Content("1111111111111111111111111111111111111111111111111111111111111111"),
-                Chunk("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-                10,
-                5)
-        ]);
-        var merged = original.Merge([
-            new ShardEntry(
-                Content("2222222222222222222222222222222222222222222222222222222222222222"),
-                Chunk("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-                20,
-                8)
-        ]);
+        var original = new Shard().Merge([new ShardEntry(FakeContentHash('1'), FakeChunkHash('a'), 10, 5)]);
+        var merged = original.Merge([new ShardEntry(FakeContentHash('2'), FakeChunkHash('b'), 20, 8)]);
 
-        merged.TryLookup(Content("1111111111111111111111111111111111111111111111111111111111111111"), out _).ShouldBeTrue();
-        merged.TryLookup(Content("2222222222222222222222222222222222222222222222222222222222222222"), out _).ShouldBeTrue();
+        merged.TryLookup(FakeContentHash('1'), out _).ShouldBeTrue();
+        merged.TryLookup(FakeContentHash('2'), out _).ShouldBeTrue();
         merged.Count.ShouldBe(2);
     }
 
     [Test]
     public void Shard_Merge_DuplicateContentHash_LastWriterWins()
     {
-        var contentHash = Content("1111111111111111111111111111111111111111111111111111111111111111");
-        var original = new Shard().Merge([new ShardEntry(contentHash, Chunk("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), 10, 5)]);
-        var merged = original.Merge([new ShardEntry(contentHash, Chunk("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), 10, 3)]);
+        var contentHash = FakeContentHash('1');
+        var original    = new Shard().Merge([new ShardEntry(contentHash, FakeChunkHash('a'), 10, 5)]);
+        var merged      = original.Merge([new ShardEntry(contentHash,    FakeChunkHash('b'), 10, 3)]);
 
         merged.TryLookup(contentHash, out var e).ShouldBeTrue();
-        e!.ChunkHash.ShouldBe(Chunk("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        e!.ChunkHash.ShouldBe(FakeChunkHash('b'));
         merged.Count.ShouldBe(1);
     }
 
     [Test]
     public void Shard_Merge_OriginalIsImmutable()
     {
-        var original = new Shard().Merge([
-            new ShardEntry(
-                Content("1111111111111111111111111111111111111111111111111111111111111111"),
-                Chunk("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-                10,
-                5)
-        ]);
-        _ = original.Merge([
-            new ShardEntry(
-                Content("2222222222222222222222222222222222222222222222222222222222222222"),
-                Chunk("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-                20,
-                8)
-        ]);
+        var original = new Shard().Merge([new ShardEntry(FakeContentHash('1'), FakeChunkHash('a'), 10, 5)]);
+        _ = original.Merge([new ShardEntry(FakeContentHash('2'), FakeChunkHash('b'), 20, 8)]);
 
-        original.TryLookup(Content("2222222222222222222222222222222222222222222222222222222222222222"), out _).ShouldBeFalse();
+        original.TryLookup(FakeContentHash('2'), out _).ShouldBeFalse();
     }
 
     [Test]
     public void Shard_PrefixOf_Returns4Characters()
     {
-        Shard.PrefixOf(Content("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
+        Shard.PrefixOf(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
             .ShouldBe("aabb");
     }
 
