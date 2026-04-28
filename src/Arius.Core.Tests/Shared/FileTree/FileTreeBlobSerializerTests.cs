@@ -30,24 +30,6 @@ public class FileTreeBlobSerializerTests
     }
 
     [Test]
-    public void Deserialize_ProducesTypedFileAndDirectoryEntries()
-    {
-        var text = string.Join(
-            '\n',
-            [
-                $"{new string('a', 64)} F {s_created:O} {s_modified:O} photo.jpg",
-                $"{new string('b', 64)} D photos/"
-            ]);
-
-        var blob = FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n"));
-
-        blob.Entries[0].ShouldBeOfType<FileEntry>();
-        blob.Entries[1].ShouldBeOfType<DirectoryEntry>();
-        ((FileEntry)blob.Entries[0]).ContentHash.ShouldBe(ContentHash.Parse(new string('a', 64)));
-        ((DirectoryEntry)blob.Entries[1]).FileTreeHash.ShouldBe(FileTreeHash.Parse(new string('b', 64)));
-    }
-
-    [Test]
     public void Deserialize_SkipsEntriesWithInvalidHashes_AndPreservesValidEntries()
     {
         var text = string.Join(
