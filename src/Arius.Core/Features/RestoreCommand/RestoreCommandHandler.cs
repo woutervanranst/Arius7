@@ -626,8 +626,7 @@ public sealed class RestoreCommandHandler
         await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         var tarReader = new TarReader(payloadStream, leaveOpen: false);
 
-        TarEntry? tarEntry;
-        while ((tarEntry = await tarReader.GetNextEntryAsync(copyData: false, cancellationToken)) is not null)
+        while (await tarReader.GetNextEntryAsync(copyData: false, cancellationToken) is { } tarEntry)
         {
             if (!ContentHash.TryParse(tarEntry.Name, out var contentHash))
                 throw new FormatException($"Invalid tar entry name '{tarEntry.Name}' in chunk '{chunkHash}'.");
@@ -635,36 +634,36 @@ public sealed class RestoreCommandHandler
             if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
-            // Buffer the entry data once (multiple output paths may share same content)
-            byte[]? dataBuffer = null;
-            if (tarEntry.DataStream is not null)
-            {
-                using var ms = new MemoryStream();
-                await tarEntry.DataStream.CopyToAsync(ms, cancellationToken);
-                dataBuffer = ms.ToArray();
-            }
+            string? sourcePath = null;
 
-            foreach (var file in filesForHash)
+            for (var i = 0; i < filesForHash.Count; i++)
             {
+                var file = filesForHash[i];
                 var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
 
                 Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
-                if (dataBuffer is not null)
+                if (tarEntry.DataStream is null)
                 {
-                    await File.WriteAllBytesAsync(localPath, dataBuffer, cancellationToken);
+                    // create an empty file
+                    await using var _ = File.Create(localPath);
+                }
+                else if (i == 0)
+                {
+                    await using var output = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                    await tarEntry.DataStream.CopyToAsync(output, cancellationToken);
+                    sourcePath = localPath;
                 }
                 else
                 {
-                    // Empty file (0 bytes): create an empty file
-                    await using var __ = File.Create(localPath);
+                    File.Copy(sourcePath!, localPath, overwrite: true);
                 }
 
                 // Set timestamps
                 File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
                 File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
 
-                // Create pointer file (task 10.11)
+                // Create pointer file
                 if (!opts.NoPointers)
                 {
                     var pointerPath = localPath + ".pointer.arius";
@@ -673,7 +672,7 @@ public sealed class RestoreCommandHandler
                     File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, dataBuffer?.Length ?? 0), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath).Length), cancellationToken);
                 restored++;
             }
         }

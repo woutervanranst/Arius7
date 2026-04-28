@@ -12,7 +12,6 @@ using Arius.Core.Tests.Fakes;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using RestoreCommandMessage = global::Arius.Core.Features.RestoreCommand.RestoreCommand;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -21,13 +20,13 @@ public class RestoreCommandHandlerTests
     [Test]
     public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
     {
-        var blobs = new ThrowOnCreateBlobContainerService("restore");
-        var encryption = new PlaintextPassthroughService();
-        using var index = new ChunkIndexService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
-        var fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
-        var snapshotSvc = new SnapshotService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
-        var mediator = Substitute.For<IMediator>();
-        var logger = new FakeLogger<RestoreCommandHandler>();
+        var       blobs           = new ThrowOnCreateBlobContainerService("restore");
+        var       encryption      = new PlaintextPassthroughService();
+        using var index           = new ChunkIndexService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
+        var       fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
+        var       snapshotSvc     = new SnapshotService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
+        var       mediator        = Substitute.For<IMediator>();
+        var       logger          = new FakeLogger<RestoreCommandHandler>();
 
         var handler = new RestoreCommandHandler(
             encryption,
@@ -41,7 +40,7 @@ public class RestoreCommandHandlerTests
             "ctr-restore-missing");
 
         var result = await handler.Handle(
-            new RestoreCommandMessage(new RestoreOptions { RootDirectory = Path.GetTempPath() }),
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = Path.GetTempPath() }),
             CancellationToken.None);
 
         result.Success.ShouldBeFalse();
@@ -52,13 +51,13 @@ public class RestoreCommandHandlerTests
     [Test]
     public async Task Handle_Restores_All_Files_Sharing_A_Large_Chunk()
     {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var encryption = new PlaintextPassthroughService();
-        var mediator = Substitute.For<IMediator>();
-        var accountName = $"acct-restore-duplicates-{Guid.NewGuid():N}";
+        var blobs         = new FakeInMemoryBlobContainerService();
+        var encryption    = new PlaintextPassthroughService();
+        var mediator      = Substitute.For<IMediator>();
+        var accountName   = $"acct-restore-duplicates-{Guid.NewGuid():N}";
         var containerName = $"ctr-restore-duplicates-{Guid.NewGuid():N}";
-        var localRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-local-{Guid.NewGuid():N}");
-        var restoreRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-output-{Guid.NewGuid():N}");
+        var localRoot     = Path.Combine(Path.GetTempPath(), $"arius-restore-local-{Guid.NewGuid():N}");
+        var restoreRoot   = Path.Combine(Path.GetTempPath(), $"arius-restore-output-{Guid.NewGuid():N}");
 
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
@@ -78,20 +77,10 @@ public class RestoreCommandHandlerTests
             var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
             var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
 
-            var archiveHandler = new ArchiveCommandHandler(
-                blobs,
-                encryption,
-                index,
-                chunkStorage,
-                fileTreeService,
-                snapshotSvc,
-                mediator,
-                new FakeLogger<ArchiveCommandHandler>(),
-                accountName,
-                containerName);
+            var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
 
             var archiveResult = await archiveHandler.Handle(
-                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new Arius.Core.Features.ArchiveCommand.ArchiveCommandOptions
+                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
                 {
                     RootDirectory = localRoot,
                     UploadTier = BlobTier.Cool,
@@ -100,19 +89,10 @@ public class RestoreCommandHandlerTests
 
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-            var restoreHandler = new RestoreCommandHandler(
-                encryption,
-                index,
-                chunkStorage,
-                fileTreeService,
-                snapshotSvc,
-                mediator,
-                new FakeLogger<RestoreCommandHandler>(),
-                accountName,
-                containerName);
+            var restoreHandler = new RestoreCommandHandler(encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
             var restoreResult = await restoreHandler.Handle(
-                new RestoreCommandMessage(new RestoreOptions
+                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
                 {
                     RootDirectory = restoreRoot,
                     Overwrite = true,
@@ -142,6 +122,142 @@ public class RestoreCommandHandlerTests
             var fullPath = Path.Combine(localRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             File.WriteAllBytes(fullPath, bytes);
+        }
+
+        static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Handle_Restores_All_Files_Sharing_A_Tar_Entry_With_Per_Path_Metadata()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var encryption = new PlaintextPassthroughService();
+        var mediator = Substitute.For<IMediator>();
+        var accountName = $"acct-restore-tar-duplicates-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-tar-duplicates-{Guid.NewGuid():N}";
+        var localRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-local-{Guid.NewGuid():N}");
+        var restoreRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-output-{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(localRoot);
+        Directory.CreateDirectory(restoreRoot);
+        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
+        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
+
+        try
+        {
+            var content = new byte[512 * 1024];
+            Random.Shared.NextBytes(content);
+
+            var firstCreated = new DateTime(2021, 4, 5, 6, 7, 8, DateTimeKind.Utc);
+            var firstModified = new DateTime(2022, 5, 6, 7, 8, 9, DateTimeKind.Utc);
+            var secondCreated = new DateTime(2023, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+            var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
+
+            WriteFile("archives/duplicates/copy-a.bin", content, firstCreated, firstModified);
+            WriteFile("nested/deep/a/b/c/copy-b.bin", content, secondCreated, secondModified);
+
+            using var index = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var chunkStorage = new ChunkStorageService(blobs, encryption);
+            var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
+
+            var archiveHandler = new ArchiveCommandHandler(
+                blobs,
+                encryption,
+                index,
+                chunkStorage,
+                fileTreeService,
+                snapshotSvc,
+                mediator,
+                new FakeLogger<ArchiveCommandHandler>(),
+                accountName,
+                containerName);
+
+            var archiveResult = await archiveHandler.Handle(
+                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+                {
+                    RootDirectory = localRoot,
+                    UploadTier = BlobTier.Cool,
+                    SmallFileThreshold = 1024 * 1024,
+                }),
+                CancellationToken.None);
+
+            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+            var restoreHandler = new RestoreCommandHandler(
+                encryption,
+                index,
+                chunkStorage,
+                fileTreeService,
+                snapshotSvc,
+                mediator,
+                new FakeLogger<RestoreCommandHandler>(),
+                accountName,
+                containerName);
+
+            var restoreResult = await restoreHandler.Handle(
+                new RestoreCommandMessage(new RestoreOptions
+                {
+                    RootDirectory = restoreRoot,
+                    Overwrite = true,
+                }),
+                CancellationToken.None);
+
+            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+            restoreResult.FilesRestored.ShouldBe(2);
+
+            AssertRestoredFile("archives/duplicates/copy-a.bin", content, firstCreated, firstModified);
+            AssertRestoredFile("nested/deep/a/b/c/copy-b.bin", content, secondCreated, secondModified);
+        }
+        finally
+        {
+            if (Directory.Exists(localRoot))
+                Directory.Delete(localRoot, recursive: true);
+
+            if (Directory.Exists(restoreRoot))
+                Directory.Delete(restoreRoot, recursive: true);
+
+            TryDeleteDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
+            TryDeleteDirectory(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
+            TryDeleteDirectory(SnapshotService.GetDiskCacheDirectory(accountName, containerName));
+        }
+
+        void WriteFile(string relativePath, byte[] bytes, DateTime created, DateTime modified)
+        {
+            var fullPath = Path.Combine(localRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllBytes(fullPath, bytes);
+            File.SetCreationTimeUtc(fullPath, created);
+            File.SetLastWriteTimeUtc(fullPath, modified);
+        }
+
+        void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
+        {
+            var restoredPath = Path.Combine(restoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var pointerPath = restoredPath + ".pointer.arius";
+
+            File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
+            File.Exists(pointerPath).ShouldBeTrue($"Pointer file should exist for {relativePath}");
+
+            if (!OperatingSystem.IsLinux())
+            {
+                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
+                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
+            }
+
+            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
+            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
         }
 
         static void TryDeleteDirectory(string path)
