@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Cli;
 
@@ -49,12 +50,16 @@ public sealed class TrackedFile
     public long TotalBytes { get; }
 
     /// <summary>Content hash, set when hashing completes.</summary>
-    public string? ContentHash
+    public ContentHash? ContentHash
     {
-        get => Volatile.Read(ref _contentHash);
-        set => Volatile.Write(ref _contentHash, value);
+        get
+        {
+            var box = Volatile.Read(ref _contentHashBox);
+            return box is ContentHash hash ? hash : null;
+        }
+        set => Volatile.Write(ref _contentHashBox, value.HasValue ? (object)value.Value : null);
     }
-    private string? _contentHash;
+    private object? _contentHashBox;
 
     /// <summary>Current lifecycle state.</summary>
     public FileState State
@@ -139,12 +144,16 @@ public sealed class TrackedTar
     private long _totalBytes;
 
     /// <summary>Content hash of the sealed TAR file (set at sealing).</summary>
-    public string? TarHash
+    public ChunkHash? TarHash
     {
-        get => Volatile.Read(ref _tarHash);
-        set => Volatile.Write(ref _tarHash, value);
+        get
+        {
+            var box = Volatile.Read(ref _tarHashBox);
+            return box is ChunkHash hash ? hash : null;
+        }
+        set => Volatile.Write(ref _tarHashBox, value.HasValue ? (object)value.Value : null);
     }
-    private string? _tarHash;
+    private object? _tarHashBox;
 
     /// <summary>Cumulative bytes uploaded so far (set via ProgressStream callback).</summary>
     public long BytesUploaded => Interlocked.Read(ref _bytesUploaded);
@@ -245,7 +254,7 @@ public sealed class ProgressState
     /// One-to-many because two files can legitimately hash to the same content in one run.
     /// Populated when <c>FileHashedEvent</c> fires; used by downstream content-hash-keyed events.
     /// </summary>
-    public ConcurrentDictionary<string, ConcurrentBag<string>> ContentHashToPath { get; } = new();
+    public ConcurrentDictionary<ContentHash, ConcurrentBag<string>> ContentHashToPath { get; } = new();
 
     /// <summary>Adds a new <see cref="TrackedFile"/> entry with State=Hashing.</summary>
     public void AddFile(string relativePath, long fileSize) =>
@@ -257,7 +266,7 @@ public sealed class ProgressState
     /// </summary>
     /// <param name="relativePath">The file's relative path within the archive.</param>
     /// <param name="contentHash">The computed content hash for the file.</param>
-    public void SetFileHashed(string relativePath, string contentHash)
+    public void SetFileHashed(string relativePath, ContentHash contentHash)
     {
         if (TrackedFiles.TryGetValue(relativePath, out var file))
         {
@@ -277,7 +286,7 @@ public sealed class ProgressState
     /// <see cref="FileState.Hashed"/> to <see cref="FileState.Uploading"/>.
     /// </summary>
     /// <returns><c>true</c> if at least one file was transitioned; <c>false</c> if the hash is unknown (TAR path).</returns>
-    public bool SetFileUploading(string contentHash)
+    public bool SetFileUploading(ContentHash contentHash)
     {
         if (!ContentHashToPath.TryGetValue(contentHash, out var paths))
             return false;
@@ -446,7 +455,7 @@ public sealed class ProgressState
     /// <c>ChunkDownloadStartedHandler</c> before <c>CreateDownloadProgress</c> is called.
     /// Used by the <c>CreateDownloadProgress</c> factory to build display names.
     /// </summary>
-    internal ConcurrentDictionary<string, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new(StringComparer.Ordinal);
+    internal ConcurrentDictionary<ChunkHash, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new();
 
     // ── Restore: tree traversal progress ─────────────────────────────────────
 
@@ -488,12 +497,16 @@ public sealed class ProgressState
     private object? _snapshotTimestampBox;
 
     /// <summary>Root hash of the resolved snapshot. <c>null</c> until <c>SnapshotResolvedEvent</c> fires.</summary>
-    public string? SnapshotRootHash
+    public FileTreeHash? SnapshotRootHash
     {
-        get => Volatile.Read(ref _snapshotRootHash);
-        set => Volatile.Write(ref _snapshotRootHash, value);
+        get
+        {
+            var box = Volatile.Read(ref _snapshotRootHashBox);
+            return box is FileTreeHash hash ? hash : null;
+        }
+        set => Volatile.Write(ref _snapshotRootHashBox, value.HasValue ? (object)value.Value : null);
     }
-    private string? _snapshotRootHash;
+    private object? _snapshotRootHashBox;
 
     /// <summary>True once tree traversal completes and all file entries are known.</summary>
     public bool TreeTraversalComplete => Volatile.Read(ref _treeTraversalComplete);

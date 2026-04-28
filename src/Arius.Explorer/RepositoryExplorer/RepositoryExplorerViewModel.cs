@@ -265,7 +265,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         try
         {
             var cloudFiles = node.Items
-                .Where(item => item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+                .Where(item => item.File.ExistsInCloud && item.File.ContentHash is not null)
                 .Select(item => item.File)
                 .ToList();
 
@@ -464,7 +464,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             return;
 
         var unresolved = items
-            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.ExistsInCloud && !string.IsNullOrWhiteSpace(item.File.ContentHash))
+            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.ExistsInCloud && item.File.ContentHash is not null)
             .Select(item => item.File)
             .ToList();
 

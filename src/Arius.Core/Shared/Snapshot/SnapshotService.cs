@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;
@@ -18,7 +19,7 @@ public sealed record SnapshotManifest
     public required DateTimeOffset Timestamp   { get; init; }
 
     /// <summary>Root tree hash (SHA-256 hex, 64 chars) produced by the tree builder.</summary>
-    public required string         RootHash    { get; init; }
+    public required FileTreeHash   RootHash    { get; init; }
 
     /// <summary>Total number of files in this snapshot.</summary>
     public required long           FileCount   { get; init; }
@@ -28,6 +29,15 @@ public sealed record SnapshotManifest
 
     /// <summary>Arius tool version that created this snapshot.</summary>
     public required string         AriusVersion { get; init; }
+}
+
+internal sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
+{
+    public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
+
+    public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
 }
 
 /// <summary>
@@ -42,6 +52,7 @@ public static class SnapshotSerializer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+        Converters             = { new FileTreeHashJsonConverter() },
     };
 
     // ── Serialize ─────────────────────────────────────────────────────────────
@@ -113,6 +124,7 @@ public sealed class SnapshotService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+        Converters             = { new FileTreeHashJsonConverter() },
     };
 
     public SnapshotService(
@@ -158,7 +170,7 @@ public sealed class SnapshotService
     /// Returns the created manifest.
     /// </summary>
     public async Task<SnapshotManifest> CreateAsync(
-        string            rootHash,
+        FileTreeHash      rootHash,
         long              fileCount,
         long              totalSize,
         DateTimeOffset?   timestamp         = null,

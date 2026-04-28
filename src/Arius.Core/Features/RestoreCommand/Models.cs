@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Core.Features.RestoreCommand;
 
 // ── Internal pipeline models ──────────────────────────────────────────────────
@@ -7,7 +9,7 @@ namespace Arius.Core.Features.RestoreCommand;
 /// </summary>
 internal sealed record FileToRestore(
     string         RelativePath,  // forward-slash, relative to archive root
-    string         ContentHash,   // content hash (64-char hex)
+    ContentHash    ContentHash,
     DateTimeOffset Created,
     DateTimeOffset Modified
 );

@@ -1,4 +1,5 @@
-﻿using Mediator;
+﻿using Arius.Core.Shared.Hashes;
+using Mediator;
 
 namespace Arius.Core.Features.ArchiveCommand;
 
@@ -20,26 +21,26 @@ public sealed record ScanCompleteEvent(long TotalFiles, long TotalBytes) : INoti
 public sealed record FileHashingEvent(string RelativePath, long FileSize) : INotification;
 
 /// <summary>A file finished hashing.</summary>
-public sealed record FileHashedEvent(string RelativePath, string ContentHash) : INotification;
+public sealed record FileHashedEvent(string RelativePath, ContentHash ContentHash) : INotification;
 
 /// <summary>A chunk upload started.</summary>
-public sealed record ChunkUploadingEvent(string ContentHash, long Size) : INotification;
+public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;
 
 /// <summary>A chunk upload completed.</summary>
-public sealed record ChunkUploadedEvent(string ContentHash, long CompressedSize) : INotification;
+public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long CompressedSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
 /// <param name="EntryCount">Number of entries in the sealed tar.</param>
 /// <param name="UncompressedSize">Total uncompressed size of all entries in bytes.</param>
 /// <param name="TarHash">Content hash of the sealed tar archive file (used as the bundle identifier).</param>
 /// <param name="ContentHashes">Content hash of every file entry in the tar, in insertion order.</param>
-public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, string TarHash, IReadOnlyList<string> ContentHashes) : INotification;
+public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, ChunkHash TarHash, IReadOnlyList<ContentHash> ContentHashes) : INotification;
 
 /// <summary>A tar bundle was uploaded.</summary>
-public sealed record TarBundleUploadedEvent(string TarHash, long CompressedSize, int EntryCount) : INotification;
+public sealed record TarBundleUploadedEvent(ChunkHash TarHash, long CompressedSize, int EntryCount) : INotification;
 
 /// <summary>Snapshot creation complete.</summary>
-public sealed record SnapshotCreatedEvent(string RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
+public sealed record SnapshotCreatedEvent(FileTreeHash RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
 
 /// <summary>The tar builder started accumulating a new tar bundle.</summary>
 public sealed record TarBundleStartedEvent() : INotification;
@@ -48,4 +49,4 @@ public sealed record TarBundleStartedEvent() : INotification;
 /// <param name="ContentHash">Content hash of the file added.</param>
 /// <param name="CurrentEntryCount">Number of entries in the current tar bundle so far.</param>
 /// <param name="CurrentTarSize">Cumulative uncompressed size of the current tar bundle in bytes.</param>
-public sealed record TarEntryAddedEvent(string ContentHash, int CurrentEntryCount, long CurrentTarSize) : INotification;
+public sealed record TarEntryAddedEvent(ContentHash ContentHash, int CurrentEntryCount, long CurrentTarSize) : INotification;

@@ -51,7 +51,7 @@ public class FileTreeBuilderTests
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("readme.txt", "aabbccdd", now, now);
+            var entry = new ManifestEntry("readme.txt", FakeContentHash('b'), now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
@@ -59,7 +59,6 @@ public class FileTreeBuilderTests
             var root    = await builder.BuildAsync(manifestPath);
 
             root.ShouldNotBeNull();
-            root!.Length.ShouldBe(64);
             blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
         finally
@@ -86,9 +85,9 @@ public class FileTreeBuilderTests
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var lines = new[]
             {
-                new ManifestEntry("photos/a.jpg", "hash1", now, now).Serialize(),
-                new ManifestEntry("photos/b.jpg", "hash2", now, now).Serialize(),
-                new ManifestEntry("docs/r.pdf",   "hash3", now, now).Serialize(),
+                new ManifestEntry("photos/a.jpg", FakeContentHash('c'), now, now).Serialize(),
+                new ManifestEntry("photos/b.jpg", FakeContentHash('d'), now, now).Serialize(),
+                new ManifestEntry("docs/r.pdf",   FakeContentHash('e'), now, now).Serialize(),
             };
             var content = string.Join("\n", lines) + "\n";
             await File.WriteAllTextAsync(manifestPath1, content);
@@ -126,9 +125,9 @@ public class FileTreeBuilderTests
             var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var now2  = new DateTimeOffset(2025, 1, 1,  0,  0, 0, TimeSpan.Zero);
             await File.WriteAllTextAsync(manifestPath1,
-                new ManifestEntry("file.txt", "hash1", now1, now1).Serialize() + "\n");
+                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now1).Serialize() + "\n");
             await File.WriteAllTextAsync(manifestPath2,
-                new ManifestEntry("file.txt", "hash1", now1, now2).Serialize() + "\n");
+                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now2).Serialize() + "\n");
 
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
@@ -153,7 +152,7 @@ public class FileTreeBuilderTests
         try
         {
             var now   = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("file.txt", "hash1", now, now);
+            var entry = new ManifestEntry("file.txt", FakeContentHash('1'), now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();

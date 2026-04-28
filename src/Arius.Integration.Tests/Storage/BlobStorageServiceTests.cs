@@ -1,4 +1,3 @@
-using System.Text;
 using Arius.AzureBlob;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
@@ -18,12 +17,13 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task Upload_ThenDownload_ProducesBytIdenticalContent()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
-        var content  = Encoding.UTF8.GetBytes("Hello blob roundtrip!");
-        var meta     = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge };
+        var content = "Hello blob roundtrip!"u8.ToArray();
+        var meta    = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge };
+        var chunkHash = FakeChunkHash('a');
 
-        await svc.UploadAsync(BlobPaths.Chunk("abc123"), new MemoryStream(content), meta, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.Chunk(chunkHash), new MemoryStream(content), meta, BlobTier.Hot);
 
-        await using var stream = await svc.DownloadAsync(BlobPaths.Chunk("abc123"));
+        await using var stream = await svc.DownloadAsync(BlobPaths.Chunk(chunkHash));
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
 
@@ -36,15 +36,16 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task GetMetadata_ExistingBlob_ReturnsMetadata()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
+        var chunkHash = FakeChunkHash('b');
         var meta = new Dictionary<string, string>
         {
             [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
             [BlobMetadataKeys.OriginalSize] = "1234"
         };
 
-        await svc.UploadAsync(BlobPaths.Chunk("meta-test"), new MemoryStream([1, 2, 3]), meta, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.Chunk(chunkHash), new MemoryStream([1, 2, 3]), meta, BlobTier.Hot);
 
-        var result = await svc.GetMetadataAsync(BlobPaths.Chunk("meta-test"));
+        var result = await svc.GetMetadataAsync(BlobPaths.Chunk(chunkHash));
 
         result.Exists.ShouldBeTrue();
         result.ContentLength.ShouldBe(3);
@@ -68,10 +69,11 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task Upload_WithCoolTier_BlobHasCoolTier()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
+        var fileTreeHash = FakeFileTreeHash('c');
 
-        await svc.UploadAsync(BlobPaths.FileTree("tree1"), new MemoryStream([0xFF]), new Dictionary<string, string>(), BlobTier.Cool);
+        await svc.UploadAsync(BlobPaths.FileTree(fileTreeHash), new MemoryStream([0xFF]), new Dictionary<string, string>(), BlobTier.Cool);
 
-        var meta = await svc.GetMetadataAsync(BlobPaths.FileTree("tree1"));
+        var meta = await svc.GetMetadataAsync(BlobPaths.FileTree(fileTreeHash));
         // Azurite may report Hot as the effective tier for Cool; just verify the blob exists
         meta.Exists.ShouldBeTrue();
     }
@@ -83,18 +85,21 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var empty    = new Dictionary<string, string>();
+        var firstChunkHash = FakeChunkHash('d');
+        var secondChunkHash = FakeChunkHash('e');
+        var fileTreeHash = FakeFileTreeHash('f');
 
-        await svc.UploadAsync(BlobPaths.Chunk("aaa"), new MemoryStream([1]), empty, BlobTier.Hot);
-        await svc.UploadAsync(BlobPaths.Chunk("aab"), new MemoryStream([2]), empty, BlobTier.Hot);
-        await svc.UploadAsync(BlobPaths.FileTree("bbb"), new MemoryStream([3]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.Chunk(firstChunkHash), new MemoryStream([1]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.Chunk(secondChunkHash), new MemoryStream([2]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.FileTree(fileTreeHash), new MemoryStream([3]), empty, BlobTier.Hot);
 
         var chunks = new List<string>();
         await foreach (var name in svc.ListAsync(BlobPaths.Chunks))
             chunks.Add(name);
 
-        chunks.ShouldContain(BlobPaths.Chunk("aaa"));
-        chunks.ShouldContain(BlobPaths.Chunk("aab"));
-        chunks.ShouldNotContain(BlobPaths.FileTree("bbb"));
+        chunks.ShouldContain(BlobPaths.Chunk(firstChunkHash));
+        chunks.ShouldContain(BlobPaths.Chunk(secondChunkHash));
+        chunks.ShouldNotContain(BlobPaths.FileTree(fileTreeHash));
     }
 
     // ── SetMetadata ───────────────────────────────────────────────────────────
@@ -140,7 +145,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     public async Task OpenWrite_ThenDownload_ProducesByteIdenticalContent()
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
-        var payload  = Encoding.UTF8.GetBytes("streaming upload roundtrip");
+        var payload  = "streaming upload roundtrip"u8.ToArray();
 
         await using (var ws = await svc.OpenWriteAsync("chunks/ow-roundtrip"))
             await new MemoryStream(payload).CopyToAsync(ws);

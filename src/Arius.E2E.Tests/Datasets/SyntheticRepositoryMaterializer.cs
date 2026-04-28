@@ -1,7 +1,8 @@
-using Arius.Core.Shared.Encryption;
-using Arius.Tests.Shared.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.IO;
 
 namespace Arius.E2E.Tests.Datasets;
 
@@ -22,14 +23,14 @@ internal static class SyntheticRepositoryMaterializer
 
         Directory.CreateDirectory(rootPath);
 
-        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
 
         foreach (var file in definition.Files)
         {
             await WriteFileAsync(rootPath, file.Path, CreateBytes(seed, file.ContentId ?? file.Path, file.SizeBytes));
 
             await using var stream = File.OpenRead(GetFullPath(rootPath, file.Path));
-            files[file.Path] = Convert.ToHexString(await encryption.ComputeHashAsync(stream));
+            files[file.Path] = await encryption.ComputeHashAsync(stream);
         }
 
         return new SyntheticRepositoryState(rootPath, files);
@@ -52,14 +53,14 @@ internal static class SyntheticRepositoryMaterializer
 
         FileSystemHelper.CopyDirectory(sourceRootPath, targetRootPath);
 
-        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
         foreach (var filePath in Directory.EnumerateFiles(targetRootPath, "*", SearchOption.AllDirectories))
         {
             var relativePath = Path.GetRelativePath(targetRootPath, filePath)
                 .Replace(Path.DirectorySeparatorChar, '/');
 
             await using var stream = File.OpenRead(filePath);
-            files[relativePath] = Convert.ToHexString(await encryption.ComputeHashAsync(stream));
+            files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
         await ApplyV2MutationsAsync(definition, seed, targetRootPath, encryption, files);
@@ -91,7 +92,7 @@ internal static class SyntheticRepositoryMaterializer
         int seed,
         string rootPath,
         IEncryptionService encryption,
-        Dictionary<string, string> files)
+        Dictionary<string, ContentHash> files)
     {
         foreach (var mutation in definition.V2Mutations)
         {
@@ -117,7 +118,7 @@ internal static class SyntheticRepositoryMaterializer
                 case SyntheticFileMutationKind.Add:
                     var bytes = CreateBytes(seed, mutation.ReplacementContentId!, mutation.ReplacementSizeBytes!.Value);
                     await WriteFileAsync(rootPath, mutation.Path, bytes);
-                    files[mutation.Path] = Convert.ToHexString(encryption.ComputeHash(bytes));
+                    files[mutation.Path] = encryption.ComputeHash(bytes);
                     break;
 
                 default:

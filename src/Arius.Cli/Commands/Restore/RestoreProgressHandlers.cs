@@ -162,7 +162,7 @@ public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotifi
 {
     public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
     {
-        state.TrackedDownloads.TryRemove(notification.ChunkHash, out _);
+        state.TrackedDownloads.TryRemove(notification.ChunkHash.ToString(), out _);
         state.AddRestoreBytesDownloaded(notification.CompressedSize);
         return ValueTask.CompletedTask;
     }

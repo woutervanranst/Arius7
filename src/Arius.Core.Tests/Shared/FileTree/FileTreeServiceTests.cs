@@ -2,6 +2,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -28,16 +29,18 @@ public class FileTreeServiceTests
         {
             Entries =
             [
-                new FileTreeEntry
+                new FileEntry
                 {
-                    Name     = fileName,
-                    Type     = FileTreeEntryType.File,
-                    Hash     = hash,
+                    Name        = fileName,
+                    ContentHash = ContentHash.Parse(NormalizeHash(hash)),
                     Created  = s_ts1,
                     Modified = s_ts2
                 }
             ]
         };
+
+    private static string NormalizeHash(string hash)
+        => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
 
     private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)
@@ -69,7 +72,7 @@ public class FileTreeServiceTests
         {
             var blob     = MakeBlob();
             var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
 
             // Pre-populate disk cache with plaintext
             var plaintext = FileTreeBlobSerializer.Serialize(blob);
@@ -115,7 +118,7 @@ public class FileTreeServiceTests
             blobs.RequestedBlobNames.ShouldContain(blobName);
 
             // Disk file was written (write-through)
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
         }
@@ -155,7 +158,7 @@ public class FileTreeServiceTests
             results[1].Entries[0].Name.ShouldBe("concurrent.txt");
 
             // Disk file must exist and have content (not empty / corrupt)
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
 
@@ -198,7 +201,7 @@ public class FileTreeServiceTests
 
             results.SelectMany(result => result.Entries).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
 
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
             FileTreeBlobSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath)).Entries[0].Name.ShouldBe("partial.txt");
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
@@ -228,7 +231,7 @@ public class FileTreeServiceTests
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
         }
@@ -259,7 +262,7 @@ public class FileTreeServiceTests
             await Should.NotThrowAsync(() => svc.WriteAsync(hash, blob));
 
             // Disk file should still be written
-            var diskPath = Path.Combine(cacheDir, hash);
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
         }
         finally
@@ -343,6 +346,9 @@ public class FileTreeServiceTests
 
         try
         {
+            var firstRemoteHash = FakeFileTreeHash('1');
+            var secondRemoteHash = FakeFileTreeHash('2');
+
             // Local marker: old snapshot
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
@@ -350,14 +356,14 @@ public class FileTreeServiceTests
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Two remote filetree blobs
-            blobs.SeedBlob(BlobPaths.FileTree("hash1111"), [], contentType: null);
-            blobs.SeedBlob(BlobPaths.FileTree("hash2222"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTree(firstRemoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTree(secondRemoteHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
             // Empty marker files created for remote filetrees
-            File.Exists(Path.Combine(cacheDir, "hash1111")).ShouldBeTrue();
-            File.Exists(Path.Combine(cacheDir, "hash2222")).ShouldBeTrue();
+            File.Exists(Path.Combine(cacheDir, firstRemoteHash.ToString())).ShouldBeTrue();
+            File.Exists(Path.Combine(cacheDir, secondRemoteHash.ToString())).ShouldBeTrue();
 
             // L2 dummy file deleted
             File.Exists(dummyL2File).ShouldBeFalse();
@@ -378,6 +384,8 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
+            var existingHash = FakeFileTreeHash('3');
+
             // Local marker: old snapshot
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
@@ -386,10 +394,10 @@ public class FileTreeServiceTests
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
-            var diskPath = Path.Combine(cacheDir, "existinghash");
+            var diskPath = Path.Combine(cacheDir, existingHash.ToString());
             await File.WriteAllBytesAsync(diskPath, existingContent);
 
-            blobs.SeedBlob(BlobPaths.FileTree("existinghash"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTree(existingHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -412,18 +420,20 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
+            var remoteHash = FakeFileTreeHash('4');
+
             // No local snapshot markers (snapshotsDir is empty)
 
             // Remote snapshot exists
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Remote filetree blob
-            blobs.SeedBlob(BlobPaths.FileTree("remotehash"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTree(remoteHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
             // Slow path should create marker for remote blob
-            File.Exists(Path.Combine(cacheDir, "remotehash")).ShouldBeTrue();
+            File.Exists(Path.Combine(cacheDir, remoteHash.ToString())).ShouldBeTrue();
         }
         finally
         {
@@ -444,7 +454,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Should not throw and should be marked validated (ExistsInRemote works)
-            Should.NotThrow(() => svc.ExistsInRemote("anyhash"));
+            Should.NotThrow(() => svc.ExistsInRemote(FakeFileTreeHash('a')));
         }
         finally
         {
@@ -462,10 +472,11 @@ public class FileTreeServiceTests
         try
         {
             await svc.ValidateAsync();
-            var diskPath = Path.Combine(cacheDir, "knowhash");
+            var hash = FakeFileTreeHash('a');
+            var diskPath = Path.Combine(cacheDir, hash.ToString());
             await File.WriteAllBytesAsync(diskPath, []);
 
-            svc.ExistsInRemote("knowhash").ShouldBeTrue();
+            svc.ExistsInRemote(hash).ShouldBeTrue();
         }
         finally
         {
@@ -482,7 +493,7 @@ public class FileTreeServiceTests
         {
             await svc.ValidateAsync();
 
-            svc.ExistsInRemote("nohash").ShouldBeFalse();
+            svc.ExistsInRemote(FakeFileTreeHash('b')).ShouldBeFalse();
         }
         finally
         {
@@ -499,7 +510,7 @@ public class FileTreeServiceTests
         var (svc, _, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            Should.Throw<InvalidOperationException>(() => svc.ExistsInRemote("anyhash"));
+            Should.Throw<InvalidOperationException>(() => svc.ExistsInRemote(FakeFileTreeHash('a')));
         }
         finally
         {
@@ -520,7 +531,7 @@ public class FileTreeServiceTests
         try
         {
             var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var rootHash = "aabbccdd" + new string('0', 56);
+            var rootHash = FileTreeHash.Parse("aabbccdd" + new string('0', 56));
             var manifest = await snapshotSvc.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
 
             var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
@@ -529,7 +540,7 @@ public class FileTreeServiceTests
             // Disk file exists and is valid JSON
             File.Exists(localPath).ShouldBeTrue();
             var json = await File.ReadAllTextAsync(localPath);
-            json.ShouldContain(rootHash);
+            json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded
             blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts));
@@ -549,9 +560,11 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
+            var someHash = FakeFileTreeHash('5');
+
             // Remote snapshot mismatch forces slow path on first call
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
-            blobs.SeedBlob(BlobPaths.FileTree("somehash"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTree(someHash), [], contentType: null);
 
             await svc.ValidateAsync();
 

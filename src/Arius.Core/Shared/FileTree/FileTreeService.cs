@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -37,7 +38,7 @@ public sealed class FileTreeService
     /// </summary>
     private bool _validated;
 
-    private readonly ConcurrentDictionary<string, Lazy<Task<FileTreeBlob>>> _inFlightReads = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<FileTreeHash, Lazy<Task<FileTreeBlob>>> _inFlightReads = [];
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
@@ -79,9 +80,10 @@ public sealed class FileTreeService
     ///   <item>Cache miss: downloads from Azure, writes plaintext to disk, returns blob.</item>
     /// </list>
     /// </summary>
-    public async Task<FileTreeBlob> ReadAsync(string hash, CancellationToken cancellationToken = default)
+    public async Task<FileTreeBlob> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
     {
-        var diskPath = Path.Combine(_diskCacheDir, hash);
+        var hashText = hash.ToString();
+        var diskPath = Path.Combine(_diskCacheDir, hashText);
 
         // Avoid race conditions between concurrent readers and writers for the same hash by
         // coordinating via a per-hash in-flight task.
@@ -107,8 +109,8 @@ public sealed class FileTreeService
         }
         finally
         {
-            if (lazyRead.IsValueCreated && lazyRead.Value.IsCompleted)
-                _inFlightReads.TryRemove(new KeyValuePair<string, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
+            if (lazyRead is { IsValueCreated: true, Value.IsCompleted: true })
+                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
         }
     }
 
@@ -146,7 +148,7 @@ public sealed class FileTreeService
         return null;
     }
 
-    private async Task<FileTreeBlob> DownloadAndCacheAsync(string hash, string diskPath)
+    private async Task<FileTreeBlob> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
     {
         var blobName = BlobPaths.FileTree(hash);
         await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
@@ -194,8 +196,9 @@ public sealed class FileTreeService
     /// Uploads the tree blob to Azure (if not already present) and writes the plaintext
     /// representation to the local disk cache.
     /// </summary>
-    public async Task WriteAsync(string hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(FileTreeHash hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
     {
+        var hashText     = hash.ToString();
         var blobName     = BlobPaths.FileTree(hash);
         var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
         var contentType  = _encryption.IsEncrypted
@@ -204,14 +207,7 @@ public sealed class FileTreeService
 
         try
         {
-            await _blobs.UploadAsync(
-                blobName,
-                new MemoryStream(storageBytes),
-                new Dictionary<string, string>(),
-                BlobTier.Cool,
-                contentType,
-                overwrite: false,
-                cancellationToken: cancellationToken);
+            await _blobs.UploadAsync(blobName, new MemoryStream(storageBytes), new Dictionary<string, string>(), BlobTier.Cool, contentType, overwrite: false, cancellationToken: cancellationToken);
         }
         catch (BlobAlreadyExistsException)
         {
@@ -219,7 +215,7 @@ public sealed class FileTreeService
         }
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
-        var diskPath  = Path.Combine(_diskCacheDir, hash);
+        var diskPath  = Path.Combine(_diskCacheDir, hashText);
         var plaintext = FileTreeBlobSerializer.Serialize(tree);
         await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
     }
@@ -321,12 +317,12 @@ public sealed class FileTreeService
     /// blobs that have not yet been fully downloaded.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when called before <see cref="ValidateAsync"/>.</exception>
-    public bool ExistsInRemote(string hash)
+    public bool ExistsInRemote(FileTreeHash hash)
     {
         if (!_validated)
             throw new InvalidOperationException(
                 $"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
-        return File.Exists(Path.Combine(_diskCacheDir, hash));
+        return File.Exists(Path.Combine(_diskCacheDir, hash.ToString()));
     }
 }

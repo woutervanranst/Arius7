@@ -16,8 +16,8 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
     public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
         => Task.FromResult(blobName switch
         {
-            "chunks-rehydrated/a" => new BlobMetadata { Exists = true, ContentLength = 3 },
-            "chunks-rehydrated/b" => new BlobMetadata { Exists = true, ContentLength = 4 },
+            var name when name == BlobPaths.ChunkRehydrated(FakeChunkHash('a')) => new BlobMetadata { Exists = true, ContentLength = 3 },
+            var name when name == BlobPaths.ChunkRehydrated(FakeChunkHash('b')) => new BlobMetadata { Exists = true, ContentLength = 4 },
             _ => new BlobMetadata { Exists = false }
         });
 
@@ -49,8 +49,8 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 
     private async IAsyncEnumerable<string> AsyncEnumerable()
     {
-        yield return BlobPaths.ChunkRehydrated("a");
-        yield return BlobPaths.ChunkRehydrated("b");
+        yield return BlobPaths.ChunkRehydrated(FakeChunkHash('a'));
+        yield return BlobPaths.ChunkRehydrated(FakeChunkHash('b'));
         await Task.CompletedTask;
     }
 }

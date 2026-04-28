@@ -3,6 +3,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -161,11 +162,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             foreach (var filePath in Directory.EnumerateFiles(targetRoot, "*", SearchOption.AllDirectories))
             {
                 var bytes       = await File.ReadAllBytesAsync(filePath, cancellationToken); // todo use streaming
-                var contentHash = Convert.ToHexString(fixture.Encryption.ComputeHash(bytes)).ToLowerInvariant();
+                var contentHash = fixture.Encryption.ComputeHash(bytes);
                 var entry       = await fixture.Index.LookupAsync(contentHash, cancellationToken);
 
                 entry.ShouldNotBeNull($"Expected chunk index entry for '{filePath}'.");
-                if (entry!.ChunkHash == contentHash)
+                if (entry!.IsLargeChunk)
                     continue;
 
                 var             chunkBlobName  = BlobPaths.Chunk(entry.ChunkHash);
@@ -182,7 +183,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             throw new InvalidOperationException($"Expected at least one tar chunk under '{targetPath}'.");
         }
 
-        static async Task MoveChunksToArchiveAsync(AzureBlobContainerService blobContainer, string chunkHash, CancellationToken cancellationToken)
+        static async Task MoveChunksToArchiveAsync(AzureBlobContainerService blobContainer, ChunkHash chunkHash, CancellationToken cancellationToken)
         {
             var blobName = BlobPaths.Chunk(chunkHash);
             await blobContainer.SetTierAsync(blobName, BlobTier.Archive, cancellationToken);
@@ -215,7 +216,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
 
             await using var stream = File.OpenRead(restoredPath);
-            var restoredHash = Convert.ToHexString(await encryption.ComputeHashAsync(stream)).ToLowerInvariant();
+            var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
             var pointerPath = Path.Combine(readyRestoreRoot, (targetChunk.TargetRelativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
@@ -223,5 +224,5 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
     }
 
-    sealed record ArchiveTierTargetChunk(string TargetRelativePath, string ContentHash, string ChunkHash, byte[] PreservedChunkBytes, IReadOnlyDictionary<string, string> Metadata);
+    sealed record ArchiveTierTargetChunk(string TargetRelativePath, ContentHash ContentHash, ChunkHash ChunkHash, byte[] PreservedChunkBytes, IReadOnlyDictionary<string, string> Metadata);
 }

@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -9,51 +10,97 @@ public class FileTreeBlobSerializerTests
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static FileTreeBlob MakeBlob(params (string name, FileTreeEntryType type, string hash)[] items) =>
+    private static FileTreeBlob MakeBlob(params (string name, bool isDirectory, string hash)[] items) =>
         new()
         {
-            Entries = items.Select(i => new FileTreeEntry
-            {
-                Name     = i.name,
-                Type     = i.type,
-                Hash     = i.hash,
-                Created  = i.type == FileTreeEntryType.File ? s_created  : null,
-                Modified = i.type == FileTreeEntryType.File ? s_modified : null
-            }).ToList()
+            Entries = BuildEntries(items)
         };
+
+    private static string NormalizeHash(string hash)
+        => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
+
+    private static IReadOnlyList<FileTreeEntry> BuildEntries((string name, bool isDirectory, string hash)[] items)
+    {
+        var entries = new List<FileTreeEntry>(items.Length);
+        entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
+            ? new DirectoryEntry { Name = item.name, FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash)) }
+            : new FileEntry { Name      = item.name, ContentHash  = ContentHash.Parse(NormalizeHash(item.hash)), Created = s_created, Modified = s_modified })));
+
+        return entries;
+    }
+
+    [Test]
+    public void Deserialize_InvalidFileHash_Throws()
+    {
+        var text = string.Join(
+            '\n',
+            [
+                $"not-a-hash F {s_created:O} {s_modified:O} broken.txt",
+                $"{new string('a', 64)} F {s_created:O} {s_modified:O} healthy.txt",
+                $"{new string('b', 64)} D photos/"
+            ]);
+
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+    }
+
+    [Test]
+    public void Deserialize_MalformedEntries_Throw()
+    {
+        var text = string.Join(
+            '\n',
+            [
+                $"not-a-hash F garbage broken.txt",
+                $"{new string('c', 64)} D",
+                $"{new string('a', 64)} F {s_created:O} {s_modified:O} healthy.txt",
+                $"{new string('b', 64)} D photos/"
+            ]);
+
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+    }
+
+    [Test]
+    public void Deserialize_EmptyOrWhitespaceFileNames_Throw()
+    {
+        var text = string.Join(
+            '\n',
+            [
+                $"{new string('a', 64)} F {s_created:O} {s_modified:O} ",
+                $"{new string('b', 64)} F {s_created:O} {s_modified:O}    ",
+                $"{new string('c', 64)} F {s_created:O} {s_modified:O} healthy.txt",
+                $"{new string('d', 64)} D photos/"
+            ]);
+
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+    }
 
     [Test]
     public async Task Serialize_ThenDeserialize_RoundTrips()
     {
         var blob = MakeBlob(
-            ("photo.jpg", FileTreeEntryType.File, "a1b2c3d4"),
-            ("subdir/",   FileTreeEntryType.Dir,  "e5f6a7b8"));
+            ("photo.jpg", false, FakeContentHash('a').ToString()),
+            ("subdir/",   true,  FakeFileTreeHash('e').ToString()));
 
         var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
         back.Entries.Count.ShouldBe(2);
 
-        var file = back.Entries.Single(e => e.Name == "photo.jpg");
-        file.Type.ShouldBe(FileTreeEntryType.File);
-        file.Hash.ShouldBe("a1b2c3d4");
-        file.Created.ShouldNotBeNull();
-        file.Modified.ShouldNotBeNull();
+        var file = back.Entries.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
+        file.ContentHash.ShouldBe(FakeContentHash('a'));
+        file.Created.ShouldNotBe(default);
+        file.Modified.ShouldNotBe(default);
 
-        var dir = back.Entries.Single(e => e.Name == "subdir/");
-        dir.Type.ShouldBe(FileTreeEntryType.Dir);
-        dir.Hash.ShouldBe("e5f6a7b8");
-        dir.Created.ShouldBeNull();
-        dir.Modified.ShouldBeNull();
+        var dir = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
+        dir.FileTreeHash.ShouldBe(FakeFileTreeHash('e'));
     }
 
     [Test]
     public async Task Serialize_SortsEntriesByName()
     {
         var blob = MakeBlob(
-            ("z_last.txt",  FileTreeEntryType.File, "hash3"),
-            ("a_first.txt", FileTreeEntryType.File, "hash1"),
-            ("m_mid.txt",   FileTreeEntryType.File, "hash2"));
+            ("z_last.txt",  false, FakeContentHash('3').ToString()),
+            ("a_first.txt", false, FakeContentHash('1').ToString()),
+            ("m_mid.txt",   false, FakeContentHash('2').ToString()));
 
         var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
@@ -66,8 +113,8 @@ public class FileTreeBlobSerializerTests
     [Test]
     public void Serialize_IsDeterministic_SameInputSameOutput()
     {
-        var blob1 = MakeBlob(("b.jpg", FileTreeEntryType.File, "hash2"), ("a.jpg", FileTreeEntryType.File, "hash1"));
-        var blob2 = MakeBlob(("a.jpg", FileTreeEntryType.File, "hash1"), ("b.jpg", FileTreeEntryType.File, "hash2"));
+        var blob1 = MakeBlob(("b.jpg", false, FakeContentHash('2').ToString()), ("a.jpg", false, FakeContentHash('1').ToString()));
+        var blob2 = MakeBlob(("a.jpg", false, FakeContentHash('1').ToString()), ("b.jpg", false, FakeContentHash('2').ToString()));
 
         var bytes1 = FileTreeBlobSerializer.Serialize(blob1);
         var bytes2 = FileTreeBlobSerializer.Serialize(blob2);
@@ -82,8 +129,8 @@ public class FileTreeBlobSerializerTests
         {
             Entries =
             [
-                new FileTreeEntry { Name = "sub/", Type = FileTreeEntryType.Dir,  Hash = "abc", Created = null, Modified = null },
-                new FileTreeEntry { Name = "f.txt", Type = FileTreeEntryType.File, Hash = "def", Created = s_created, Modified = s_modified }
+                new DirectoryEntry { Name = "sub/", FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
+                new FileEntry { Name = "f.txt", ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
             ]
         };
 
@@ -100,7 +147,7 @@ public class FileTreeBlobSerializerTests
     [Test]
     public async Task Serialize_FileEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("my vacation photo.jpg", FileTreeEntryType.File, "abc123"));
+        var blob = MakeBlob(("my vacation photo.jpg", false, FakeContentHash('a').ToString()));
 
         var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
@@ -111,7 +158,7 @@ public class FileTreeBlobSerializerTests
     [Test]
     public async Task Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("2024 trip/", FileTreeEntryType.Dir, "def456"));
+        var blob = MakeBlob(("2024 trip/", true, FakeFileTreeHash('d').ToString()));
 
         var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
@@ -123,13 +170,12 @@ public class FileTreeBlobSerializerTests
     public void ComputeHash_Deterministic_SameInputSameHash()
     {
         var enc  = new PlaintextPassthroughService();
-        var blob = MakeBlob(("file.txt", FileTreeEntryType.File, "deadbeef"));
+        var blob = MakeBlob(("file.txt", false, FakeContentHash('d').ToString()));
 
         var h1 = FileTreeBlobSerializer.ComputeHash(blob, enc);
         var h2 = FileTreeBlobSerializer.ComputeHash(blob, enc);
 
         h1.ShouldBe(h2);
-        h1.Length.ShouldBe(64);
     }
 
     [Test]
@@ -140,11 +186,10 @@ public class FileTreeBlobSerializerTests
         {
             Entries =
             [
-                new FileTreeEntry
+                new FileEntry
                 {
                     Name     = "file.txt",
-                    Type     = FileTreeEntryType.File,
-                    Hash     = "deadbeef",
+                    ContentHash = FakeContentHash('d'),
                     Created  = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
                     Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
                 }
@@ -154,7 +199,7 @@ public class FileTreeBlobSerializerTests
         {
             Entries =
             [
-                blob1.Entries[0] with
+                ((FileEntry)blob1.Entries[0]) with
                 {
                     Modified = new DateTimeOffset(2024, 6, 15, 0, 0, 0, TimeSpan.Zero)
                 }
@@ -170,7 +215,7 @@ public class FileTreeBlobSerializerTests
     [Test]
     public void ComputeHash_WithPassphrase_DifferentFromPlaintext()
     {
-        var blobPlain   = MakeBlob(("file.txt", FileTreeEntryType.File, "abc"));
+        var blobPlain   = MakeBlob(("file.txt", false, FakeContentHash('a').ToString()));
         var plain       = new PlaintextPassthroughService();
         var withPass    = new PassphraseEncryptionService("secret");
 

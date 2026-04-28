@@ -1,6 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
 
@@ -23,7 +24,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
-    private static ManifestEntry MakeEntry(string path, string hash, DateTimeOffset ts) =>
+    private static ManifestEntry MakeEntry(string path, ContentHash hash, DateTimeOffset ts) =>
         new(path, hash, ts, ts);
 
     // ── Upload and download roundtrip ─────────────────────────────────────────
@@ -37,16 +38,17 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("readme.txt", "aabbccdd", now);
+            var entry = MakeEntry("readme.txt", FakeContentHash('a'), now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var builder  = CreateBuilder(blobs, container.Name);
             var rootHash = await builder.BuildAsync(manifestPath);
 
             rootHash.ShouldNotBeNull();
+            var resolvedRootHash = rootHash!.Value;
 
             // Verify the blob exists in blob storage
-            var blobName = BlobPaths.FileTree(rootHash!);
+            var blobName = BlobPaths.FileTree(resolvedRootHash);
             var meta     = await blobs.GetMetadataAsync(blobName);
             meta.Exists.ShouldBeTrue();
 
@@ -56,7 +58,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             treeBlob.Entries.Count.ShouldBe(1);
             treeBlob.Entries[0].Name.ShouldBe("readme.txt");
-            treeBlob.Entries[0].Hash.ShouldBe("aabbccdd");
+            treeBlob.Entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
         }
         finally
         {
@@ -78,7 +80,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("photo.jpg", "deadbeef", now);
+            var entry = MakeEntry("photo.jpg", FakeContentHash('b'), now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var builder1 = CreateBuilder(blobs, container.Name);
@@ -123,9 +125,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var lines = new[]
             {
-                MakeEntry("photos/2024/june/a.jpg", "hash_a", now).Serialize(),
-                MakeEntry("photos/2024/june/b.jpg", "hash_b", now).Serialize(),
-                MakeEntry("docs/report.pdf",         "hash_r", now).Serialize(),
+                MakeEntry("photos/2024/june/a.jpg", FakeContentHash('c'), now).Serialize(),
+                MakeEntry("photos/2024/june/b.jpg", FakeContentHash('d'), now).Serialize(),
+                MakeEntry("docs/report.pdf",        FakeContentHash('e'), now).Serialize(),
             };
             await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
 

@@ -1,6 +1,6 @@
 namespace Arius.Tests.Shared.IO;
 
-internal static class FileSystemHelper
+public static class FileSystemHelper
 {
     public static void CopyDirectory(string sourceRootPath, string targetRootPath)
     {

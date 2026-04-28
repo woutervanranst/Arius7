@@ -7,12 +7,14 @@ namespace Arius.Explorer.Tests.RepositoryExplorer;
 
 public class FileItemViewModelTests
 {
+    private static readonly ContentHash ContentHashA = FakeContentHash('a');
+
     [Test]
     public void Constructor_MapsRepositoryFileStateToPresentationProperties()
     {
         var file = new RepositoryFileEntry(
             RelativePath: "folder/file.txt",
-            ContentHash: "hash",
+            ContentHash: ContentHashA,
             OriginalSize: 123,
             Created: null,
             Modified: null,
@@ -39,7 +41,7 @@ public class FileItemViewModelTests
     {
         var file = new RepositoryFileEntry(
             RelativePath: "file.txt",
-            ContentHash: "hash",
+            ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,
             Modified: null,

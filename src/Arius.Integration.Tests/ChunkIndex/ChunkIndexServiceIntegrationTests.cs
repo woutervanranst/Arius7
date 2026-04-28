@@ -36,7 +36,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task Lookup_NewPrefix_ReturnsEmpty()
     {
         var (svc, _) = await CreateServiceAsync();
-        var hash = "aabbccdd" + new string('0', 56); // 64-char hash
+        var hash = FakeContentHash('0');
 
         var result = await svc.LookupAsync(hash);
 
@@ -54,8 +54,9 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         var svc1 = new ChunkIndexService(blobs, encryption, Account, containerName);
 
-        var contentHash = "aabbccdd" + new string('1', 56);
-        var entry       = new ShardEntry(contentHash, "chunk-hash-001", 1024, 512);
+        var contentHash = FakeContentHash('1');
+        var chunkHash   = FakeChunkHash('a');
+        var entry       = new ShardEntry(contentHash, chunkHash, 1024, 512);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
@@ -64,7 +65,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var result = await svc2.LookupAsync(contentHash);
 
         result.ShouldNotBeNull();
-        result.ChunkHash.ShouldBe("chunk-hash-001");
+        result.ChunkHash.ShouldBe(chunkHash);
     }
 
     // ── Dedup: in-flight set prevents double-counting ─────────────────────────
@@ -73,15 +74,16 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task InFlightEntry_FoundWithoutBlob_ReturnsEntry()
     {
         var (svc, _) = await CreateServiceAsync();
-        var contentHash = "ccddee00" + new string('2', 56);
-        var entry       = new ShardEntry(contentHash, "some-chunk", 500, 200);
+        var contentHash = FakeContentHash('2');
+        var chunkHash   = FakeChunkHash('b');
+        var entry       = new ShardEntry(contentHash, chunkHash, 500, 200);
 
         svc.AddEntry(entry); // goes to in-flight, NOT yet uploaded
 
         var result = await svc.LookupAsync(contentHash);
 
         result.ShouldNotBeNull();
-        result.ChunkHash.ShouldBe("some-chunk");
+        result.ChunkHash.ShouldBe(chunkHash);
     }
 
     // ── Stale L2 file (old encrypted bytes) → cache miss → L3 fallthrough ───────
@@ -95,8 +97,9 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 1: record + flush a real entry so the shard exists in L3
         var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var contentHash = "ddee1122" + new string('3', 56);
-        var entry       = new ShardEntry(contentHash, "stale-test-chunk", 800, 400);
+        var contentHash = FakeContentHash('3');
+        var chunkHash   = FakeChunkHash('c');
+        var entry       = new ShardEntry(contentHash, chunkHash, 800, 400);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
@@ -111,11 +114,11 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // The entry must still be found (came from L3)
         result.ShouldNotBeNull();
-        result.ChunkHash.ShouldBe("stale-test-chunk");
+        result.ChunkHash.ShouldBe(chunkHash);
 
         // And L2 must now be in plaintext format (re-cached by the service)
         File.Exists(l2Path).ShouldBeTrue();
         var text = await File.ReadAllTextAsync(l2Path);
-        text.ShouldContain(contentHash);
+        text.ShouldContain(contentHash.ToString());
     }
 }

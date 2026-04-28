@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -12,10 +13,13 @@ public class FileTreeBlobSerializerStorageTests
     {
         Entries =
         [
-            new FileTreeEntry { Name = "photo.jpg", Type = FileTreeEntryType.File, Hash = "a1b2c3d4", Created = s_created, Modified = s_modified },
-            new FileTreeEntry { Name = "subdir/",   Type = FileTreeEntryType.Dir,  Hash = "e5f6a7b8" }
+            new FileEntry { Name = "photo.jpg", ContentHash = ContentHash.Parse(NormalizeHash("a1b2c3d4")), Created = s_created, Modified = s_modified },
+            new DirectoryEntry { Name = "subdir/", FileTreeHash = FileTreeHash.Parse(NormalizeHash("e5f6a7b8")) }
         ]
     };
+
+    private static string NormalizeHash(string hash)
+        => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
 
     [Test]
     public async Task SerializeForStorage_WithPassphrase_ThenDeserialize_RoundTrips()
@@ -27,17 +31,14 @@ public class FileTreeBlobSerializerStorageTests
         var back   = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
-        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg");
-        var dirEntry = back.Entries.Single(e => e.Name == "subdir/");
+        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
+        var dirEntry = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
 
-        fileEntry.Hash.ShouldBe("a1b2c3d4");
-        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
+        fileEntry.ContentHash.ShouldBe(ContentHash.Parse(NormalizeHash("a1b2c3d4")));
         fileEntry.Created.ShouldBe(s_created);
         fileEntry.Modified.ShouldBe(s_modified);
 
-        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
-        dirEntry.Created.ShouldBeNull();
-        dirEntry.Modified.ShouldBeNull();
+        dirEntry.FileTreeHash.ShouldBe(FileTreeHash.Parse(NormalizeHash("e5f6a7b8")));
     }
 
     [Test]
@@ -50,17 +51,14 @@ public class FileTreeBlobSerializerStorageTests
         var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), enc);
 
         back.Entries.Count.ShouldBe(2);
-        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg");
-        var dirEntry = back.Entries.Single(e => e.Name == "subdir/");
+        var fileEntry = back.Entries.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
+        var dirEntry = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
 
-        fileEntry.Hash.ShouldBe("a1b2c3d4");
-        fileEntry.Type.ShouldBe(FileTreeEntryType.File);
+        fileEntry.ContentHash.ShouldBe(ContentHash.Parse(NormalizeHash("a1b2c3d4")));
         fileEntry.Created.ShouldBe(s_created);
         fileEntry.Modified.ShouldBe(s_modified);
 
-        dirEntry.Type.ShouldBe(FileTreeEntryType.Dir);
-        dirEntry.Created.ShouldBeNull();
-        dirEntry.Modified.ShouldBeNull();
+        dirEntry.FileTreeHash.ShouldBe(FileTreeHash.Parse(NormalizeHash("e5f6a7b8")));
     }
 
     [Test]

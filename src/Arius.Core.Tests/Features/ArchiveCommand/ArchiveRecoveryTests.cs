@@ -1,11 +1,11 @@
+using System.Formats.Tar;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 public class ArchiveRecoveryTests
 {
-    private const string AccountName = "test-account";
-
     [Test]
     [MatrixDataSource]
     public async Task Archive_LargeBlobAlreadyExistsWithMetadata_Rerun_Continues(
@@ -13,10 +13,11 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("large.bin", 2 * 1024 * 1024);
-        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
+        var contentHash = env.Encryption.ComputeHash(content);
+        var chunkHash = ChunkHash.Parse(contentHash);
 
-        await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(contentHash), content, uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(contentHash));
+        await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), content, uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(chunkHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -31,9 +32,9 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("small.txt", 256);
-        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
+        var contentHash = env.Encryption.ComputeHash(content);
 
-        var tarHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
+        var tarHash = ComputeTarHash(env, contentHash, content);
         await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
         env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
 
@@ -48,8 +49,8 @@ public class ArchiveRecoveryTests
     {
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
-        var contentHash = Convert.ToHexString(env.Encryption.ComputeHash(content)).ToLowerInvariant();
-        var blobName = BlobPaths.Chunk(contentHash);
+        var contentHash = env.Encryption.ComputeHash(content);
+        var blobName = BlobPaths.Chunk(ChunkHash.Parse(contentHash));
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         env.Blobs.ClearMetadata(blobName);
@@ -64,4 +65,19 @@ public class ArchiveRecoveryTests
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
+    private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)
+    {
+        using var tarStream = new MemoryStream();
+        using (var writer = new TarWriter(tarStream, leaveOpen: true))
+        {
+            var entry = new PaxTarEntry(TarEntryType.RegularFile, contentHash.ToString())
+            {
+                DataStream = new MemoryStream(content, writable: false)
+            };
+
+            writer.WriteEntry(entry);
+        }
+
+        return ChunkHash.Parse(env.Encryption.ComputeHash(tarStream.ToArray()));
+    }
 }

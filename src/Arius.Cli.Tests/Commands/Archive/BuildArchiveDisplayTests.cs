@@ -174,8 +174,8 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("large.bin", 10_000_000);
-        state.SetFileHashed("large.bin", "lhash");
-        state.SetFileUploading("lhash");
+        state.SetFileHashed("large.bin", FakeContentHash('1'));
+        state.SetFileUploading(FakeContentHash('1'));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("large.bin");
@@ -188,7 +188,7 @@ public class BuildArchiveDisplayTests
         // Hashed state is invisible
         var state = new ProgressState();
         state.AddFile("pending.bin", 1000);
-        state.SetFileHashed("pending.bin", "ph1");
+        state.SetFileHashed("pending.bin", FakeContentHash('2'));
         // State is now Hashed — should not appear
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -200,7 +200,7 @@ public class BuildArchiveDisplayTests
     {
         var state = new ProgressState();
         state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", "done1");
+        state.SetFileHashed("completed.bin", FakeContentHash('3'));
         state.RemoveFile("completed.bin");
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -229,7 +229,7 @@ public class BuildArchiveDisplayTests
         var sealingH = new TarBundleSealingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, "t1", ["h1", "h2", "h3"]),
+            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -246,9 +246,9 @@ public class BuildArchiveDisplayTests
         var uploadingH = new ChunkUploadingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, "t2", ["ha", "hb"]),
+            new TarBundleSealingEvent(2, 200, FakeChunkHash('b'), [FakeContentHash('d'), FakeContentHash('e')]),
             CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent("t2", 200), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('b'), 200), CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         var tarLine = GetLineContaining(output, "TAR #1");

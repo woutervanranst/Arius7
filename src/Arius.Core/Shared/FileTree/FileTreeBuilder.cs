@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -41,7 +42,7 @@ public sealed class FileTreeBuilder
     /// Builds the full Merkle tree from a sorted manifest file and returns the root tree hash.
     /// Returns <c>null</c> if the manifest is empty (nothing to archive).
     /// </summary>
-    public async Task<string?> BuildAsync(
+    public async Task<FileTreeHash?> BuildAsync(
         string            sortedManifestPath,
         CancellationToken cancellationToken = default)
     {
@@ -62,11 +63,10 @@ public sealed class FileTreeBuilder
             if (!dirEntries.TryGetValue(dirPath, out var list))
                 dirEntries[dirPath] = list = new List<FileTreeEntry>();
 
-            list.Add(new FileTreeEntry
+            list.Add(new FileEntry
             {
-                Name     = name,
-                Type     = FileTreeEntryType.File,
-                Hash     = manifestEntry.ContentHash,
+                Name        = name,
+                ContentHash = manifestEntry.ContentHash,
                 Created  = manifestEntry.Created,
                 Modified = manifestEntry.Modified
             });
@@ -95,9 +95,9 @@ public sealed class FileTreeBuilder
             .ToList();
 
         // Map from directory path → its computed tree hash (for cascading to parents)
-        var dirHashMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dirHashMap = new Dictionary<string, FileTreeHash>(StringComparer.Ordinal);
 
-        string? rootHash = null;
+        FileTreeHash? rootHash = null;
 
         foreach (var dirPath in sortedDirs)
         {
@@ -111,13 +111,10 @@ public sealed class FileTreeBuilder
                 if (childParent == dirPath)
                 {
                     var childName = GetLastSegment(childDirPath);
-                    entries.Add(new FileTreeEntry
+                    entries.Add(new DirectoryEntry
                     {
-                        Name     = childName + "/",
-                        Type     = FileTreeEntryType.Dir,
-                        Hash     = childHash,
-                        Created  = null,
-                        Modified = null
+                        Name         = childName + "/",
+                        FileTreeHash = childHash
                     });
                 }
             }
@@ -160,8 +157,8 @@ public sealed class FileTreeBuilder
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
-    private async Task<string> BuildRootBlobAsync(
-        Dictionary<string, string>       dirHashMap,
+    private async Task<FileTreeHash> BuildRootBlobAsync(
+        Dictionary<string, FileTreeHash> dirHashMap,
         Dictionary<string, List<FileTreeEntry>> dirEntries,
         CancellationToken                cancellationToken)
     {
@@ -180,13 +177,10 @@ public sealed class FileTreeBuilder
             if (parentPath == string.Empty)
             {
                 var dirName = GetLastSegment(dirPath);
-                rootEntryList.Add(new FileTreeEntry
+                rootEntryList.Add(new DirectoryEntry
                 {
-                    Name     = dirName + "/",
-                    Type     = FileTreeEntryType.Dir,
-                    Hash     = hash,
-                    Created  = null,
-                    Modified = null
+                    Name         = dirName + "/",
+                    FileTreeHash = hash
                 });
             }
         }
@@ -201,8 +195,8 @@ public sealed class FileTreeBuilder
     /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
     /// </summary>
     private async Task EnsureUploadedAsync(
-        string            treeHash,
-        FileTreeBlob          tree,
+        FileTreeHash      treeHash,
+        FileTreeBlob      tree,
         CancellationToken cancellationToken)
     {
         if (_fileTreeService.ExistsInRemote(treeHash)) return;

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.ChunkIndex;
@@ -42,7 +43,7 @@ public sealed class ChunkIndexService : IDisposable
     /// Content hashes that have been successfully determined as "already uploaded" or
     /// "just queued for upload" during this run, to prevent redundant uploads.
     /// </summary>
-    private readonly ConcurrentDictionary<string, ShardEntry> _inFlight = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<ContentHash, ShardEntry> _inFlight = [];
 
     // ── Pending new entries (collected during run, flushed at end) ────────────
 
@@ -81,12 +82,12 @@ public sealed class ChunkIndexService : IDisposable
     /// that are already known (either from the tiered cache or the in-flight set).
     /// Hashes are grouped by shard prefix to amortize shard downloads.
     /// </summary>
-    public async Task<IReadOnlyDictionary<string, ShardEntry>> LookupAsync(IEnumerable<string> contentHashes, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default)
     {
-        var result = new Dictionary<string, ShardEntry>(StringComparer.Ordinal);
+        var result = new Dictionary<ContentHash, ShardEntry>();
 
         // First pass: check in-flight set (no I/O)
-        var remaining = new List<string>();
+        var remaining = new List<ContentHash>();
         foreach (var hash in contentHashes)
         {
             if (_inFlight.TryGetValue(hash, out var entry))
@@ -113,7 +114,7 @@ public sealed class ChunkIndexService : IDisposable
         return result;
     }
 
-    public async Task<ShardEntry?> LookupAsync(string contentHash, CancellationToken cancellationToken = default)
+    public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         var results = await LookupAsync([contentHash], cancellationToken);
         return results.GetValueOrDefault(contentHash);

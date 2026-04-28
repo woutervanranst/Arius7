@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -137,12 +138,16 @@ internal static class ArchiveVerb
                         return new Progress<long>();
                     },
 
-                    CreateUploadProgress = (contentHash, size) =>
+                    CreateUploadProgress = (chunkHash, size) =>
                     {
-                        if (progressState.ContentHashToPath.TryGetValue(contentHash, out var paths))
+                        // Large-file uploads arrive keyed by ChunkHash, but those chunk hashes are
+                        // identical to the original content hash, so we can bridge back to the
+                        // per-file rows that remain visible in the CLI.
+                        var largeFileContentHash = ContentHash.Parse(chunkHash);
+                        if (progressState.ContentHashToPath.TryGetValue(largeFileContentHash, out var paths))
                         {
                             var files = paths
-                                .Select(p => progressState.TrackedFiles.TryGetValue(p, out var f) ? f : null)
+                                .Select(p => progressState.TrackedFiles.GetValueOrDefault(p))
                                 .Where(f => f != null)
                                 .ToList();
                             if (files.Count > 0)
@@ -152,11 +157,14 @@ internal static class ArchiveVerb
                             }
                         }
 
-                        var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == contentHash);
+                        // Small files were already collapsed into a TAR row when they were added to
+                        // the bundle, so any remaining ChunkHash-targeted upload progress belongs to
+                        // the tar bundle display row.
+                        var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == chunkHash);
                         if (tar != null)
                         {
                             tar.SetBytesUploaded(0);
-                            return new Progress<long>(bytes => tar.SetBytesUploaded(bytes));
+                            return new Progress<long>(tar.SetBytesUploaded);
                         }
 
                         return new Progress<long>();

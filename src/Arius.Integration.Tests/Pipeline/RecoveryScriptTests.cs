@@ -271,8 +271,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
             // Verify both files are in the tar (by content-hash lookup)
             var enc   = new PassphraseEncryptionService(Passphrase);
-            var hash1 = Convert.ToHexString(enc.ComputeHash(c1)).ToLowerInvariant();
-            var hash2 = Convert.ToHexString(enc.ComputeHash(c2)).ToLowerInvariant();
+            var hash1 = enc.ComputeHash(c1).ToString();
+            var hash2 = enc.ComputeHash(c2).ToString();
 
             extracted.ShouldContainKey(hash1);
             extracted.ShouldContainKey(hash2);
@@ -354,8 +354,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
             // Verify both files are in the tar (by content-hash lookup)
             var enc   = new PassphraseEncryptionService(Passphrase);
-            var hash1 = Convert.ToHexString(enc.ComputeHash(c1)).ToLowerInvariant();
-            var hash2 = Convert.ToHexString(enc.ComputeHash(c2)).ToLowerInvariant();
+            var hash1 = enc.ComputeHash(c1).ToString();
+            var hash2 = enc.ComputeHash(c2).ToString();
 
             extracted.ShouldContainKey(hash1);
             extracted.ShouldContainKey(hash2);

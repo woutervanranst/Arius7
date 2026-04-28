@@ -9,30 +9,44 @@ public class ShardSerializerLocalTests
     public void SerializeLocal_ThenDeserializeLocal_RoundTrips()
     {
         var shard = new Shard().Merge([
-            new ShardEntry("aabbcc00", "ddeeff11", 512, 256),
-            new ShardEntry("11223344", "55667788", 100, 40)
+            new ShardEntry(
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
+                512,
+                256),
+            new ShardEntry(
+                FakeContentHash('c'),
+                FakeChunkHash('d'),
+                100,
+                40)
         ]);
 
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
 
-        loaded.TryLookup("aabbcc00", out var e1).ShouldBeTrue();
+        loaded.TryLookup(FakeContentHash('a'), out var e1).ShouldBeTrue();
         e1!.OriginalSize.ShouldBe(512);
 
-        loaded.TryLookup("11223344", out var e2).ShouldBeTrue();
+        loaded.TryLookup(FakeContentHash('c'), out var e2).ShouldBeTrue();
         e2!.CompressedSize.ShouldBe(40);
     }
 
     [Test]
     public void SerializeLocal_ProducesHumanReadableText()
     {
-        var shard = new Shard().Merge([new ShardEntry("aabbcc00", "ddeeff11", 512, 256)]);
+        var shard = new Shard().Merge([
+            new ShardEntry(
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
+                512,
+                256)
+        ]);
 
         var bytes = ShardSerializer.SerializeLocal(shard);
         var text  = System.Text.Encoding.UTF8.GetString(bytes);
 
-        text.ShouldContain("aabbcc00");
-        text.ShouldContain("ddeeff11");
+        text.ShouldContain(new string('a', 64));
+        text.ShouldContain(new string('b', 64));
         text.ShouldContain("512");
         text.ShouldContain("256");
     }
@@ -41,11 +55,17 @@ public class ShardSerializerLocalTests
     public void SerializeLocal_IsNotEncryptedOrCompressed()
     {
         var encSvc = new PassphraseEncryptionService("my-passphrase");
-        var shard  = new Shard().Merge([new ShardEntry("aabbcc00", "ddeeff11", 512, 256)]);
+        var shard  = new Shard().Merge([
+            new ShardEntry(
+                FakeContentHash('a'),
+                FakeChunkHash('b'),
+                512,
+                256)
+        ]);
 
         var localBytes = ShardSerializer.SerializeLocal(shard);
 
-        var salted = System.Text.Encoding.ASCII.GetBytes("Salted__");
+        var salted = "Salted__"u8.ToArray();
         localBytes.Take(8).ShouldNotBe(salted);
         localBytes[0].ShouldNotBe((byte)0x1f);
     }

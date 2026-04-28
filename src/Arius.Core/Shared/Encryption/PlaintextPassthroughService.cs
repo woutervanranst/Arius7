@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.Encryption;
 
@@ -29,16 +31,32 @@ public sealed class PlaintextPassthroughService : IEncryptionService
     }
 
     /// <inheritdoc/>
-    public byte[] ComputeHash(byte[] data)
+    public ContentHash ComputeHash(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        return SHA256.HashData(data);
+        return ContentHash.FromDigest(SHA256.HashData(data));
     }
 
     /// <inheritdoc/>
-    public async Task<byte[]> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default)
+    public async Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(data);
-        return await SHA256.HashDataAsync(data, cancellationToken);
+        return ContentHash.FromDigest(await SHA256.HashDataAsync(data, cancellationToken));
+    }
+
+    /// <inheritdoc/>
+    public async Task<ContentHash> ComputeHashAsync(
+        string filePath,
+        IProgress<long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(filePath);
+
+        await using var file = File.OpenRead(filePath);
+        if (progress is null)
+            return await ComputeHashAsync(file, cancellationToken);
+
+        await using var progressStream = new ProgressStream(file, progress);
+        return await ComputeHashAsync(progressStream, cancellationToken);
     }
 }

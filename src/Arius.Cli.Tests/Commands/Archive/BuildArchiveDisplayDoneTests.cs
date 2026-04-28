@@ -14,7 +14,7 @@ public class BuildArchiveDisplayDoneTests
     {
         var state = new ProgressState();
         state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", "done1");
+        state.SetFileHashed("completed.bin", FakeContentHash('d'));
         state.RemoveFile("completed.bin");
 
         var writer  = new StringWriter();

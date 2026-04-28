@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -78,7 +79,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             default);
     }
 
-    public ShardEntry? Lookup(string contentHash)
+    public ShardEntry? Lookup(ContentHash contentHash)
         => _index.LookupAsync(contentHash).GetAwaiter().GetResult();
 
     public void Dispose()

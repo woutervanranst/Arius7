@@ -1,10 +1,11 @@
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -155,6 +156,85 @@ public class RestoreCommandHandlerTests
                 System.Diagnostics.Debug.WriteLine(ex);
             }
         }
+    }
+
+    [Test]
+    public async Task Handle_InvalidSnapshotContentHash_FailsRestore()
+    {
+        var blobs = new FakeSeededBlobContainerService();
+        var encryption = new PlaintextPassthroughService();
+        var mediator = Substitute.For<IMediator>();
+        var accountName = $"acct-restore-invalid-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-invalid-{Guid.NewGuid():N}";
+        var restoreRoot = Path.Combine(Path.GetTempPath(), $"arius-restore-invalid-{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(restoreRoot);
+
+        try
+        {
+            using var index = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var snapshotSvc = new SnapshotService(blobs, encryption, accountName, containerName);
+
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8.ToArray()).ToString());
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp = DateTimeOffset.UtcNow,
+                RootHash = rootHash,
+                FileCount = 2,
+                TotalSize = 2,
+                AriusVersion = "test"
+            };
+
+            var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8.ToArray()).ToString());
+            var chunkHash = ChunkHash.Parse(validHash);
+            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7));
+
+            var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes(
+                $"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
+            blobs.AddBlob(BlobPaths.FileTree(rootHash),                 await CompressAsync(invalidTreePayload));
+            blobs.AddBlob(BlobPaths.Chunk(chunkHash),                   await CompressAsync("healthy"u8.ToArray()));
+            blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+
+            var handler = new RestoreCommandHandler(
+                encryption,
+                index,
+                new ChunkStorageService(blobs, encryption),
+                fileTreeService,
+                snapshotSvc,
+                mediator,
+                new FakeLogger<RestoreCommandHandler>(),
+                accountName,
+                containerName);
+
+            var result = await handler.Handle(
+                new RestoreCommandMessage(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }),
+                CancellationToken.None);
+
+            result.Success.ShouldBeFalse();
+            result.FilesRestored.ShouldBe(0);
+            result.FilesSkipped.ShouldBe(0);
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("not-a-hash");
+            File.Exists(Path.Combine(restoreRoot, "broken.txt")).ShouldBeFalse();
+            File.Exists(Path.Combine(restoreRoot, "healthy.txt")).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(restoreRoot))
+                Directory.Delete(restoreRoot, recursive: true);
+        }
+    }
+
+    private static async Task<byte[]> CompressAsync(byte[] plaintext)
+    {
+        using var output = new MemoryStream();
+        await using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzip.WriteAsync(plaintext);
+        }
+
+        return output.ToArray();
     }
 
 }

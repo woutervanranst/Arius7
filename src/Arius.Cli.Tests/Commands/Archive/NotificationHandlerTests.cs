@@ -70,12 +70,12 @@ public class NotificationHandlerTests
         var hashedH  = new FileHashedHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("a.bin", 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("a.bin", "abc123"), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("a.bin", FakeContentHash('a')), CancellationToken.None);
 
         state.FilesHashed.ShouldBe(1L);
-        state.TrackedFiles["a.bin"].ContentHash.ShouldBe("abc123");
+        state.TrackedFiles["a.bin"].ContentHash.ShouldBe(FakeContentHash('a'));
         state.TrackedFiles["a.bin"].State.ShouldBe(FileState.Hashed);
-        state.ContentHashToPath["abc123"].ShouldContain("a.bin");
+        state.ContentHashToPath[FakeContentHash('a')].ShouldContain("a.bin");
     }
 
     [Test]
@@ -117,9 +117,9 @@ public class NotificationHandlerTests
         var tarEntryH  = new TarEntryAddedHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("small.txt", 500), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("small.txt", "def456"), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("small.txt", FakeContentHash('b')), CancellationToken.None);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
-        await tarEntryH.Handle(new TarEntryAddedEvent("def456", 1, 500), CancellationToken.None);
+        await tarEntryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 1, 500), CancellationToken.None);
 
         state.TrackedFiles.ContainsKey("small.txt").ShouldBeFalse();
         state.TrackedTars[1].FileCount.ShouldBe(1);
@@ -136,9 +136,9 @@ public class NotificationHandlerTests
         var tarEntryH = new TarEntryAddedHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("s.txt", 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("s.txt", "h1"), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("s.txt", FakeContentHash('c')), CancellationToken.None);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
-        await tarEntryH.Handle(new TarEntryAddedEvent("h1", 1, 100), CancellationToken.None);
+        await tarEntryH.Handle(new TarEntryAddedEvent(FakeContentHash('c'), 1, 100), CancellationToken.None);
 
         state.FilesUnique.ShouldBe(1L);
     }
@@ -152,11 +152,11 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, "tar_xyz", ["h1", "h2", "h3"]),
+            new TarBundleSealingEvent(3, 300, FakeChunkHash('d'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
-        state.TrackedTars[1].TarHash.ShouldBe("tar_xyz");
+        state.TrackedTars[1].TarHash.ShouldBe(FakeChunkHash('d'));
         state.TrackedTars[1].TotalBytes.ShouldBe(300L);
     }
 
@@ -169,8 +169,8 @@ public class NotificationHandlerTests
         var uploadingH = new ChunkUploadingHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("large.bin", 1_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("large.bin", "bigfile1"), CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent("bigfile1", 1_000_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("large.bin", FakeContentHash('e')), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('e'), 1_000_000), CancellationToken.None);
 
         state.TrackedFiles["large.bin"].State.ShouldBe(FileState.Uploading);
         state.FilesUnique.ShouldBe(1L);
@@ -186,9 +186,9 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, "tar_hash_1", ["h1", "h2"]),
+            new TarBundleSealingEvent(2, 200, FakeChunkHash('f'), [FakeContentHash('a'), FakeContentHash('b')]),
             CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent("tar_hash_1", 200), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('f'), 200), CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
         state.FilesUnique.ShouldBe(0L);
@@ -204,9 +204,9 @@ public class NotificationHandlerTests
         var uploadedH  = new ChunkUploadedHandler(state);
 
         await hashingH.Handle(new FileHashingEvent("data.bin", 5000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("data.bin", "hash999"), CancellationToken.None);
-        await uploadingH.Handle(new ChunkUploadingEvent("hash999", 5000), CancellationToken.None);
-        await uploadedH.Handle(new ChunkUploadedEvent("hash999", 4000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("data.bin", FakeContentHash('9')), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('9'), 5000), CancellationToken.None);
+        await uploadedH.Handle(new ChunkUploadedEvent(FakeChunkHash('9'), 4000), CancellationToken.None);
 
         state.TrackedFiles.ContainsKey("data.bin").ShouldBeFalse();
         state.ChunksUploaded.ShouldBe(1L);
@@ -223,10 +223,10 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, "tar_abc", ["ha", "hb", "hc"]),
+            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('d'), FakeContentHash('e'), FakeContentHash('f')]),
             CancellationToken.None);
         await uploadedH.Handle(
-            new TarBundleUploadedEvent("tar_abc", 200, 3),
+            new TarBundleUploadedEvent(FakeChunkHash('a'), 200, 3),
             CancellationToken.None);
 
         state.TrackedTars.ContainsKey(1).ShouldBeFalse();
@@ -241,7 +241,7 @@ public class NotificationHandlerTests
         var handler = new SnapshotCreatedHandler(state);
 
         state.SnapshotComplete.ShouldBeFalse();
-        await handler.Handle(new SnapshotCreatedEvent("roothash", DateTimeOffset.UtcNow, 10), CancellationToken.None);
+        await handler.Handle(new SnapshotCreatedEvent(FakeFileTreeHash('b'), DateTimeOffset.UtcNow, 10), CancellationToken.None);
 
         state.SnapshotComplete.ShouldBeTrue();
     }

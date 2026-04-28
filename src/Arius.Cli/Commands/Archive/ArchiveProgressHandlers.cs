@@ -1,4 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Hashes;
 using Mediator;
 
 namespace Arius.Cli.Commands.Archive;
@@ -133,13 +134,18 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
-        if (state.SetFileUploading(notification.ContentHash))
+        // Large-file chunks reuse the original content hash as their chunk hash, so the
+        // CLI can bridge this ChunkHash-keyed event back to per-file rows via ContentHashToPath.
+        var largeFileContentHash = ContentHash.Parse(notification.ChunkHash);
+        if (state.SetFileUploading(largeFileContentHash))
         {
             state.IncrementFilesUnique();
             return ValueTask.CompletedTask;
         }
 
-        var tar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == notification.ContentHash);
+        // Small files have already been collapsed into a single TAR row by TarEntryAddedEvent,
+        // so a remaining ChunkHash here represents the tar bundle upload itself.
+        var tar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == notification.ChunkHash);
         if (tar != null)
             tar.State = TarState.Uploading;
 
@@ -157,7 +163,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
+        if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash), out var paths))
             foreach (var path in paths)
                 state.RemoveFile(path);
         state.IncrementChunksUploaded(notification.CompressedSize);

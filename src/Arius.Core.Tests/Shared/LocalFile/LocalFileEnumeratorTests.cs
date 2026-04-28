@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 
 namespace Arius.Core.Tests.Shared.LocalFile;
@@ -77,7 +78,7 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs.Count.ShouldBe(1);
         pairs[0].BinaryExists.ShouldBeFalse();
         pairs[0].PointerExists.ShouldBeTrue();
-        pairs[0].PointerHash.ShouldBe(hash);
+        pairs[0].PointerHash.ShouldBe(ContentHash.Parse(hash));
         pairs[0].FileSize.ShouldBeNull();
     }
 
@@ -109,7 +110,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.Count.ShouldBe(1);
         pairs[0].BinaryExists.ShouldBeTrue();
-        pairs[0].PointerHash.ShouldBe(oldHash);
+        pairs[0].PointerHash.ShouldBe(ContentHash.Parse(oldHash));
     }
 
     // ── Multiple files in nested directories ──────────────────────────────────

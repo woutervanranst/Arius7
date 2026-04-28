@@ -19,16 +19,16 @@ public class ChunkUploadingHandlerDualLookupTests
         var uploadingH = new ChunkUploadingHandler(state);
         var competingTar = new TrackedTar(1, state.TarTargetSize)
         {
-            TarHash = "largehash",
+            TarHash = FakeChunkHash('a'),
             TotalBytes = 10_000_000,
             State = TarState.Sealing,
         };
         state.TrackedTars.TryAdd(competingTar.BundleNumber, competingTar);
 
         await hashingH.Handle(new FileHashingEvent("big.bin", 10_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("big.bin", "largehash"), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent("big.bin", FakeContentHash('a')), CancellationToken.None);
 
-        await uploadingH.Handle(new ChunkUploadingEvent("largehash", 10_000_000), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('a'), 10_000_000), CancellationToken.None);
 
         state.TrackedFiles["big.bin"].State.ShouldBe(FileState.Uploading);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
@@ -45,10 +45,10 @@ public class ChunkUploadingHandlerDualLookupTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(1, 100, "tarhash99", ["h1"]),
+            new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('b')]),
             CancellationToken.None);
 
-        await uploadingH.Handle(new ChunkUploadingEvent("tarhash99", 100), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('b'), 100), CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Uploading);
         state.FilesUnique.ShouldBe(0L);  // TAR path does NOT increment FilesUnique

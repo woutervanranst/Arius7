@@ -1,6 +1,9 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.Encryption;
 
@@ -88,29 +91,52 @@ public sealed class PassphraseEncryptionService : IEncryptionService
     }
 
     /// <inheritdoc/>
-    public byte[] ComputeHash(byte[] data)
+    public ContentHash ComputeHash(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        // SHA256(passphrase_bytes + data_bytes) — literal concat, not HMAC
-        var input = new byte[_passphraseBytes.Length + data.Length];
-        _passphraseBytes.CopyTo(input, 0);
-        data.CopyTo(input, _passphraseBytes.Length);
-        return SHA256.HashData(input);
+        // SHA256(passphrase_bytes + data_bytes) — literal concat, not HMAC.
+        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        sha.AppendData(_passphraseBytes);
+        sha.AppendData(data);
+        return ContentHash.FromDigest(sha.GetHashAndReset());
     }
 
     /// <inheritdoc/>
-    public async Task<byte[]> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default)
+    public async Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(data);
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha.AppendData(_passphraseBytes);
 
-        var buffer = new byte[81920];
-        int read;
-        while ((read = await data.ReadAsync(buffer, cancellationToken)) > 0)
-            sha.AppendData(buffer, 0, read);
+        var buffer = ArrayPool<byte>.Shared.Rent(81920);
+        try
+        {
+            int read;
+            while ((read = await data.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                sha.AppendData(buffer, 0, read);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
 
-        return sha.GetHashAndReset();
+        return ContentHash.FromDigest(sha.GetHashAndReset());
+    }
+
+    /// <inheritdoc/>
+    public async Task<ContentHash> ComputeHashAsync(
+        string filePath,
+        IProgress<long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(filePath);
+
+        await using var file = File.OpenRead(filePath);
+        if (progress is null)
+            return await ComputeHashAsync(file, cancellationToken);
+
+        await using var progressStream = new ProgressStream(file, progress);
+        return await ComputeHashAsync(progressStream, cancellationToken);
     }
 
     // ── Nonce derivation helper ──────────────────────────────────────────────────

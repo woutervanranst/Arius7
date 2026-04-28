@@ -89,13 +89,12 @@ Specialist agents
 
 ## Way of Working
 
-- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement.
+- Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
   - Unit test projects: Arius.Core.Tests / Arius.AzureBlob.Tests / Arius.Cli.Tests / Arius.Architecture.Tests / Arius.Explorer.Tests (skip this on non-Windows since it is Windows-only)
   - Integration tests: Arius.Integration.Tests
   - Slow (~ minutes) behavioral test to be run sparingly (eg. at the end of a PR or when making a big refactor) Arius.E2E.Tests
-- When the tests pass, make a conventional git commit.
 
 ## Session Rules
 
@@ -173,6 +172,16 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
 
 - Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
+
+## Hash type guidance
+
+- Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, and `FileTreeHash`.
+- Do not collapse those types into one generic hash abstraction and do not use inheritance between them.
+- Keep persisted and wire formats as canonical lowercase hex strings.
+- Use typed hashes inside the domain and as dictionary/set keys when hash identity is the key.
+- Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
+- Do not add implicit conversions between hash types or between hash types and `string`.
+- Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
 
 ## Architecture
 

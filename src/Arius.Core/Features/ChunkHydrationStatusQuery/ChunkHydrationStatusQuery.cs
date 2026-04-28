@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Hashes;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
@@ -10,7 +11,7 @@ namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 
 public sealed record ChunkHydrationStatusQuery(IReadOnlyList<RepositoryFileEntry> Files) : IStreamQuery<ChunkHydrationStatusResult>;
 
-public sealed record ChunkHydrationStatusResult(string RelativePath, string? ContentHash, ChunkHydrationStatus Status);
+public sealed record ChunkHydrationStatusResult(string RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
 
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
@@ -34,7 +35,8 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cloudFiles = query.Files
-            .Where(file => file.ExistsInCloud && !string.IsNullOrWhiteSpace(file.ContentHash))
+            .Where(file => file.ExistsInCloud && file.ContentHash is not null)
+            .Select(file => (File: file, ContentHash: file.ContentHash!.Value))
             .ToList();
 
         if (cloudFiles.Count == 0)
@@ -43,16 +45,16 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         }
 
         var indexEntries = await _chunkIndex.LookupAsync(
-            cloudFiles.Select(file => file.ContentHash!).Distinct(StringComparer.Ordinal),
+            cloudFiles.Select(file => file.ContentHash).Distinct(),
             cancellationToken).ConfigureAwait(false);
 
-        var statusByChunkHash = new Dictionary<string, ChunkHydrationStatus>(StringComparer.Ordinal);
+        var statusByChunkHash = new Dictionary<ChunkHash, ChunkHydrationStatus>();
 
-        foreach (var file in cloudFiles)
+        foreach (var (file, contentHash) in cloudFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!indexEntries.TryGetValue(file.ContentHash!, out var entry))
+            if (!indexEntries.TryGetValue(contentHash, out var entry))
             {
                 _logger.LogWarning("Content hash not found in chunk index while resolving hydration status: {ContentHash}", file.ContentHash);
                 yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, ChunkHydrationStatus.Unknown);

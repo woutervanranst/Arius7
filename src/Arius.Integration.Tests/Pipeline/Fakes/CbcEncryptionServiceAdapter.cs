@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Integration.Tests.Pipeline.Fakes;
 
@@ -20,8 +21,11 @@ internal sealed class CbcEncryptionServiceAdapter(string passphrase) : IEncrypti
     /// <summary>Auto-detects magic bytes — handles both CBC and GCM on read.</summary>
     public Stream WrapForDecryption(Stream inner) => _inner.WrapForDecryption(inner);
 
-    public byte[] ComputeHash(byte[] data) => _inner.ComputeHash(data);
+    public ContentHash ComputeHash(byte[] data) => _inner.ComputeHash(data);
 
-    public Task<byte[]> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
+    public Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
         _inner.ComputeHashAsync(data, ct);
+
+    public Task<ContentHash> ComputeHashAsync(string filePath, IProgress<long>? progress = null, CancellationToken ct = default) =>
+        _inner.ComputeHashAsync(filePath, progress, ct);
 }

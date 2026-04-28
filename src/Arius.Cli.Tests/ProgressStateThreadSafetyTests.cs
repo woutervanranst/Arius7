@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Cli.Tests;
 
 /// <summary>
@@ -17,7 +19,7 @@ public class ProgressStateThreadSafetyTests
             (i, _) =>
             {
                 var path = $"file{i}.bin";
-                var hash = $"hash{i:x8}";
+                var hash = ContentHash.Parse(i.ToString("x64"));
                 state.AddFile(path, i * 1024L);
                 state.SetFileHashed(path, hash);
                 state.RemoveFile(path);
@@ -43,7 +45,7 @@ public class ProgressStateThreadSafetyTests
             new ParallelOptions { MaxDegreeOfParallelism = 8 },
             (i, _) =>
             {
-                state.SetFileHashed($"file{i}", $"hash{i:x8}");
+                state.SetFileHashed($"file{i}", ContentHash.Parse(i.ToString("x64")));
                 return ValueTask.CompletedTask;
             });
 

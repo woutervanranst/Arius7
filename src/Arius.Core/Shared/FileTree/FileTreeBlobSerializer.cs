@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -47,10 +48,12 @@ public static class FileTreeBlobSerializer
         {
             foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
             {
-                if (entry.Type == FileTreeEntryType.File)
-                    await writer.WriteLineAsync($"{entry.Hash} F {entry.Created!.Value:O} {entry.Modified!.Value:O} {entry.Name}");
+                if (entry is FileEntry fileEntry)
+                    await writer.WriteLineAsync($"{fileEntry.ContentHash} F {fileEntry.Created:O} {fileEntry.Modified:O} {fileEntry.Name}");
+                else if (entry is DirectoryEntry directoryEntry)
+                    await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
                 else
-                    await writer.WriteLineAsync($"{entry.Hash} D {entry.Name}");
+                    throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
             }
         }
 
@@ -96,23 +99,27 @@ public static class FileTreeBlobSerializer
 
         foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
         {
-            if (entry.Type == FileTreeEntryType.File)
+            if (entry is FileEntry fileEntry)
             {
                 // <hash> F <created> <modified> <name>
-                sb.Append(entry.Hash);
+                sb.Append(fileEntry.ContentHash);
                 sb.Append(" F ");
-                sb.Append(entry.Created!.Value.ToString("O"));
+                sb.Append(fileEntry.Created.ToString("O"));
                 sb.Append(' ');
-                sb.Append(entry.Modified!.Value.ToString("O"));
+                sb.Append(fileEntry.Modified.ToString("O"));
                 sb.Append(' ');
-                sb.AppendLine(entry.Name);
+                sb.AppendLine(fileEntry.Name);
+            }
+            else if (entry is DirectoryEntry directoryEntry)
+            {
+                // <hash> D <name>
+                sb.Append(directoryEntry.FileTreeHash);
+                sb.Append(" D ");
+                sb.AppendLine(directoryEntry.Name);
             }
             else
             {
-                // <hash> D <name>
-                sb.Append(entry.Hash);
-                sb.Append(" D ");
-                sb.AppendLine(entry.Name);
+                throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
             }
         }
 
@@ -160,11 +167,15 @@ public static class FileTreeBlobSerializer
                 var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
 
                 var name = afterCreated[(s2 + 1)..];
+                if (string.IsNullOrWhiteSpace(name))
+                    throw new FormatException($"Invalid file entry (empty name): '{line}'");
 
-                entries.Add(new FileTreeEntry
+                if (!ContentHash.TryParse(hash, out var contentHash))
+                    throw new FormatException($"Invalid file entry (invalid content hash): '{line}'");
+
+                entries.Add(new FileEntry
                 {
-                    Hash     = hash,
-                    Type     = FileTreeEntryType.File,
+                    ContentHash = contentHash,
                     Created  = created,
                     Modified = modified,
                     Name     = name
@@ -172,11 +183,16 @@ public static class FileTreeBlobSerializer
             }
             else if (typeMarker == 'D')
             {
-                entries.Add(new FileTreeEntry
+                if (string.IsNullOrWhiteSpace(afterType))
+                    throw new FormatException($"Invalid directory entry (empty name): '{line}'");
+
+                if (!FileTreeHash.TryParse(hash, out var fileTreeHash))
+                    throw new FormatException($"Invalid directory entry (invalid tree hash): '{line}'");
+
+                entries.Add(new DirectoryEntry
                 {
-                    Hash = hash,
-                    Type = FileTreeEntryType.Dir,
-                    Name = afterType
+                    FileTreeHash = fileTreeHash,
+                    Name         = afterType
                 });
             }
             else
@@ -195,10 +211,9 @@ public static class FileTreeBlobSerializer
     /// the canonical text bytes. With passphrase: SHA256(passphrase + text); without: SHA256(text).
     /// Returns lowercase hex.
     /// </summary>
-    public static string ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
+    public static FileTreeHash ComputeHash(FileTreeBlob tree, IEncryptionService encryption)
     {
         var text = Serialize(tree);
-        var hash = encryption.ComputeHash(text);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        return FileTreeHash.Parse(encryption.ComputeHash(text));
     }
 }

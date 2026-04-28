@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Hashes;
 using Mediator;
 
 namespace Arius.Core.Features.ListQuery;
@@ -49,7 +50,7 @@ public abstract record RepositoryEntry(string RelativePath);
 /// </summary>
 public sealed record RepositoryFileEntry(
     string RelativePath,
-    string? ContentHash,
+    ContentHash? ContentHash,
     long? OriginalSize,
     DateTimeOffset? Created,
     DateTimeOffset? Modified,
@@ -66,7 +67,7 @@ public sealed record RepositoryFileEntry(
 /// </summary>
 public sealed record RepositoryDirectoryEntry(
     string RelativePath,
-    string? TreeHash,
+    FileTreeHash? TreeHash,
     bool ExistsInCloud,
     bool ExistsLocally)
     : RepositoryEntry(RelativePath);

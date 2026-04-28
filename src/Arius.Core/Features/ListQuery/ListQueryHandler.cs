@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -83,7 +84,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     }
 
     private async IAsyncEnumerable<RepositoryEntry> WalkDirectoryAsync(
-        string? treeHash,
+        FileTreeHash? treeHash,
         string? localDir,
         string currentRelativeDirectory,
         string? filter,
@@ -93,9 +94,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         cancellationToken.ThrowIfCancellationRequested();
 
         FileTreeBlob? treeBlob = null;
-        if (treeHash is not null)
+        if (treeHash is { } currentTreeHash)
         {
-            treeBlob = await _fileTreeService.ReadAsync(treeHash, cancellationToken);
+            treeBlob = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken);
         }
 
         var localSnapshot = BuildLocalDirectorySnapshot(localDir, currentRelativeDirectory);
@@ -105,20 +106,20 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         var yieldedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var recursionTargets = new List<RecursionTarget>();
 
-        foreach (var entry in cloudEntries.Where(e => e.Type == FileTreeEntryType.Dir))
+        foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
         {
             var directoryName = NormalizeDirectoryEntryName(entry.Name);
             var relativePath = BuildDirectoryRelativePath(currentRelativeDirectory, directoryName);
             var existsLocally = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
 
             yieldedDirectoryNames.Add(directoryName);
-            yield return new RepositoryDirectoryEntry(relativePath, entry.Hash, ExistsInCloud: true, ExistsLocally: existsLocally);
+            yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
             if (recursive)
             {
                 recursionTargets.Add(new RecursionTarget(
                     RelativeDirectory: CombineRelativePath(currentRelativeDirectory, directoryName),
-                    TreeHash: entry.Hash,
+                    TreeHash: entry.FileTreeHash,
                     LocalDirectory: existsLocally ? localDirectory!.FullPath : null));
             }
         }
@@ -143,7 +144,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         var visibleCloudFiles = cloudEntries
-            .Where(e => e.Type == FileTreeEntryType.File)
+            .OfType<FileEntry>()
             .Select(e => new CloudFileCandidate(e, localSnapshot.Files.GetValueOrDefault(e.Name)))
             .ToList();
 
@@ -154,12 +155,12 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         var hashes = visibleCloudFiles
             .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
-            .Select(candidate => candidate.Entry.Hash)
-            .Distinct(StringComparer.Ordinal)
+            .Select(candidate => candidate.Entry.ContentHash)
+            .Distinct()
             .ToList();
         var sizeLookup = hashes.Count == 0
-            ? new Dictionary<string, ShardEntry>(StringComparer.Ordinal)
-            : new Dictionary<string, ShardEntry>(await _index.LookupAsync(hashes, cancellationToken), StringComparer.Ordinal);
+            ? new Dictionary<ContentHash, ShardEntry>()
+            : new Dictionary<ContentHash, ShardEntry>(await _index.LookupAsync(hashes, cancellationToken));
 
         foreach (var candidate in visibleCloudFiles)
         {
@@ -170,13 +171,13 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var relativePath = CombineRelativePath(currentRelativeDirectory, candidate.Entry.Name);
             var localFile = candidate.LocalFile;
-            var originalSize = sizeLookup.TryGetValue(candidate.Entry.Hash, out var shardEntry)
-                ? shardEntry.OriginalSize
-                : localFile?.FileSize;
+            long? originalSize = localFile?.FileSize;
+            if (sizeLookup.TryGetValue(candidate.Entry.ContentHash, out var shardEntry))
+                originalSize = shardEntry.OriginalSize;
 
             yield return new RepositoryFileEntry(
                 RelativePath: relativePath,
-                ContentHash: candidate.Entry.Hash,
+                ContentHash: candidate.Entry.ContentHash,
                 OriginalSize: originalSize,
                 Created: candidate.Entry.Created,
                 Modified: candidate.Entry.Modified,
@@ -228,8 +229,8 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
     }
 
-    private async Task<(string? TreeHash, string? LocalDirectory, string RelativeDirectory)> ResolveStartingPointAsync(
-        string rootHash,
+    private async Task<(FileTreeHash? TreeHash, string? LocalDirectory, string RelativeDirectory)> ResolveStartingPointAsync(
+        FileTreeHash rootHash,
         string? localRoot,
         string? prefix,
         CancellationToken cancellationToken)
@@ -240,7 +241,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         var segments = prefix.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var currentHash = rootHash;
+        FileTreeHash? currentHash = rootHash;
 
         foreach (var segment in segments)
         {
@@ -249,13 +250,13 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 break;
             }
 
-            var treeBlob = await _fileTreeService.ReadAsync(currentHash, cancellationToken);
+            var treeBlob = await _fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
 
-            var nextDirectory = treeBlob.Entries.FirstOrDefault(e =>
-                e.Type == FileTreeEntryType.Dir
-                && string.Equals(NormalizeDirectoryEntryName(e.Name), segment, StringComparison.OrdinalIgnoreCase));
+            var nextDirectory = treeBlob.Entries
+                .OfType<DirectoryEntry>()
+                .FirstOrDefault(e => string.Equals(NormalizeDirectoryEntryName(e.Name), segment, StringComparison.OrdinalIgnoreCase));
 
-            currentHash = nextDirectory?.Hash;
+            currentHash = nextDirectory?.FileTreeHash;
         }
 
         var localDirectory = localRoot;
@@ -343,18 +344,18 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         return new LocalDirectorySnapshot(directories, files);
     }
 
-    private string? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(string fullPath, string relPath)
     {
         try
         {
             var content = File.ReadAllText(fullPath).Trim();
-            if (content.Length == 0 || !content.All(IsHex))
+            if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
                 return null;
             }
 
-            return content;
+            return hash;
         }
         catch (Exception ex)
         {
@@ -362,9 +363,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             return null;
         }
     }
-
-    private static bool IsHex(char c) =>
-        (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 
     private static string? NormalizePath(string? path)
     {
@@ -390,9 +388,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private static bool MatchesFilter(string fileName, string? filter) =>
         filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);
 
-    private sealed record CloudFileCandidate(FileTreeEntry Entry, LocalFileState? LocalFile);
+    private sealed record CloudFileCandidate(FileEntry Entry, LocalFileState? LocalFile);
 
-    private sealed record RecursionTarget(string RelativeDirectory, string? TreeHash, string? LocalDirectory);
+    private sealed record RecursionTarget(string RelativeDirectory, FileTreeHash? TreeHash, string? LocalDirectory);
 
     private sealed record LocalDirectoryState(string Name, string FullPath);
 
@@ -400,7 +398,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         string Name,
         bool BinaryExists,
         bool PointerExists,
-        string? PointerHash,
+        ContentHash? PointerHash,
         long? FileSize,
         DateTimeOffset? Created,
         DateTimeOffset? Modified);

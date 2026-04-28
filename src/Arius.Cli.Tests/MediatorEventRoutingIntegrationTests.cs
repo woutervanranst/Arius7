@@ -48,13 +48,13 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileScannedEvent("a.bin", 100));
         await mediator.Publish(new ScanCompleteEvent(1, 100));
         await mediator.Publish(new FileHashingEvent("a.bin", 100));
-        await mediator.Publish(new FileHashedEvent("a.bin", "hash1"));
+        await mediator.Publish(new FileHashedEvent("a.bin", FakeContentHash('a')));
         await mediator.Publish(new TarBundleStartedEvent());
-        await mediator.Publish(new TarEntryAddedEvent("hash1", 1, 100));
-        await mediator.Publish(new TarBundleSealingEvent(1, 100, "tar1", ["hash1"]));
-        await mediator.Publish(new ChunkUploadingEvent("tar1", 100));
-        await mediator.Publish(new TarBundleUploadedEvent("tar1", 80, 1));
-        await mediator.Publish(new SnapshotCreatedEvent("root", DateTimeOffset.UtcNow, 1));
+        await mediator.Publish(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100));
+        await mediator.Publish(new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('a')]));
+        await mediator.Publish(new ChunkUploadingEvent(FakeChunkHash('b'), 100));
+        await mediator.Publish(new TarBundleUploadedEvent(FakeChunkHash('b'), 80, 1));
+        await mediator.Publish(new SnapshotCreatedEvent(FakeFileTreeHash('c'), DateTimeOffset.UtcNow, 1));
 
         // Verify ProgressState was updated
         state.FilesScanned.ShouldBe(1L);

@@ -1,5 +1,6 @@
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
@@ -8,14 +9,17 @@ namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceReadTests
 {
+    private static readonly ChunkHash TestChunkHash = ChunkHash.Parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+
     [Test]
     public async Task GetHydrationStatusAsync_ReturnsAvailable_WhenPrimaryChunkIsHot()
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.Chunk("abc")] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
+        var chunkHash = TestChunkHash;
+        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
 
-        var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
+        var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
     }
@@ -24,11 +28,12 @@ public class ChunkStorageServiceReadTests
     public async Task GetHydrationStatusAsync_ReturnsPending_WhenArchiveChunkIsRehydrating()
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.Chunk("abc")] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
-        blobs.Metadata[BlobPaths.ChunkRehydrated("abc")] = new BlobMetadata { Exists = false };
+        var chunkHash = TestChunkHash;
+        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
+        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
 
-        var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
+        var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.RehydrationPending);
     }
@@ -37,11 +42,12 @@ public class ChunkStorageServiceReadTests
     public async Task GetHydrationStatusAsync_ReturnsAvailable_WhenArchiveChunkRehydratedCopyExists()
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.Chunk("abc")] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
-        blobs.Metadata[BlobPaths.ChunkRehydrated("abc")] = new BlobMetadata { Exists = true };
+        var chunkHash = TestChunkHash;
+        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
+        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true };
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
 
-        var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
+        var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
     }
@@ -50,10 +56,11 @@ public class ChunkStorageServiceReadTests
     public async Task GetHydrationStatusAsync_ReturnsMissing_WhenPrimaryChunkDoesNotExist()
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.Chunk("abc")] = new BlobMetadata { Exists = false };
+        var chunkHash = TestChunkHash;
+        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = false };
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
 
-        var status = await service.GetHydrationStatusAsync("abc", CancellationToken.None);
+        var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Unknown);
     }
@@ -61,15 +68,16 @@ public class ChunkStorageServiceReadTests
     [Test]
     public async Task DownloadAsync_UsesRehydratedBlobWhenAvailable_AndReturnsPlaintext()
     {
-        var blobs = new FakeInMemoryBlobContainerService();
+        var blobs      = new FakeInMemoryBlobContainerService();
         var encryption = new PlaintextPassthroughService();
-        var service = new ChunkStorageService(blobs, encryption);
-        var content = System.Text.Encoding.UTF8.GetBytes("hello from rehydrated");
+        var service    = new ChunkStorageService(blobs, encryption);
+        var content    = "hello from rehydrated"u8.ToArray();
+        var chunkHash  = TestChunkHash;
 
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("abc"), content, BlobTier.Cold);
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk("abc"), System.Text.Encoding.UTF8.GetBytes("old"), BlobTier.Archive);
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(chunkHash), content, BlobTier.Cold);
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash),           "old"u8.ToArray(), BlobTier.Archive);
 
-        await using var stream = await service.DownloadAsync("abc", cancellationToken: CancellationToken.None);
+        await using var stream = await service.DownloadAsync(chunkHash, cancellationToken: CancellationToken.None);
         using var reader = new StreamReader(stream);
 
         (await reader.ReadToEndAsync()).ShouldBe("hello from rehydrated");
@@ -80,9 +88,10 @@ public class ChunkStorageServiceReadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk("abc"), System.Text.Encoding.UTF8.GetBytes("hello"), BlobTier.Hot);
+        var chunkHash = TestChunkHash;
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), "hello"u8.ToArray(), BlobTier.Hot);
 
-        var stream = await service.DownloadAsync("abc", cancellationToken: CancellationToken.None);
+        var stream = await service.DownloadAsync(chunkHash, cancellationToken: CancellationToken.None);
         stream.Dispose();
     }
 
@@ -91,11 +100,12 @@ public class ChunkStorageServiceReadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk("abc"), System.Text.Encoding.UTF8.GetBytes("rehydrate"), BlobTier.Archive);
+        var chunkHash = TestChunkHash;
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), "rehydrate"u8.ToArray(), BlobTier.Archive);
 
-        await service.StartRehydrationAsync("abc", RehydratePriority.High, CancellationToken.None);
+        await service.StartRehydrationAsync(chunkHash, RehydratePriority.High, CancellationToken.None);
 
-        var rehydrated = await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated("abc"));
+        var rehydrated = await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(chunkHash));
         rehydrated.Exists.ShouldBeTrue();
         rehydrated.Tier.ShouldBe(BlobTier.Cold);
     }
@@ -105,8 +115,10 @@ public class ChunkStorageServiceReadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("a"), System.Text.Encoding.UTF8.GetBytes("aaa"), BlobTier.Cold);
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated("b"), System.Text.Encoding.UTF8.GetBytes("bbbb"), BlobTier.Cold);
+        var firstChunkHash = FakeChunkHash('a');
+        var secondChunkHash = FakeChunkHash('b');
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(firstChunkHash),  "aaa"u8.ToArray(),  BlobTier.Cold);
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(secondChunkHash), "bbbb"u8.ToArray(), BlobTier.Cold);
 
         await using var plan = await service.PlanRehydratedCleanupAsync(CancellationToken.None);
 
@@ -117,8 +129,8 @@ public class ChunkStorageServiceReadTests
 
         result.DeletedChunkCount.ShouldBe(2);
         result.FreedBytes.ShouldBe(plan.TotalBytes);
-        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated("a"))).Exists.ShouldBeFalse();
-        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated("b"))).Exists.ShouldBeFalse();
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(firstChunkHash))).Exists.ShouldBeFalse();
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(secondChunkHash))).Exists.ShouldBeFalse();
     }
 
     [Test]
