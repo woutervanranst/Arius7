@@ -6,7 +6,7 @@ namespace Arius.Benchmarks;
 
 [MemoryDiagnoser]
 [ThreadingDiagnoser]
-internal class RepresentativeWorkflowBenchmarks
+public class RepresentativeWorkflowBenchmarks
 {
     AzuriteE2EBackendFixture? _backend;
 
