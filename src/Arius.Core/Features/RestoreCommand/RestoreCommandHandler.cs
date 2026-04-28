@@ -656,6 +656,7 @@ public sealed class RestoreCommandHandler
                 }
                 else
                 {
+                    // TODO: investigate Async copy? Ref https://github.com/dotnet/runtime/issues/20697, https://github.com/dotnet/runtime/issues/20695
                     File.Copy(sourcePath!, localPath, overwrite: true);
                 }
 
