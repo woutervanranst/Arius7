@@ -1,4 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
@@ -7,6 +8,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -24,6 +26,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly Action<string>                    _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
+    private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
 
     public RepositoryTestFixture(
         IBlobContainerService blobContainer,
@@ -60,6 +63,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     public IChunkStorageService  ChunkStorage    { get; }
     public FileTreeService       FileTreeService { get; }
     public SnapshotService       Snapshot        { get; }
+    public FakeInMemoryBlobContainerService? InMemoryBlobContainer => BlobContainer as FakeInMemoryBlobContainerService;
     public string                LocalRoot       { get; }
     public string                RestoreRoot     { get; }
     public string                TempRoot        => _tempRoot;
@@ -104,17 +108,42 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
 
         return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot)); }
 
+    public static Task<RepositoryTestFixture> CreateInMemoryAsync(
+        string? accountName = null,
+        string? containerName = null,
+        CancellationToken cancellationToken = default)
+    {
+        var blobContainer = new FakeInMemoryBlobContainerService();
+        return CreateAsync(
+            blobContainer,
+            accountName ?? $"acct-test-{Guid.NewGuid():N}",
+            containerName ?? $"ctr-test-{Guid.NewGuid():N}",
+            new PlaintextPassthroughService(),
+            cancellationToken: cancellationToken);
+    }
+
     public ArchiveCommandHandler CreateArchiveHandler() =>
         new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _archiveLogger, _account, _container);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
         new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _restoreLogger, _account, _container);
 
+    public ListQueryHandler CreateListQueryHandler() =>
+        new(Index, FileTreeService, Snapshot, _listLogger, _account, _container);
+
     public string WriteFile(string relativePath, byte[] content)
     {
         var full = CombineValidatedRelativePath(LocalRoot, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllBytes(full, content);
+        return full;
+    }
+
+    public string WriteFile(string relativePath, byte[] content, DateTime created, DateTime modified)
+    {
+        var full = WriteFile(relativePath, content);
+        File.SetCreationTimeUtc(full, created);
+        File.SetLastWriteTimeUtc(full, modified);
         return full;
     }
 
@@ -141,14 +170,13 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         Index.Dispose();
+        await ResetLocalCacheAsync(_account, _container);
 
         if (Directory.Exists(_tempRoot))
             _deleteTempRoot(_tempRoot);
-
-        return ValueTask.CompletedTask;
     }
 
     private static string CombineValidatedRelativePath(string root, string relativePath)

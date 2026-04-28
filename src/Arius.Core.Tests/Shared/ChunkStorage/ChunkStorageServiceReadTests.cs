@@ -4,6 +4,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
+using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
 

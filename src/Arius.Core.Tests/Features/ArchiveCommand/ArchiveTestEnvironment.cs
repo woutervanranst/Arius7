@@ -7,7 +7,8 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared.Fixtures;
+using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -87,27 +88,6 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         if (Directory.Exists(_rootDirectory))
             Directory.Delete(_rootDirectory, recursive: true);
 
-        var chunkIndexDir = RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName);
-        if (Directory.Exists(chunkIndexDir))
-            TryDeleteDirectory(chunkIndexDir);
-
-        var treeCacheDir = FileTreeService.GetDiskCacheDirectory(AccountName, _containerName);
-        if (Directory.Exists(treeCacheDir))
-            TryDeleteDirectory(treeCacheDir);
-
-        var snapshotCacheDir = SnapshotService.GetDiskCacheDirectory(AccountName, _containerName);
-        if (Directory.Exists(snapshotCacheDir))
-            TryDeleteDirectory(snapshotCacheDir);
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            Directory.Delete(path, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-        }
+        RepositoryTestFixture.ResetLocalCacheAsync(AccountName, _containerName).GetAwaiter().GetResult();
     }
 }
