@@ -36,7 +36,7 @@ public class ProgressCallbackIntegrationTests
         var state = new ProgressState();
         state.AddFile("chunk.bin", 1_000_000);
         state.SetFileHashed("chunk.bin", FakeContentHash('b'));
-        state.SetFileUploading(FakeContentHash('b'));
+        state.SetFileUploading(FakeChunkHash('b'));
 
         IProgress<long>? uploadProgress = null;
         if (state.ContentHashToPath.TryGetValue(FakeContentHash('b'), out var paths))

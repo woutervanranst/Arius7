@@ -21,7 +21,7 @@ public class TrackedFileLargeFilePathTests
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Hashed);
 
         // ChunkUploadingEvent → SetFileUploading (only Hashed files promoted to Uploading)
-        state.SetFileUploading(FakeContentHash('a'));
+        state.SetFileUploading(FakeChunkHash('a'));
         state.TrackedFiles["video.mp4"].State.ShouldBe(FileState.Uploading);
 
         // ChunkUploadedEvent → RemoveFile
@@ -39,7 +39,7 @@ public class TrackedFileLargeFilePathTests
         state.TrackedFiles["pending.txt"].State.ShouldBe(FileState.Hashing);
 
         // No ContentHashToPath entry yet, so SetFileUploading won't find it
-        state.SetFileUploading(FakeContentHash('b'));
+        state.SetFileUploading(FakeChunkHash('b'));
         state.TrackedFiles["pending.txt"].State.ShouldBe(FileState.Hashing);
     }
 }
