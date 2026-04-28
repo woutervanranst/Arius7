@@ -11,8 +11,6 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static string HashFor(string label) => s_enc.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)).ToString();
-
     private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName)
     {
         var index = new ChunkIndexService(blobs, s_enc, accountName, containerName);
@@ -48,7 +46,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await File.WriteAllTextAsync(manifestPath, new ManifestEntry("readme.txt", new string('a', 64), now, now).Serialize() + "\n");
+            await File.WriteAllTextAsync(manifestPath, new ManifestEntry("readme.txt", FakeContentHash('a'), now, now).Serialize() + "\n");
 
             var blobs = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, "acct-typed-root", "cont-typed-root");
@@ -80,7 +78,7 @@ public class FileTreeBuilderTests
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("readme.txt", HashFor("readme"), now, now);
+            var entry = new ManifestEntry("readme.txt", FakeContentHash('b'), now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
@@ -115,9 +113,9 @@ public class FileTreeBuilderTests
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var lines = new[]
             {
-                new ManifestEntry("photos/a.jpg", HashFor("hash1"), now, now).Serialize(),
-                new ManifestEntry("photos/b.jpg", HashFor("hash2"), now, now).Serialize(),
-                new ManifestEntry("docs/r.pdf",   HashFor("hash3"), now, now).Serialize(),
+                new ManifestEntry("photos/a.jpg", FakeContentHash('c'), now, now).Serialize(),
+                new ManifestEntry("photos/b.jpg", FakeContentHash('d'), now, now).Serialize(),
+                new ManifestEntry("docs/r.pdf",   FakeContentHash('e'), now, now).Serialize(),
             };
             var content = string.Join("\n", lines) + "\n";
             await File.WriteAllTextAsync(manifestPath1, content);
@@ -155,9 +153,9 @@ public class FileTreeBuilderTests
             var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var now2  = new DateTimeOffset(2025, 1, 1,  0,  0, 0, TimeSpan.Zero);
             await File.WriteAllTextAsync(manifestPath1,
-                new ManifestEntry("file.txt", HashFor("hash1"), now1, now1).Serialize() + "\n");
+                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now1).Serialize() + "\n");
             await File.WriteAllTextAsync(manifestPath2,
-                new ManifestEntry("file.txt", HashFor("hash1"), now1, now2).Serialize() + "\n");
+                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now2).Serialize() + "\n");
 
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
@@ -182,7 +180,7 @@ public class FileTreeBuilderTests
         try
         {
             var now   = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("file.txt", HashFor("hash1"), now, now);
+            var entry = new ManifestEntry("file.txt", FakeContentHash('1'), now, now);
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();

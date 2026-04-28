@@ -66,7 +66,7 @@ public sealed class FileTreeBuilder
             list.Add(new FileEntry
             {
                 Name        = name,
-                ContentHash = ContentHash.Parse(manifestEntry.ContentHash),
+                ContentHash = manifestEntry.ContentHash,
                 Created  = manifestEntry.Created,
                 Modified = manifestEntry.Modified
             });

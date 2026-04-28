@@ -588,6 +588,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         if (!pair.BinaryExists && manifestPath.EndsWith(".pointer.arius", StringComparison.OrdinalIgnoreCase))
             manifestPath = manifestPath[..^".pointer.arius".Length];
 
-        await writer.AppendAsync(new ManifestEntry(manifestPath, hashed.ContentHash.ToString(), created, modified), ct);
+        await writer.AppendAsync(new ManifestEntry(manifestPath, hashed.ContentHash, created, modified), ct);
     }
 }

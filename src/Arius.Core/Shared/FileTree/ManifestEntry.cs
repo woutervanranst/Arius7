@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
@@ -11,7 +13,7 @@ namespace Arius.Core.Shared.FileTree;
 /// </summary>
 public sealed record ManifestEntry(
     string         Path,
-    string         ContentHash,
+    ContentHash    ContentHash,
     DateTimeOffset Created,
     DateTimeOffset Modified)
 {
@@ -30,7 +32,7 @@ public sealed record ManifestEntry(
 
         return new ManifestEntry(
             Path        : parts[0],
-            ContentHash : parts[1],
+            ContentHash : ContentHash.Parse(parts[1]),
             Created     : DateTimeOffset.Parse(parts[2]),
             Modified    : DateTimeOffset.Parse(parts[3]));
     }

@@ -20,17 +20,17 @@ public class ResolveFileHydrationStatusesHandlerTests
         [Matrix(BlobMetadataKeys.TypeLarge, BlobMetadataKeys.TypeThin, BlobMetadataKeys.TypeTar)] string chunkType,
         [Matrix(HydrationBlobState.NonArchive, HydrationBlobState.Archive, HydrationBlobState.Rehydrating)] HydrationBlobState state)
     {
-        var testCase = StatusCaseFor(state);
-        var key = $"{chunkType}-{state}";
-        var contentHash = ContentHashFor($"content-{key}");
-        var largeChunkHash = chunkType == BlobMetadataKeys.TypeLarge ? ChunkHash.Parse(contentHash) : ChunkHashFor($"large-{key}");
-        var tarChunkHash = chunkType == BlobMetadataKeys.TypeTar ? ChunkHash.Parse(contentHash) : ChunkHashFor($"tar-{key}");
+        var testCase       = StatusCaseFor(state);
+        var key            = $"{chunkType}-{state}";
+        var contentHash    = FakeContentHash('a');
+        var largeChunkHash = chunkType == BlobMetadataKeys.TypeLarge ? ChunkHash.Parse(contentHash) : FakeChunkHash('b');
+        var tarChunkHash   = chunkType == BlobMetadataKeys.TypeTar ? ChunkHash.Parse(contentHash) : FakeChunkHash('c');
         var resolvedChunkHash = chunkType switch
         {
             BlobMetadataKeys.TypeLarge => largeChunkHash,
-            BlobMetadataKeys.TypeThin => tarChunkHash,
-            BlobMetadataKeys.TypeTar => ChunkHash.Parse(contentHash),
-            _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
+            BlobMetadataKeys.TypeThin  => tarChunkHash,
+            BlobMetadataKeys.TypeTar   => ChunkHash.Parse(contentHash),
+            _                          => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
 
         var blobs = new FakeMetadataOnlyBlobContainerService();
@@ -40,9 +40,9 @@ public class ResolveFileHydrationStatusesHandlerTests
         var entry = chunkType switch
         {
             BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
-            BlobMetadataKeys.TypeThin => new ShardEntry(contentHash, tarChunkHash, 100, 25),
-            BlobMetadataKeys.TypeTar => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
-            _ => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
+            BlobMetadataKeys.TypeThin  => new ShardEntry(contentHash, tarChunkHash,                 100, 25),
+            BlobMetadataKeys.TypeTar   => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
+            _                          => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
         index.AddEntry(entry);
 
@@ -67,21 +67,21 @@ public class ResolveFileHydrationStatusesHandlerTests
     [Test]
     public async Task Handle_UsesBackingTarChunkStatus_ForThinFilesEvenWhenThinPointerBlobDiffers()
     {
-        var thinContentHash = ContentHashFor("thin-content-special-case");
-        var tarChunkHash    = ChunkHashFor("tar-chunk-special-case");
-        var tarContentHash  = ContentHashFor("tar-content-special-case");
+        var thinContentHash = FakeContentHash('d');
+        var tarChunkHash    = FakeChunkHash('e');
+        var tarContentHash  = FakeContentHash('f');
 
         var blobs = new FakeMetadataOnlyBlobContainerService();
         blobs.Metadata[BlobPaths.ThinChunk(thinContentHash)] = new BlobMetadata
         {
-            Exists = true,
-            Tier = BlobTier.Hot,
+            Exists   = true,
+            Tier     = BlobTier.Hot,
             Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin }
         };
         blobs.Metadata[BlobPaths.Chunk(tarChunkHash)] = new BlobMetadata
         {
-            Exists = true,
-            Tier = BlobTier.Archive,
+            Exists   = true,
+            Tier     = BlobTier.Archive,
             Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar }
         };
         blobs.Metadata[BlobPaths.ChunkRehydrated(tarChunkHash)] = new BlobMetadata { Exists = false };
@@ -123,8 +123,8 @@ public class ResolveFileHydrationStatusesHandlerTests
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
                     {
-                        Exists = true,
-                        Tier = BlobTier.Hot,
+                        Exists   = true,
+                        Tier     = BlobTier.Hot,
                         Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
                     };
                 }),
@@ -135,8 +135,8 @@ public class ResolveFileHydrationStatusesHandlerTests
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
                     {
-                        Exists = true,
-                        Tier = BlobTier.Archive,
+                        Exists   = true,
+                        Tier     = BlobTier.Archive,
                         Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
                     };
                     blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
@@ -148,20 +148,16 @@ public class ResolveFileHydrationStatusesHandlerTests
                 {
                     blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
                     {
-                        Exists = true,
-                        Tier = BlobTier.Archive,
+                        Exists        = true,
+                        Tier          = BlobTier.Archive,
                         IsRehydrating = true,
-                        Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
+                        Metadata      = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
                     };
                     blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
                 }),
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
         };
     }
-
-    private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
-
-    private static ChunkHash ChunkHashFor(string label) => ChunkHash.Parse(s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label)));
 
     private sealed record HydrationStatusCase(
         string Name,
