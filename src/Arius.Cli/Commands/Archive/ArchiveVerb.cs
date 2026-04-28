@@ -140,7 +140,11 @@ internal static class ArchiveVerb
 
                     CreateUploadProgress = (chunkHash, size) =>
                     {
-                        if (progressState.ContentHashToPath.TryGetValue(ContentHash.Parse(chunkHash), out var paths))
+                        // Large-file uploads arrive keyed by ChunkHash, but those chunk hashes are
+                        // identical to the original content hash, so we can bridge back to the
+                        // per-file rows that remain visible in the CLI.
+                        var largeFileContentHash = ContentHash.Parse(chunkHash);
+                        if (progressState.ContentHashToPath.TryGetValue(largeFileContentHash, out var paths))
                         {
                             var files = paths
                                 .Select(p => progressState.TrackedFiles.GetValueOrDefault(p))
@@ -153,6 +157,9 @@ internal static class ArchiveVerb
                             }
                         }
 
+                        // Small files were already collapsed into a TAR row when they were added to
+                        // the bundle, so any remaining ChunkHash-targeted upload progress belongs to
+                        // the tar bundle display row.
                         var tar = progressState.TrackedTars.Values.FirstOrDefault(t => t.TarHash == chunkHash);
                         if (tar != null)
                         {

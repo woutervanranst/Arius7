@@ -134,12 +134,17 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
-        if (state.SetFileUploading(ContentHash.Parse(notification.ChunkHash)))
+        // Large-file chunks reuse the original content hash as their chunk hash, so the
+        // CLI can bridge this ChunkHash-keyed event back to per-file rows via ContentHashToPath.
+        var largeFileContentHash = ContentHash.Parse(notification.ChunkHash);
+        if (state.SetFileUploading(largeFileContentHash))
         {
             state.IncrementFilesUnique();
             return ValueTask.CompletedTask;
         }
 
+        // Small files have already been collapsed into a single TAR row by TarEntryAddedEvent,
+        // so a remaining ChunkHash here represents the tar bundle upload itself.
         var tar = state.TrackedTars.Values.FirstOrDefault(t => t.TarHash == notification.ChunkHash);
         if (tar != null)
             tar.State = TarState.Uploading;
