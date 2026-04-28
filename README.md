@@ -152,7 +152,7 @@ Run the representative Azurite workflow benchmark with:
 dotnet run -c Release --project src/Arius.Benchmarks
 ```
 
-The benchmark runs the canonical representative workflow three times with BenchmarkDotNet, `MemoryDiagnoser`, and `ThreadingDiagnoser`. Raw BenchmarkDotNet output is written under `src/Arius.Benchmarks/raw/`, and each run appends one pipe-delimited line with a UTC timestamp to `src/Arius.Benchmarks/benchmark-tail.log` for autoresearch-style tailing. Use `--raw-output <path>` and `--tail-log <path>` to override those locations.
+The benchmark runs the canonical representative workflow with BenchmarkDotNet. Raw BenchmarkDotNet output is written under `src/Arius.Benchmarks/raw/`, and each run appends one line to `src/Arius.Benchmarks/benchmark-tail.log` for autoresearch-style tailing.
 
 ## Blob Storage Structure
 
