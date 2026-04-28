@@ -71,7 +71,12 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     public string                AccountName     => _account;
     public string                ContainerName   => _container;
 
-    public static Task<RepositoryTestFixture> CreateAsync(
+    /// <summary>
+    /// Creates a fixture around a caller-provided blob container using normal passphrase encryption.
+    /// Use this for pipeline-style tests that exercise the same encryption path as production while
+    /// still controlling the storage boundary, such as Azurite-backed integration and E2E tests.
+    /// </summary>
+    public static Task<RepositoryTestFixture> CreateWithPassphraseAsync(
         IBlobContainerService blobContainer,
         string accountName,
         string containerName,
@@ -90,7 +95,12 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
     }
 
-    public static Task<RepositoryTestFixture> CreateAsync(
+    /// <summary>
+    /// Creates a fixture around a caller-provided blob container and encryption service.
+    /// Use this when a test must control encryption behavior explicitly, for example legacy-format
+    /// compatibility tests or focused Core tests that seed serialized repository data directly.
+    /// </summary>
+    public static Task<RepositoryTestFixture> CreateWithEncryptionAsync(
         IBlobContainerService blobContainer,
         string accountName,
         string containerName,
@@ -106,15 +116,21 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot)); }
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
+    }
 
+    /// <summary>
+    /// Creates a fast unit-test fixture with in-memory storage and plaintext passthrough encryption.
+    /// Use this for Core tests that need a complete repository service graph without Azurite, real
+    /// Azure behavior, or passphrase encryption semantics.
+    /// </summary>
     public static Task<RepositoryTestFixture> CreateInMemoryAsync(
         string? accountName = null,
         string? containerName = null,
         CancellationToken cancellationToken = default)
     {
         var blobContainer = new FakeInMemoryBlobContainerService();
-        return CreateAsync(
+        return CreateWithEncryptionAsync(
             blobContainer,
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
@@ -193,7 +209,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         return combined;
     }
 
-    static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
+    private static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
     {
         var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
         Directory.CreateDirectory(tempRootBase);

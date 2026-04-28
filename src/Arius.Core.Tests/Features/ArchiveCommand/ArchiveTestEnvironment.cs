@@ -12,19 +12,18 @@ using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using ArchiveCommandMessage = global::Arius.Core.Features.ArchiveCommand.ArchiveCommand;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 internal sealed class ArchiveTestEnvironment : IDisposable
 {
-    private const string AccountName = "test-account";
-    private readonly string _rootDirectory;
-    private readonly string _containerName;
-    private readonly ChunkIndexService _index;
-    private readonly PlaintextPassthroughService _encryption = new();
-    private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly FakeLogger<ArchiveCommandHandler> _logger = new();
+    private const    string                            AccountName = "test-account";
+    private readonly string                            _rootDirectory;
+    private readonly string                            _containerName;
+    private readonly ChunkIndexService                 _index;
+    private readonly PlaintextPassthroughService       _encryption = new();
+    private readonly IMediator                         _mediator   = Substitute.For<IMediator>();
+    private readonly FakeLogger<ArchiveCommandHandler> _logger     = new();
 
     public ArchiveTestEnvironment()
     {
@@ -33,7 +32,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Directory.CreateDirectory(_rootDirectory);
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
-        Blobs = new FakeInMemoryBlobContainerService();
+        Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
 
@@ -57,27 +56,17 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
-        var chunkStorage = new ChunkStorageService(Blobs, _encryption);
-        var snapshotSvc = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler = new ArchiveCommandHandler(
-            Blobs,
-            _encryption,
-            _index,
-            chunkStorage,
-            fileTreeService,
-            snapshotSvc,
-            _mediator,
-            _logger,
-            AccountName,
-            _containerName);
+        var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
+        var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
+        var handler         = new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName);
 
         return await handler.Handle(
-            new ArchiveCommandMessage(new ArchiveCommandOptions
+            new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
             }),
-            default);
+            CancellationToken.None);
     }
 
     public ShardEntry? Lookup(ContentHash contentHash)

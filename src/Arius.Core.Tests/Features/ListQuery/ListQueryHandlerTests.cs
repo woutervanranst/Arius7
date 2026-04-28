@@ -509,7 +509,7 @@ public class ListQueryHandlerTests
     };
 
     private static Task<RepositoryTestFixture> MakeFixture(FakeSeededBlobContainerService blobs, string account, string container) =>
-        RepositoryTestFixture.CreateAsync(blobs, account, container, s_encryption);
+        RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, s_encryption);
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
