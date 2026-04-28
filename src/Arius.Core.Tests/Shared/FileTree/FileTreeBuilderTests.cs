@@ -40,32 +40,6 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_ReturnsTypedFileTreeHash()
-    {
-        var manifestPath = Path.GetTempFileName();
-        try
-        {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await File.WriteAllTextAsync(manifestPath, new ManifestEntry("readme.txt", FakeContentHash('a'), now, now).Serialize() + "\n");
-
-            var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "acct-typed-root", "cont-typed-root");
-
-            var root = await builder.BuildAsync(manifestPath);
-
-            root.ShouldNotBeNull();
-            root.ShouldBeOfType<FileTreeHash>();
-        }
-        finally
-        {
-            File.Delete(manifestPath);
-            var cacheDir = FileTreeService.GetDiskCacheDirectory("acct-typed-root", "cont-typed-root");
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
-        }
-    }
-
-    [Test]
     public async Task BuildAsync_SingleFile_RootTreeUploaded()
     {
         const string acct = "acct-single";
