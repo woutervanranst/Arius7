@@ -69,11 +69,11 @@ public class ListQueryHandlerTests
         directory.RelativePath.ShouldBe("docs/");
         directory.ExistsInCloud.ShouldBeTrue();
         directory.ExistsLocally.ShouldBeFalse();
-        directory.TreeHash.ShouldBe(TreeHashFor("docs").ToString());
+        directory.TreeHash.ShouldBe(TreeHashFor("docs"));
 
         var file = results.OfType<RepositoryFileEntry>().Single();
         file.RelativePath.ShouldBe("readme.txt");
-        file.ContentHash.ShouldBe(ContentHashFor("readme").ToString());
+        file.ContentHash.ShouldBe(ContentHashFor("readme"));
         file.OriginalSize.ShouldBe(123);
         file.Created.ShouldBe(s_created);
         file.Modified.ShouldBe(s_modified);

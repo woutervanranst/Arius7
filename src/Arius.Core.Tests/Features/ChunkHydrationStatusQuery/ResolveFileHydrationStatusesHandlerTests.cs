@@ -53,7 +53,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry($"{chunkType}.bin", contentHash.ToString(), 100, null, null, true, false, null, null)
+            new RepositoryFileEntry($"{chunkType}.bin", contentHash, 100, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -97,8 +97,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry("thin.bin", thinContentHash.ToString(), 50, null, null, true, false, null, null),
-            new RepositoryFileEntry("tar.bin", tarContentHash.ToString(), 75, null, null, true, false, null, null)
+            new RepositoryFileEntry("thin.bin", thinContentHash, 50, null, null, true, false, null, null),
+            new RepositoryFileEntry("tar.bin", tarContentHash, 75, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();

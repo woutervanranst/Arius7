@@ -113,7 +113,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             var existsLocally = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
 
             yieldedDirectoryNames.Add(directoryName);
-            yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash.ToString(), ExistsInCloud: true, ExistsLocally: existsLocally);
+            yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
             if (recursive)
             {
@@ -155,11 +155,8 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         var hashes = visibleCloudFiles
             .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
-            .Select(candidate => candidate.Entry.ContentHash.ToString())
-            .Distinct(StringComparer.Ordinal)
-            .Select(TryParseContentHash)
-            .Where(hash => hash is not null)
-            .Select(hash => hash!.Value)
+            .Select(candidate => candidate.Entry.ContentHash)
+            .Distinct()
             .ToList();
         var sizeLookup = hashes.Count == 0
             ? new Dictionary<ContentHash, ShardEntry>()
@@ -180,7 +177,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             yield return new RepositoryFileEntry(
                 RelativePath: relativePath,
-                ContentHash: candidate.Entry.ContentHash.ToString(),
+                ContentHash: candidate.Entry.ContentHash,
                 OriginalSize: originalSize,
                 Created: candidate.Entry.Created,
                 Modified: candidate.Entry.Modified,
@@ -375,15 +372,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         return path.Replace('\\', '/').Trim('/');
-    }
-
-    private ContentHash? TryParseContentHash(string value)
-    {
-        if (ContentHash.TryParse(value, out var hash))
-            return hash;
-
-        _logger.LogWarning("Invalid content hash encountered while listing repository data: {ContentHash}", value);
-        return null;
     }
 
     private static string? NormalizeLocalRoot(string? path) =>

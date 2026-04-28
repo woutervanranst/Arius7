@@ -11,7 +11,7 @@ namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 
 public sealed record ChunkHydrationStatusQuery(IReadOnlyList<RepositoryFileEntry> Files) : IStreamQuery<ChunkHydrationStatusResult>;
 
-public sealed record ChunkHydrationStatusResult(string RelativePath, string? ContentHash, ChunkHydrationStatus Status);
+public sealed record ChunkHydrationStatusResult(string RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
 
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
@@ -35,7 +35,8 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cloudFiles = query.Files
-            .Where(file => file.ExistsInCloud && !string.IsNullOrWhiteSpace(file.ContentHash))
+            .Where(file => file.ExistsInCloud && file.ContentHash is not null)
+            .Select(file => (File: file, ContentHash: file.ContentHash!.Value))
             .ToList();
 
         if (cloudFiles.Count == 0)
@@ -43,29 +44,13 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
             yield break;
         }
 
-        var filesByContentHash = new List<(RepositoryFileEntry File, ContentHash ContentHash)>();
-        foreach (var file in cloudFiles)
-        {
-            if (!ContentHash.TryParse(file.ContentHash, out var contentHash))
-            {
-                _logger.LogWarning("Invalid content hash encountered while resolving hydration status: {ContentHash} ({Path})", file.ContentHash, file.RelativePath);
-                yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, ChunkHydrationStatus.Unknown);
-                continue;
-            }
-
-            filesByContentHash.Add((file, contentHash));
-        }
-
-        if (filesByContentHash.Count == 0)
-            yield break;
-
         var indexEntries = await _chunkIndex.LookupAsync(
-            filesByContentHash.Select(file => file.ContentHash).Distinct(),
+            cloudFiles.Select(file => file.ContentHash).Distinct(),
             cancellationToken).ConfigureAwait(false);
 
         var statusByChunkHash = new Dictionary<ChunkHash, ChunkHydrationStatus>();
 
-        foreach (var (file, contentHash) in filesByContentHash)
+        foreach (var (file, contentHash) in cloudFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

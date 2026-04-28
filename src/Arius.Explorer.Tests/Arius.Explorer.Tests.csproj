@@ -17,6 +17,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Arius.Explorer\Arius.Explorer.csproj" />
+		<ProjectReference Include="..\Arius.Tests.Shared\Arius.Tests.Shared.csproj" />
 	</ItemGroup>
 
 </Project>
