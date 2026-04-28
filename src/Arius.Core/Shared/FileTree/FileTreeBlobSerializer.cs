@@ -136,79 +136,68 @@ public static class FileTreeBlobSerializer
             if (string.IsNullOrEmpty(line))
                 continue;
 
-            try
+            // All lines: first field = hash, second field = type marker (F or D)
+            // F line: <hash> F <created> <modified> <name...>
+            //         split on first 4 spaces → [hash, F, created, modified, name...]
+            // D line: <hash> D <name...>
+            //         split on first 2 spaces → [hash, D, name...]
+
+            var firstSpace = line.IndexOf(' ');
+            if (firstSpace < 0) throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
+
+            var hash       = line[..firstSpace];
+            var afterHash  = line[(firstSpace + 1)..];
+
+            if (afterHash.Length < 2 || afterHash[1] != ' ')
+                throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
+
+            var typeMarker = afterHash[0];
+            var afterType  = afterHash[2..];
+
+            if (typeMarker == 'F')
             {
-                // All lines: first field = hash, second field = type marker (F or D)
-                // F line: <hash> F <created> <modified> <name...>
-                //         split on first 4 spaces → [hash, F, created, modified, name...]
-                // D line: <hash> D <name...>
-                //         split on first 2 spaces → [hash, D, name...]
+                // <created> <modified> <name...>
+                var s1 = afterType.IndexOf(' ');
+                if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
+                var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
 
-                var firstSpace = line.IndexOf(' ');
-                if (firstSpace < 0) throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
+                var afterCreated = afterType[(s1 + 1)..];
+                var s2           = afterCreated.IndexOf(' ');
+                if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
+                var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
 
-                var hash       = line[..firstSpace];
-                var afterHash  = line[(firstSpace + 1)..];
+                var name = afterCreated[(s2 + 1)..];
+                if (string.IsNullOrWhiteSpace(name))
+                    throw new FormatException($"Invalid file entry (empty name): '{line}'");
 
-                if (afterHash.Length < 2 || afterHash[1] != ' ')
-                    throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
+                if (!ContentHash.TryParse(hash, out var contentHash))
+                    throw new FormatException($"Invalid file entry (invalid content hash): '{line}'");
 
-                var typeMarker = afterHash[0];
-                var afterType  = afterHash[2..];
-
-                if (typeMarker == 'F')
+                entries.Add(new FileEntry
                 {
-                    // <created> <modified> <name...>
-                    var s1 = afterType.IndexOf(' ');
-                    if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
-                    var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
-
-                    var afterCreated = afterType[(s1 + 1)..];
-                    var s2           = afterCreated.IndexOf(' ');
-                    if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
-                    var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
-
-                    var name = afterCreated[(s2 + 1)..];
-
-                    if (string.IsNullOrWhiteSpace(name))
-                    {
-                        continue;
-                    }
-
-                    if (!ContentHash.TryParse(hash, out var contentHash))
-                    {
-                        continue;
-                    }
-
-                    entries.Add(new FileEntry
-                    {
-                        ContentHash = contentHash,
-                        Created  = created,
-                        Modified = modified,
-                        Name     = name
-                    });
-                }
-                else if (typeMarker == 'D')
-                {
-                    if (string.IsNullOrWhiteSpace(afterType) || !FileTreeHash.TryParse(hash, out var fileTreeHash))
-                    {
-                        continue;
-                    }
-
-                    entries.Add(new DirectoryEntry
-                    {
-                        FileTreeHash = fileTreeHash,
-                        Name         = afterType
-                    });
-                }
-                else
-                {
-                    throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
-                }
+                    ContentHash = contentHash,
+                    Created  = created,
+                    Modified = modified,
+                    Name     = name
+                });
             }
-            catch (FormatException)
+            else if (typeMarker == 'D')
             {
-                continue;
+                if (string.IsNullOrWhiteSpace(afterType))
+                    throw new FormatException($"Invalid directory entry (empty name): '{line}'");
+
+                if (!FileTreeHash.TryParse(hash, out var fileTreeHash))
+                    throw new FormatException($"Invalid directory entry (invalid tree hash): '{line}'");
+
+                entries.Add(new DirectoryEntry
+                {
+                    FileTreeHash = fileTreeHash,
+                    Name         = afterType
+                });
+            }
+            else
+            {
+                throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
             }
         }
 

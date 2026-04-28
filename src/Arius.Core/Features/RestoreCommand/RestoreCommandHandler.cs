@@ -630,7 +630,7 @@ public sealed class RestoreCommandHandler
         while ((tarEntry = await tarReader.GetNextEntryAsync(copyData: false, cancellationToken)) is not null)
         {
             if (!ContentHash.TryParse(tarEntry.Name, out var contentHash))
-                continue;
+                throw new FormatException($"Invalid tar entry name '{tarEntry.Name}' in chunk '{chunkHash}'.");
 
             if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip

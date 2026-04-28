@@ -30,7 +30,7 @@ public class FileTreeBlobSerializerTests
     }
 
     [Test]
-    public void Deserialize_SkipsEntriesWithInvalidHashes_AndPreservesValidEntries()
+    public void Deserialize_InvalidFileHash_Throws()
     {
         var text = string.Join(
             '\n',
@@ -40,14 +40,11 @@ public class FileTreeBlobSerializerTests
                 $"{new string('b', 64)} D photos/"
             ]);
 
-        var blob = FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n"));
-
-        blob.Entries.Count.ShouldBe(2);
-        blob.Entries.Select(entry => entry.Name).ShouldBe(["healthy.txt", "photos/"]);
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]
-    public void Deserialize_SkipsMalformedEntries_AndPreservesValidSiblings()
+    public void Deserialize_MalformedEntries_Throw()
     {
         var text = string.Join(
             '\n',
@@ -58,14 +55,11 @@ public class FileTreeBlobSerializerTests
                 $"{new string('b', 64)} D photos/"
             ]);
 
-        var blob = FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n"));
-
-        blob.Entries.Count.ShouldBe(2);
-        blob.Entries.Select(entry => entry.Name).ShouldBe(["healthy.txt", "photos/"]);
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]
-    public void Deserialize_SkipsFileEntriesWithEmptyOrWhitespaceNames_AndPreservesValidSiblings()
+    public void Deserialize_EmptyOrWhitespaceFileNames_Throw()
     {
         var text = string.Join(
             '\n',
@@ -76,10 +70,7 @@ public class FileTreeBlobSerializerTests
                 $"{new string('d', 64)} D photos/"
             ]);
 
-        var blob = FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n"));
-
-        blob.Entries.Count.ShouldBe(2);
-        blob.Entries.Select(entry => entry.Name).ShouldBe(["healthy.txt", "photos/"]);
+        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]

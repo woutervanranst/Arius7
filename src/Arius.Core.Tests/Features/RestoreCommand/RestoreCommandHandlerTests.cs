@@ -159,7 +159,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_InvalidSnapshotContentHash_SkipsFileInsteadOfThrowing()
+    public async Task Handle_InvalidSnapshotContentHash_FailsRestore()
     {
         var blobs = new FakeSeededBlobContainerService();
         var encryption = new PlaintextPassthroughService();
@@ -211,13 +211,13 @@ public class RestoreCommandHandlerTests
                 new RestoreCommandMessage(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }),
                 CancellationToken.None);
 
-            result.Success.ShouldBeTrue();
-            result.FilesRestored.ShouldBe(1);
+            result.Success.ShouldBeFalse();
+            result.FilesRestored.ShouldBe(0);
             result.FilesSkipped.ShouldBe(0);
-            result.ErrorMessage.ShouldBeNull();
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("not-a-hash");
             File.Exists(Path.Combine(restoreRoot, "broken.txt")).ShouldBeFalse();
-            File.Exists(Path.Combine(restoreRoot, "healthy.txt")).ShouldBeTrue();
-            (await File.ReadAllTextAsync(Path.Combine(restoreRoot, "healthy.txt"))).ShouldBe("healthy");
+            File.Exists(Path.Combine(restoreRoot, "healthy.txt")).ShouldBeFalse();
         }
         finally
         {
