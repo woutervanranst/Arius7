@@ -4,25 +4,6 @@ namespace Arius.Benchmarks;
 
 internal static class BenchmarkTailLog
 {
-    static readonly string[] Header =
-    [
-        "ComputerName",
-        "DateTimeUtc",
-        "Git Head",
-        "RepresentativeScaleDivisor",
-        "Iterations",
-        "Mean",
-        "Error",
-        "StdDev",
-        "Gen 0",
-        "Gen 1",
-        "Gen 2",
-        "Allocated",
-        "Completed Work Items",
-        "Lock Contentions",
-        "RawOutputPath",
-    ];
-
     public static void Append(string path, BenchmarkTailLogEntry entry, Summary summary)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -48,11 +29,7 @@ internal static class BenchmarkTailLog
             entry.RawOutputPath,
         };
 
-        var includeHeader = !File.Exists(path) || new FileInfo(path).Length == 0;
         using var writer = new StreamWriter(path, append: true);
-
-        if (includeHeader)
-            writer.WriteLine(ToPipeDelimitedLine(Header));
 
         writer.WriteLine(ToPipeDelimitedLine(lineValues));
     }

@@ -14,7 +14,7 @@ internal sealed record BenchmarkRunOptions(
         var defaultRawOutputRoot = Path.Combine(defaultBenchmarkRoot, "raw");
 
         var rawOutputRoot = defaultRawOutputRoot;
-        var tailLogPath = Path.Combine(defaultBenchmarkRoot, "benchmark-tail.log");
+        var tailLogPath = Path.Combine(defaultBenchmarkRoot, "benchmark-tail.md");
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -74,6 +74,6 @@ internal sealed record BenchmarkRunOptions(
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --raw-output <path>  Folder where per-run raw BenchmarkDotNet output is saved.");
-        Console.WriteLine("  --tail-log <path>    Pipe-delimited benchmark tail log to append to.");
+        Console.WriteLine("  --tail-log <path>    Markdown benchmark tail log to append to.");
     }
 }
