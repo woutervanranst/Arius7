@@ -144,6 +144,16 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
 Live Azure coverage is opt-in and reuses the same canonical representative workflow when credentials are available.
 
+### Benchmarks
+
+Run the representative Azurite workflow benchmark with:
+
+```bash
+dotnet run -c Release --project src/Arius.Benchmarks
+```
+
+The benchmark runs the canonical representative workflow three times with BenchmarkDotNet, `MemoryDiagnoser`, and `ThreadingDiagnoser`. Raw BenchmarkDotNet output is written under `BenchmarkDotNet.Artifacts/representative-workflow/`, and each run appends one pipe-delimited line with a UTC timestamp to `BenchmarkDotNet.Artifacts/representative-workflow/benchmark-tail.log` for autoresearch-style tailing. Use `--raw-output <path>` and `--tail-log <path>` to override those locations.
+
 ## Blob Storage Structure
 
 A single Azure Blob container holds the entire repository. Blobs are organized into

@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Benchmarks/">
+    <Project Path="Arius.Benchmarks/Arius.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Arius.AzureBlob.Tests/Arius.AzureBlob.Tests.csproj" />
     <Project Path="Arius.Architecture.Tests/Arius.Architecture.Tests.csproj" />
