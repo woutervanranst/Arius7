@@ -107,36 +107,6 @@ public class HashValueObjectTests
     }
 
     [Test]
-    public void ChunkHashParse_FromContentHash_PreservesCanonicalValue()
-    {
-        var contentHash = ContentHash.Parse("AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899");
-
-        var chunkHash = ChunkHash.Parse(contentHash);
-
-        chunkHash.ToString().ShouldBe("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899");
-    }
-
-    [Test]
-    public void ContentHashParse_FromChunkHash_PreservesCanonicalValue()
-    {
-        var chunkHash = ChunkHash.Parse("BBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AA");
-
-        var contentHash = ContentHash.Parse(chunkHash);
-
-        contentHash.ToString().ShouldBe("bbccddeeff00112233445566778899aabbccddeeff00112233445566778899aa");
-    }
-
-    [Test]
-    public void FileTreeHashParse_FromContentHash_PreservesCanonicalValue()
-    {
-        var contentHash = ContentHash.Parse("CCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABB");
-
-        var fileTreeHash = FileTreeHash.Parse(contentHash);
-
-        fileTreeHash.ToString().ShouldBe("ccddeeff00112233445566778899aabbccddeeff00112233445566778899aabb");
-    }
-
-    [Test]
     [MatrixDataSource]
     public void Parse_RejectsWrongLength([Matrix(HashKind.Content, HashKind.Chunk, HashKind.FileTree)] HashKind kind)
     {

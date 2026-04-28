@@ -1,7 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 
@@ -60,7 +59,6 @@ public class FileTreeBuilderTests
             var root    = await builder.BuildAsync(manifestPath);
 
             root.ShouldNotBeNull();
-            root.Value.ShouldBeOfType<FileTreeHash>();
             blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
         finally

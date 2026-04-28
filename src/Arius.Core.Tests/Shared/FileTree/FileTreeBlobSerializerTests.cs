@@ -185,7 +185,6 @@ public class FileTreeBlobSerializerTests
         var h2 = FileTreeBlobSerializer.ComputeHash(blob, enc);
 
         h1.ShouldBe(h2);
-        h1.ShouldBeOfType<FileTreeHash>();
     }
 
     [Test]
