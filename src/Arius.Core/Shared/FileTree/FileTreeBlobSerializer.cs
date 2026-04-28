@@ -48,17 +48,12 @@ public static class FileTreeBlobSerializer
         {
             foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
             {
-                switch (entry)
-                {
-                    case FileEntry fileEntry:
-                        await writer.WriteLineAsync($"{fileEntry.ContentHash} F {fileEntry.Created:O} {fileEntry.Modified:O} {fileEntry.Name}");
-                        break;
-                    case DirectoryEntry directoryEntry:
-                        await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
-                }
+                if (entry is FileEntry fileEntry)
+                    await writer.WriteLineAsync($"{fileEntry.ContentHash} F {fileEntry.Created:O} {fileEntry.Modified:O} {fileEntry.Name}");
+                else if (entry is DirectoryEntry directoryEntry)
+                    await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
+                else
+                    throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
             }
         }
 
