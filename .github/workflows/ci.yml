@@ -103,3 +103,42 @@ jobs:
           flags: ${{ matrix.runner }}
           name: coverage-${{ matrix.runner }}
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  benchmark:
+    name: 📊 Representative Benchmark
+    if: ${{ github.event_name == 'push' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: ⚙️ Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 📊 Run representative benchmark
+        run: dotnet run -c Release --project src/Arius.Benchmarks
+
+      - name: 📝 Commit benchmark output
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add src/Arius.Benchmarks/benchmark-tail.log src/Arius.Benchmarks/raw
+
+          if git diff --cached --quiet; then
+            echo "No benchmark output changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: append CI benchmark results"
+          git push

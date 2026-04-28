@@ -92,6 +92,9 @@ StyleCopReport.xml
 *.tmp_proj
 *_wpftmp.csproj
 *.log
+!src/Arius.Benchmarks/benchmark-tail.log
+!src/Arius.Benchmarks/raw/
+!src/Arius.Benchmarks/raw/**
 *.tlog
 *.vspscc
 *.vssscc
