@@ -8,17 +8,13 @@ decision-makers: Wouter Van Ranst, OpenCode
 
 ## Context and Problem Statement
 
-The repository now has a working Stryker.NET setup for mutation testing, but Arius uses TUnit on Microsoft Testing Platform and the current Stryker integration depends on the preview MTP runner. Mutation results also fluctuate between runs enough that they are useful for finding weak tests, but not yet stable enough to act as a hard quality gate.
-
-The question for this ADR is how Arius should adopt mutation testing today so it provides durable value without overcommitting to unstable tooling behavior or broad scope.
+Add mutation testing.
 
 ## Decision Drivers
 
 * mutation testing should help identify weak behavior-level tests in core repository logic
-* Arius uses TUnit on Microsoft Testing Platform, so mutation tooling must work with that test platform reality
 * mutation runs are significantly slower than the normal unit test suite
-* fluctuating mutation scores should not become a noisy CI gate before their stability is understood
-* the repository needs a durable architectural record that supersedes temporary superpowers implementation artifacts
+* fluctuating mutation scores (due to to preview Microsoft Testing Platform runner) should not become a noisy CI gate before their stability is understood
 
 ## Considered Options
 
@@ -34,15 +30,12 @@ The current supported setup is:
 
 * mutation testing targets `src/Arius.Core/Arius.Core.csproj`
 * tests run through `src/Arius.Core.Tests/Arius.Core.Tests.csproj`
-* Stryker uses the preview Microsoft Testing Platform runner via `"test-runner": "mtp"`
 * mutation runs are local/manual for now
 * mutation reports guide targeted test improvements, but score changes are advisory rather than release-gating
 
 ### Consequences
 
 * Good, because Arius can use mutation testing immediately in the core archive, restore, list, snapshot, chunk, and tree behavior that matters most.
-* Good, because the chosen scope keeps runtime and debugging costs bounded while the team learns where mutation testing pays off.
-* Good, because the ADR reflects the repository's real TUnit/MTP setup instead of assuming a standard VSTest-only world.
 * Good, because fluctuating scores are treated as diagnostic evidence instead of falsely precise pass/fail gates.
 * Bad, because mutation testing is not yet a whole-repository signal.
 * Bad, because developers must interpret score movement carefully when the preview MTP runner produces unstable results.
