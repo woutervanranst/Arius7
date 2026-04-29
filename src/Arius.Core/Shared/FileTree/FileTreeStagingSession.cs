@@ -49,10 +49,15 @@ internal sealed class FileTreeStagingSession : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        _lockStream.Dispose();
-
-        if (Directory.Exists(StagingRoot))
-            Directory.Delete(StagingRoot, recursive: true);
+        try
+        {
+            if (Directory.Exists(StagingRoot))
+                Directory.Delete(StagingRoot, recursive: true);
+        }
+        finally
+        {
+            _lockStream.Dispose();
+        }
 
         return ValueTask.CompletedTask;
     }

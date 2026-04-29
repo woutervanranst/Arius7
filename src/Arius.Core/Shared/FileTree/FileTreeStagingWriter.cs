@@ -24,8 +24,9 @@ internal sealed class FileTreeStagingWriter
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var canonicalPath = filePath.Replace('\\', '/');
-        var segments = canonicalPath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        ValidateCanonicalRelativePath(filePath);
+
+        var segments = filePath.Split('/');
         if (segments.Length == 0)
             throw new ArgumentException("File path must include a file name.", nameof(filePath));
 
@@ -40,6 +41,31 @@ internal sealed class FileTreeStagingWriter
             Created = created,
             Modified = modified
         }, cancellationToken);
+
+        static void ValidateCanonicalRelativePath(string path)
+        {
+            if (path.StartsWith('/') || Path.IsPathRooted(path))
+                throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+
+            var segments = path.Split('/');
+            if (segments.Length == 0)
+                throw new ArgumentException("File path must include a file name.", nameof(filePath));
+
+            foreach (var segment in segments)
+            {
+                if (segment.Length == 0)
+                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+
+                if (segment is "." or "..")
+                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+
+                if (segment.Trim() != segment)
+                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+
+                if (segment.Contains('\\'))
+                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+            }
+        }
     }
 
     private async Task AppendEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
