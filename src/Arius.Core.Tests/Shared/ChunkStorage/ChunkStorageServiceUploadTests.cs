@@ -73,6 +73,69 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
+    public async Task UploadTarAsync_StoresTarMetadataWithoutOriginalSize_AndUsesPlaintextTarContentType()
+    {
+        var blobs = new ContentTypeCapturingBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[1536];
+        Random.Shared.NextBytes(content);
+
+        var result = await service.UploadTarAsync(
+            chunkHash: TarChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        result.StoredSize.ShouldBeGreaterThan(0L);
+        blobs.LastOpenWriteContentType.ShouldBe(ContentTypes.TarPlaintext);
+
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk(TarChunkHash));
+        metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeTar);
+        metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
+        metadata.Metadata.ContainsKey(BlobMetadataKeys.OriginalSize).ShouldBeFalse();
+
+        _ = await service.UploadLargeAsync(
+            chunkHash: LargeChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        blobs.OpenWriteContentTypes.ShouldBe([ContentTypes.TarPlaintext, ContentTypes.LargePlaintext]);
+    }
+
+    [Test]
+    public async Task UploadTarAsync_UsesEncryptedTarContentType_WhenEncryptionIsEnabled()
+    {
+        var blobs = new ContentTypeCapturingBlobContainerService();
+        var service = new ChunkStorageService(blobs, new EncryptedPassthroughService());
+        var content = new byte[768];
+        Random.Shared.NextBytes(content);
+
+        _ = await service.UploadTarAsync(
+            chunkHash: TarChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        _ = await service.UploadLargeAsync(
+            chunkHash: LargeChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        blobs.OpenWriteContentTypes.ShouldBe([ContentTypes.TarGcmEncrypted, ContentTypes.LargeGcmEncrypted]);
+    }
+
+    [Test]
     public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -265,6 +328,64 @@ public class ChunkStorageServiceUploadTests
 
         public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
             _inner.DeleteAsync(blobName, cancellationToken);
+    }
+
+    private sealed class ContentTypeCapturingBlobContainerService : IBlobContainerService
+    {
+        private readonly FakeInMemoryBlobContainerService _inner = new();
+        private readonly List<string?> _openWriteContentTypes = [];
+
+        public string? LastOpenWriteContentType { get; private set; }
+        public IReadOnlyList<string?> OpenWriteContentTypes => _openWriteContentTypes;
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
+            _inner.CreateContainerIfNotExistsAsync(cancellationToken);
+
+        public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+            _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default)
+        {
+            LastOpenWriteContentType = contentType;
+            _openWriteContentTypes.Add(contentType);
+            return _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+        }
+
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+            _inner.DownloadAsync(blobName, cancellationToken);
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+            _inner.GetMetadataAsync(blobName, cancellationToken);
+
+        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
+            _inner.ListAsync(prefix, cancellationToken);
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
+            _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
+            _inner.SetTierAsync(blobName, tier, cancellationToken);
+
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
+            _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
+
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
+            _inner.DeleteAsync(blobName, cancellationToken);
+    }
+
+    private sealed class EncryptedPassthroughService : IEncryptionService
+    {
+        public bool IsEncrypted => true;
+
+        public Stream WrapForEncryption(Stream inner) => inner;
+
+        public Stream WrapForDecryption(Stream inner) => inner;
+
+        public ContentHash ComputeHash(byte[] data) => throw new NotSupportedException();
+
+        public Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<ContentHash> ComputeHashAsync(string filePath, IProgress<long>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class ChunkedReadMemoryStream(byte[] buffer, int maxChunkSize) : MemoryStream(buffer, writable: false)
