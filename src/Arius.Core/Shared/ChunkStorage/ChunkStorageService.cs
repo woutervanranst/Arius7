@@ -213,7 +213,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         var progressOrRawStream = progress is null ? downloadStream : new ProgressStream(downloadStream, progress);
         var decryptStream = _encryption.WrapForDecryption(progressOrRawStream);
         var gzipStream = new GZipStream(decryptStream, CompressionMode.Decompress);
-        return new ChunkDownloadStream(gzipStream, decryptStream, progressOrRawStream, downloadStream);
+        return new ChunkDownloadStream(gzipStream);
     }
 
     private async Task<ChunkHydrationStatus> GetHydrationStatusCoreAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
@@ -316,7 +316,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         private readonly Stream _inner;
         private int _disposed;
 
-        public ChunkDownloadStream(Stream inner, Stream decryptStream, Stream progressStream, Stream downloadStream)
+        public ChunkDownloadStream(Stream inner)
         {
             _inner = inner;
         }
