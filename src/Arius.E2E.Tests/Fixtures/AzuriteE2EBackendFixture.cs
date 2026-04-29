@@ -1,4 +1,4 @@
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 using TUnit.Core.Interfaces;
 
 namespace Arius.E2E.Tests.Fixtures;

@@ -1,6 +1,6 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Pipeline;
 
