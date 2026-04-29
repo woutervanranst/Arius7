@@ -35,9 +35,8 @@ public sealed class FileTreeBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
-        var subtreeWorkerBudget = new SemaphoreSlim(Math.Max(SiblingSubtreeWorkers - 1, 0));
-
         return await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
+
 
         async Task<FileTreeHash?> BuildDirectoryAsync(string directoryId, CancellationToken ct)
         {
@@ -53,20 +52,13 @@ public sealed class FileTreeBuilder
                 return null;
 
             var childEntries = new DirectoryEntry?[directoryEntries.Count];
-            var childTasks = new List<Task>(directoryEntries.Count);
-            for (var index = 0; index < directoryEntries.Count; index++)
-            {
-                var directoryEntry = directoryEntries[index];
-                if (await subtreeWorkerBudget.WaitAsync(0, ct))
+            await Parallel.ForEachAsync(
+                directoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
+                new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
+                async (item, ct) =>
                 {
-                    childTasks.Add(BuildChildDirectoryWithLeaseAsync(directoryEntry, index, childEntries, ct));
-                    continue;
-                }
-
-                await BuildChildDirectoryAsync(directoryEntry, index, childEntries, ct);
-            }
-
-            await Task.WhenAll(childTasks);
+                    await BuildChildDirectoryAsync(item.directoryEntry, item.index, childEntries, ct);
+                });
 
             var entries = new List<FileTreeEntry>(fileEntries.Count + childEntries.Length);
             entries.AddRange(fileEntries);
@@ -111,18 +103,6 @@ public sealed class FileTreeBuilder
             }
 
             return links.OrderBy(link => link.Name, StringComparer.Ordinal).ToList();
-        }
-
-        async Task BuildChildDirectoryWithLeaseAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
-        {
-            try
-            {
-                await BuildChildDirectoryAsync(directoryEntry, index, childEntries, ct);
-            }
-            finally
-            {
-                subtreeWorkerBudget.Release();
-            }
         }
 
         async Task BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
