@@ -28,20 +28,11 @@ internal static class FileTreeStagingPaths
                || (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '/');
     }
 
-    public static string GetNodeDirectory(string stagingRoot, string directoryId)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
-        ArgumentException.ThrowIfNullOrEmpty(directoryId);
+    public static string GetNodeDirectory(string stagingRoot, string directoryId) 
+        => Path.Combine(stagingRoot, directoryId);
 
-        return Path.Combine(stagingRoot, directoryId);
-    }
-
-    public static string GetStagingRoot(string fileTreeCacheDirectory)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
-
-        return Path.Combine(fileTreeCacheDirectory, StagingDirectoryName);
-    }
+    public static string GetStagingRoot(string fileTreeCacheDirectory) 
+        => Path.Combine(fileTreeCacheDirectory, StagingDirectoryName);
 
     public static string GetEntriesPath(string stagingRoot, string directoryId)
         => Path.Combine(GetNodeDirectory(stagingRoot, directoryId), EntriesFileName);
@@ -49,10 +40,6 @@ internal static class FileTreeStagingPaths
     public static string GetDirectoriesPath(string stagingRoot, string directoryId)
         => Path.Combine(GetNodeDirectory(stagingRoot, directoryId), DirectoriesFileName);
 
-    public static string GetLockPath(string fileTreeCacheDirectory)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
-
-        return Path.Combine(fileTreeCacheDirectory, LockFileName);
-    }
+    public static string GetLockPath(string fileTreeCacheDirectory) 
+        => Path.Combine(fileTreeCacheDirectory, LockFileName);
 }
