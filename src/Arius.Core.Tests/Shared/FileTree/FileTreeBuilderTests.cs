@@ -10,15 +10,19 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName)
+    private static FileTreeBuilder CreateBuilder(
+        IBlobContainerService blobs,
+        string accountName,
+        string containerName,
+        out FileTreeService fileTreeService)
     {
         var index = new ChunkIndexService(blobs, s_enc, accountName, containerName);
-        var fileTreeService = new FileTreeService(blobs, s_enc, index, accountName, containerName);
+        fileTreeService = new FileTreeService(blobs, s_enc, index, accountName, containerName);
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
     [Test]
-    public async Task BuildAsync_EmptyManifest_ReturnsNull()
+    public async Task SynchronizeAsync_EmptyManifest_ReturnsNull()
     {
         var manifestPath = Path.GetTempFileName();
         try
@@ -26,8 +30,9 @@ public class FileTreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, "");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "account", "container");
-            var root    = await builder.BuildAsync(manifestPath);
+            var builder = CreateBuilder(blobs, "account", "container", out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+            var root    = await builder.SynchronizeAsync(manifestPath);
 
             root.ShouldBeNull();
             blobs.Uploaded.ShouldBeEmpty();
@@ -39,7 +44,7 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_SingleFile_RootTreeUploaded()
+    public async Task SynchronizeAsync_SingleFile_RootTreeUploaded()
     {
         const string acct = "acct-single";
         const string cont = "cont-single";
@@ -55,8 +60,9 @@ public class FileTreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, acct, cont);
-            var root    = await builder.BuildAsync(manifestPath);
+            var builder = CreateBuilder(blobs, acct, cont, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+            var root    = await builder.SynchronizeAsync(manifestPath);
 
             root.ShouldNotBeNull();
             blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -69,7 +75,7 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_IdenticalManifest_SameRootHash()
+    public async Task SynchronizeAsync_IdenticalManifest_SameRootHash()
     {
         const string acct1 = "acc-identical-1", cont1 = "con-identical-1";
         const string acct2 = "acc-identical-2", cont2 = "con-identical-2";
@@ -95,10 +101,12 @@ public class FileTreeBuilderTests
 
             var blobs1   = new FakeRecordingBlobContainerService();
             var blobs2   = new FakeRecordingBlobContainerService();
-            var builder1 = CreateBuilder(blobs1, acct1, cont1);
-            var builder2 = CreateBuilder(blobs2, acct2, cont2);
-            var root1    = await builder1.BuildAsync(manifestPath1);
-            var root2    = await builder2.BuildAsync(manifestPath2);
+            var builder1 = CreateBuilder(blobs1, acct1, cont1, out var fileTreeService1);
+            var builder2 = CreateBuilder(blobs2, acct2, cont2, out var fileTreeService2);
+            await fileTreeService1.ValidateAsync();
+            await fileTreeService2.ValidateAsync();
+            var root1    = await builder1.SynchronizeAsync(manifestPath1);
+            var root2    = await builder2.SynchronizeAsync(manifestPath2);
 
             root1.ShouldBe(root2);
         }
@@ -112,7 +120,7 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_MetadataChange_DifferentRootHash()
+    public async Task SynchronizeAsync_MetadataChange_DifferentRootHash()
     {
         const string acct = "acc-meta", cont = "con-meta";
         var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
@@ -131,9 +139,13 @@ public class FileTreeBuilderTests
 
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
-            var root1  = await CreateBuilder(blobs1, acct, cont).BuildAsync(manifestPath1);
+            var builder1 = CreateBuilder(blobs1, acct, cont, out var fileTreeService1);
+            await fileTreeService1.ValidateAsync();
+            var root1  = await builder1.SynchronizeAsync(manifestPath1);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
-            var root2  = await CreateBuilder(blobs2, acct, cont).BuildAsync(manifestPath2);
+            var builder2 = CreateBuilder(blobs2, acct, cont, out var fileTreeService2);
+            await fileTreeService2.ValidateAsync();
+            var root2  = await builder2.SynchronizeAsync(manifestPath2);
 
             root1.ShouldNotBe(root2);
         }
@@ -146,7 +158,7 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public async Task BuildAsync_DeduplicatesBlob_WhenAlreadyOnDisk()
+    public async Task SynchronizeAsync_DeduplicatesBlob_WhenAlreadyOnDisk()
     {
         var manifestPath = Path.GetTempFileName();
         try
@@ -156,15 +168,17 @@ public class FileTreeBuilderTests
             await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "acc", "con");
+            var builder = CreateBuilder(blobs, "acc", "con", out var fileTreeService1);
+            await fileTreeService1.ValidateAsync();
 
-            var root = await builder.BuildAsync(manifestPath);
+            var root = await builder.SynchronizeAsync(manifestPath);
             var uploadCount1 = blobs.Uploaded.Count;
             uploadCount1.ShouldBeGreaterThan(0);
 
             var blobs2   = new FakeRecordingBlobContainerService();
-            var builder2 = CreateBuilder(blobs2, "acc", "con");
-            var root2    = await builder2.BuildAsync(manifestPath);
+            var builder2 = CreateBuilder(blobs2, "acc", "con", out var fileTreeService2);
+            await fileTreeService2.ValidateAsync();
+            var root2    = await builder2.SynchronizeAsync(manifestPath);
 
             root2.ShouldBe(root);
             blobs2.Uploaded.Count.ShouldBe(0);
@@ -173,6 +187,35 @@ public class FileTreeBuilderTests
         {
             File.Delete(manifestPath);
             var cacheDir = FileTreeService.GetDiskCacheDirectory("acc", "con");
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_WithoutValidation_FailsFastBeforeUpload()
+    {
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            await File.WriteAllTextAsync(
+                manifestPath,
+                new ManifestEntry("file.txt", FakeContentHash('2'), now, now).Serialize() + "\n");
+
+            var blobs = new FakeRecordingBlobContainerService();
+            var builder = CreateBuilder(blobs, "acc-unvalidated", "con-unvalidated", out _);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await builder.SynchronizeAsync(manifestPath));
+
+            ex.Message.ShouldContain("ValidateAsync");
+            blobs.Uploaded.ShouldBeEmpty();
+        }
+        finally
+        {
+            File.Delete(manifestPath);
+            var cacheDir = FileTreeService.GetDiskCacheDirectory("acc-unvalidated", "con-unvalidated");
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }

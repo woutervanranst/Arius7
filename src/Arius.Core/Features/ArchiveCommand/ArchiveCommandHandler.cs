@@ -468,7 +468,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await ManifestSorter.SortAsync(manifestPath, cancellationToken);
 
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
-            var rootHash    = await treeBuilder.BuildAsync(manifestPath, cancellationToken);
+            var rootHash    = await treeBuilder.SynchronizeAsync(manifestPath, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
             FileTreeHash?  snapshotRootHash = null;

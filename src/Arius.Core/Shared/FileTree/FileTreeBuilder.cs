@@ -4,7 +4,7 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
-/// Builds Merkle tree blobs bottom-up from a sorted manifest file.
+/// Synchronizes Merkle tree blobs bottom-up from a sorted manifest file.
 ///
 /// Algorithm (tasks 5.6, 5.7, 5.8, 5.9):
 /// 1. Stream sorted entries. Group by immediate parent directory.
@@ -39,16 +39,14 @@ public sealed class FileTreeBuilder
     // ── Main entry point ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the full Merkle tree from a sorted manifest file and returns the root tree hash.
-    /// Returns <c>null</c> if the manifest is empty (nothing to archive).
+    /// Synchronizes the full Merkle tree from a sorted manifest file, uploading any missing
+    /// filetree blobs and returning the root tree hash. Returns <c>null</c> if the manifest is
+    /// empty (nothing to archive).
     /// </summary>
-    public async Task<FileTreeHash?> BuildAsync(
+    public async Task<FileTreeHash?> SynchronizeAsync(
         string            sortedManifestPath,
         CancellationToken cancellationToken = default)
     {
-        // Ensure cache is validated before calling ExistsInRemote (idempotent — no-op if already validated).
-        await _fileTreeService.ValidateAsync(cancellationToken);
-
         // Accumulated directory entries keyed by directory path (forward-slash, no trailing slash)
         // Value: list of FileTreeEntry for that directory (files + resolved child dirs)
         var dirEntries = new Dictionary<string, List<FileTreeEntry>>(StringComparer.Ordinal);
