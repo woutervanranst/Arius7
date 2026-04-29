@@ -76,6 +76,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
+        pairs[0].RelativePath.ShouldBe("music/song.mp3");
         pairs[0].BinaryExists.ShouldBeFalse();
         pairs[0].PointerExists.ShouldBeTrue();
         pairs[0].PointerHash.ShouldBe(ContentHash.Parse(hash));

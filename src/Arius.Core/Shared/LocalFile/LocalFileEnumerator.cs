@@ -100,7 +100,7 @@ public sealed class LocalFileEnumerator
                 var pointerHash = ReadPointerHash(file.FullName, rel);
                 yield return new FilePair
                 {
-                    RelativePath  = rel,
+                    RelativePath  = binaryRel,
                     BinaryExists  = false,
                     PointerExists = true,
                     PointerHash   = pointerHash,
