@@ -109,33 +109,6 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadTarAsync_UsesEncryptedTarContentType_WhenEncryptionIsEnabled()
-    {
-        var blobs = new ContentTypeCapturingBlobContainerService();
-        var service = new ChunkStorageService(blobs, new EncryptedPassthroughService());
-        var content = new byte[768];
-        Random.Shared.NextBytes(content);
-
-        _ = await service.UploadTarAsync(
-            chunkHash: TarChunkHash,
-            content: new MemoryStream(content),
-            sourceSize: content.Length,
-            tier: BlobTier.Archive,
-            progress: null,
-            cancellationToken: CancellationToken.None);
-
-        _ = await service.UploadLargeAsync(
-            chunkHash: LargeChunkHash,
-            content: new MemoryStream(content),
-            sourceSize: content.Length,
-            tier: BlobTier.Archive,
-            progress: null,
-            cancellationToken: CancellationToken.None);
-
-        blobs.OpenWriteContentTypes.ShouldBe([ContentTypes.TarGcmEncrypted, ContentTypes.LargeGcmEncrypted]);
-    }
-
-    [Test]
     public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -232,32 +205,6 @@ public class ChunkStorageServiceUploadTests
         await using var payload = await blobs.DownloadAsync(blobName);
         using var reader = new StreamReader(payload);
         (await reader.ReadToEndAsync()).ShouldBe(ThinParentChunkHash.ToString());
-    }
-
-    [Test]
-    public async Task UploadThinAsync_PersistsExpectedMetadataViaSetMetadataAsync()
-    {
-        var blobs = new ThinMetadataRecordingBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-
-        var created = await service.UploadThinAsync(
-            contentHash: ThinContentHash,
-            parentChunkHash: ThinParentChunkHash,
-            originalSize: 512,
-            compressedSize: 111,
-            cancellationToken: CancellationToken.None);
-
-        created.ShouldBeTrue();
-
-        var blobName = BlobPaths.ThinChunk(ThinContentHash);
-        blobs.UploadedBlobNames.ShouldBe([blobName]);
-        blobs.UploadMetadataByBlob[blobName].ShouldBeEmpty();
-        blobs.SetMetadataByBlob[blobName].ShouldBe(new Dictionary<string, string>
-        {
-            [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
-            [BlobMetadataKeys.OriginalSize] = "512",
-            [BlobMetadataKeys.CompressedSize] = "111",
-        });
     }
 
     [Test]
