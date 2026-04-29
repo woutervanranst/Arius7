@@ -52,7 +52,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return content;
     }
 
-    public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
+    public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
@@ -68,7 +68,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
             }),
-            CancellationToken.None);
+            cancellationToken);
     }
 
     public ShardEntry? Lookup(ContentHash contentHash)

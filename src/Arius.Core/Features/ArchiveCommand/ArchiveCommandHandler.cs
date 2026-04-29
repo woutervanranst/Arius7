@@ -123,10 +123,33 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
+        var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
+        FileTreeStagingSession stagingSession;
+
         try
         {
-            var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
+            stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogError(ex, "Archive pipeline failed");
+            return new ArchiveResult
+            {
+                Success       = false,
+                FilesScanned  = filesScanned,
+                FilesUploaded = filesUploaded,
+                FilesDeduped  = filesDeduped,
+                TotalSize     = totalSize,
+                RootHash      = null,
+                SnapshotTime  = DateTimeOffset.UtcNow,
+                ErrorMessage  = ex.Message
+            };
+        }
+
+        await using (stagingSession)
+        {
+            try
+            {
             var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
             var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
             var pendingDeletes  = new ConcurrentBag<string>();
@@ -521,31 +544,32 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
-            return new ArchiveResult
+                return new ArchiveResult
+                {
+                    Success       = true,
+                    FilesScanned  = filesScanned,
+                    FilesUploaded = filesUploaded,
+                    FilesDeduped  = filesDeduped,
+                    TotalSize     = totalSize,
+                    RootHash      = snapshotRootHash,
+                    SnapshotTime  = snapshotTime
+                };
+            }
+            catch (Exception ex)
             {
-                Success       = true,
-                FilesScanned  = filesScanned,
-                FilesUploaded = filesUploaded,
-                FilesDeduped  = filesDeduped,
-                TotalSize     = totalSize,
-                RootHash      = snapshotRootHash,
-                SnapshotTime  = snapshotTime
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Archive pipeline failed");
-            return new ArchiveResult
-            {
-                Success       = false,
-                FilesScanned  = filesScanned,
-                FilesUploaded = filesUploaded,
-                FilesDeduped  = filesDeduped,
-                TotalSize     = totalSize,
-                RootHash      = null,
-                SnapshotTime  = DateTimeOffset.UtcNow,
-                ErrorMessage  = ex.Message
-            };
+                _logger.LogError(ex, "Archive pipeline failed");
+                return new ArchiveResult
+                {
+                    Success       = false,
+                    FilesScanned  = filesScanned,
+                    FilesUploaded = filesUploaded,
+                    FilesDeduped  = filesDeduped,
+                    TotalSize     = totalSize,
+                    RootHash      = null,
+                    SnapshotTime  = DateTimeOffset.UtcNow,
+                    ErrorMessage  = ex.Message
+                };
+            }
         }
     }
 

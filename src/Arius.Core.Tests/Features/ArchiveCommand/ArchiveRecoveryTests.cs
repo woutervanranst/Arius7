@@ -94,6 +94,19 @@ public class ArchiveRecoveryTests
         result.ErrorMessage.ShouldContain("already open", Case.Insensitive);
     }
 
+    [Test]
+    public async Task Archive_WhenCancelledBeforeOpeningStagingSession_PropagatesCancellation()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await env.ArchiveAsync(BlobTier.Cool, cts.Token));
+    }
+
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)
     {
         using var tarStream = new MemoryStream();
