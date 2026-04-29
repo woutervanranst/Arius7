@@ -156,15 +156,41 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    public async Task AppendFileAsync_PreservesLeadingAndTrailingSpacesInPathSegments()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await writer.AppendFileAsync(" photos/a.jpg ", TestHash, TestTimestamp, TestTimestamp);
+
+            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+            var spacedDirectoryId = FileTreeStagingPaths.GetDirectoryId(" photos");
+            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetChildrenPath(session.StagingRoot, rootId));
+            var entriesPath = FileTreeStagingPaths.GetEntriesPath(session.StagingRoot, spacedDirectoryId);
+            var line = (await File.ReadAllLinesAsync(entriesPath)).Single();
+            var entry = FileTreeBlobSerializer.ParseFileEntryLine(line);
+
+            rootChildren.ShouldContain($"{spacedDirectoryId} D  photos/");
+            entry.Name.ShouldBe("a.jpg ");
+            entry.ContentHash.ShouldBe(TestHash);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("/photos/a.jpg")]
     [Arguments("C:/photos/a.jpg")]
     [Arguments("C:\\photos\\a.jpg")]
     [Arguments("photos//a.jpg")]
     [Arguments("photos/./a.jpg")]
     [Arguments("photos/../a.jpg")]
-    [Arguments(" photos/a.jpg")]
-    [Arguments("photos /a.jpg")]
-    [Arguments("photos/a.jpg ")]
     [Arguments("photos\\a.jpg")]
     public async Task AppendFileAsync_NonCanonicalPath_Throws(string filePath)
     {

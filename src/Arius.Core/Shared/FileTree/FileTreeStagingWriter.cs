@@ -59,9 +59,6 @@ internal sealed class FileTreeStagingWriter
                 if (segment is "." or "..")
                     throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
 
-                if (segment.Trim() != segment)
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
                 if (segment.Contains('\\'))
                     throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
             }
