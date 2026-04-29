@@ -38,7 +38,7 @@ public sealed class FileTreeService
     /// </summary>
     private bool _validated;
 
-    private readonly ConcurrentDictionary<FileTreeHash, Lazy<Task<FileTreeBlob>>> _inFlightReads = [];
+    private readonly ConcurrentDictionary<FileTreeHash, TaskCompletionSource<FileTreeBlob>> _inFlightReads = [];
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
@@ -97,21 +97,27 @@ public sealed class FileTreeService
         if (TryReadCachedTree(diskPath, cancellationToken) is { } cachedTree)
             return cachedTree;
 
-        var lazyRead = _inFlightReads.GetOrAdd(
-            hash,
-            _ => new Lazy<Task<FileTreeBlob>>(
-                () => DownloadAndCacheAsync(hash, diskPath),
-                LazyThreadSafetyMode.ExecutionAndPublication));
+        var pendingRead = new TaskCompletionSource<FileTreeBlob>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var inFlightRead = _inFlightReads.GetOrAdd(hash, pendingRead);
 
-        try
+        if (ReferenceEquals(inFlightRead, pendingRead))
         {
-            return await lazyRead.Value.WaitAsync(cancellationToken);
+            try
+            {
+                var treeBlob = await DownloadAndCacheAsync(hash, diskPath);
+                inFlightRead.TrySetResult(treeBlob);
+            }
+            catch (Exception ex)
+            {
+                inFlightRead.TrySetException(ex);
+            }
+            finally
+            {
+                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, TaskCompletionSource<FileTreeBlob>>(hash, inFlightRead));
+            }
         }
-        finally
-        {
-            if (lazyRead is { IsValueCreated: true, Value.IsCompleted: true })
-                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
-        }
+
+        return await inFlightRead.Task.WaitAsync(cancellationToken);
     }
 
     private FileTreeBlob? TryReadCachedTree(string diskPath, CancellationToken cancellationToken)
