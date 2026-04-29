@@ -174,58 +174,58 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         {
             await using (stagingSession)
             {
-            var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
-            var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
-            var pendingDeletes  = new ConcurrentBag<string>();
+                var stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
+                var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
+                var pendingDeletes  = new ConcurrentBag<string>();
 
-            // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
-            // Used by the dedup stage to detect duplicates within the same run before the
-            // index is updated.
-            var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
+                // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+                // Used by the dedup stage to detect duplicates within the same run before the
+                // index is updated.
+                var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
-            // Channels between stages (task 8.2)
-            var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-            var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
-            var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-            var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
-            var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
+                // Channels between stages (task 8.2)
+                var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
+                var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
+                var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+                var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+                var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
+                var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
 
-            // ── Register queue-depth getters (task 2.3) ──────────────────────
-            opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
-            opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
+                // ── Register queue-depth getters (task 2.3) ──────────────────────
+                opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
+                opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
 
-            // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
-            var enumTask = Task.Run(async () =>
-            {
-                try
+                // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
+                var enumTask = Task.Run(async () =>
                 {
-                    var enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
-                    var pairs      = enumerator.Enumerate(opts.RootDirectory);
-                    long count     = 0;
-                    long totalBytes = 0;
-
-                    foreach (var pair in pairs)
+                    try
                     {
-                        count++;
-                        var fullPath = pair.BinaryExists
-                            ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
-                            : null;
-                        var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
-                        totalBytes += fileSize;
-                        await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
-                        await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
-                    }
+                        var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
+                        var  pairs      = enumerator.Enumerate(opts.RootDirectory);
+                        long count      = 0;
+                        long totalBytes = 0;
 
-                    Interlocked.Add(ref filesScanned, count);
-                    await _mediator.Publish(new ScanCompleteEvent(count, totalBytes), cancellationToken);
-                    _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
-                }
-                finally
-                {
-                    filePairChannel.Writer.Complete();
-                }
-            }, cancellationToken);
+                        foreach (var pair in pairs)
+                        {
+                            count++;
+                            var fullPath = pair.BinaryExists
+                                ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
+                                : null;
+                            var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
+                            totalBytes += fileSize;
+                            await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
+                            await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
+                        }
+
+                        Interlocked.Add(ref filesScanned, count);
+                        await _mediator.Publish(new ScanCompleteEvent(count, totalBytes), cancellationToken);
+                        _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
+                    }
+                    finally
+                    {
+                        filePairChannel.Writer.Complete();
+                    }
+                }, cancellationToken);
 
             // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
             var hashTask = Parallel.ForEachAsync(
@@ -310,9 +310,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             Interlocked.Add(ref totalSize, fileSize);
                             var upload = new FileToUpload(hashed, fileSize);
                             var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
-                        _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                            hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8,
-                            fileSize.Bytes().Humanize());
+                            _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
+                                hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8,
+                                fileSize.Bytes().Humanize());
 
                             if (fileSize >= opts.SmallFileThreshold)
                                 await largeChannel.Writer.WriteAsync(upload, cancellationToken);
