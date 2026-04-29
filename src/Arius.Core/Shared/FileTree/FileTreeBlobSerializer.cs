@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Text;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
@@ -49,7 +50,7 @@ public static class FileTreeBlobSerializer
             foreach (var entry in tree.Entries.OrderBy(e => e.Name, StringComparer.Ordinal))
             {
                 if (entry is FileEntry fileEntry)
-                    await writer.WriteLineAsync($"{fileEntry.ContentHash} F {fileEntry.Created:O} {fileEntry.Modified:O} {fileEntry.Name}");
+                    await writer.WriteLineAsync(SerializeFileEntryLine(fileEntry));
                 else if (entry is DirectoryEntry directoryEntry)
                     await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
                 else
@@ -101,14 +102,7 @@ public static class FileTreeBlobSerializer
         {
             if (entry is FileEntry fileEntry)
             {
-                // <hash> F <created> <modified> <name>
-                sb.Append(fileEntry.ContentHash);
-                sb.Append(" F ");
-                sb.Append(fileEntry.Created.ToString("O"));
-                sb.Append(' ');
-                sb.Append(fileEntry.Modified.ToString("O"));
-                sb.Append(' ');
-                sb.AppendLine(fileEntry.Name);
+                sb.AppendLine(SerializeFileEntryLine(fileEntry));
             }
             else if (entry is DirectoryEntry directoryEntry)
             {
@@ -124,6 +118,30 @@ public static class FileTreeBlobSerializer
         }
 
         return s_utf8.GetBytes(sb.ToString());
+    }
+
+    public static string SerializeFileEntryLine(FileEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return $"{entry.ContentHash} F {entry.Created:O} {entry.Modified:O} {entry.Name}";
+    }
+
+    public static FileEntry ParseFileEntryLine(string line)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(line);
+
+        var firstSpace = line.IndexOf(' ');
+        if (firstSpace < 0)
+            throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
+
+        var hash = line[..firstSpace];
+        var afterHash = line[(firstSpace + 1)..];
+
+        if (afterHash.Length < 2 || afterHash[0] != 'F' || afterHash[1] != ' ')
+            throw new FormatException($"Invalid file entry (missing type marker): '{line}'");
+
+        return ParseFileEntry(hash, afterHash[2..], line);
     }
 
     private static FileTreeBlob ParseLines(string[] lines)
@@ -156,30 +174,7 @@ public static class FileTreeBlobSerializer
 
             if (typeMarker == 'F')
             {
-                // <created> <modified> <name...>
-                var s1 = afterType.IndexOf(' ');
-                if (s1 < 0) throw new FormatException($"Invalid file entry (missing created): '{line}'");
-                var created = DateTimeOffset.Parse(afterType[..s1], null, System.Globalization.DateTimeStyles.RoundtripKind);
-
-                var afterCreated = afterType[(s1 + 1)..];
-                var s2           = afterCreated.IndexOf(' ');
-                if (s2 < 0) throw new FormatException($"Invalid file entry (missing modified): '{line}'");
-                var modified = DateTimeOffset.Parse(afterCreated[..s2], null, System.Globalization.DateTimeStyles.RoundtripKind);
-
-                var name = afterCreated[(s2 + 1)..];
-                if (string.IsNullOrWhiteSpace(name))
-                    throw new FormatException($"Invalid file entry (empty name): '{line}'");
-
-                if (!ContentHash.TryParse(hash, out var contentHash))
-                    throw new FormatException($"Invalid file entry (invalid content hash): '{line}'");
-
-                entries.Add(new FileEntry
-                {
-                    ContentHash = contentHash,
-                    Created  = created,
-                    Modified = modified,
-                    Name     = name
-                });
+                entries.Add(ParseFileEntry(hash, afterType, line));
             }
             else if (typeMarker == 'D')
             {
@@ -202,6 +197,37 @@ public static class FileTreeBlobSerializer
         }
 
         return new FileTreeBlob { Entries = entries };
+    }
+
+    private static FileEntry ParseFileEntry(string hash, string afterType, string line)
+    {
+        var s1 = afterType.IndexOf(' ');
+        if (s1 < 0)
+            throw new FormatException($"Invalid file entry (missing created): '{line}'");
+
+        var created = DateTimeOffset.Parse(afterType[..s1], null, DateTimeStyles.RoundtripKind);
+
+        var afterCreated = afterType[(s1 + 1)..];
+        var s2 = afterCreated.IndexOf(' ');
+        if (s2 < 0)
+            throw new FormatException($"Invalid file entry (missing modified): '{line}'");
+
+        var modified = DateTimeOffset.Parse(afterCreated[..s2], null, DateTimeStyles.RoundtripKind);
+        var name = afterCreated[(s2 + 1)..];
+
+        if (string.IsNullOrWhiteSpace(name))
+            throw new FormatException($"Invalid file entry (empty name): '{line}'");
+
+        if (!ContentHash.TryParse(hash, out var contentHash))
+            throw new FormatException($"Invalid file entry (invalid content hash): '{line}'");
+
+        return new FileEntry
+        {
+            ContentHash = contentHash,
+            Created = created,
+            Modified = modified,
+            Name = name
+        };
     }
 
     // ── Hash computation ──────────────────────────────────────────────────────
