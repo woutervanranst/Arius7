@@ -2,6 +2,10 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
+/// <summary>
+/// Holds rehydrated-chunk deletions open until the test releases them so cleanup tests can prove
+/// the delete loop runs work concurrently instead of serializing each blob delete.
+/// </summary>
 internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 {
     private readonly TaskCompletionSource _sawConcurrentDeletes = new(TaskCreationOptions.RunContinuationsAsynchronously);

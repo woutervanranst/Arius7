@@ -69,14 +69,14 @@ public class ChunkStorageServiceReadTests
     [Test]
     public async Task DownloadAsync_UsesRehydratedBlobWhenAvailable_AndReturnsPlaintext()
     {
-        var blobs      = new FakeInMemoryBlobContainerService();
+        var blobs = new FakeInMemoryBlobContainerService();
         var encryption = new PlaintextPassthroughService();
-        var service    = new ChunkStorageService(blobs, encryption);
-        var content    = "hello from rehydrated"u8.ToArray();
-        var chunkHash  = TestChunkHash;
+        var service = new ChunkStorageService(blobs, encryption);
+        var content = "hello from rehydrated"u8.ToArray();
+        var chunkHash = TestChunkHash;
 
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(chunkHash), content, BlobTier.Cold);
-        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash),           "old"u8.ToArray(), BlobTier.Archive);
+        await blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), "old"u8.ToArray(), BlobTier.Archive);
 
         await using var stream = await service.DownloadAsync(chunkHash, cancellationToken: CancellationToken.None);
         using var reader = new StreamReader(stream);
@@ -118,7 +118,7 @@ public class ChunkStorageServiceReadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var firstChunkHash = FakeChunkHash('a');
         var secondChunkHash = FakeChunkHash('b');
-        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(firstChunkHash),  "aaa"u8.ToArray(),  BlobTier.Cold);
+        await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(firstChunkHash), "aaa"u8.ToArray(), BlobTier.Cold);
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydrated(secondChunkHash), "bbbb"u8.ToArray(), BlobTier.Cold);
 
         await using var plan = await service.PlanRehydratedCleanupAsync(CancellationToken.None);
@@ -151,5 +151,4 @@ public class ChunkStorageServiceReadTests
         result.DeletedChunkCount.ShouldBe(2);
         result.FreedBytes.ShouldBe(7);
     }
-
 }

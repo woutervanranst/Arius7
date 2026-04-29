@@ -82,6 +82,16 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs[0].FileSize.ShouldBeNull();
     }
 
+    [Test]
+    public void Enumerate_PointerOnly_UsesLogicalBinaryRelativePath()
+    {
+        CreateFile("music/song.mp3.pointer.arius", new string('a', 64));
+
+        var pair = _enumerator.Enumerate(_root).Single();
+
+        pair.RelativePath.ShouldBe("music/song.mp3");
+    }
+
     // ── Invalid pointer content ───────────────────────────────────────────────
 
     [Test]

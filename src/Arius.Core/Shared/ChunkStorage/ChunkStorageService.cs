@@ -99,6 +99,8 @@ public sealed class ChunkStorageService : IChunkStorageService
         if (content.Position != 0)
             content.Position = 0;
 
+        long reportedBytes = 0;
+
         retry:
         try
         {
@@ -109,7 +111,16 @@ public sealed class ChunkStorageService : IChunkStorageService
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = _encryption.WrapForEncryption(countingStream);
                 await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
-                await using var progressStream = progress is null ? null : new ProgressStream(content, progress);
+                var progressStream = progress is null
+                    ? null
+                    : new ProgressStream(content, new CallbackProgress(bytesRead =>
+                    {
+                        if (bytesRead <= reportedBytes)
+                            return;
+
+                        reportedBytes = bytesRead;
+                        progress.Report(bytesRead);
+                    }));
 
                 var source = progressStream ?? content;
                 await source.CopyToAsync(gzipStream, cancellationToken);
@@ -202,7 +213,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         var progressOrRawStream = progress is null ? downloadStream : new ProgressStream(downloadStream, progress);
         var decryptStream = _encryption.WrapForDecryption(progressOrRawStream);
         var gzipStream = new GZipStream(decryptStream, CompressionMode.Decompress);
-        return new ChunkDownloadStream(gzipStream, decryptStream, progressOrRawStream, downloadStream);
+        return new ChunkDownloadStream(gzipStream);
     }
 
     private async Task<ChunkHydrationStatus> GetHydrationStatusCoreAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
@@ -288,6 +299,11 @@ public sealed class ChunkStorageService : IChunkStorageService
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    private sealed class CallbackProgress(Action<long> callback) : IProgress<long>
+    {
+        public void Report(long value) => callback(value);
+    }
+
     /// <summary>
     /// Wraps the fully constructed chunk download pipeline returned by <see cref="DownloadCoreAsync"/>.
     /// Unlike <see cref="ProgressStream"/> and <see cref="CountingStream"/>, this is not a reusable behavior wrapper
@@ -298,17 +314,11 @@ public sealed class ChunkStorageService : IChunkStorageService
     private sealed class ChunkDownloadStream : Stream
     {
         private readonly Stream _inner;
-        private readonly IDisposable? _decryptStream;
-        private readonly IDisposable? _progressStream;
-        private readonly IDisposable _downloadStream;
         private int _disposed;
 
-        public ChunkDownloadStream(Stream inner, Stream decryptStream, Stream progressStream, Stream downloadStream)
+        public ChunkDownloadStream(Stream inner)
         {
             _inner = inner;
-            _decryptStream = decryptStream;
-            _progressStream = ReferenceEquals(progressStream, downloadStream) ? null : progressStream;
-            _downloadStream = downloadStream;
         }
 
         public override bool CanRead => _inner.CanRead;
@@ -337,9 +347,6 @@ public sealed class ChunkStorageService : IChunkStorageService
                 return;
 
             await _inner.DisposeAsync();
-            _decryptStream?.Dispose();
-            _progressStream?.Dispose();
-            _downloadStream.Dispose();
 
             GC.SuppressFinalize(this);
         }
@@ -350,9 +357,6 @@ public sealed class ChunkStorageService : IChunkStorageService
                 return;
 
             _inner.Dispose();
-            _decryptStream?.Dispose();
-            _progressStream?.Dispose();
-            _downloadStream.Dispose();
         }
     }
 }
