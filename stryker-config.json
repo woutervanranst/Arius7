@@ -4,6 +4,7 @@
     "test-projects": [
       "src/Arius.Core.Tests/Arius.Core.Tests.csproj"
     ],
+    "test-runner": "mtp",
     "reporters": [
       "html",
       "progress"

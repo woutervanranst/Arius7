@@ -112,6 +112,8 @@ Stryker.NET is configured for local mutation testing of `Arius.Core` through `Ar
 
 Expect Stryker runs to be noticeably slower than normal unit test runs.
 
+This repository uses Stryker's preview Microsoft Testing Platform runner for TUnit support.
+
 Install the tool once:
 
 ```bash
@@ -124,7 +126,7 @@ Run the Core mutation test pass from the repository root:
 dotnet stryker --config-file stryker-config.json
 ```
 
-The initial Stryker setup is intentionally local-only. The checked-in config and command remain the intended entry point, but Stryker.NET 4.14.1 does not yet support the current TUnit/Microsoft.Testing.Platform setup in `Arius.Core.Tests` and `Arius.Tests.Shared`, so the command currently fails before producing an HTML report.
+The initial Stryker setup is intentionally local-only. The checked-in config uses the preview MTP runner so Stryker can execute this repository's TUnit-based test project.
 
 ### Test Suite Architecture
 
