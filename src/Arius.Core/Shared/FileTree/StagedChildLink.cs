@@ -1,6 +1,8 @@
+using Arius.Core.Shared.Hashes;
+
 namespace Arius.Core.Shared.FileTree;
 
-internal sealed record StagedChildLink(string DirectoryId, string Name)
+internal readonly record struct StagedChildLink(string DirectoryId, string Name)
 {
     public static StagedChildLink Parse(string line)
     {
@@ -13,6 +15,15 @@ internal sealed record StagedChildLink(string DirectoryId, string Name)
             throw new FormatException($"Invalid child link (no spaces): '{line}'");
 
         var directoryId = line[..firstSpace];
+        try
+        {
+            directoryId = HashCodec.NormalizeHex(directoryId);
+        }
+        catch (FormatException ex)
+        {
+            throw new FormatException($"Invalid child link (invalid directory id): '{line}'", ex);
+        }
+
         var afterId = line[(firstSpace + 1)..];
         if (afterId.Length < 2 || afterId[0] != 'D' || afterId[1] != ' ')
             throw new FormatException($"Invalid child link (missing type marker): '{line}'");

@@ -35,6 +35,8 @@ public sealed class FileTreeBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
+        var subtreeWorkerBudget = new SemaphoreSlim(Math.Max(SiblingSubtreeWorkers - 1, 0));
+
         return await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
 
         async Task<FileTreeHash?> BuildDirectoryAsync(string directoryId, CancellationToken ct)
@@ -51,22 +53,20 @@ public sealed class FileTreeBuilder
                 return null;
 
             var childEntries = new DirectoryEntry?[childLinks.Count];
-            await Parallel.ForEachAsync(
-                Enumerable.Range(0, childLinks.Count),
-                new ParallelOptions { MaxDegreeOfParallelism = SiblingSubtreeWorkers, CancellationToken = ct },
-                async (index, childCt) =>
+            var childTasks = new List<Task>(childLinks.Count);
+            for (var index = 0; index < childLinks.Count; index++)
+            {
+                var childLink = childLinks[index];
+                if (await subtreeWorkerBudget.WaitAsync(0, ct))
                 {
-                    var childLink = childLinks[index];
-                    var childHash = await BuildDirectoryAsync(childLink.DirectoryId, childCt);
-                    if (childHash is not null)
-                    {
-                        childEntries[index] = new DirectoryEntry
-                        {
-                            Name = childLink.Name,
-                            FileTreeHash = childHash.Value
-                        };
-                    }
-                });
+                    childTasks.Add(BuildChildDirectoryWithLeaseAsync(childLink, index, childEntries, ct));
+                    continue;
+                }
+
+                await BuildChildDirectoryAsync(childLink, index, childEntries, ct);
+            }
+
+            await Task.WhenAll(childTasks);
 
             var entries = new List<FileTreeEntry>(fileEntries.Count + childEntries.Length);
             entries.AddRange(fileEntries);
@@ -111,6 +111,31 @@ public sealed class FileTreeBuilder
             }
 
             return links.OrderBy(link => link.Name, StringComparer.Ordinal).ToList();
+        }
+
+        async Task BuildChildDirectoryWithLeaseAsync(StagedChildLink childLink, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
+        {
+            try
+            {
+                await BuildChildDirectoryAsync(childLink, index, childEntries, ct);
+            }
+            finally
+            {
+                subtreeWorkerBudget.Release();
+            }
+        }
+
+        async Task BuildChildDirectoryAsync(StagedChildLink childLink, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
+        {
+            var childHash = await BuildDirectoryAsync(childLink.DirectoryId, ct);
+            if (childHash is not null)
+            {
+                childEntries[index] = new DirectoryEntry
+                {
+                    Name = childLink.Name,
+                    FileTreeHash = childHash.Value
+                };
+            }
         }
     }
 }

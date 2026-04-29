@@ -23,8 +23,8 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// <code>
 /// Enumerate (×1) → Hash (×N) → Dedup (×1) → Router → Large Upload (×N)
 ///                                                     → Tar Builder (×1) → Tar Upload (×N)
-///                                → Manifest Writer (disk)
-/// End-of-pipeline: Index Flush → External Sort → Tree Build → Snapshot → Pointer Write → Remove Local
+///                                → Filetree staging writer (disk)
+/// End-of-pipeline: Index Flush → Tree Build → Snapshot → Pointer Write → Remove Local
 /// </code>
 /// </summary>
 public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
@@ -78,8 +78,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     /// <remarks>
     /// The pipeline enumerates files under the command's root directory, computes content hashes (or reuses pointer hashes),
     /// deduplicates against the persistent index and in-run uploads, uploads new chunks (large files directly, small files in tar bundles),
-    /// writes a manifest, builds a tree and creates a snapshot, and optionally writes pointer files and removes local binaries.
-    /// Progress and events are published via the mediator and operational details are recorded in the index and manifest.
+    /// writes staged filetree entries, builds a tree and creates a snapshot, and optionally writes pointer files and removes local binaries.
+    /// Progress and events are published via the mediator and operational details are recorded in the index and staged filetree.
     /// </remarks>
     /// <param name="command">The archive command containing options (root directory, thresholds, flags) and parameters for the run.</param>
     /// <param name="cancellationToken">Cancellation token to observe while performing pipeline operations.</param>
@@ -123,8 +123,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
-        var manifestPath    = Path.GetTempFileName();
-        var manifestWriter  = new ManifestWriter(manifestPath);
+        var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
+        var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
         var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
         var pendingDeletes  = new ConcurrentBag<string>();
 
@@ -240,7 +241,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                             // Known dedup: add to manifest only
                             _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
+                            await WriteFileTreeEntry(hashed, opts.RootDirectory, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
                         }
@@ -249,7 +250,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            await WriteManifestEntry(hashed, opts.RootDirectory, manifestWriter, cancellationToken);
+                            await WriteFileTreeEntry(hashed, opts.RootDirectory, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             if (!opts.NoPointers)
                                 pendingPointers.Add((Path.Combine(opts.RootDirectory, hashed.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), hashed.ContentHash));
@@ -302,7 +303,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, ct);
 
-                    await WriteManifestEntry(upload.HashedPair, opts.RootDirectory, manifestWriter, ct);
+                    await WriteFileTreeEntry(upload.HashedPair, opts.RootDirectory, stagingWriter, ct);
                     Interlocked.Increment(ref filesUploaded);
 
                     if (!opts.NoPointers)
@@ -427,7 +428,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
                             await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), ct);
 
-                            await WriteManifestEntry(entry.HashedPair, opts.RootDirectory, manifestWriter, ct);
+                            await WriteFileTreeEntry(entry.HashedPair, opts.RootDirectory, stagingWriter, ct);
 
                             if (!opts.NoPointers)
                                 pendingPointers.Add((Path.Combine(opts.RootDirectory, entry.HashedPair.FilePair.RelativePath.Replace('/', Path.DirectorySeparatorChar)), entry.ContentHash));
@@ -463,12 +464,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await _chunkIndex.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
 
-            // Task 8.11: Sort manifest → build tree → create snapshot
-            await manifestWriter.DisposeAsync();
-            await ManifestSorter.SortAsync(manifestPath, cancellationToken);
-
+            // Task 8.11: Build tree from staged entries → create snapshot
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
-            var rootHash    = await treeBuilder.SynchronizeAsync(manifestPath, cancellationToken);
+            var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
             FileTreeHash?  snapshotRootHash = null;
@@ -549,22 +547,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 ErrorMessage  = ex.Message
             };
         }
-        finally
-        {
-            try
-            {
-                File.Delete(manifestPath);
-            }
-            catch
-            {
-                /* ignore */
-            }
-        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task WriteManifestEntry(HashedFilePair hashed, string rootDir, ManifestWriter writer, CancellationToken ct)
+    private static async Task WriteFileTreeEntry(HashedFilePair hashed, string rootDir, FileTreeStagingWriter writer, CancellationToken ct)
     {
         var pair = hashed.FilePair;
 
@@ -584,10 +571,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         }
 
         // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
-        var manifestPath = pair.RelativePath;
-        if (!pair.BinaryExists && manifestPath.EndsWith(".pointer.arius", StringComparison.OrdinalIgnoreCase))
-            manifestPath = manifestPath[..^".pointer.arius".Length];
+        var fileTreePath = pair.RelativePath;
+        if (!pair.BinaryExists && fileTreePath.EndsWith(".pointer.arius", StringComparison.OrdinalIgnoreCase))
+            fileTreePath = fileTreePath[..^".pointer.arius".Length];
 
-        await writer.AppendAsync(new ManifestEntry(manifestPath, hashed.ContentHash, created, modified), ct);
+        await writer.AppendFileAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
     }
 }

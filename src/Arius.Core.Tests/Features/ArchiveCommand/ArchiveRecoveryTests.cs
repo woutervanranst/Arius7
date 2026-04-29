@@ -65,6 +65,18 @@ public class ArchiveRecoveryTests
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
+    [Test]
+    public async Task Archive_NewContent_CreatesSnapshotWithRootHash()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.RootHash.ShouldNotBeNull();
+    }
+
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)
     {
         using var tarStream = new MemoryStream();

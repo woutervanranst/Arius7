@@ -82,6 +82,67 @@ public class FileTreeBuilderTests
         public void AllowUploads() => _allowUploads.TrySetResult(true);
     }
 
+    private sealed class CountingFileTreeUploadBlobContainerService : IBlobContainerService
+    {
+        private readonly TaskCompletionSource<bool> _releaseUploads = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _currentUploads;
+        private int _maxConcurrentUploads;
+
+        public int MaxConcurrentUploads => _maxConcurrentUploads;
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+        {
+            if (!blobName.StartsWith(BlobPaths.FileTrees, StringComparison.Ordinal))
+                return;
+
+            var currentUploads = Interlocked.Increment(ref _currentUploads);
+            UpdateMaxConcurrentUploads(currentUploads);
+
+            try
+            {
+                await _releaseUploads.Task.WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _currentUploads);
+            }
+        }
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new BlobMetadata { Exists = false });
+
+        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
+            AsyncEnumerable.Empty<string>();
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void AllowUploads() => _releaseUploads.TrySetResult(true);
+
+        private void UpdateMaxConcurrentUploads(int currentUploads)
+        {
+            while (true)
+            {
+                var observedMax = _maxConcurrentUploads;
+                if (currentUploads <= observedMax)
+                    return;
+
+                if (Interlocked.CompareExchange(ref _maxConcurrentUploads, currentUploads, observedMax) == observedMax)
+                    return;
+            }
+        }
+    }
+
     private static FileTreeBuilder CreateBuilder(
         IBlobContainerService blobs,
         string accountName,
@@ -343,6 +404,65 @@ public class FileTreeBuilderTests
             var root = await synchronizeTask.WaitAsync(TimeSpan.FromSeconds(5));
             root.ShouldNotBeNull();
             sawTwoConcurrentStarts.ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public void StagedChildLink_Parse_RejectsNonHashDirectoryIds()
+    {
+        Should.Throw<FormatException>(() => StagedChildLink.Parse("not-a-directory-id D child/"));
+        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{new string('a', 63)} D child/"));
+        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{new string('g', 64)} D child/"));
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_RecursiveBuild_UsesSharedGlobalWorkerBudget()
+    {
+        const string accountName = "acc-bounded";
+        const string containerName = "con-bounded";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            await using var stagingSession = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("a/1/file.txt", FakeContentHash('1'), now, now),
+                ("a/2/file.txt", FakeContentHash('2'), now, now),
+                ("a/3/file.txt", FakeContentHash('3'), now, now),
+                ("a/4/file.txt", FakeContentHash('4'), now, now),
+                ("b/1/file.txt", FakeContentHash('5'), now, now),
+                ("b/2/file.txt", FakeContentHash('6'), now, now),
+                ("b/3/file.txt", FakeContentHash('7'), now, now),
+                ("b/4/file.txt", FakeContentHash('8'), now, now),
+                ("c/1/file.txt", FakeContentHash('9'), now, now),
+                ("c/2/file.txt", FakeContentHash('a'), now, now),
+                ("c/3/file.txt", FakeContentHash('b'), now, now),
+                ("c/4/file.txt", FakeContentHash('c'), now, now),
+                ("d/1/file.txt", FakeContentHash('d'), now, now),
+                ("d/2/file.txt", FakeContentHash('e'), now, now),
+                ("d/3/file.txt", FakeContentHash('f'), now, now),
+                ("d/4/file.txt", FakeContentHash('0'), now, now))).Session;
+
+            var blobs = new CountingFileTreeUploadBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
+            await Task.Delay(200);
+            blobs.AllowUploads();
+
+            var root = await synchronizeTask.WaitAsync(TimeSpan.FromSeconds(5));
+            root.ShouldNotBeNull();
+            blobs.MaxConcurrentUploads.ShouldBeLessThanOrEqualTo(4);
         }
         finally
         {
