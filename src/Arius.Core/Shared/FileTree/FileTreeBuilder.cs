@@ -51,13 +51,14 @@ public sealed class FileTreeBuilder
         CancellationToken cancellationToken = default)
     {
         var pendingUploads = Channel.CreateBounded<(FileTreeHash Hash, FileTreeBlob Tree)>(FileTreeUploadWorkers * 2);
-        var uploadTasks = Enumerable.Range(0, FileTreeUploadWorkers)
-            .Select(_ => Task.Run(async () =>
+
+        // Start the upload tasks
+        var uploadTasks = Parallel.ForEachAsync(pendingUploads.Reader.ReadAllAsync(cancellationToken), 
+            new ParallelOptions { MaxDegreeOfParallelism = FileTreeUploadWorkers, CancellationToken = cancellationToken },
+            async (upload, ct) =>
             {
-                await foreach (var upload in pendingUploads.Reader.ReadAllAsync(cancellationToken))
-                    await _fileTreeService.WriteAsync(upload.Hash, upload.Tree, cancellationToken);
-            }, cancellationToken))
-            .ToArray();
+                await _fileTreeService.WriteAsync(upload.Hash, upload.Tree, ct);
+            });
 
         // Accumulated directory entries keyed by directory path (forward-slash, no trailing slash)
         // Value: list of FileTreeEntry for that directory (files + resolved child dirs)
@@ -124,7 +125,8 @@ public sealed class FileTreeBuilder
                 var hash = FileTreeBlobSerializer.ComputeHash(tree, _encryption);
 
                 // Dedup: upload only if not already cached/known remotely
-                await QueueUploadAsync(hash, tree, pendingUploads.Writer, cancellationToken);
+                if (!_fileTreeService.ExistsInRemote(hash))
+                    await pendingUploads.Writer.WriteAsync((hash, tree), cancellationToken);
 
                 var parentPath = GetDirectoryPath(dirPath);
                 if (parentPath != dirPath && dirEntries.TryGetValue(parentPath, out var parentEntries))
@@ -154,21 +156,6 @@ public sealed class FileTreeBuilder
             await Task.WhenAll(uploadTasks);
             throw;
         }
-    }
-
-    // ── Private helpers ────────────────────────────────────────────────────────
-
-    /// <summary>
-     /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
-     /// </summary>
-    private async Task QueueUploadAsync(
-        FileTreeHash      treeHash,
-        FileTreeBlob      tree,
-        ChannelWriter<(FileTreeHash Hash, FileTreeBlob Tree)> uploadWriter,
-        CancellationToken cancellationToken)
-    {
-        if (_fileTreeService.ExistsInRemote(treeHash)) return;
-        await uploadWriter.WriteAsync((treeHash, tree), cancellationToken);
     }
 
     // ── Manifest streaming ────────────────────────────────────────────────────
