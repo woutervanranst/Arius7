@@ -114,6 +114,23 @@ public class ChunkStorageServiceReadTests
     }
 
     [Test]
+    public async Task DownloadAsync_WithProgress_DisposesDownloadPipelineExactlyOnceAsynchronously()
+    {
+        var blobs = new DisposalTrackingBlobContainerService(Compress("hello"u8.ToArray()));
+        var encryption = new DisposalTrackingEncryptionService();
+        var service = new ChunkStorageService(blobs, encryption);
+
+        var stream = await service.DownloadAsync(TestChunkHash, new Progress<long>(_ => { }), CancellationToken.None);
+
+        await stream.DisposeAsync();
+        await stream.DisposeAsync();
+
+        encryption.DecryptStream.ShouldNotBeNull();
+        encryption.DecryptStream.DisposeCount.ShouldBe(1);
+        blobs.DownloadStream.DisposeCount.ShouldBe(1);
+    }
+
+    [Test]
     public async Task StartRehydrationAsync_CopiesPrimaryChunkToRehydratedPrefix()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -229,6 +246,7 @@ public class ChunkStorageServiceReadTests
     private sealed class DisposalTrackingStream : Stream
     {
         private readonly Stream _inner;
+        private int _disposed;
 
         public DisposalTrackingStream(byte[] content)
             : this(new MemoryStream(content, writable: false))
@@ -258,7 +276,7 @@ public class ChunkStorageServiceReadTests
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
+            if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
             {
                 DisposeCount++;
                 _inner.Dispose();
@@ -269,9 +287,11 @@ public class ChunkStorageServiceReadTests
 
         public override async ValueTask DisposeAsync()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
             DisposeCount++;
             await _inner.DisposeAsync();
-            await base.DisposeAsync();
         }
     }
 
