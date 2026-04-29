@@ -220,6 +220,17 @@ public sealed class FileTreeService
         await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
     }
 
+    public async Task<FileTreeHash> EnsureStoredAsync(FileTreeBlob tree, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tree);
+
+        var hash = FileTreeBlobSerializer.ComputeHash(tree, _encryption);
+        if (!ExistsInRemote(hash))
+            await WriteAsync(hash, tree, cancellationToken);
+
+        return hash;
+    }
+
     // ── 1.5 ValidateAsync ────────────────────────────────────────────────────
 
     /// <summary>

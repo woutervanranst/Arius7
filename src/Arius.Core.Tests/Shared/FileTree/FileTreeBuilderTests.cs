@@ -1,6 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 
@@ -9,6 +10,20 @@ namespace Arius.Core.Tests.Shared.FileTree;
 public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
+
+    private static async Task<(FileTreeStagingSession Session, string StagingRoot)> CreateStagingAsync(
+        string accountName,
+        string containerName,
+        params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
+    {
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+        var writer = new FileTreeStagingWriter(session.StagingRoot);
+        foreach (var file in files)
+            await writer.AppendFileAsync(file.Path, file.Hash, file.Created, file.Modified);
+
+        return (session, session.StagingRoot);
+    }
 
     private sealed class BlockingFileTreeUploadBlobContainerService : IBlobContainerService
     {
@@ -81,22 +96,27 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_EmptyManifest_ReturnsNull()
     {
-        var manifestPath = Path.GetTempFileName();
+        const string accountName = "account-empty";
+        const string containerName = "container-empty";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
         try
         {
-            await File.WriteAllTextAsync(manifestPath, "");
-
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "account", "container", out var fileTreeService);
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
             await fileTreeService.ValidateAsync();
-            var root    = await builder.SynchronizeAsync(manifestPath);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             root.ShouldBeNull();
             blobs.Uploaded.ShouldBeEmpty();
         }
         finally
         {
-            File.Delete(manifestPath);
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
         }
     }
 
@@ -108,25 +128,24 @@ public class FileTreeBuilderTests
         var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
 
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
-
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("readme.txt", FakeContentHash('b'), now, now);
-            await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
+            var (stagingSession, stagingRoot) = await CreateStagingAsync(acct, cont, ("readme.txt", FakeContentHash('b'), now, now));
 
             var blobs   = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, acct, cont, out var fileTreeService);
             await fileTreeService.ValidateAsync();
-            var root    = await builder.SynchronizeAsync(manifestPath);
+            await using (stagingSession)
+            {
+                var root = await builder.SynchronizeAsync(stagingRoot);
 
-            root.ShouldNotBeNull();
-            blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
+                root.ShouldNotBeNull();
+                blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
+            }
         }
         finally
         {
-            File.Delete(manifestPath);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -141,20 +160,24 @@ public class FileTreeBuilderTests
         if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
         if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
 
-        var manifestPath1 = Path.GetTempFileName();
-        var manifestPath2 = Path.GetTempFileName();
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var lines = new[]
-            {
-                new ManifestEntry("photos/a.jpg", FakeContentHash('c'), now, now).Serialize(),
-                new ManifestEntry("photos/b.jpg", FakeContentHash('d'), now, now).Serialize(),
-                new ManifestEntry("docs/r.pdf",   FakeContentHash('e'), now, now).Serialize(),
-            };
-            var content = string.Join("\n", lines) + "\n";
-            await File.WriteAllTextAsync(manifestPath1, content);
-            await File.WriteAllTextAsync(manifestPath2, content);
+            await using var stagingSession1 = (await CreateStagingAsync(
+                acct1,
+                cont1,
+                ("photos/a.jpg", FakeContentHash('c'), now, now),
+                ("photos/b.jpg", FakeContentHash('d'), now, now),
+                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
+            var stagingRoot1 = stagingSession1.StagingRoot;
+
+            await using var stagingSession2 = (await CreateStagingAsync(
+                acct2,
+                cont2,
+                ("photos/a.jpg", FakeContentHash('c'), now, now),
+                ("photos/b.jpg", FakeContentHash('d'), now, now),
+                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
+            var stagingRoot2 = stagingSession2.StagingRoot;
 
             var blobs1   = new FakeRecordingBlobContainerService();
             var blobs2   = new FakeRecordingBlobContainerService();
@@ -162,15 +185,13 @@ public class FileTreeBuilderTests
             var builder2 = CreateBuilder(blobs2, acct2, cont2, out var fileTreeService2);
             await fileTreeService1.ValidateAsync();
             await fileTreeService2.ValidateAsync();
-            var root1    = await builder1.SynchronizeAsync(manifestPath1);
-            var root2    = await builder2.SynchronizeAsync(manifestPath2);
+            var root1    = await builder1.SynchronizeAsync(stagingRoot1);
+            var root2    = await builder2.SynchronizeAsync(stagingRoot2);
 
             root1.ShouldBe(root2);
         }
         finally
         {
-            File.Delete(manifestPath1);
-            File.Delete(manifestPath2);
             if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
             if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
         }
@@ -183,33 +204,35 @@ public class FileTreeBuilderTests
         var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
         if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
 
-        var manifestPath1 = Path.GetTempFileName();
-        var manifestPath2 = Path.GetTempFileName();
         try
         {
             var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var now2  = new DateTimeOffset(2025, 1, 1,  0,  0, 0, TimeSpan.Zero);
-            await File.WriteAllTextAsync(manifestPath1,
-                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now1).Serialize() + "\n");
-            await File.WriteAllTextAsync(manifestPath2,
-                new ManifestEntry("file.txt", FakeContentHash('f'), now1, now2).Serialize() + "\n");
 
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
-            var builder1 = CreateBuilder(blobs1, acct, cont, out var fileTreeService1);
-            await fileTreeService1.ValidateAsync();
-            var root1  = await builder1.SynchronizeAsync(manifestPath1);
+            FileTreeHash? root1;
+            await using (var stagingSession1 = (await CreateStagingAsync(acct, cont, ("file.txt", FakeContentHash('f'), now1, now1))).Session)
+            {
+                var builder1 = CreateBuilder(blobs1, acct, cont, out var fileTreeService1);
+                await fileTreeService1.ValidateAsync();
+                root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
+            }
+
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
-            var builder2 = CreateBuilder(blobs2, acct, cont, out var fileTreeService2);
-            await fileTreeService2.ValidateAsync();
-            var root2  = await builder2.SynchronizeAsync(manifestPath2);
+
+            FileTreeHash? root2;
+            await using (var stagingSession2 = (await CreateStagingAsync(acct, cont, ("file.txt", FakeContentHash('f'), now1, now2))).Session)
+            {
+                var builder2 = CreateBuilder(blobs2, acct, cont, out var fileTreeService2);
+                await fileTreeService2.ValidateAsync();
+                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+            }
 
             root1.ShouldNotBe(root2);
         }
         finally
         {
-            File.Delete(manifestPath1);
-            File.Delete(manifestPath2);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -217,33 +240,42 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_DeduplicatesBlob_WhenAlreadyOnDisk()
     {
-        var manifestPath = Path.GetTempFileName();
+        const string accountName = "acc";
+        const string containerName = "con";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
         try
         {
             var now   = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            var entry = new ManifestEntry("file.txt", FakeContentHash('1'), now, now);
-            await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
 
             var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "acc", "con", out var fileTreeService1);
-            await fileTreeService1.ValidateAsync();
+            FileTreeHash? root;
+            await using (var stagingSession1 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
+            {
+                var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService1);
+                await fileTreeService1.ValidateAsync();
+                root = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
+            }
 
-            var root = await builder.SynchronizeAsync(manifestPath);
             var uploadCount1 = blobs.Uploaded.Count;
             uploadCount1.ShouldBeGreaterThan(0);
 
             var blobs2   = new FakeRecordingBlobContainerService();
-            var builder2 = CreateBuilder(blobs2, "acc", "con", out var fileTreeService2);
-            await fileTreeService2.ValidateAsync();
-            var root2    = await builder2.SynchronizeAsync(manifestPath);
+            FileTreeHash? root2;
+            await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
+            {
+                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
+                await fileTreeService2.ValidateAsync();
+                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+            }
 
             root2.ShouldBe(root);
             blobs2.Uploaded.Count.ShouldBe(0);
         }
         finally
         {
-            File.Delete(manifestPath);
-            var cacheDir = FileTreeService.GetDiskCacheDirectory("acc", "con");
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
@@ -252,27 +284,29 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_WithoutValidation_FailsFastBeforeUpload()
     {
-        var manifestPath = Path.GetTempFileName();
+        const string accountName = "acc-unvalidated";
+        const string containerName = "con-unvalidated";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
         try
         {
             var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            await File.WriteAllTextAsync(
-                manifestPath,
-                new ManifestEntry("file.txt", FakeContentHash('2'), now, now).Serialize() + "\n");
+            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('2'), now, now))).Session;
 
             var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, "acc-unvalidated", "con-unvalidated", out _);
+            var builder = CreateBuilder(blobs, accountName, containerName, out _);
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await builder.SynchronizeAsync(manifestPath));
+                await builder.SynchronizeAsync(stagingSession.StagingRoot));
 
+            ex.ShouldNotBeNull();
             ex.Message.ShouldContain("ValidateAsync");
             blobs.Uploaded.ShouldBeEmpty();
         }
         finally
         {
-            File.Delete(manifestPath);
-            var cacheDir = FileTreeService.GetDiskCacheDirectory("acc-unvalidated", "con-unvalidated");
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
@@ -287,23 +321,21 @@ public class FileTreeBuilderTests
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var lines = new[]
-            {
-                new ManifestEntry("photos/2024/june/a.jpg", FakeContentHash('7'), now, now).Serialize(),
-                new ManifestEntry("photos/2024/june/b.jpg", FakeContentHash('8'), now, now).Serialize(),
-                new ManifestEntry("docs/report.pdf", FakeContentHash('9'), now, now).Serialize(),
-            };
-            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+            await using var stagingSession = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("photos/2024/june/a.jpg", FakeContentHash('7'), now, now),
+                ("photos/2024/june/b.jpg", FakeContentHash('8'), now, now),
+                ("docs/report.pdf", FakeContentHash('9'), now, now))).Session;
 
             var blobs = new BlockingFileTreeUploadBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
             await fileTreeService.ValidateAsync();
 
-            var synchronizeTask = builder.SynchronizeAsync(manifestPath);
+            var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
             var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromMilliseconds(500));
 
             blobs.AllowUploads();
@@ -314,7 +346,6 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            File.Delete(manifestPath);
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
@@ -329,39 +360,45 @@ public class FileTreeBuilderTests
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var lines = new[]
-            {
-                new ManifestEntry("a/b/c/file.txt", FakeContentHash('a'), now, now).Serialize(),
-                new ManifestEntry("a/b/other.txt", FakeContentHash('b'), now, now).Serialize(),
-                new ManifestEntry("z.txt", FakeContentHash('c'), now, now).Serialize(),
-            };
-            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
-
             var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-
-            var root1 = await builder.SynchronizeAsync(manifestPath);
+            FileTreeHash? root1;
+            await using (var stagingSession1 = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
+                ("a/b/other.txt", FakeContentHash('b'), now, now),
+                ("z.txt", FakeContentHash('c'), now, now))).Session)
+            {
+                var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+                await fileTreeService.ValidateAsync();
+                root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
+            }
 
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
 
             var blobs2 = new FakeRecordingBlobContainerService();
-            var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-            await fileTreeService2.ValidateAsync();
-
-            var root2 = await builder2.SynchronizeAsync(manifestPath);
+            FileTreeHash? root2;
+            await using (var stagingSession2 = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
+                ("a/b/other.txt", FakeContentHash('b'), now, now),
+                ("z.txt", FakeContentHash('c'), now, now))).Session)
+            {
+                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
+                await fileTreeService2.ValidateAsync();
+                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+            }
 
             root1.ShouldNotBeNull();
             root2.ShouldBe(root1);
         }
         finally
         {
-            File.Delete(manifestPath);
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }

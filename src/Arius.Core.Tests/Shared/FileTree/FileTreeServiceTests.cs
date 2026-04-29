@@ -5,6 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared.Storage;
 
@@ -269,6 +270,36 @@ public class FileTreeServiceTests
         {
             await CleanupAsync(cacheDir, snapshotsDir);
         }
+    }
+
+    [Test]
+    public async Task EnsureStoredAsync_ComputesHashAndWritesMissingTree()
+    {
+        var blobs = new FakeRecordingBlobContainerService();
+        var account = $"acc-{Guid.NewGuid():N}";
+        var container = $"con-{Guid.NewGuid():N}";
+        var encryption = new PlaintextPassthroughService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, account, container);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, account, container);
+        await service.ValidateAsync();
+        var tree = new FileTreeBlob
+        {
+            Entries =
+            [
+                new FileEntry
+                {
+                    Name = "readme.txt",
+                    ContentHash = ContentHash.Parse(new string('c', 64)),
+                    Created = DateTimeOffset.UnixEpoch,
+                    Modified = DateTimeOffset.UnixEpoch
+                }
+            ]
+        };
+
+        var hash = await service.EnsureStoredAsync(tree);
+
+        hash.ShouldBe(FileTreeBlobSerializer.ComputeHash(tree, encryption));
+        blobs.Uploaded.ShouldContain(BlobPaths.FileTree(hash));
     }
 
     // ── 7.5  ValidateAsync — snapshot match — no filetrees listing ────────────
