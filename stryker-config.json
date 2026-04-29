@@ -1,0 +1,12 @@
+{
+  "stryker-config": {
+    "project": "src/Arius.Core/Arius.Core.csproj",
+    "test-projects": [
+      "src/Arius.Core.Tests/Arius.Core.Tests.csproj"
+    ],
+    "reporters": [
+      "html",
+      "progress"
+    ]
+  }
+}
