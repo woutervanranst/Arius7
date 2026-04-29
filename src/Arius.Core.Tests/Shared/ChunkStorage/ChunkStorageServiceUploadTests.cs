@@ -101,7 +101,7 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadLargeAsync_RetryAfterMetadataConflict_RewindsStreamAndReportsSingleUpload()
+    public async Task UploadLargeAsync_RetryAfterMetadataConflict_ReportsSingleProgressSequence()
     {
         var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
@@ -110,10 +110,11 @@ public class ChunkStorageServiceUploadTests
         var reports = new List<long>();
         var progress = new SyncProgress<long>(value => reports.Add(value));
         var blobName = BlobPaths.Chunk(RetryChunkHash);
+        await using var chunkedContent = new ChunkedReadMemoryStream(content, maxChunkSize: 512);
 
         var result = await service.UploadLargeAsync(
             chunkHash: RetryChunkHash,
-            content: new MemoryStream(content),
+            content: chunkedContent,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
             progress: progress,
@@ -121,9 +122,7 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeFalse();
         blobs.DeletedBlobNames.ShouldContain(blobName);
-        reports.ShouldNotBeEmpty();
-        reports[^1].ShouldBe(content.Length);
-        reports.ShouldAllBe(value => value <= content.Length);
+        reports.ShouldBe([512L, 1024L, 1536L, 2048L]);
     }
 
     [Test]
@@ -266,5 +265,20 @@ public class ChunkStorageServiceUploadTests
 
         public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
             _inner.DeleteAsync(blobName, cancellationToken);
+    }
+
+    private sealed class ChunkedReadMemoryStream(byte[] buffer, int maxChunkSize) : MemoryStream(buffer, writable: false)
+    {
+        public override int Read(byte[] buffer, int offset, int count) =>
+            base.Read(buffer, offset, Math.Min(count, maxChunkSize));
+
+        public override int Read(Span<byte> buffer) =>
+            base.Read(buffer[..Math.Min(buffer.Length, maxChunkSize)]);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            base.ReadAsync(buffer, offset, Math.Min(count, maxChunkSize), cancellationToken);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            base.ReadAsync(buffer[..Math.Min(buffer.Length, maxChunkSize)], cancellationToken);
     }
 }

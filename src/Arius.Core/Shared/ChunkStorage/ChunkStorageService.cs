@@ -99,6 +99,8 @@ public sealed class ChunkStorageService : IChunkStorageService
         if (content.Position != 0)
             content.Position = 0;
 
+        long reportedBytes = 0;
+
         retry:
         try
         {
@@ -109,7 +111,16 @@ public sealed class ChunkStorageService : IChunkStorageService
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = _encryption.WrapForEncryption(countingStream);
                 await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
-                var progressStream = progress is null ? null : new ProgressStream(content, progress);
+                var progressStream = progress is null
+                    ? null
+                    : new ProgressStream(content, new CallbackProgress(bytesRead =>
+                    {
+                        if (bytesRead <= reportedBytes)
+                            return;
+
+                        reportedBytes = bytesRead;
+                        progress.Report(bytesRead);
+                    }));
 
                 var source = progressStream ?? content;
                 await source.CopyToAsync(gzipStream, cancellationToken);
@@ -286,6 +297,11 @@ public sealed class ChunkStorageService : IChunkStorageService
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class CallbackProgress(Action<long> callback) : IProgress<long>
+    {
+        public void Report(long value) => callback(value);
     }
 
     /// <summary>
