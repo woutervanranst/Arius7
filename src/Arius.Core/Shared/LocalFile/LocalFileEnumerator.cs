@@ -85,22 +85,22 @@ public sealed class LocalFileEnumerator
     {
         foreach (var file in EnumerateFilesDepthFirst(rootDirectory))
         {
-            var rel = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
+            var relativeName = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
 
-            if (rel.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+            if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
-                var binaryRel  = rel[..^PointerSuffix.Length];
-                var binaryPath = Path.Combine(rootDirectory, binaryRel.Replace('/', Path.DirectorySeparatorChar));
+                var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
+                var binaryFileFullPath = Path.Combine(rootDirectory, binaryFileRelativeName.Replace('/', Path.DirectorySeparatorChar));
 
-                if (File.Exists(binaryPath))
+                if (File.Exists(binaryFileFullPath))
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
-                var pointerHash = ReadPointerHash(file.FullName, rel);
+                var pointerHash = ReadPointerHash(file.FullName, relativeName);
                 yield return new FilePair
                 {
-                    RelativePath  = binaryRel,
+                    RelativePath  = binaryFileRelativeName,
                     BinaryExists  = false,
                     PointerExists = true,
                     PointerHash   = pointerHash,
@@ -112,7 +112,7 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var pointerRel  = rel + PointerSuffix;
+                var pointerRel  = relativeName + PointerSuffix;
                 var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
                 var hasPointer  = File.Exists(pointerPath);
                 ContentHash? pointerHash = null;
@@ -122,7 +122,7 @@ public sealed class LocalFileEnumerator
 
                 yield return new FilePair
                 {
-                    RelativePath  = rel,
+                    RelativePath  = relativeName, // this will be the relative name of the BinaryFile
                     BinaryExists  = true,
                     PointerExists = hasPointer,
                     PointerHash   = pointerHash,
