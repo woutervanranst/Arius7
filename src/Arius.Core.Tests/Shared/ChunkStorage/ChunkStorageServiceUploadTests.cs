@@ -3,6 +3,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
+using Arius.Core.Tests.Shared.Streaming;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
@@ -72,6 +73,42 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
+    public async Task UploadTarAsync_StoresTarMetadataWithoutOriginalSize_AndUsesPlaintextTarContentType()
+    {
+        var blobs = new ContentTypeCapturingBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[1536];
+        Random.Shared.NextBytes(content);
+
+        var result = await service.UploadTarAsync(
+            chunkHash: TarChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        result.StoredSize.ShouldBeGreaterThan(0L);
+        blobs.LastOpenWriteContentType.ShouldBe(ContentTypes.TarPlaintext);
+
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk(TarChunkHash));
+        metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeTar);
+        metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
+        metadata.Metadata.ContainsKey(BlobMetadataKeys.OriginalSize).ShouldBeFalse();
+
+        _ = await service.UploadLargeAsync(
+            chunkHash: LargeChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        blobs.OpenWriteContentTypes.ShouldBe([ContentTypes.TarPlaintext, ContentTypes.LargePlaintext]);
+    }
+
+    [Test]
     public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -97,6 +134,31 @@ public class ChunkStorageServiceUploadTests
 
         var metadata = await blobs.GetMetadataAsync(blobName);
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_RetryAfterMetadataConflict_ReportsSingleProgressSequence()
+    {
+        var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+        var reports = new List<long>();
+        var progress = new SyncProgress<long>(value => reports.Add(value));
+        var blobName = BlobPaths.Chunk(RetryChunkHash);
+        await using var chunkedContent = new ChunkedReadMemoryStream(content, maxChunkSize: 512);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: RetryChunkHash,
+            content: chunkedContent,
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: progress,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        blobs.DeletedBlobNames.ShouldContain(blobName);
+        reports.ShouldBe([512L, 1024L, 1536L, 2048L]);
     }
 
     [Test]
@@ -197,4 +259,5 @@ public class ChunkStorageServiceUploadTests
         var metadata = await blobs.GetMetadataAsync(blobName);
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
     }
+
 }
