@@ -3,6 +3,10 @@ using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
+/// <summary>
+/// Records the <c>contentType</c> passed to <c>OpenWriteAsync</c> so upload tests can assert that
+/// tar and large chunk writes choose the expected blob content types.
+/// </summary>
 internal sealed class ContentTypeCapturingBlobContainerService : IBlobContainerService
 {
     private readonly FakeInMemoryBlobContainerService _inner = new();

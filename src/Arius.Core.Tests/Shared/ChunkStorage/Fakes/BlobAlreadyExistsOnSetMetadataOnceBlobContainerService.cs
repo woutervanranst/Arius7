@@ -3,6 +3,10 @@ using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
+/// <summary>
+/// Simulates a thin-chunk metadata commit race by failing the first <c>SetMetadataAsync</c>
+/// call with <see cref="BlobAlreadyExistsException"/> so upload tests can verify cleanup and retry behavior.
+/// </summary>
 internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : IBlobContainerService
 {
     private readonly FakeInMemoryBlobContainerService _inner = new();

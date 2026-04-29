@@ -1,5 +1,9 @@
 namespace Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 
+/// <summary>
+/// Caps each read to a small chunk so upload tests can exercise retry and progress behavior with
+/// streams that do not satisfy reads in a single call.
+/// </summary>
 internal sealed class ChunkedReadMemoryStream(byte[] buffer, int maxChunkSize) : MemoryStream(buffer, writable: false)
 {
     public override int Read(byte[] buffer, int offset, int count) =>
