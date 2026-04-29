@@ -5,8 +5,8 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
+using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

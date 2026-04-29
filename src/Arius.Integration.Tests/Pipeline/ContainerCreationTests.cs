@@ -6,7 +6,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;

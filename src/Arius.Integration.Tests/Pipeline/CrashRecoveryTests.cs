@@ -6,7 +6,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;

@@ -4,7 +4,14 @@ using DotNet.Testcontainers.Builders;
 using Testcontainers.Azurite;
 using TUnit.Core.Interfaces;
 
-namespace Arius.Tests.Shared.Storage;
+namespace Arius.Tests.Shared.Fixtures;
+
+/// <summary>
+/// Shared TUnit session fixture that owns the Azurite Docker process and creates disposable test
+/// containers/services on demand. Tests typically combine this shared backend fixture with a fresh
+/// <see cref="RepositoryTestFixture"/> per test so repository state stays isolated while Azurite
+/// startup cost is paid once per test session.
+/// </summary>
 
 public sealed class AzuriteFixture : IAsyncInitializer, IAsyncDisposable
 {

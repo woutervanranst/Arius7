@@ -1,5 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 
 namespace Arius.Integration.Tests.Pipeline;

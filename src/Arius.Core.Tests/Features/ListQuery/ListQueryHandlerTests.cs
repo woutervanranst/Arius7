@@ -6,6 +6,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging.Testing;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
@@ -43,19 +44,9 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50));
-
-        var fileTreeService   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-1", "ctr-ls-test-1");
-        var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-test-1", "ctr-ls-test-1");
-        var logger = new FakeLogger<ListQueryHandler>();
-        var handler = new ListQueryHandler(
-            index,
-            fileTreeService,
-            snapshotSvc,
-            logger,
-            "acct-ls-test-1",
-            "ctr-ls-test-1");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-1", "ctr-ls-test-1", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50));
+        var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None))
@@ -120,19 +111,9 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(docsHash), await FileTreeBlobSerializer.SerializeForStorageAsync(docsTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200));
-
-        var treeCache2   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-2", "ctr-ls-test-2");
-        var snapshotSvc2 = new SnapshotService(blobs, s_encryption, "acct-ls-test-2", "ctr-ls-test-2");
-        var logger = new FakeLogger<ListQueryHandler>();
-        var handler = new ListQueryHandler(
-            index,
-            treeCache2,
-            snapshotSvc2,
-            logger,
-            "acct-ls-test-2",
-            "ctr-ls-test-2");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-2", "ctr-ls-test-2", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200));
+        var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
         await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
@@ -180,20 +161,10 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-            using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3", cacheBudgetBytes: 1024 * 1024);
-            index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
-            index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
-
-            var treeCache3   = new FileTreeService(blobs, s_encryption, index, "acct-ls-test-3", "ctr-ls-test-3");
-            var snapshotSvc3 = new SnapshotService(blobs, s_encryption, "acct-ls-test-3", "ctr-ls-test-3");
-            var logger = new FakeLogger<ListQueryHandler>();
-            var handler = new ListQueryHandler(
-                index,
-                treeCache3,
-                snapshotSvc3,
-                logger,
-                "acct-ls-test-3",
-                "ctr-ls-test-3");
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-3", "ctr-ls-test-3", s_encryption);
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
+            var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
             await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
@@ -284,8 +255,8 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-33-nr", "ctr-33-nr", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-33-nr", "ctr-33-nr");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-nr", "ctr-33-nr", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
 
         var nonRecursive = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None).ToListAsync();
         nonRecursive.Count.ShouldBe(2);
@@ -293,8 +264,8 @@ public class ListQueryHandlerTests
         nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
         nonRecursive.ShouldNotContain(e => e.RelativePath == "child/deep.txt");
 
-        using var index2 = new ChunkIndexService(blobs, s_encryption, "acct-33-r", "ctr-33-r", cacheBudgetBytes: 1024 * 1024);
-        var handler2 = MakeHandler(blobs, index2, "acct-33-r", "ctr-33-r");
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-r", "ctr-33-r", s_encryption);
+        var handler2 = fixture2.CreateListQueryHandler();
 
         var recursive = await handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None).ToListAsync();
         recursive.ShouldContain(e => e.RelativePath == "child/");
@@ -322,8 +293,8 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-36", "ctr-36", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-36", "ctr-36");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-36", "ctr-36", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
         var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None).ToListAsync();
@@ -367,8 +338,8 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.FileTree(cloudOnlyHash),  await FileTreeBlobSerializer.SerializeForStorageAsync(cloudOnlyTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-            using var index = new ChunkIndexService(blobs, s_encryption, "acct-38", "ctr-38", cacheBudgetBytes: 1024 * 1024);
-            var handler = MakeHandler(blobs, index, "acct-38", "ctr-38");
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
+            var handler = fixture.CreateListQueryHandler();
 
             var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
                 .OfType<RepositoryDirectoryEntry>()
@@ -423,10 +394,10 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-39", "ctr-39", cacheBudgetBytes: 1024 * 1024);
-        index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500));
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-39", "ctr-39", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500));
 
-        var handler = MakeHandler(blobs, index, "acct-39", "ctr-39");
+        var handler = fixture.CreateListQueryHandler();
         var files   = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None)
             .OfType<RepositoryFileEntry>()
             .ToListAsync();
@@ -444,8 +415,8 @@ public class ListQueryHandlerTests
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
         var blobs = new FakeSeededBlobContainerService();
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-310", "ctr-310", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-310", "ctr-310");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-310", "ctr-310", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -465,8 +436,8 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-310b", "ctr-310b", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-310b", "ctr-310b");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-310b", "ctr-310b", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -506,8 +477,8 @@ public class ListQueryHandlerTests
         var snapshot = MakeSnapshot(currentHash);
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-311", "ctr-311", cacheBudgetBytes: 1024 * 1024);
-        var handler = MakeHandler(blobs, index, "acct-311", "ctr-311");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-311", "ctr-311", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
 
         using var cts = new CancellationTokenSource();
         var collected = new List<RepositoryEntry>();
@@ -536,9 +507,6 @@ public class ListQueryHandlerTests
         TotalSize  = 0,
         AriusVersion = "test"
     };
-
-    private ListQueryHandler MakeHandler(FakeSeededBlobContainerService blobs, ChunkIndexService index, string account = "account", string container = "container") =>
-        new(index, new FileTreeService(blobs, s_encryption, index, account, container), new SnapshotService(blobs, s_encryption, account, container), new FakeLogger<ListQueryHandler>(), account, container);
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 

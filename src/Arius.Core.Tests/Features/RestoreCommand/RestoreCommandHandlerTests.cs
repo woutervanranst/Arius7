@@ -9,6 +9,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -45,135 +46,86 @@ public class RestoreCommandHandlerTests
     [Test]
     public async Task Handle_Restores_DuplicateLargeChunkContent_ToAllPaths()
     {
-        var blobs         = new FakeInMemoryBlobContainerService();
-        var encryption    = new PlaintextPassthroughService();
-        var mediator      = Substitute.For<IMediator>();
-        var accountName   = $"acct-restore-duplicates-{Guid.NewGuid():N}";
-        var containerName = $"ctr-restore-duplicates-{Guid.NewGuid():N}";
-        var localRoot     = CreateTempDirectory("arius-restore-local");
-        var restoreRoot   = CreateTempDirectory("arius-restore-output");
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-duplicates-{Guid.NewGuid():N}",
+            $"ctr-restore-duplicates-{Guid.NewGuid():N}");
 
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
-        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
+        var content = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
 
-        try
-        {
-            var content = new byte[2 * 1024 * 1024];
-            Random.Shared.NextBytes(content);
+        fixture.WriteFile("archives/duplicates/binary-a.bin", content);
+        fixture.WriteFile("nested/deep/a/b/c/binary-b.bin",   content);
 
-            WriteFile(localRoot, "archives/duplicates/binary-a.bin", content);
-            WriteFile(localRoot, "nested/deep/a/b/c/binary-b.bin",   content);
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalRoot,
+                UploadTier    = BlobTier.Cool,
+            }),
+            CancellationToken.None);
 
-            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var       chunkStorage    = new ChunkStorageService(blobs, encryption);
-            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-            var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
 
-            var archiveResult = await archiveHandler.Handle(
-                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
-                {
-                    RootDirectory = localRoot,
-                    UploadTier    = BlobTier.Cool,
-                }),
-                CancellationToken.None);
-
-            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-            var restoreHandler = new RestoreCommandHandler(encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
-
-            var restoreResult = await restoreHandler.Handle(
-                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-                {
-                    RootDirectory = restoreRoot,
-                    Overwrite     = true,
-                }),
-                CancellationToken.None);
-
-            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-            restoreResult.FilesRestored.ShouldBe(2);
-            File.ReadAllBytes(Path.Combine(restoreRoot, "archives/duplicates/binary-a.bin")).ShouldBe(content);
-            File.ReadAllBytes(Path.Combine(restoreRoot, "nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(localRoot);
-            DeleteDirectoryIfExists(restoreRoot);
-            DeleteRepositoryCacheDirectories(accountName, containerName);
-        }
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
+        fixture.ReadRestored("archives/duplicates/binary-a.bin").ShouldBe(content);
+        fixture.ReadRestored("nested/deep/a/b/c/binary-b.bin").ShouldBe(content);
     }
 
     [Test]
     public async Task Handle_Restores_DuplicateTarEntryContent_ToAllPaths_WithPerPathMetadata()
     {
-        var blobs         = new FakeInMemoryBlobContainerService();
-        var encryption    = new PlaintextPassthroughService();
-        var mediator      = Substitute.For<IMediator>();
-        var accountName   = $"acct-restore-tar-duplicates-{Guid.NewGuid():N}";
-        var containerName = $"ctr-restore-tar-duplicates-{Guid.NewGuid():N}";
-        var localRoot     = CreateTempDirectory("arius-restore-local");
-        var restoreRoot   = CreateTempDirectory("arius-restore-output");
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-tar-duplicates-{Guid.NewGuid():N}",
+            $"ctr-restore-tar-duplicates-{Guid.NewGuid():N}");
 
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
-        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
+        var content = new byte[512 * 1024];
+        Random.Shared.NextBytes(content);
 
-        try
-        {
-            var content = new byte[512 * 1024];
-            Random.Shared.NextBytes(content);
+        var firstCreated   = new DateTime(2021, 4, 5, 6, 7,  8,  DateTimeKind.Utc);
+        var firstModified  = new DateTime(2022, 5, 6, 7, 8,  9,  DateTimeKind.Utc);
+        var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
+        var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
 
-            var firstCreated   = new DateTime(2021, 4, 5, 6, 7,  8,  DateTimeKind.Utc);
-            var firstModified  = new DateTime(2022, 5, 6, 7, 8,  9,  DateTimeKind.Utc);
-            var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
-            var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
+        fixture.WriteFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
+        fixture.WriteFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
 
-            WriteFile(localRoot, "archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
-            WriteFile(localRoot, "nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalRoot,
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+            }),
+            CancellationToken.None);
 
-            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var       chunkStorage    = new ChunkStorageService(blobs, encryption);
-            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-            var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
 
-            var archiveResult = await archiveHandler.Handle(
-                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
-                {
-                    RootDirectory      = localRoot,
-                    UploadTier         = BlobTier.Cool,
-                    SmallFileThreshold = 1024 * 1024,
-                }),
-                CancellationToken.None);
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
 
-            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-            var restoreHandler = new RestoreCommandHandler(encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
-            var restoreResult = await restoreHandler.Handle(
-                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-                {
-                    RootDirectory = restoreRoot,
-                    Overwrite     = true,
-                }),
-                CancellationToken.None);
-
-            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-            restoreResult.FilesRestored.ShouldBe(2);
-
-            AssertRestoredFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
-            AssertRestoredFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(localRoot);
-            DeleteDirectoryIfExists(restoreRoot);
-            DeleteRepositoryCacheDirectories(accountName, containerName);
-        }
+        AssertRestoredFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
+        AssertRestoredFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
 
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
-            var restoredPath = Path.Combine(restoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             var pointerPath  = restoredPath + ".pointer.arius";
 
             File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
@@ -194,70 +146,46 @@ public class RestoreCommandHandlerTests
     [Test]
     public async Task Handle_Restores_DuplicateZeroByteTarEntryContent_ToAllPaths_WithPerPathMetadata()
     {
-        var blobs         = new FakeInMemoryBlobContainerService();
-        var encryption    = new PlaintextPassthroughService();
-        var mediator      = Substitute.For<IMediator>();
-        var accountName   = $"acct-restore-zero-tar-duplicates-{Guid.NewGuid():N}";
-        var containerName = $"ctr-restore-zero-tar-duplicates-{Guid.NewGuid():N}";
-        var localRoot     = CreateTempDirectory("arius-restore-local");
-        var restoreRoot   = CreateTempDirectory("arius-restore-output");
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-zero-tar-duplicates-{Guid.NewGuid():N}",
+            $"ctr-restore-zero-tar-duplicates-{Guid.NewGuid():N}");
 
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
-        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
+        var firstCreated   = new DateTime(2020, 1, 2, 3, 4,  5, DateTimeKind.Utc);
+        var firstModified  = new DateTime(2020, 2, 3, 4, 5,  6, DateTimeKind.Utc);
+        var secondCreated  = new DateTime(2020, 3, 4, 5, 6,  7, DateTimeKind.Utc);
+        var secondModified = new DateTime(2020, 4, 5, 6, 7,  8, DateTimeKind.Utc);
 
-        try
-        {
-            var firstCreated   = new DateTime(2020, 1, 2, 3, 4,  5, DateTimeKind.Utc);
-            var firstModified  = new DateTime(2020, 2, 3, 4, 5,  6, DateTimeKind.Utc);
-            var secondCreated  = new DateTime(2020, 3, 4, 5, 6,  7, DateTimeKind.Utc);
-            var secondModified = new DateTime(2020, 4, 5, 6, 7,  8, DateTimeKind.Utc);
+        fixture.WriteFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
+        fixture.WriteFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
 
-            WriteFile(localRoot, "zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
-            WriteFile(localRoot, "zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalRoot,
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+            }),
+            CancellationToken.None);
 
-            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var       chunkStorage    = new ChunkStorageService(blobs, encryption);
-            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-            var archiveHandler = new ArchiveCommandHandler(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<ArchiveCommandHandler>(), accountName, containerName);
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
 
-            var archiveResult = await archiveHandler.Handle(
-                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
-                {
-                    RootDirectory      = localRoot,
-                    UploadTier         = BlobTier.Cool,
-                    SmallFileThreshold = 1024 * 1024,
-                }),
-                CancellationToken.None);
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
 
-            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-            var restoreHandler = new RestoreCommandHandler(encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
-            var restoreResult = await restoreHandler.Handle(
-                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-                {
-                    RootDirectory = restoreRoot,
-                    Overwrite     = true,
-                }),
-                CancellationToken.None);
-
-            restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-            restoreResult.FilesRestored.ShouldBe(2);
-
-            AssertRestoredFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
-            AssertRestoredFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(localRoot);
-            DeleteDirectoryIfExists(restoreRoot);
-            DeleteRepositoryCacheDirectories(accountName, containerName);
-        }
+        AssertRestoredFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
+        AssertRestoredFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
 
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
-            var restoredPath = Path.Combine(restoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             var pointerPath  = restoredPath + ".pointer.arius";
 
             File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
@@ -341,45 +269,4 @@ public class RestoreCommandHandlerTests
         return output.ToArray();
     }
 
-    private static string CreateTempDirectory(string prefix)
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static string WriteFile(string rootPath, string relativePath, byte[] bytes)
-    {
-        var fullPath = Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        File.WriteAllBytes(fullPath, bytes);
-        return fullPath;
-    }
-
-    private static void WriteFile(string rootPath, string relativePath, byte[] bytes, DateTime created, DateTime modified)
-    {
-        var fullPath = WriteFile(rootPath, relativePath, bytes);
-        File.SetCreationTimeUtc(fullPath, created);
-        File.SetLastWriteTimeUtc(fullPath, modified);
-    }
-
-    private static void DeleteRepositoryCacheDirectories(string accountName, string containerName)
-    {
-        DeleteDirectoryIfExists(RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName));
-        DeleteDirectoryIfExists(FileTreeService.GetDiskCacheDirectory(accountName, containerName));
-        DeleteDirectoryIfExists(SnapshotService.GetDiskCacheDirectory(accountName, containerName));
-    }
-
-    private static void DeleteDirectoryIfExists(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
-        }
-    }
 }

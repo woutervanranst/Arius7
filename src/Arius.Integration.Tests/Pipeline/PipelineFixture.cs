@@ -5,7 +5,6 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
-using Arius.Tests.Shared.Storage;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging.Testing;
 
@@ -47,7 +46,7 @@ public sealed class PipelineFixture : IAsyncDisposable
         CancellationToken ct = default)
     {
         var (container, svc) = await azurite.CreateTestServiceAsync(ct);
-        var repository = await RepositoryTestFixture.CreateAsync(svc, Account, container.Name, passphrase, cancellationToken: ct);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(svc, Account, container.Name, passphrase, cancellationToken: ct);
         return new PipelineFixture(container, repository);
     }
 
@@ -78,7 +77,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             blobContainer = created.Service;
         }
 
-        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, Account, container.Name, encryption, cancellationToken: ct);
+        var repository = await RepositoryTestFixture.CreateWithEncryptionAsync(blobContainer, Account, container.Name, encryption, cancellationToken: ct);
 
         return new PipelineFixture(container, repository);
     }

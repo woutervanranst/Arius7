@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Snapshot;
 

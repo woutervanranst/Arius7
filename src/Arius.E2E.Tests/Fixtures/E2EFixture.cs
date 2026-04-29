@@ -78,7 +78,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
-        var repository = await RepositoryTestFixture.CreateAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
 
         return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
     }
