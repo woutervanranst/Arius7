@@ -1,100 +1,129 @@
 ---
 name: csharp-tunit
-description: 'Get best practices for TUnit unit testing, including data-driven tests'
+description: Use when writing or reviewing C# tests in a repository that uses TUnit, especially when choosing TUnit data sources, lifecycle hooks, parallelism controls, or async assertions.
 ---
 
-# TUnit Best Practices
+# TUnit For C#
 
-Your goal is to help me write effective unit tests with TUnit, covering both standard and data-driven testing approaches.
+## Overview
 
-## Project Setup
+TUnit's highest-value differences are discovery-time data generation, property injection, parallel-by-default execution, and async assertions. Prefer the smallest TUnit feature that solves the real testing problem; do not cargo-cult every attribute.
 
-- Use a separate test project with naming convention `[ProjectName].Tests`
-- Reference TUnit package and TUnit.Assertions for fluent assertions
-- Create test classes that match the classes being tested (e.g., `CalculatorTests` for `Calculator`)
-- Use .NET SDK test commands: `dotnet test` for running tests
-- TUnit requires .NET 8.0 or higher
+## High-Value Patterns
 
-## Test Structure
+- Use `[Arguments(...)]` only for compile-time constants.
+- Use `[MethodDataSource]` for computed or reusable data. For mutable reference data, return `Func<T>` so each test gets a fresh instance instead of sharing state.
+- Use `TestDataRow<T>` when individual cases need `DisplayName`, `Skip`, or `Categories`.
+- Use `[CombinedDataSources]` only when you really want the full Cartesian product.
+- Use `[ClassDataSource<T>]` plus `SharedType` for expensive fixtures. Choose `PerClass`, `PerAssembly`, `PerTestSession`, or `Keyed` deliberately; broader sharing increases coupling and lifetime risk.
+- Prefer property injection with `required` properties for non-trivial fixtures. TUnit can initialize and dispose nested dependency graphs for you.
+- If you use Native AOT mode, keep method data sources static.
 
-- No test class attributes required (like xUnit/NUnit)
-- Use `[Test]` attribute for test methods (not `[Fact]` like xUnit)
-- Follow the Arrange-Act-Assert (AAA) pattern
-- Name tests using the pattern `MethodName_Scenario_ExpectedBehavior`
-- Use lifecycle hooks: `[Before(Test)]` for setup and `[After(Test)]` for teardown
-- Use `[Before(Class)]` and `[After(Class)]` for shared context between tests in a class
-- Use `[Before(Assembly)]` and `[After(Assembly)]` for shared context across test classes
-- TUnit supports advanced lifecycle hooks like `[Before(TestSession)]` and `[After(TestSession)]`
+## Discovery Vs Execution
 
-## Standard Tests
+- `IAsyncDiscoveryInitializer` runs during test discovery, before test cases are generated.
+- `IAsyncInitializer` runs during test execution, after the test instance is created and injected.
+- `InstanceMethodDataSource` is evaluated during discovery. If it depends on execution-time initialization, you can silently get zero tests.
+- Use `TestBuilderContext.Current` during discovery and `TestContext.Current` during execution.
+- If a workflow test truly needs `DependsOn`, pass state through `TestContext.Current.StateBag` instead of static globals.
 
-- Keep tests focused on a single behavior
-- Avoid testing multiple behaviors in one test method
-- Use TUnit's fluent assertion syntax with `await Assert.That()`
-- Include only the assertions needed to verify the test case
-- Make tests independent and idempotent (can run in any order)
-- Avoid test interdependencies (use `[DependsOn]` attribute if needed)
+## Hooks And Fixtures
 
-## Data-Driven Tests
+- Use `[Before(Test)]` and `[After(Test)]` for per-test setup and cleanup that belongs to the test class instance.
+- Use `[Before(Class)]` and `[After(Class)]` for class-scoped coordination, remembering these hooks are static.
+- Prefer fixture objects with `IAsyncInitializer` and `IAsyncDisposable` when setup is async, expensive, or shared across tests.
+- Keep hooks thin. If setup grows into infrastructure orchestration, move it into a fixture and inject it.
+- Use session- or assembly-level hooks sparingly; they are powerful but easy to overuse.
 
-- Use `[Arguments]` attribute for inline test data (equivalent to xUnit's `[InlineData]`)
-- Use `[MethodData]` for method-based test data (equivalent to xUnit's `[MemberData]`)
-- Use `[ClassData]` for class-based test data
-- Create custom data sources by implementing `ITestDataSource`
-- Use meaningful parameter names in data-driven tests
-- Multiple `[Arguments]` attributes can be applied to the same test method
+## Parallelism
 
-## Assertions
+- TUnit makes every test eligible to run concurrently by default.
+- Use `[NotInParallel("key")]` for genuinely shared mutable resources.
+- Use `[ParallelGroup("key")]` when one group may run internally in parallel but must not overlap with another group.
+- Use `[ParallelLimiter<T>]` when tests may overlap but external capacity is bounded.
+- Prefer isolated tests over both `[DependsOn]` and `[Order]`. If sequencing is unavoidable, prefer `[DependsOn]` for real result or state handoff and use `[Order]` only for simple sequencing inside a shared non-parallel scope.
+- Treat `[Retry]` as a last resort after fixing the underlying race or eventual-consistency issue.
 
-- Use `await Assert.That(value).IsEqualTo(expected)` for value equality
-- Use `await Assert.That(value).IsSameReferenceAs(expected)` for reference equality
-- Use `await Assert.That(value).IsTrue()` or `await Assert.That(value).IsFalse()` for boolean conditions
-- Use `await Assert.That(collection).Contains(item)` or `await Assert.That(collection).DoesNotContain(item)` for collections
-- Use `await Assert.That(value).Matches(pattern)` for regex pattern matching
-- Use `await Assert.That(action).Throws<TException>()` or `await Assert.That(asyncAction).ThrowsAsync<TException>()` to test exceptions
-- Chain assertions with `.And` operator: `await Assert.That(value).IsNotNull().And.IsEqualTo(expected)`
-- Use `.Or` operator for alternative conditions: `await Assert.That(value).IsEqualTo(1).Or.IsEqualTo(2)`
-- Use `.Within(tolerance)` for DateTime and numeric comparisons with tolerance
-- All assertions are asynchronous and must be awaited
+## Async And Diagnostics
 
-## Advanced Features
+- TUnit assertions are async; await them.
+- Prefer `WaitsFor` or `Eventually` and `CompletesWithin` over `Task.Delay` sleeps.
+- Use `TestContext.Current.Output` and artifacts for logs, screenshots, dumps, and failure diagnostics.
+- When `WaitsFor` or `Eventually` fails, log the last observed state, resource identifier, and timing details so the failure is diagnosable.
+- Use `TestContext.Current.Isolation` to generate unique resource names for parallel-safe tests.
+- Do not assume another framework's CLI filtering flags map directly to a TUnit repo. Check the repo's configured TUnit/MTP invocation before using filters or list commands.
 
-- Use `[Repeat(n)]` to repeat tests multiple times
-- Use `[Retry(n)]` for automatic retry on failure
-- Use `[ParallelLimit<T>]` to control parallel execution limits
-- Use `[Skip("reason")]` to skip tests conditionally
-- Use `[DependsOn(nameof(OtherTest))]` to create test dependencies
-- Use `[Timeout(milliseconds)]` to set test timeouts
-- Create custom attributes by extending TUnit's base attributes
+## Quick Reference
 
-## Test Organization
+| Need | Prefer |
+|---|---|
+| dynamic non-constant data | `MethodDataSource` |
+| per-case display name / skip / categories | `TestDataRow<T>` |
+| expensive reusable fixture | `ClassDataSource<T>(Shared = ...)` |
+| discovery-time async data loading | `IAsyncDiscoveryInitializer` |
+| execution-time async setup | `IAsyncInitializer` |
+| wait for eventual condition | `WaitsFor` / `Eventually` |
+| block overlap on a shared resource | `NotInParallel("key")` |
+| cap concurrency without serializing everything | `ParallelLimiter<T>` |
 
-- Group tests by feature or component
-- Use `[Category("CategoryName")]` for test categorization
-- Use `[DisplayName("Custom Test Name")]` for custom test names
-- Consider using `TestContext` for test diagnostics and information
-- Use conditional attributes like custom `[WindowsOnly]` for platform-specific tests
+## Example
 
-## Performance and Parallel Execution
+```csharp
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Json;
+using TUnit.Core;
+using TUnit.Assertions;
 
-- TUnit runs tests in parallel by default (unlike xUnit which requires explicit configuration)
-- Use `[NotInParallel]` to disable parallel execution for specific tests
-- Use `[ParallelLimit<T>]` with custom limit classes to control concurrency
-- Tests within the same class run sequentially by default
-- Use `[Repeat(n)]` with `[ParallelLimit<T>]` for load testing scenarios
+public record UserCase(string Email, bool IsValid);
 
-## Migration from xUnit
+public static class UserCases
+{
+    public static IEnumerable<TestDataRow<Func<UserCase>>> All()
+    {
+        yield return new(() => new UserCase("a@example.com", true), DisplayName: "valid email");
+        yield return new(() => new UserCase("bad", false), DisplayName: "invalid email");
+    }
+}
 
-- Replace `[Fact]` with `[Test]`
-- Replace `[Theory]` with `[Test]` and use `[Arguments]` for data
-- Replace `[InlineData]` with `[Arguments]`
-- Replace `[MemberData]` with `[MethodData]`
-- Replace `Assert.Equal` with `await Assert.That(actual).IsEqualTo(expected)`
-- Replace `Assert.True` with `await Assert.That(condition).IsTrue()`
-- Replace `Assert.Throws<T>` with `await Assert.That(action).Throws<T>()`
-- Replace constructor/IDisposable with `[Before(Test)]`/`[After(Test)]`
-- Replace `IClassFixture<T>` with `[Before(Class)]`/`[After(Class)]`
+public sealed class ApiFixture : IAsyncInitializer, IAsyncDisposable
+{
+    public HttpClient Client { get; private set; } = default!;
 
-**Why TUnit over xUnit?**
+    public Task InitializeAsync()
+    {
+        Client = new HttpClient { BaseAddress = new Uri("https://example.test") };
+        return Task.CompletedTask;
+    }
 
-TUnit offers a modern, fast, and flexible testing experience with advanced features not present in xUnit, such as asynchronous assertions, more refined lifecycle hooks, and improved data-driven testing capabilities. TUnit's fluent assertions provide clearer and more expressive test validation, making it especially suitable for complex .NET projects.
+    public ValueTask DisposeAsync()
+    {
+        Client.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
+
+public class UserTests
+{
+    [ClassDataSource<ApiFixture>(Shared = SharedType.PerTestSession)]
+    public required ApiFixture Api { get; init; }
+
+    [Test]
+    [MethodDataSource(typeof(UserCases), nameof(UserCases.All))]
+    public async Task Validate_user_input(UserCase userCase)
+    {
+        var response = await Api.Client.PostAsJsonAsync("/users/validate", userCase);
+        await Assert.That(response.IsSuccessStatusCode).IsEqualTo(userCase.IsValid);
+    }
+}
+```
+
+## Common Mistakes
+
+- Using `[Arguments]` for objects or other non-constant values.
+- Returning the same mutable reference from a data source and accidentally coupling tests.
+- Using `InstanceMethodDataSource` with execution-time initialized state.
+- Serializing the whole suite instead of scoping the parallel constraint to the actual shared resource.
+- Using `[Order]` or `[Retry]` to hide poor isolation.
+- Treating `TestContext` as available during discovery; use `TestBuilderContext` there instead.
+- Copying outdated or incorrect names such as `MethodData`, `ClassData`, or `ParallelLimit`.
