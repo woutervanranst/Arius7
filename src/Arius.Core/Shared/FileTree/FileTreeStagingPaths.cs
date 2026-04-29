@@ -6,11 +6,11 @@ namespace Arius.Core.Shared.FileTree;
 
 internal static class FileTreeStagingPaths
 {
-    private const string StagingDirectoryName = ".staging";
+    private const string StagingDirectoryName     = ".staging";
     private const string DirectoriesDirectoryName = "dirs";
-    private const string EntriesFileName = "entries";
-    private const string ChildrenFileName = "children";
-    private const string LockFileName = ".staging.lock";
+    private const string EntriesFileName          = "entries";
+    private const string ChildrenFileName         = "children";
+    private const string LockFileName             = ".staging.lock";
 
     public static string GetDirectoryId(string directoryPath)
     {

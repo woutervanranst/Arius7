@@ -98,9 +98,7 @@ internal sealed class FileTreeStagingWriter
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            await using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read, 4096, useAsync: true);
-            await using var writer = new StreamWriter(stream);
-            await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
+            await File.AppendAllLinesAsync(path, [line], cancellationToken);
         }
         finally
         {
