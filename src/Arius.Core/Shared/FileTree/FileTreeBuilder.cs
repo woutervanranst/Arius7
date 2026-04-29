@@ -105,14 +105,14 @@ public sealed class FileTreeBuilder
                 }
             }
 
+            if (!dirEntries.ContainsKey(string.Empty))
+                dirEntries[string.Empty] = new List<FileTreeEntry>();
+
             // Process directories bottom-up: deepest paths first (more slashes → deeper)
             var sortedDirs = dirEntries.Keys
                 .OrderByDescending(d => d.Count(c => c == '/'))
                 .ThenByDescending(d => d, StringComparer.Ordinal)
                 .ToList();
-
-            // Map from directory path → its computed tree hash (for cascading to parents)
-            var dirHashMap = new Dictionary<string, FileTreeHash>(StringComparer.Ordinal);
 
             FileTreeHash? rootHash = null;
 
@@ -120,47 +120,29 @@ public sealed class FileTreeBuilder
             {
                 var entries = dirEntries[dirPath];
 
-                // Inject already-computed child directory entries
-                // (any immediate child directories of dirPath that have been processed)
-                foreach (var (childDirPath, childHash) in dirHashMap)
-                {
-                    var childParent = GetDirectoryPath(childDirPath);
-                    if (childParent == dirPath)
-                    {
-                        var childName = GetLastSegment(childDirPath);
-                        entries.Add(new DirectoryEntry
-                        {
-                            Name         = childName + "/",
-                            FileTreeHash = childHash
-                        });
-                    }
-                }
-
                 var tree = new FileTreeBlob { Entries = entries };
                 var hash = FileTreeBlobSerializer.ComputeHash(tree, _encryption);
 
                 // Dedup: upload only if not already cached/known remotely
                 await QueueUploadAsync(hash, tree, pendingUploads.Writer, cancellationToken);
 
-                dirHashMap[dirPath] = hash;
+                var parentPath = GetDirectoryPath(dirPath);
+                if (parentPath != dirPath && dirEntries.TryGetValue(parentPath, out var parentEntries))
+                {
+                    parentEntries.Add(new DirectoryEntry
+                    {
+                        Name         = GetLastSegment(dirPath) + "/",
+                        FileTreeHash = hash
+                    });
+                }
 
                 // If this directory has no parent (empty string = root), it is the root
-                if (dirPath == string.Empty || !dirPath.Contains('/'))
-                {
-                    // Check if there's a parent for this dir
-                    var parent = GetDirectoryPath(dirPath);
-                    if (parent == dirPath) // root
-                        rootHash = hash;
-                    // else: will be cascaded to parent when parent is processed
-                }
+                if (dirPath == string.Empty)
+                    rootHash = hash;
             }
 
-            // The root is the directory with the shallowest path
-            // Find the directory closest to root (fewest slashes)
             if (rootHash is null)
-            {
-                rootHash = await BuildRootBlobAsync(dirHashMap, dirEntries, pendingUploads.Writer, cancellationToken);
-            }
+                throw new InvalidOperationException("Filetree synchronization did not produce a root hash.");
 
             pendingUploads.Writer.TryComplete();
             await Task.WhenAll(uploadTasks);
@@ -176,44 +158,9 @@ public sealed class FileTreeBuilder
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
-    private async Task<FileTreeHash> BuildRootBlobAsync(
-        Dictionary<string, FileTreeHash> dirHashMap,
-        Dictionary<string, List<FileTreeEntry>> dirEntries,
-        ChannelWriter<(FileTreeHash Hash, FileTreeBlob Tree)> uploadWriter,
-        CancellationToken                cancellationToken)
-    {
-        // Find top-level entries (directories/files whose parent is "")
-        var rootEntryList = new List<FileTreeEntry>();
-
-        // Top-level files (path has no slash)
-        if (dirEntries.TryGetValue(string.Empty, out var rootFiles))
-            rootEntryList.AddRange(rootFiles);
-
-        // Top-level directories (single-segment paths that are in dirHashMap)
-        foreach (var (dirPath, hash) in dirHashMap)
-        {
-            if (dirPath == string.Empty) continue;
-            var parentPath = GetDirectoryPath(dirPath);
-            if (parentPath == string.Empty)
-            {
-                var dirName = GetLastSegment(dirPath);
-                rootEntryList.Add(new DirectoryEntry
-                {
-                    Name         = dirName + "/",
-                    FileTreeHash = hash
-                });
-            }
-        }
-
-        var rootTree = new FileTreeBlob { Entries = rootEntryList };
-        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, _encryption);
-        await QueueUploadAsync(rootHash, rootTree, uploadWriter, cancellationToken);
-        return rootHash;
-    }
-
     /// <summary>
-    /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
-    /// </summary>
+     /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
+     /// </summary>
     private async Task QueueUploadAsync(
         FileTreeHash      treeHash,
         FileTreeBlob      tree,

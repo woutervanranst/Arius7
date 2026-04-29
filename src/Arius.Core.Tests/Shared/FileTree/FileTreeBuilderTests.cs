@@ -319,4 +319,51 @@ public class FileTreeBuilderTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
+
+    [Test]
+    public async Task SynchronizeAsync_NestedDirectories_ProducesStableRootHash()
+    {
+        const string accountName = "acc-nested-core";
+        const string containerName = "con-nested-core";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var lines = new[]
+            {
+                new ManifestEntry("a/b/c/file.txt", FakeContentHash('a'), now, now).Serialize(),
+                new ManifestEntry("a/b/other.txt", FakeContentHash('b'), now, now).Serialize(),
+                new ManifestEntry("z.txt", FakeContentHash('c'), now, now).Serialize(),
+            };
+            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+
+            var blobs = new FakeRecordingBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var root1 = await builder.SynchronizeAsync(manifestPath);
+
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+
+            var blobs2 = new FakeRecordingBlobContainerService();
+            var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
+            await fileTreeService2.ValidateAsync();
+
+            var root2 = await builder2.SynchronizeAsync(manifestPath);
+
+            root1.ShouldNotBeNull();
+            root2.ShouldBe(root1);
+        }
+        finally
+        {
+            File.Delete(manifestPath);
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
 }
