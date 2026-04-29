@@ -314,17 +314,11 @@ public sealed class ChunkStorageService : IChunkStorageService
     private sealed class ChunkDownloadStream : Stream
     {
         private readonly Stream _inner;
-        private readonly IDisposable? _decryptStream;
-        private readonly IDisposable? _progressStream;
-        private readonly IDisposable _downloadStream;
         private int _disposed;
 
         public ChunkDownloadStream(Stream inner, Stream decryptStream, Stream progressStream, Stream downloadStream)
         {
             _inner = inner;
-            _decryptStream = decryptStream;
-            _progressStream = ReferenceEquals(progressStream, downloadStream) ? null : progressStream;
-            _downloadStream = downloadStream;
         }
 
         public override bool CanRead => _inner.CanRead;
@@ -353,9 +347,6 @@ public sealed class ChunkStorageService : IChunkStorageService
                 return;
 
             await _inner.DisposeAsync();
-            _decryptStream?.Dispose();
-            _progressStream?.Dispose();
-            _downloadStream.Dispose();
 
             GC.SuppressFinalize(this);
         }
@@ -366,9 +357,6 @@ public sealed class ChunkStorageService : IChunkStorageService
                 return;
 
             _inner.Dispose();
-            _decryptStream?.Dispose();
-            _progressStream?.Dispose();
-            _downloadStream.Dispose();
         }
     }
 }
