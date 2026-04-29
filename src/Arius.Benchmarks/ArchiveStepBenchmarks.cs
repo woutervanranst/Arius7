@@ -1,8 +1,10 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Encryption;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;
 using Arius.Tests.Shared.Fixtures;
+using Arius.Tests.Shared.IO;
 using BenchmarkDotNet.Attributes;
 
 namespace Arius.Benchmarks;
@@ -12,6 +14,8 @@ namespace Arius.Benchmarks;
 public class ArchiveStepBenchmarks
 {
     private AzuriteE2EBackendFixture? _backend;
+    private SyntheticRepositoryDefinition? _definition;
+    private string? _preparedSourceRoot;
     private E2EStorageBackendContext? _context;
     private RepositoryTestFixture? _fixture;
 
@@ -20,39 +24,73 @@ public class ArchiveStepBenchmarks
     {
         _backend = new AzuriteE2EBackendFixture();
         await _backend.InitializeAsync();
-        _context = await _backend.CreateContextAsync();
 
-        _fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(
-            _context.BlobContainer,
-            _context.AccountName,
-            _context.ContainerName);
+        _definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
+        _preparedSourceRoot = Path.Combine(Path.GetTempPath(), "arius", $"benchmark-source-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_preparedSourceRoot);
 
-        var definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
         await SyntheticRepositoryMaterializer.MaterializeV1Async(
-            definition,
+            _definition,
             RepresentativeWorkflowCatalog.Canonical.Seed,
-            _fixture.LocalRoot,
-            _fixture.Encryption);
+            _preparedSourceRoot,
+            new PassphraseEncryptionService("arius-test-passphrase"));
     }
 
     [GlobalCleanup]
     public async Task CleanupAsync()
     {
-        if (_fixture is not null)
-            await _fixture.DisposeAsync();
-
-        if (_context is not null)
-            await _context.DisposeAsync();
-
         if (_backend is not null)
             await _backend.DisposeAsync();
+
+        if (_preparedSourceRoot is not null && Directory.Exists(_preparedSourceRoot))
+            Directory.Delete(_preparedSourceRoot, recursive: true);
+    }
+
+    [IterationSetup]
+    public void IterationSetup()
+        => IterationSetupCoreAsync().GetAwaiter().GetResult();
+
+    async Task IterationSetupCoreAsync()
+    {
+        if (_backend is null || _preparedSourceRoot is null)
+            throw new InvalidOperationException("Benchmark state was not initialized.");
+
+        _context = await _backend.CreateContextAsync();
+        _fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(
+            _context.BlobContainer,
+            _context.AccountName,
+            _context.ContainerName);
+
+        if (Directory.Exists(_fixture.LocalRoot))
+            Directory.Delete(_fixture.LocalRoot, recursive: true);
+
+        FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalRoot);
+    }
+
+    [IterationCleanup]
+    public void IterationCleanup()
+        => IterationCleanupCoreAsync().GetAwaiter().GetResult();
+
+    async Task IterationCleanupCoreAsync()
+    {
+        if (_fixture is not null)
+        {
+            await _fixture.DisposeAsync();
+            _fixture = null;
+        }
+
+        if (_context is not null)
+        {
+            await _context.DisposeAsync();
+            _context = null;
+        }
     }
 
     [Benchmark(Description = "Archive_Step_V1_Representative_Azurite")]
     public async Task Archive_Step_V1_Representative_Azurite()
     {
         if (_fixture is null)
-            throw new InvalidOperationException("Benchmark fixture was not initialized.");
+            throw new InvalidOperationException("Benchmark iteration state was not initialized.");
 
         var result = await _fixture.CreateArchiveHandler()
             .Handle(
