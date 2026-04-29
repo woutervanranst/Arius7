@@ -106,28 +106,6 @@ Pass `-k` on the command line, set `ARIUS_KEY` environment variable, authenticat
 
 ## Development
 
-### Mutation Testing
-
-Stryker.NET is configured for local mutation testing of `Arius.Core` through `Arius.Core.Tests`.
-
-Expect Stryker runs to be noticeably slower than normal unit test runs.
-
-This repository uses Stryker's preview Microsoft Testing Platform runner for TUnit support.
-
-Install the tool once:
-
-```bash
-dotnet tool install --global dotnet-stryker
-```
-
-Run the Core mutation test pass from the repository root:
-
-```bash
-dotnet stryker --config-file stryker-config.json
-```
-
-The initial Stryker setup is intentionally local-only. The checked-in config uses the preview MTP runner so Stryker can execute this repository's TUnit-based test project.
-
 ### Test Suite Architecture
 
 | Test project | Purpose | Requires real Azure credentials | Uses Azurite |
@@ -144,7 +122,7 @@ The initial Stryker setup is intentionally local-only. The checked-in config use
 
 Azurite-backed integration and E2E tests report as skipped when Docker is unavailable, so the test report shows that the local emulator coverage was intentionally not run.
 
-### Setup
+#### Setup
 
 All test suites refer the same set of [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) and refer the same set of environment variables. To set up:
 
@@ -165,6 +143,22 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 
 Azurite-backed tests are discovered on every runner and skip at runtime when Docker is unavailable.
 Live Azure coverage is opt-in and reuses the same canonical representative workflow when credentials are available.
+
+### Mutation Testing
+
+Stryker.NET is configured for local mutation testing of `Arius.Core`.
+
+Install the tool once:
+
+```bash
+dotnet tool install --global dotnet-stryker
+```
+
+Run the Core mutation test pass from the repository root:
+
+```bash
+dotnet stryker --config-file stryker-config.json
+```
 
 ### Benchmarks
 
