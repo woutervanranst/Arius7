@@ -126,8 +126,10 @@ public class ChunkStorageServiceReadTests
         await stream.DisposeAsync();
 
         encryption.DecryptStream.ShouldNotBeNull();
-        encryption.DecryptStream.DisposeCount.ShouldBe(1);
-        blobs.DownloadStream.DisposeCount.ShouldBe(1);
+        encryption.DecryptStream.AsyncDisposeCount.ShouldBe(1);
+        encryption.DecryptStream.SyncDisposeCount.ShouldBe(0);
+        blobs.DownloadStream.AsyncDisposeCount.ShouldBe(0);
+        blobs.DownloadStream.SyncDisposeCount.ShouldBe(1);
     }
 
     [Test]
@@ -258,7 +260,9 @@ public class ChunkStorageServiceReadTests
             _inner = inner;
         }
 
-        public int DisposeCount { get; private set; }
+        public int DisposeCount => SyncDisposeCount + AsyncDisposeCount;
+        public int SyncDisposeCount { get; private set; }
+        public int AsyncDisposeCount { get; private set; }
 
         public override bool CanRead => _inner.CanRead;
         public override bool CanSeek => _inner.CanSeek;
@@ -278,7 +282,7 @@ public class ChunkStorageServiceReadTests
         {
             if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                DisposeCount++;
+                SyncDisposeCount++;
                 _inner.Dispose();
             }
 
@@ -290,7 +294,7 @@ public class ChunkStorageServiceReadTests
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            DisposeCount++;
+            AsyncDisposeCount++;
             await _inner.DisposeAsync();
         }
     }
