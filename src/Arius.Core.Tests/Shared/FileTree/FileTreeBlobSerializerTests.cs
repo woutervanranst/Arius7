@@ -186,6 +186,25 @@ public class FileTreeBlobSerializerTests
     }
 
     [Test]
+    public void ParseFileEntryLine_TrailingCarriageReturn_RoundTripsSingleFileEntry()
+    {
+        var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
+        var modified = created.AddMinutes(5);
+        var entry = new FileEntry
+        {
+            Name = "file with spaces.txt",
+            ContentHash = ContentHash.Parse(NormalizeHash("abc")),
+            Created = created,
+            Modified = modified
+        };
+
+        var line = FileTreeBlobSerializer.SerializeFileEntryLine(entry) + "\r";
+        var parsed = FileTreeBlobSerializer.ParseFileEntryLine(line);
+
+        parsed.ShouldBe(entry);
+    }
+
+    [Test]
     public void ComputeHash_Deterministic_SameInputSameHash()
     {
         var enc  = new PlaintextPassthroughService();

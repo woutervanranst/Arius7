@@ -131,6 +131,8 @@ public static class FileTreeBlobSerializer
     {
         ArgumentException.ThrowIfNullOrEmpty(line);
 
+        line = line.TrimEnd('\r');
+
         var firstSpace = line.IndexOf(' ');
         if (firstSpace < 0)
             throw new FormatException($"Invalid tree entry (no spaces): '{line}'");

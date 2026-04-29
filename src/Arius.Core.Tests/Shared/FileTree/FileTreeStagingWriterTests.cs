@@ -16,6 +16,16 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    [Arguments("/photos")]
+    [Arguments("/photos/2024")]
+    [Arguments("C:/photos")]
+    [Arguments("C:\\photos")]
+    public void GetDirectoryId_RootedPath_Throws(string directoryPath)
+    {
+        Should.Throw<ArgumentException>(() => FileTreeStagingPaths.GetDirectoryId(directoryPath));
+    }
+
+    [Test]
     public void GetNodeDirectory_UsesTwoCharacterFanout()
     {
         var stagingRoot = Path.Combine(Path.GetTempPath(), "arius-staging-test");
