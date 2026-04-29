@@ -23,7 +23,6 @@ internal sealed class FileTreeStagingWriter
         DateTimeOffset modified,
         CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -42,10 +41,10 @@ internal sealed class FileTreeStagingWriter
         await AppendDirectoryEntriesAsync(segments, cancellationToken);
         await AppendFileEntryAsync(parentPath, new FileEntry
         {
-            Name = fileName,
+            Name        = fileName,
             ContentHash = contentHash,
-            Created = created,
-            Modified = modified
+            Created     = created,
+            Modified    = modified
         }, cancellationToken);
 
         static void ValidateCanonicalRelativePath(string path)
@@ -82,10 +81,10 @@ internal sealed class FileTreeStagingWriter
     {
         for (var depth = 0; depth < segments.Length - 1; depth++)
         {
-            var parentPath = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
-            var childPath = string.Join('/', segments, 0, depth + 1);
-            var childName = segments[depth] + "/";
-            var childId = FileTreeStagingPaths.GetDirectoryId(childPath);
+            var parentPath      = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
+            var childPath       = string.Join('/', segments, 0, depth + 1);
+            var childName       = segments[depth] + "/";
+            var childId         = FileTreeStagingPaths.GetDirectoryId(childPath);
             var directoriesPath = FileTreeStagingPaths.GetDirectoriesPath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
 
             await AppendLineAsync(directoriesPath, $"{childId} D {childName}", cancellationToken);
@@ -94,7 +93,6 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         var nodeLock = _nodeLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
         await nodeLock.WaitAsync(cancellationToken);
 
