@@ -52,7 +52,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return content;
     }
 
-    public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier, CancellationToken cancellationToken = default)
+    public async Task<ArchiveResult> ArchiveAsync(
+        BlobTier uploadTier,
+        CancellationToken cancellationToken = default,
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
@@ -60,7 +63,9 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler         = new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName);
+        var handler         = openStagingSession is null
+            ? new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName)
+            : new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName, openStagingSession);
 
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions

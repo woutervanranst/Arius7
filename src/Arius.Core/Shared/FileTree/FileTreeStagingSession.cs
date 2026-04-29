@@ -1,6 +1,11 @@
 namespace Arius.Core.Shared.FileTree;
 
-internal sealed class FileTreeStagingSession : IAsyncDisposable
+internal interface IFileTreeStagingSession : IAsyncDisposable
+{
+    string StagingRoot { get; }
+}
+
+internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 {
     private readonly FileStream _lockStream;
 

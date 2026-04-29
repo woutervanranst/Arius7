@@ -47,6 +47,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
     private readonly string                         _containerName;
+    private readonly Func<string, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
 
     public ArchiveCommandHandler(
         IBlobContainerService           blobs,
@@ -59,6 +60,22 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName)
+        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, accountName, containerName, OpenStagingSessionAsync)
+    {
+    }
+
+    internal ArchiveCommandHandler(
+        IBlobContainerService           blobs,
+        IEncryptionService              encryption,
+        ChunkIndexService               index,
+        IChunkStorageService            chunkStorage,
+        FileTreeService                 fileTreeService,
+        SnapshotService                 snapshotSvc,
+        IMediator                       mediator,
+        ILogger<ArchiveCommandHandler>  logger,
+        string                          accountName,
+        string                          containerName,
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
     {
         _blobs           = blobs;
         _encryption      = encryption;
@@ -70,7 +87,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _logger          = logger;
         _accountName     = accountName;
         _containerName   = containerName;
+        _openStagingSession = openStagingSession;
     }
+
+    private static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken)
+        => await FileTreeStagingSession.OpenAsync(fileTreeCacheDirectory, cancellationToken);
 
     /// <summary>
     /// Executes the end-to-end archive pipeline for the provided command.
@@ -124,11 +145,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long totalSize     = 0;
 
         var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
-        FileTreeStagingSession stagingSession;
+        IFileTreeStagingSession stagingSession;
 
         try
         {
-            stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
+            stagingSession = await _openStagingSession(stagingCacheDirectory, cancellationToken);
         }
         catch (IOException ex)
         {
@@ -146,9 +167,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             };
         }
 
-        await using (stagingSession)
+        try
         {
-            try
+            await using (stagingSession)
             {
             var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
             var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
@@ -555,21 +576,21 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     SnapshotTime  = snapshotTime
                 };
             }
-            catch (Exception ex)
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Archive pipeline failed");
+            return new ArchiveResult
             {
-                _logger.LogError(ex, "Archive pipeline failed");
-                return new ArchiveResult
-                {
-                    Success       = false,
-                    FilesScanned  = filesScanned,
-                    FilesUploaded = filesUploaded,
-                    FilesDeduped  = filesDeduped,
-                    TotalSize     = totalSize,
-                    RootHash      = null,
-                    SnapshotTime  = DateTimeOffset.UtcNow,
-                    ErrorMessage  = ex.Message
-                };
-            }
+                Success       = false,
+                FilesScanned  = filesScanned,
+                FilesUploaded = filesUploaded,
+                FilesDeduped  = filesDeduped,
+                TotalSize     = totalSize,
+                RootHash      = null,
+                SnapshotTime  = DateTimeOffset.UtcNow,
+                ErrorMessage  = ex.Message
+            };
         }
     }
 
