@@ -55,7 +55,7 @@ Canonical relative directory path rules:
 Directory nodes are stored below a two-character prefix fanout to avoid very large filesystem directories:
 
 ```text
-filetrees/.staging/dirs/{dirId[0..2]}/{dirId}/
+filetrees/.staging/{dirId}/
 ```
 
 Examples:
@@ -74,7 +74,7 @@ Each directory node can contain two append-only files:
 
 ```text
 entries
-children
+directories
 ```
 
 `entries` contains canonical serialized `FileEntry` lines for files directly inside that archive directory:
@@ -83,7 +83,7 @@ children
 <content-hash> F <created:O> <modified:O> <leaf-file-name>
 ```
 
-`children` contains child directory links. The first field is a staging directory id, not a final filetree hash:
+`directories` contains staged directory entries. The first field is a staging directory id, not a final filetree hash:
 
 ```text
 <child-dir-id> D <child-directory-name>/
@@ -115,7 +115,7 @@ Root `entries`:
 <hash-readme> F 2026-04-29T10:00:00.0000000+00:00 2026-04-29T10:00:00.0000000+00:00 readme.txt
 ```
 
-Root `children`:
+Root `directories`:
 
 ```text
 <photos-dir-id> D photos/
@@ -128,7 +128,7 @@ Root `children`:
 <hash-a> F 2026-04-29T10:00:00.0000000+00:00 2026-04-29T10:00:00.0000000+00:00 a.jpg
 ```
 
-`photos` `children`:
+`photos` `directories`:
 
 ```text
 <photos-2024-dir-id> D 2024/
@@ -152,7 +152,7 @@ Duplicate child lines are allowed during staging because multiple files in the s
 
 `ArchiveCommandHandler` remains the archive workflow orchestrator. It decides which files belong in the snapshot and calls a staging writer after a file has been deduplicated or uploaded successfully. It does not know staging file paths or child-link formats.
 
-`FileTreeStagingWriter` owns the `.staging` directory. It acquires the staging lock, clears stale staging, computes staging directory ids, appends `FileEntry` lines to `entries`, and appends child links to `children`. It handles local per-node write coordination for concurrent archive workers.
+`FileTreeStagingWriter` owns the `.staging` directory. It acquires the staging lock, clears stale staging, computes staging directory ids, appends `FileEntry` lines to `entries`, and appends staged directory entries to `directories`. It handles local per-node write coordination for concurrent archive workers.
 
 `FileTreeBuilder` consumes a completed staging directory. It starts from the root directory id, builds child directories before parents, combines staged `FileEntry` records with final child `DirectoryEntry` records, sorts each directory's entries by name, and asks `FileTreeService` to store the resulting `FileTreeBlob`.
 
@@ -176,7 +176,7 @@ Empty directories continue to be skipped. A directory node that has no file entr
 
 ## Parallelization
 
-Staging writes are parallelized by directory node. Archive workers can append to unrelated node files concurrently. A per-node async lock serializes writes to the same `entries` or `children` file.
+Staging writes are parallelized by directory node. Archive workers can append to unrelated node files concurrently. A per-node async lock serializes writes to the same `entries` or `directories` file.
 
 Tree building is parallelized across independent child subtrees after staging is complete. The builder uses bounded branch parallelism so a directory with many children does not create unbounded tasks. A child subtree can build independently from its siblings. A parent waits for all non-empty children, then computes and stores its own filetree.
 

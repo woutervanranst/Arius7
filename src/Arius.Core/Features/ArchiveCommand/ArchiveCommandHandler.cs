@@ -624,6 +624,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         if (!pair.BinaryExists && fileTreePath.EndsWith(".pointer.arius", StringComparison.OrdinalIgnoreCase))
             fileTreePath = fileTreePath[..^".pointer.arius".Length];
 
-        await writer.AppendFileAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
+        await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
     }
 }

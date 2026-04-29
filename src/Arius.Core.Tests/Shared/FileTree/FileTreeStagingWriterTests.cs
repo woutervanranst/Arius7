@@ -30,14 +30,14 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public void GetNodeDirectory_UsesTwoCharacterFanout()
+    public void GetNodeDirectory_UsesFlatHashDirectory()
     {
         var stagingRoot = Path.Combine(Path.GetTempPath(), "arius-staging-test");
         var dirId = FileTreeStagingPaths.GetDirectoryId("docs");
 
         var nodePath = FileTreeStagingPaths.GetNodeDirectory(stagingRoot, dirId);
 
-        nodePath.ShouldBe(Path.Combine(stagingRoot, "dirs", dirId[..2], dirId));
+        nodePath.ShouldBe(Path.Combine(stagingRoot, dirId));
     }
 
     [Test]
@@ -102,7 +102,7 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public async Task AppendFileAsync_WritesFileEntryToParentDirectoryNode()
+    public async Task AppendFileEntryAsync_WritesFileEntryToParentDirectoryNode()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -110,7 +110,7 @@ public class FileTreeStagingWriterTests
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
-            await writer.AppendFileAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
+            await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
 
             var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
             var entriesPath = FileTreeStagingPaths.GetEntriesPath(session.StagingRoot, photosId);
@@ -128,7 +128,7 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public async Task AppendFileAsync_WritesChildLinksForNestedPath()
+    public async Task AppendFileEntryAsync_WritesDirectoryEntriesForNestedPath()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -136,14 +136,14 @@ public class FileTreeStagingWriterTests
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
-            await writer.AppendFileAsync("photos/2024/a.jpg", ContentHash.Parse(new string('b', 64)), TestTimestamp, TestTimestamp);
+            await writer.AppendFileEntryAsync("photos/2024/a.jpg", ContentHash.Parse(new string('b', 64)), TestTimestamp, TestTimestamp);
 
             var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
             var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
             var photos2024Id = FileTreeStagingPaths.GetDirectoryId("photos/2024");
 
-            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetChildrenPath(session.StagingRoot, rootId));
-            var photosChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetChildrenPath(session.StagingRoot, photosId));
+            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, rootId));
+            var photosChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, photosId));
 
             rootChildren.ShouldContain($"{photosId} D photos/");
             photosChildren.ShouldContain($"{photos2024Id} D 2024/");
@@ -156,7 +156,7 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public async Task AppendFileAsync_PreservesLeadingAndTrailingSpacesInPathSegments()
+    public async Task AppendFileEntryAsync_PreservesLeadingAndTrailingSpacesInPathSegments()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -164,11 +164,11 @@ public class FileTreeStagingWriterTests
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
-            await writer.AppendFileAsync(" photos/a.jpg ", TestHash, TestTimestamp, TestTimestamp);
+            await writer.AppendFileEntryAsync(" photos/a.jpg ", TestHash, TestTimestamp, TestTimestamp);
 
             var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
             var spacedDirectoryId = FileTreeStagingPaths.GetDirectoryId(" photos");
-            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetChildrenPath(session.StagingRoot, rootId));
+            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, rootId));
             var entriesPath = FileTreeStagingPaths.GetEntriesPath(session.StagingRoot, spacedDirectoryId);
             var line = (await File.ReadAllLinesAsync(entriesPath)).Single();
             var entry = FileTreeBlobSerializer.ParseFileEntryLine(line);
@@ -187,7 +187,7 @@ public class FileTreeStagingWriterTests
     [Test]
     [Arguments(" /a.jpg")]
     [Arguments("photos/   /a.jpg")]
-    public async Task AppendFileAsync_WhitespaceOnlyDirectorySegment_Throws(string filePath)
+    public async Task AppendFileEntryAsync_WhitespaceOnlyDirectorySegment_Throws(string filePath)
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -196,7 +196,7 @@ public class FileTreeStagingWriterTests
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
-                await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
+                await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
         }
         finally
         {
@@ -208,7 +208,7 @@ public class FileTreeStagingWriterTests
     [Test]
     [Arguments("dir/ ")]
     [Arguments(" ")]
-    public async Task AppendFileAsync_WhitespaceOnlyFileNameSegment_Throws(string filePath)
+    public async Task AppendFileEntryAsync_WhitespaceOnlyFileNameSegment_Throws(string filePath)
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -217,7 +217,7 @@ public class FileTreeStagingWriterTests
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
-                await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
+                await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
         }
         finally
         {
@@ -234,7 +234,7 @@ public class FileTreeStagingWriterTests
     [Arguments("photos/./a.jpg")]
     [Arguments("photos/../a.jpg")]
     [Arguments("photos\\a.jpg")]
-    public async Task AppendFileAsync_NonCanonicalPath_Throws(string filePath)
+    public async Task AppendFileEntryAsync_NonCanonicalPath_Throws(string filePath)
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -243,7 +243,7 @@ public class FileTreeStagingWriterTests
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
-                await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
+                await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
         }
         finally
         {
@@ -253,7 +253,7 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public async Task AppendFileAsync_AfterDispose_ThrowsObjectDisposedException()
+    public async Task AppendFileEntryAsync_AfterDispose_ThrowsObjectDisposedException()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -264,7 +264,7 @@ public class FileTreeStagingWriterTests
             writer.Dispose();
 
             await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
-                await writer.AppendFileAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp));
+                await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp));
         }
         finally
         {

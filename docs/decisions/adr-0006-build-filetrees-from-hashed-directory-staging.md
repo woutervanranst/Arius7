@@ -50,14 +50,14 @@ dirId = SHA256(canonicalRelativeDirectoryPath)
 The root directory path is the empty string. Canonical relative paths use `/` separators, no leading slash, no trailing slash, and ordinal case-sensitive semantics. Staging nodes are faned out by hash prefix:
 
 ```text
-filetrees/.staging/dirs/{first-two-hex-chars}/{dirId}/
+filetrees/.staging/{dirId}/
 ```
 
 Each node may contain:
 
 ```text
 entries
-children
+directories
 ```
 
 `entries` contains canonical serialized `FileEntry` lines for files directly inside that directory:
@@ -66,7 +66,7 @@ children
 <content-hash> F <created:O> <modified:O> <leaf-file-name>
 ```
 
-`children` contains staging child links:
+`directories` contains staged directory entries:
 
 ```text
 <child-dir-id> D <child-directory-name>/
@@ -123,7 +123,7 @@ This is the chosen design.
 * Good, because no whole-repository sort is needed.
 * Good, because each directory can be read, sorted, and built independently after its children are known.
 * Good, because filetree-related temporary state stays under the filetree cache.
-* Bad, because parent-child relationships must be stored explicitly in `children` files.
+* Bad, because parent-child relationships must be stored explicitly in `directories` files.
 
 ### Build filetrees from a second filesystem walk
 

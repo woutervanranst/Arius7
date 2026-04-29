@@ -6,11 +6,10 @@ namespace Arius.Core.Shared.FileTree;
 
 internal static class FileTreeStagingPaths
 {
-    private const string StagingDirectoryName     = ".staging";
-    private const string DirectoriesDirectoryName = "dirs";
-    private const string EntriesFileName          = "entries";
-    private const string ChildrenFileName         = "children";
-    private const string LockFileName             = ".staging.lock";
+    private const string StagingDirectoryName   = ".staging";
+    private const string EntriesFileName        = "entries";
+    private const string DirectoriesFileName    = "directories";
+    private const string LockFileName           = ".staging.lock";
 
     public static string GetDirectoryId(string directoryPath)
     {
@@ -34,7 +33,7 @@ internal static class FileTreeStagingPaths
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
         ArgumentException.ThrowIfNullOrEmpty(directoryId);
 
-        return Path.Combine(stagingRoot, DirectoriesDirectoryName, directoryId[..2], directoryId);
+        return Path.Combine(stagingRoot, directoryId);
     }
 
     public static string GetStagingRoot(string fileTreeCacheDirectory)
@@ -47,8 +46,8 @@ internal static class FileTreeStagingPaths
     public static string GetEntriesPath(string stagingRoot, string directoryId)
         => Path.Combine(GetNodeDirectory(stagingRoot, directoryId), EntriesFileName);
 
-    public static string GetChildrenPath(string stagingRoot, string directoryId)
-        => Path.Combine(GetNodeDirectory(stagingRoot, directoryId), ChildrenFileName);
+    public static string GetDirectoriesPath(string stagingRoot, string directoryId)
+        => Path.Combine(GetNodeDirectory(stagingRoot, directoryId), DirectoriesFileName);
 
     public static string GetLockPath(string fileTreeCacheDirectory)
     {

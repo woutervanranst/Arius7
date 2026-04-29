@@ -20,7 +20,7 @@ public class FileTreeBuilderTests
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileAsync(file.Path, file.Hash, file.Created, file.Modified);
+            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
 
         return (session, session.StagingRoot);
     }
@@ -413,11 +413,11 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public void StagedChildLink_Parse_RejectsNonHashDirectoryIds()
+    public void StagedDirectoryEntry_Parse_RejectsNonHashDirectoryIds()
     {
-        Should.Throw<FormatException>(() => StagedChildLink.Parse("not-a-directory-id D child/"));
-        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{new string('a', 63)} D child/"));
-        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{new string('g', 64)} D child/"));
+        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse("not-a-directory-id D child/"));
+        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{new string('a', 63)} D child/"));
+        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{new string('g', 64)} D child/"));
     }
 
     [Test]
@@ -425,11 +425,11 @@ public class FileTreeBuilderTests
     [Arguments("child\\")]
     [Arguments("./")]
     [Arguments("../")]
-    public void StagedChildLink_Parse_RejectsNonCanonicalNames(string name)
+    public void StagedDirectoryEntry_Parse_RejectsNonCanonicalNames(string name)
     {
         var directoryId = new string('a', 64);
 
-        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{directoryId} D {name}"));
+        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{directoryId} D {name}"));
     }
 
     [Test]

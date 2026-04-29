@@ -44,26 +44,26 @@ public sealed class FileTreeBuilder
             ct.ThrowIfCancellationRequested();
 
             var fileEntriesTask = ReadFileEntriesAsync(directoryId, ct);
-            var childLinksTask = ReadChildLinksAsync(directoryId, ct);
-            await Task.WhenAll(fileEntriesTask, childLinksTask);
+            var directoryEntriesTask = ReadDirectoryEntriesAsync(directoryId, ct);
+            await Task.WhenAll(fileEntriesTask, directoryEntriesTask);
 
             var fileEntries = await fileEntriesTask;
-            var childLinks = await childLinksTask;
-            if (fileEntries.Count == 0 && childLinks.Count == 0)
+            var directoryEntries = await directoryEntriesTask;
+            if (fileEntries.Count == 0 && directoryEntries.Count == 0)
                 return null;
 
-            var childEntries = new DirectoryEntry?[childLinks.Count];
-            var childTasks = new List<Task>(childLinks.Count);
-            for (var index = 0; index < childLinks.Count; index++)
+            var childEntries = new DirectoryEntry?[directoryEntries.Count];
+            var childTasks = new List<Task>(directoryEntries.Count);
+            for (var index = 0; index < directoryEntries.Count; index++)
             {
-                var childLink = childLinks[index];
+                var directoryEntry = directoryEntries[index];
                 if (await subtreeWorkerBudget.WaitAsync(0, ct))
                 {
-                    childTasks.Add(BuildChildDirectoryWithLeaseAsync(childLink, index, childEntries, ct));
+                    childTasks.Add(BuildChildDirectoryWithLeaseAsync(directoryEntry, index, childEntries, ct));
                     continue;
                 }
 
-                await BuildChildDirectoryAsync(childLink, index, childEntries, ct);
+                await BuildChildDirectoryAsync(directoryEntry, index, childEntries, ct);
             }
 
             await Task.WhenAll(childTasks);
@@ -96,28 +96,28 @@ public sealed class FileTreeBuilder
             return entries;
         }
 
-        async Task<List<StagedChildLink>> ReadChildLinksAsync(string directoryId, CancellationToken ct)
+        async Task<List<StagedDirectoryEntry>> ReadDirectoryEntriesAsync(string directoryId, CancellationToken ct)
         {
-            var path = FileTreeStagingPaths.GetChildrenPath(stagingRoot, directoryId);
+            var path = FileTreeStagingPaths.GetDirectoriesPath(stagingRoot, directoryId);
             if (!File.Exists(path))
                 return [];
 
             var lines = await File.ReadAllLinesAsync(path, ct);
-            var links = new HashSet<StagedChildLink>();
+            var links = new HashSet<StagedDirectoryEntry>();
             foreach (var line in lines)
             {
                 if (!string.IsNullOrWhiteSpace(line))
-                    links.Add(StagedChildLink.Parse(line));
+                    links.Add(StagedDirectoryEntry.Parse(line));
             }
 
             return links.OrderBy(link => link.Name, StringComparer.Ordinal).ToList();
         }
 
-        async Task BuildChildDirectoryWithLeaseAsync(StagedChildLink childLink, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
+        async Task BuildChildDirectoryWithLeaseAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
         {
             try
             {
-                await BuildChildDirectoryAsync(childLink, index, childEntries, ct);
+                await BuildChildDirectoryAsync(directoryEntry, index, childEntries, ct);
             }
             finally
             {
@@ -125,14 +125,14 @@ public sealed class FileTreeBuilder
             }
         }
 
-        async Task BuildChildDirectoryAsync(StagedChildLink childLink, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
+        async Task BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
         {
-            var childHash = await BuildDirectoryAsync(childLink.DirectoryId, ct);
+            var childHash = await BuildDirectoryAsync(directoryEntry.DirectoryId, ct);
             if (childHash is not null)
             {
                 childEntries[index] = new DirectoryEntry
                 {
-                    Name = childLink.Name,
+                    Name = directoryEntry.Name,
                     FileTreeHash = childHash.Value
                 };
             }

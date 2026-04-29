@@ -16,7 +16,7 @@ internal sealed class FileTreeStagingWriter
         _stagingRoot = stagingRoot;
     }
 
-    public async Task AppendFileAsync(
+    public async Task AppendFileEntryAsync(
         string filePath,
         ContentHash contentHash,
         DateTimeOffset created,
@@ -39,8 +39,8 @@ internal sealed class FileTreeStagingWriter
 
         var parentPath = segments.Length == 1 ? string.Empty : string.Join('/', segments, 0, segments.Length - 1);
 
-        await AppendChildrenAsync(segments, cancellationToken);
-        await AppendEntryAsync(parentPath, new FileEntry
+        await AppendDirectoryEntriesAsync(segments, cancellationToken);
+        await AppendFileEntryAsync(parentPath, new FileEntry
         {
             Name = fileName,
             ContentHash = contentHash,
@@ -71,14 +71,14 @@ internal sealed class FileTreeStagingWriter
         }
     }
 
-    private async Task AppendEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
+    private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreeStagingPaths.GetDirectoryId(directoryPath);
         var entriesPath = FileTreeStagingPaths.GetEntriesPath(_stagingRoot, directoryId);
         await AppendLineAsync(entriesPath, FileTreeBlobSerializer.SerializeFileEntryLine(entry), cancellationToken);
     }
 
-    private async Task AppendChildrenAsync(string[] segments, CancellationToken cancellationToken)
+    private async Task AppendDirectoryEntriesAsync(string[] segments, CancellationToken cancellationToken)
     {
         for (var depth = 0; depth < segments.Length - 1; depth++)
         {
@@ -86,9 +86,9 @@ internal sealed class FileTreeStagingWriter
             var childPath = string.Join('/', segments, 0, depth + 1);
             var childName = segments[depth] + "/";
             var childId = FileTreeStagingPaths.GetDirectoryId(childPath);
-            var childrenPath = FileTreeStagingPaths.GetChildrenPath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
+            var directoriesPath = FileTreeStagingPaths.GetDirectoriesPath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
 
-            await AppendLineAsync(childrenPath, $"{childId} D {childName}", cancellationToken);
+            await AppendLineAsync(directoriesPath, $"{childId} D {childName}", cancellationToken);
         }
     }
 
