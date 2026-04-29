@@ -1,0 +1,168 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 1 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/" /p:OutDir="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:OutputPath="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:PublishDir="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/publish/" in /home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1
+// command took 2.68 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/" /p:OutDir="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:OutputPath="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:PublishDir="/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/publish/" --output "/home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" in /home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1
+// command took 23.92 sec and exited with 0
+// ***** Done, took 00:00:26 (26.69 sec)   *****
+// Found 1 benchmarks:
+//   RepresentativeWorkflowBenchmarks.'Canonical_Representative_Workflow_Runs_On_Supported_Backends (Azurite)': Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+
+// **************************
+// Benchmark: RepresentativeWorkflowBenchmarks.'Canonical_Representative_Workflow_Runs_On_Supported_Backends (Azurite)': Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Arius.Benchmarks-Job-HILDPN-1.dll --anonymousPipes 127 128 --benchmarkName Arius.Benchmarks.RepresentativeWorkflowBenchmarks.Canonical_Representative_Workflow_Runs_On_Supported_Backends_Azurite --job "InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0" --benchmarkId 0 in /home/runner/work/Arius7/Arius7/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.7 (10.0.7, 10.0.726.21808), X64 RyuJIT x86-64-v3
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+
+[testcontainers.org 00:00:00.14] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 28.0.4
+  Kernel Version: 6.17.0-1010-azure
+  API Version: 1.48
+  Operating System: Ubuntu 24.04.4 LTS
+  Total Memory: 15.61 GB
+[testcontainers.org 00:00:00.18] Searching Docker registry credential in CredsStore
+[testcontainers.org 00:00:00.18] Searching Docker registry credential in Auths
+[testcontainers.org 00:00:00.18] Searching Docker registry credential in CredHelpers
+[testcontainers.org 00:00:00.18] Searching Docker registry credential in Auths
+[testcontainers.org 00:00:00.19] Docker registry credential https://index.docker.io/v1/ found
+[testcontainers.org 00:00:01.36] Docker image testcontainers/ryuk:0.14.0@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0 created
+[testcontainers.org 00:00:01.43] Docker container 823ff0beebac created
+[testcontainers.org 00:00:01.48] Start Docker container 823ff0beebac
+[testcontainers.org 00:00:01.63] Wait for Docker container 823ff0beebac to complete readiness checks
+[testcontainers.org 00:00:02.65] Docker container 823ff0beebac ready
+[testcontainers.org 00:00:02.68] Searching Docker registry credential in CredHelpers
+[testcontainers.org 00:00:02.68] Searching Docker registry credential in CredsStore
+[testcontainers.org 00:00:02.68] Searching Docker registry credential in Auths
+[testcontainers.org 00:00:02.68] Searching Docker registry credential in Auths
+[testcontainers.org 00:00:02.68] Docker registry credential mcr.microsoft.com not found
+[testcontainers.org 00:00:10.74] Docker image mcr.microsoft.com/azure-storage/azurite:latest created
+[testcontainers.org 00:00:10.75] Docker container d085b66cd1c4 created
+[testcontainers.org 00:00:10.75] Start Docker container d085b66cd1c4
+[testcontainers.org 00:00:10.90] Wait for Docker container d085b66cd1c4 to complete readiness checks
+[testcontainers.org 00:00:11.91] Docker container d085b66cd1c4 ready
+OverheadJitting  1: 1 op, 174138.00 ns, 174.1380 us/op
+WorkloadJitting  1: 1 op, 40698960529.00 ns, 40.6990 s/op
+
+OverheadWarmup   1: 1 op, 3346.00 ns, 3.3460 us/op
+OverheadWarmup   2: 1 op, 22683.00 ns, 22.6830 us/op
+OverheadWarmup   3: 1 op, 441.00 ns, 441.0000 ns/op
+OverheadWarmup   4: 1 op, 430.00 ns, 430.0000 ns/op
+OverheadWarmup   5: 1 op, 471.00 ns, 471.0000 ns/op
+OverheadWarmup   6: 1 op, 2776.00 ns, 2.7760 us/op
+OverheadWarmup   7: 1 op, 401.00 ns, 401.0000 ns/op
+
+OverheadActual   1: 1 op, 401.00 ns, 401.0000 ns/op
+OverheadActual   2: 1 op, 3065.00 ns, 3.0650 us/op
+OverheadActual   3: 1 op, 3046.00 ns, 3.0460 us/op
+OverheadActual   4: 1 op, 391.00 ns, 391.0000 ns/op
+OverheadActual   5: 1 op, 401.00 ns, 401.0000 ns/op
+OverheadActual   6: 1 op, 481.00 ns, 481.0000 ns/op
+OverheadActual   7: 1 op, 531.00 ns, 531.0000 ns/op
+OverheadActual   8: 1 op, 411.00 ns, 411.0000 ns/op
+OverheadActual   9: 1 op, 2976.00 ns, 2.9760 us/op
+OverheadActual  10: 1 op, 370.00 ns, 370.0000 ns/op
+OverheadActual  11: 1 op, 381.00 ns, 381.0000 ns/op
+OverheadActual  12: 1 op, 371.00 ns, 371.0000 ns/op
+OverheadActual  13: 1 op, 341.00 ns, 341.0000 ns/op
+OverheadActual  14: 1 op, 351.00 ns, 351.0000 ns/op
+OverheadActual  15: 1 op, 431.00 ns, 431.0000 ns/op
+OverheadActual  16: 1 op, 350.00 ns, 350.0000 ns/op
+OverheadActual  17: 1 op, 341.00 ns, 341.0000 ns/op
+OverheadActual  18: 1 op, 351.00 ns, 351.0000 ns/op
+OverheadActual  19: 1 op, 351.00 ns, 351.0000 ns/op
+OverheadActual  20: 1 op, 360.00 ns, 360.0000 ns/op
+
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 38908895445.00 ns, 38.9089 s/op
+WorkloadActual   2: 1 op, 39786915034.00 ns, 39.7869 s/op
+WorkloadActual   3: 1 op, 41395767736.00 ns, 41.3958 s/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 38908895059.00 ns, 38.9089 s/op
+WorkloadResult   2: 1 op, 39786914648.00 ns, 39.7869 s/op
+WorkloadResult   3: 1 op, 41395767350.00 ns, 41.3958 s/op
+// GC:  36 5 0 643390728 1
+// Threading:  71823 12 1
+// Exceptions:  2106
+
+[testcontainers.org 00:03:32.20] Delete Docker container d085b66cd1c4
+// AfterAll
+// Benchmark Process 3334 has exited with code 0.
+
+Mean = 40.031 s, StdErr = 0.728 s (1.82%), N = 3, StdDev = 1.261 s
+Min = 38.909 s, Q1 = 39.348 s, Median = 39.787 s, Q3 = 40.591 s, Max = 41.396 s
+IQR = 1.243 s, LowerFence = 37.483 s, UpperFence = 42.456 s
+ConfidenceInterval = [17.021 s; 63.040 s] (CI 99.9%), Margin = 23.009 s (57.48% of Mean)
+Skewness = 0.19, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 0 (0.0 %) benchmark(s) to run. Estimated finish 2026-04-29 11:20 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  src/Arius.Benchmarks/raw/20260429T111639.696Z/results/Arius.Benchmarks.RepresentativeWorkflowBenchmarks-report.csv
+  src/Arius.Benchmarks/raw/20260429T111639.696Z/results/Arius.Benchmarks.RepresentativeWorkflowBenchmarks-report-github.md
+  src/Arius.Benchmarks/raw/20260429T111639.696Z/results/Arius.Benchmarks.RepresentativeWorkflowBenchmarks-report.html
+
+// * Detailed results *
+RepresentativeWorkflowBenchmarks.'Canonical_Representative_Workflow_Runs_On_Supported_Backends (Azurite)': Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+Runtime = .NET 10.0.7 (10.0.7, 10.0.726.21808), X64 RyuJIT x86-64-v3; GC = Concurrent Workstation
+Mean = 40.031 s, StdErr = 0.728 s (1.82%), N = 3, StdDev = 1.261 s
+Min = 38.909 s, Q1 = 39.348 s, Median = 39.787 s, Q3 = 40.591 s, Max = 41.396 s
+IQR = 1.243 s, LowerFence = 37.483 s, UpperFence = 42.456 s
+ConfidenceInterval = [17.021 s; 63.040 s] (CI 99.9%), Margin = 23.009 s (57.48% of Mean)
+Skewness = 0.19, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[38.200 s ; 40.496 s) | @@
+[40.496 s ; 42.544 s) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.4 LTS (Noble Numbat)
+AMD EPYC 7763 2.45GHz, 1 CPU, 4 logical and 2 physical cores
+.NET SDK 10.0.203
+  [Host]     : .NET 10.0.7 (10.0.7, 10.0.726.21808), X64 RyuJIT x86-64-v3
+  Job-HILDPN : .NET 10.0.7 (10.0.7, 10.0.726.21808), X64 RyuJIT x86-64-v3
+
+InvocationCount=1  IterationCount=3  LaunchCount=1  
+UnrollFactor=1  WarmupCount=0  
+
+| Method                                                                   | Mean    | Error   | StdDev  | Completed Work Items | Lock Contentions | Gen0       | Gen1      | Allocated |
+|------------------------------------------------------------------------- |--------:|--------:|--------:|---------------------:|-----------------:|-----------:|----------:|----------:|
+| 'Canonical_Representative_Workflow_Runs_On_Supported_Backends (Azurite)' | 40.03 s | 23.01 s | 1.261 s |           71823.0000 |          12.0000 | 36000.0000 | 5000.0000 | 613.59 MB |
+
+// * Legends *
+  Mean                 : Arithmetic mean of all measurements
+  Error                : Half of 99.9% confidence interval
+  StdDev               : Standard deviation of all measurements
+  Completed Work Items : The number of work items that have been processed in ThreadPool (per single operation)
+  Lock Contentions     : The number of times there was contention upon trying to take a Monitor's lock (per single operation)
+  Gen0                 : GC Generation 0 collects per 1000 operations
+  Gen1                 : GC Generation 1 collects per 1000 operations
+  Allocated            : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  1 s                  : 1 Second (1 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+// * Diagnostic Output - ThreadingDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:03:32 (212.7 sec), executed benchmarks: 1
+
+Global total time: 00:03:59 (239.51 sec), executed benchmarks: 1
+// * Artifacts cleanup *
+Artifacts cleanup is finished
