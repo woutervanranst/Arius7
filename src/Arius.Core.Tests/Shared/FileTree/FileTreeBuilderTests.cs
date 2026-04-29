@@ -10,6 +10,63 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
+    private sealed class BlockingFileTreeUploadBlobContainerService : IBlobContainerService
+    {
+        private readonly TaskCompletionSource<bool> _allowUploads = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _twoUploadsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _startedUploads;
+
+        public HashSet<string> Uploaded { get; } = new(StringComparer.Ordinal);
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+        {
+            if (blobName.StartsWith(BlobPaths.FileTrees, StringComparison.Ordinal))
+            {
+                if (Interlocked.Increment(ref _startedUploads) >= 2)
+                    _twoUploadsStarted.TrySetResult(true);
+
+                await _allowUploads.Task.WaitAsync(cancellationToken);
+            }
+
+            Uploaded.Add(blobName);
+        }
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new BlobMetadata { Exists = false });
+
+        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
+            AsyncEnumerable.Empty<string>();
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task<bool> WaitForTwoUploadsAsync(TimeSpan timeout)
+        {
+            using var timeoutCts = new CancellationTokenSource(timeout);
+            try
+            {
+                await _twoUploadsStarted.Task.WaitAsync(timeoutCts.Token);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
+        public void AllowUploads() => _allowUploads.TrySetResult(true);
+    }
+
     private static FileTreeBuilder CreateBuilder(
         IBlobContainerService blobs,
         string accountName,
@@ -216,6 +273,48 @@ public class FileTreeBuilderTests
         {
             File.Delete(manifestPath);
             var cacheDir = FileTreeService.GetDiskCacheDirectory("acc-unvalidated", "con-unvalidated");
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_StartsMultipleFileTreeUploadsBeforeReturning()
+    {
+        const string accountName = "acc-parallel";
+        const string containerName = "con-parallel";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        var manifestPath = Path.GetTempFileName();
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var lines = new[]
+            {
+                new ManifestEntry("photos/2024/june/a.jpg", FakeContentHash('7'), now, now).Serialize(),
+                new ManifestEntry("photos/2024/june/b.jpg", FakeContentHash('8'), now, now).Serialize(),
+                new ManifestEntry("docs/report.pdf", FakeContentHash('9'), now, now).Serialize(),
+            };
+            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+
+            var blobs = new BlockingFileTreeUploadBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var synchronizeTask = builder.SynchronizeAsync(manifestPath);
+            var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromMilliseconds(500));
+
+            blobs.AllowUploads();
+
+            var root = await synchronizeTask.WaitAsync(TimeSpan.FromSeconds(5));
+            root.ShouldNotBeNull();
+            sawTwoConcurrentStarts.ShouldBeTrue();
+        }
+        finally
+        {
+            File.Delete(manifestPath);
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
