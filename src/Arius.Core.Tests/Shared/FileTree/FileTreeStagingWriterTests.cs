@@ -185,6 +185,27 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    [Arguments(" /a.jpg")]
+    [Arguments("photos/   /a.jpg")]
+    public async Task AppendFileAsync_WhitespaceOnlyDirectorySegment_Throws(string filePath)
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("dir/ ")]
     [Arguments(" ")]
     public async Task AppendFileAsync_WhitespaceOnlyFileNameSegment_Throws(string filePath)

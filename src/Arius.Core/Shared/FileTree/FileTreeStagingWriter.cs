@@ -56,7 +56,7 @@ internal sealed class FileTreeStagingWriter
 
             foreach (var segment in segments)
             {
-                if (segment.Length == 0)
+                if (segment.Length == 0 || string.IsNullOrWhiteSpace(segment))
                     throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
 
                 if (segment is "." or "..")
