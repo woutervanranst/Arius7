@@ -536,4 +536,59 @@ public class FileTreeBuilderTests
         }
     }
 
+    [Test]
+    public async Task SynchronizeAsync_SameEntriesDifferentStagingOrder_ProducesSameRootHash()
+    {
+        const string accountName = "acc-ordering";
+        const string containerName = "con-ordering";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var blobs1 = new FakeRecordingBlobContainerService();
+            FileTreeHash? root1;
+            await using (var stagingSession1 = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("b.txt", FakeContentHash('1'), now, now),
+                ("a.txt", FakeContentHash('2'), now, now),
+                ("docs/z.txt", FakeContentHash('3'), now, now),
+                ("docs/a.txt", FakeContentHash('4'), now, now))).Session)
+            {
+                var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
+                await fileTreeService1.ValidateAsync();
+                root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
+            }
+
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+
+            var blobs2 = new FakeRecordingBlobContainerService();
+            FileTreeHash? root2;
+            await using (var stagingSession2 = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("docs/a.txt", FakeContentHash('4'), now, now),
+                ("docs/z.txt", FakeContentHash('3'), now, now),
+                ("a.txt", FakeContentHash('2'), now, now),
+                ("b.txt", FakeContentHash('1'), now, now))).Session)
+            {
+                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
+                await fileTreeService2.ValidateAsync();
+                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+            }
+
+            root1.ShouldNotBeNull();
+            root2.ShouldBe(root1);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
 }
