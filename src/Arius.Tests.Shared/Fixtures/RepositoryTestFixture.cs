@@ -16,8 +16,10 @@ using NSubstitute;
 namespace Arius.Tests.Shared.Fixtures;
 
 /// <summary>
-/// Per-test repository fixture that wires Arius repository services to one shared storage boundary,
-/// with isolated source/restore directories and repository cache cleanup.
+/// Per-test repository fixture that wires one Arius repository service graph to a caller-provided
+/// storage boundary, with isolated source/restore directories and repository cache cleanup.
+/// Unlike <see cref="AzuriteFixture"/>, this fixture represents one logical repository under test
+/// layered on top of in-memory, Azurite, Azure, or another blob container implementation.
 /// </summary>
 public sealed class RepositoryTestFixture : IAsyncDisposable
 {
@@ -65,7 +67,10 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         _mediator       = Substitute.For<IMediator>();
     }
 
-    /// <summary>Storage boundary shared by all repository services in this fixture.</summary>
+    /// <summary>
+    /// Storage boundary shared by the repository services in this fixture instance.
+    /// This is usually fresh per test even when the underlying backend process is shared.
+    /// </summary>
     public IBlobContainerService BlobContainer { get; }
 
     /// <summary>Encryption service used for repository serialization and chunk payloads.</summary>

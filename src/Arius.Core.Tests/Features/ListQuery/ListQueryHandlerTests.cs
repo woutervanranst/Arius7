@@ -44,7 +44,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-ls-test-1", "ctr-ls-test-1");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-1", "ctr-ls-test-1", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50));
         var handler = fixture.CreateListQueryHandler();
 
@@ -111,7 +111,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(docsHash), await FileTreeBlobSerializer.SerializeForStorageAsync(docsTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-ls-test-2", "ctr-ls-test-2");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-2", "ctr-ls-test-2", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200));
         var handler = fixture.CreateListQueryHandler();
 
@@ -161,7 +161,7 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-            await using var fixture = await MakeFixture(blobs, "acct-ls-test-3", "ctr-ls-test-3");
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-3", "ctr-ls-test-3", s_encryption);
             fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
             fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
             var handler = fixture.CreateListQueryHandler();
@@ -255,7 +255,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-33-nr", "ctr-33-nr");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-nr", "ctr-33-nr", s_encryption);
         var handler = fixture.CreateListQueryHandler();
 
         var nonRecursive = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None).ToListAsync();
@@ -264,7 +264,7 @@ public class ListQueryHandlerTests
         nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
         nonRecursive.ShouldNotContain(e => e.RelativePath == "child/deep.txt");
 
-        await using var fixture2 = await MakeFixture(blobs, "acct-33-r", "ctr-33-r");
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-r", "ctr-33-r", s_encryption);
         var handler2 = fixture2.CreateListQueryHandler();
 
         var recursive = await handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None).ToListAsync();
@@ -293,7 +293,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-36", "ctr-36");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-36", "ctr-36", s_encryption);
         var handler = fixture.CreateListQueryHandler();
 
         // Filter "vacation" should match VACATION.jpg (case-insensitive), not sunset or readme
@@ -338,7 +338,7 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.FileTree(cloudOnlyHash),  await FileTreeBlobSerializer.SerializeForStorageAsync(cloudOnlyTree, s_encryption));
             blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-            await using var fixture = await MakeFixture(blobs, "acct-38", "ctr-38");
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
             var handler = fixture.CreateListQueryHandler();
 
             var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
@@ -394,7 +394,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(childHash), await FileTreeBlobSerializer.SerializeForStorageAsync(childTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-39", "ctr-39");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-39", "ctr-39", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500));
 
         var handler = fixture.CreateListQueryHandler();
@@ -415,7 +415,7 @@ public class ListQueryHandlerTests
     public async Task Handle_NoSnapshots_ThrowsInvalidOperationException()
     {
         var blobs = new FakeSeededBlobContainerService();
-        await using var fixture = await MakeFixture(blobs, "acct-310", "ctr-310");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-310", "ctr-310", s_encryption);
         var handler = fixture.CreateListQueryHandler();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
@@ -436,7 +436,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.FileTree(rootHash), await FileTreeBlobSerializer.SerializeForStorageAsync(rootTree, s_encryption));
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-310b", "ctr-310b");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-310b", "ctr-310b", s_encryption);
         var handler = fixture.CreateListQueryHandler();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
@@ -477,7 +477,7 @@ public class ListQueryHandlerTests
         var snapshot = MakeSnapshot(currentHash);
         blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
-        await using var fixture = await MakeFixture(blobs, "acct-311", "ctr-311");
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-311", "ctr-311", s_encryption);
         var handler = fixture.CreateListQueryHandler();
 
         using var cts = new CancellationTokenSource();
@@ -507,9 +507,6 @@ public class ListQueryHandlerTests
         TotalSize  = 0,
         AriusVersion = "test"
     };
-
-    private static Task<RepositoryTestFixture> MakeFixture(FakeSeededBlobContainerService blobs, string account, string container) =>
-        RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, s_encryption);
 
     private static ContentHash ContentHashFor(string label) => s_encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes(label));
 
