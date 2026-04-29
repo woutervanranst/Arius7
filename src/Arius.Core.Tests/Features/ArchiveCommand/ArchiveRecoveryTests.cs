@@ -108,6 +108,20 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_WhenOpeningStagingSessionThrowsNonIoException_ReturnsFailedResult()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(
+            BlobTier.Cool,
+            openStagingSession: (_, _) => throw new InvalidOperationException("staging setup failed"));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("staging setup failed");
+    }
+
+    [Test]
     public async Task Archive_WhenStagingSessionDisposeFails_ReturnsFailedResult()
     {
         using var env = new ArchiveTestEnvironment();

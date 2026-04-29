@@ -147,11 +147,18 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
         IFileTreeStagingSession stagingSession;
 
+        FileTreeHash? snapshotRootHash = null;
+        var snapshotTime = DateTimeOffset.UtcNow;
+
         try
         {
             stagingSession = await _openStagingSession(stagingCacheDirectory, cancellationToken);
         }
-        catch (IOException ex)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             _logger.LogError(ex, "Archive pipeline failed");
             return new ArchiveResult
@@ -161,14 +168,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 FilesUploaded = filesUploaded,
                 FilesDeduped  = filesDeduped,
                 TotalSize     = totalSize,
-                RootHash      = null,
-                SnapshotTime  = DateTimeOffset.UtcNow,
+                RootHash      = snapshotRootHash,
+                SnapshotTime  = snapshotRootHash is null ? DateTimeOffset.UtcNow : snapshotTime,
                 ErrorMessage  = ex.Message
             };
         }
-
-        FileTreeHash? snapshotRootHash = null;
-        var snapshotTime = DateTimeOffset.UtcNow;
 
         try
         {
