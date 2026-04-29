@@ -31,6 +31,9 @@ internal sealed class FileTreeStagingWriter
             throw new ArgumentException("File path must include a file name.", nameof(filePath));
 
         var fileName = segments[^1];
+        if (string.IsNullOrWhiteSpace(fileName))
+            throw new ArgumentException("File path must include a non-empty file name.", nameof(filePath));
+
         var parentPath = segments.Length == 1 ? string.Empty : string.Join('/', segments, 0, segments.Length - 1);
 
         await AppendChildrenAsync(segments, cancellationToken);
