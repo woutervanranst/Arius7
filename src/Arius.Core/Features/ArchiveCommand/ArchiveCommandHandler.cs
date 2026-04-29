@@ -178,7 +178,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         {
             await using (stagingSession)
             {
-                var stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
+                using var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
                 var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
                 var pendingDeletes  = new ConcurrentBag<string>();
 

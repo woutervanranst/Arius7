@@ -4,9 +4,11 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Core.Shared.FileTree;
 
 internal sealed class FileTreeStagingWriter
+    : IDisposable
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _nodeLocks = new(StringComparer.Ordinal);
     private readonly string _stagingRoot;
+    private bool _disposed;
 
     public FileTreeStagingWriter(string stagingRoot)
     {
@@ -21,6 +23,7 @@ internal sealed class FileTreeStagingWriter
         DateTimeOffset modified,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -91,6 +94,7 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var nodeLock = _nodeLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
         await nodeLock.WaitAsync(cancellationToken);
 
@@ -104,5 +108,18 @@ internal sealed class FileTreeStagingWriter
         {
             nodeLock.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        foreach (var nodeLock in _nodeLocks.Values)
+            nodeLock.Dispose();
+
+        _nodeLocks.Clear();
     }
 }

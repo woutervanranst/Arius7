@@ -18,7 +18,7 @@ public class FileTreeBuilderTests
     {
         var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-        var writer = new FileTreeStagingWriter(session.StagingRoot);
+        using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
             await writer.AppendFileAsync(file.Path, file.Hash, file.Created, file.Modified);
 

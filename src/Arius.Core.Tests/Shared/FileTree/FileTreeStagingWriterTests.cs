@@ -108,7 +108,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
 
@@ -134,7 +134,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileAsync("photos/2024/a.jpg", ContentHash.Parse(new string('b', 64)), TestTimestamp, TestTimestamp);
 
@@ -162,7 +162,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileAsync(" photos/a.jpg ", TestHash, TestTimestamp, TestTimestamp);
 
@@ -193,7 +193,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
@@ -214,7 +214,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
@@ -240,7 +240,7 @@ public class FileTreeStagingWriterTests
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await writer.AppendFileAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
@@ -251,4 +251,26 @@ public class FileTreeStagingWriterTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
+
+    [Test]
+    public async Task AppendFileAsync_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            writer.Dispose();
+
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+                await writer.AppendFileAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
 }

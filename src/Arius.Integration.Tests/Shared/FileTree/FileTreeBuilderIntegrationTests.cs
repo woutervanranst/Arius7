@@ -33,7 +33,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     {
         var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-        var writer = new FileTreeStagingWriter(session.StagingRoot);
+        using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
             await writer.AppendFileAsync(file.Path, file.Hash, file.Timestamp, file.Timestamp);
 
