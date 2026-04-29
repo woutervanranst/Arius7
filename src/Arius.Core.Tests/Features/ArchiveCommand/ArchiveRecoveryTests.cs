@@ -123,6 +123,7 @@ public class ArchiveRecoveryTests
                 openStagingSession: (_, _) => Task.FromResult<IFileTreeStagingSession>(new DisposeFailingStagingSession(stagingRoot)));
 
             result.Success.ShouldBeFalse();
+            result.RootHash.ShouldNotBeNull();
             result.ErrorMessage.ShouldBe("staging cleanup failed");
         }
         finally

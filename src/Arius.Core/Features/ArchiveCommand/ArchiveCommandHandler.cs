@@ -167,6 +167,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             };
         }
 
+        FileTreeHash? snapshotRootHash = null;
+        var snapshotTime = DateTimeOffset.UtcNow;
+
         try
         {
             await using (stagingSession)
@@ -513,9 +516,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
-            FileTreeHash?  snapshotRootHash = null;
-            var snapshotTime     = DateTimeOffset.UtcNow;
-
             if (rootHash is not null)
             {
                 var latestSnapshot = await _snapshotSvc.ResolveAsync(cancellationToken: cancellationToken);
@@ -587,8 +587,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 FilesUploaded = filesUploaded,
                 FilesDeduped  = filesDeduped,
                 TotalSize     = totalSize,
-                RootHash      = null,
-                SnapshotTime  = DateTimeOffset.UtcNow,
+                RootHash      = snapshotRootHash,
+                SnapshotTime  = snapshotRootHash is not null ? snapshotTime : DateTimeOffset.UtcNow,
                 ErrorMessage  = ex.Message
             };
         }
