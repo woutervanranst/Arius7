@@ -1,4 +1,5 @@
 using System.Formats.Tar;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
@@ -75,6 +76,22 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("staging", Case.Insensitive);
+        result.ErrorMessage.ShouldContain("already open", Case.Insensitive);
     }
 
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)

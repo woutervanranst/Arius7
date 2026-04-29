@@ -40,6 +40,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
+    public string FileTreeCacheDirectory => FileTreeService.GetDiskCacheDirectory(AccountName, _containerName);
+
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
         var content = new byte[sizeBytes];

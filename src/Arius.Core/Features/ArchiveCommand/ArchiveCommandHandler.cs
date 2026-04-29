@@ -123,27 +123,27 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
-        var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
-        await using var stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
-        var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
-        var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
-        var pendingDeletes  = new ConcurrentBag<string>();
-
-        // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
-        // Used by the dedup stage to detect duplicates within the same run before the
-        // index is updated.
-        var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
-
-        // Channels between stages (task 8.2)
-        var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-        var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
-        var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-        var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-        var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
-        var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
-
         try
         {
+            var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(stagingCacheDirectory, cancellationToken);
+            var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
+            var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
+            var pendingDeletes  = new ConcurrentBag<string>();
+
+            // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+            // Used by the dedup stage to detect duplicates within the same run before the
+            // index is updated.
+            var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
+
+            // Channels between stages (task 8.2)
+            var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
+            var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
+            var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
+            var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
+
             // ── Register queue-depth getters (task 2.3) ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
             opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
