@@ -421,6 +421,18 @@ public class FileTreeBuilderTests
     }
 
     [Test]
+    [Arguments("child/grandchild/")]
+    [Arguments("child\\")]
+    [Arguments("./")]
+    [Arguments("../")]
+    public void StagedChildLink_Parse_RejectsNonCanonicalNames(string name)
+    {
+        var directoryId = new string('a', 64);
+
+        Should.Throw<FormatException>(() => StagedChildLink.Parse($"{directoryId} D {name}"));
+    }
+
+    [Test]
     public async Task SynchronizeAsync_RecursiveBuild_UsesSharedGlobalWorkerBudget()
     {
         const string accountName = "acc-bounded";
@@ -523,4 +535,5 @@ public class FileTreeBuilderTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
+
 }

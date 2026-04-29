@@ -32,6 +32,16 @@ internal readonly record struct StagedChildLink(string DirectoryId, string Name)
         if (string.IsNullOrWhiteSpace(name))
             throw new FormatException($"Invalid child link (empty name): '{line}'");
 
+        if (!name.EndsWith("/", StringComparison.Ordinal)
+            || name.Length == 1
+            || name.Contains('\\')
+            || name[..^1].Contains('/')
+            || name is "./" or "../"
+            || string.IsNullOrWhiteSpace(name[..^1]))
+        {
+            throw new FormatException($"Invalid child link (non-canonical name): '{line}'");
+        }
+
         return new StagedChildLink(directoryId, name);
     }
 }
