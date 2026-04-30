@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -9,6 +10,8 @@ namespace Arius.Core.Shared.FileTree;
 public sealed class FileTreeBuilder
 {
     private const int SiblingSubtreeWorkers = 4;
+    private const int UploadWorkers = 4;
+    private const int UploadChannelCapacity = 16;
 
     private readonly IEncryptionService _encryption;
     private readonly FileTreeService _fileTreeService;
@@ -37,7 +40,36 @@ public sealed class FileTreeBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
-        return await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
+        var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, IReadOnlyList<FileTreeEntry> Entries)>(UploadChannelCapacity);
+        var uploadTasks = Enumerable.Range(0, UploadWorkers)
+            .Select(_ => Task.Run(async () =>
+            {
+                await foreach (var node in uploadChannel.Reader.ReadAllAsync(cancellationToken))
+                    await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, cancellationToken);
+            }, cancellationToken))
+            .ToArray();
+
+        try
+        {
+            var rootHash = await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
+            uploadChannel.Writer.TryComplete();
+            await Task.WhenAll(uploadTasks);
+            return rootHash;
+        }
+        catch (Exception ex)
+        {
+            uploadChannel.Writer.TryComplete(ex);
+            try
+            {
+                await Task.WhenAll(uploadTasks);
+            }
+            catch
+            {
+                // Surface the original build failure.
+            }
+
+            throw;
+        }
 
 
         async Task<FileTreeHash?> BuildDirectoryAsync(string directoryId, CancellationToken ct)
@@ -45,8 +77,7 @@ public sealed class FileTreeBuilder
             ct.ThrowIfCancellationRequested();
 
             var lines = await ReadNodeLinesAsync(directoryId, ct);
-            var fileEntries = ReadFileEntries(lines);
-            var directoryEntries = ReadDirectoryEntries(lines);
+            var (fileEntries, directoryEntries) = ReadNodeEntries(lines);
             if (fileEntries.Count == 0 && directoryEntries.Count == 0)
                 return null;
 
@@ -66,8 +97,10 @@ public sealed class FileTreeBuilder
             if (entries.Count == 0)
                 return null;
 
+            entries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
             var hash = FileTreeSerializer.ComputeHash(entries, _encryption);
-            return await _fileTreeService.EnsureStoredAsync(hash, entries, ct);
+            await uploadChannel.Writer.WriteAsync((hash, entries), ct);
+            return hash;
         }
 
         async Task<string[]> ReadNodeLinesAsync(string directoryId, CancellationToken ct)
@@ -79,28 +112,42 @@ public sealed class FileTreeBuilder
             return await File.ReadAllLinesAsync(path, ct);
         }
 
-        static List<FileEntry> ReadFileEntries(IEnumerable<string> lines)
+        static (List<FileEntry> FileEntries, List<StagedDirectoryEntry> DirectoryEntries) ReadNodeEntries(IEnumerable<string> lines)
         {
-            var entries = new List<FileEntry>();
+            var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
+            var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
+
             foreach (var line in lines)
             {
-                if (!string.IsNullOrWhiteSpace(line) && FileTreeSerializer.ParseStagedEntryLine(line) is FileEntry entry)
-                    entries.Add(entry);
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                switch (FileTreeSerializer.ParseStagedEntryLine(line))
+                {
+                    case FileEntry fileEntry:
+                        if (!fileEntries.TryAdd(fileEntry.Name, fileEntry))
+                            throw new InvalidOperationException($"Duplicate staged file entry '{fileEntry.Name}'.");
+                        break;
+
+                    case StagedDirectoryEntry stagedDirectoryEntry:
+                        if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
+                        {
+                            if (!string.Equals(existingDirectoryEntry.DirectoryId, stagedDirectoryEntry.DirectoryId, StringComparison.Ordinal))
+                                throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
+
+                            break;
+                        }
+
+                        directoryEntries.Add(stagedDirectoryEntry.Name, stagedDirectoryEntry);
+                        break;
+                }
             }
 
-            return entries;
-        }
-
-        static List<StagedDirectoryEntry> ReadDirectoryEntries(IEnumerable<string> lines)
-        {
-            var links = new HashSet<StagedDirectoryEntry>();
-            foreach (var line in lines)
-            {
-                if (!string.IsNullOrWhiteSpace(line) && FileTreeSerializer.ParseStagedEntryLine(line) is StagedDirectoryEntry entry)
-                    links.Add(entry);
-            }
-
-            return links.OrderBy(link => link.Name, StringComparer.Ordinal).ToList();
+            return
+            (
+                fileEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList(),
+                directoryEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList()
+            );
         }
 
         async Task BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)

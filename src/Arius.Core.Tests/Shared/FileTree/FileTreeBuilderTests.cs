@@ -154,6 +154,11 @@ public class FileTreeBuilderTests
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
+    private static async Task WriteNodeLinesAsync(string stagingRoot, string directoryId, params string[] lines)
+    {
+        await File.WriteAllLinesAsync(FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId), lines);
+    }
+
     [Test]
     public async Task SynchronizeAsync_EmptyManifest_ReturnsNull()
     {
@@ -295,6 +300,156 @@ public class FileTreeBuilderTests
         finally
         {
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_DuplicateFileNamesInOneDirectory_Throws()
+    {
+        const string accountName = "acc-dup-file";
+        const string containerName = "con-dup-file";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+            var first = FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+            {
+                Name = "a.txt",
+                ContentHash = FakeContentHash('a'),
+                Created = now,
+                Modified = now
+            });
+            var second = FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+            {
+                Name = "a.txt",
+                ContentHash = FakeContentHash('b'),
+                Created = now,
+                Modified = now
+            });
+
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
+
+            var blobs = new FakeRecordingBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            await Should.ThrowAsync<InvalidOperationException>(() => builder.SynchronizeAsync(stagingSession.StagingRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_IdenticalDuplicateDirectoryEntries_SameRootHash()
+    {
+        const string accountName = "acc-dup-dir";
+        const string containerName = "con-dup-dir";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            var childId = FileTreeStagingPaths.GetDirectoryId("photos");
+            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+
+            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await WriteNodeLinesAsync(
+                stagingSession1.StagingRoot,
+                rootId,
+                $"{childId} D photos/",
+                $"{childId} D photos/");
+            await WriteNodeLinesAsync(
+                stagingSession1.StagingRoot,
+                childId,
+                FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+                {
+                    Name = "a.jpg",
+                    ContentHash = FakeContentHash('c'),
+                    Created = now,
+                    Modified = now
+                }));
+
+            var blobs1 = new FakeRecordingBlobContainerService();
+            var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
+            await fileTreeService1.ValidateAsync();
+            var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
+
+            await stagingSession1.DisposeAsync();
+            Directory.Delete(cacheDir, recursive: true);
+
+            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await WriteNodeLinesAsync(
+                stagingSession2.StagingRoot,
+                rootId,
+                $"{childId} D photos/");
+            await WriteNodeLinesAsync(
+                stagingSession2.StagingRoot,
+                childId,
+                FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+                {
+                    Name = "a.jpg",
+                    ContentHash = FakeContentHash('c'),
+                    Created = now,
+                    Modified = now
+                }));
+
+            var blobs2 = new FakeRecordingBlobContainerService();
+            var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
+            await fileTreeService2.ValidateAsync();
+            var root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+
+            root1.ShouldBe(root2);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_CalculatesSiblingNodes_WhileUploadsAreBlocked()
+    {
+        const string accountName = "acc-blocked-uploads";
+        const string containerName = "con-blocked-uploads";
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            await using var stagingSession = (await CreateStagingAsync(
+                accountName,
+                containerName,
+                ("photos/a.jpg", FakeContentHash('d'), now, now),
+                ("docs/b.jpg", FakeContentHash('e'), now, now))).Session;
+
+            var blobs = new BlockingFileTreeUploadBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
+
+            (await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(5))).ShouldBeTrue();
+            blobs.AllowUploads();
+
+            (await syncTask).ShouldNotBeNull();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
         }
     }
 
