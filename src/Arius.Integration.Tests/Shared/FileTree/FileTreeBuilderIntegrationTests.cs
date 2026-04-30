@@ -68,11 +68,11 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Download and deserialize to verify content
             await using var stream = await blobs.DownloadAsync(blobName);
-            var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, s_enc);
+            var entries = await FileTreeSerializer.DeserializeFromStorageAsync(stream, s_enc);
 
-            treeBlob.Entries.Count.ShouldBe(1);
-            treeBlob.Entries[0].Name.ShouldBe("readme.txt");
-            treeBlob.Entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
+            entries.Count.ShouldBe(1);
+            entries[0].Name.ShouldBe("readme.txt");
+            entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
         }
         finally
         {

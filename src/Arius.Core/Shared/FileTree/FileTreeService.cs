@@ -226,23 +226,12 @@ public sealed class FileTreeService
         await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
     }
 
-    public async Task WriteAsync(FileTreeHash hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
-        => await WriteAsync(hash, tree.Entries, cancellationToken);
-
     public async Task<FileTreeHash> EnsureStoredAsync(FileTreeHash hash, IReadOnlyList<FileTreeEntry> entries, CancellationToken cancellationToken = default)
     {
         if (!ExistsInRemote(hash))
             await WriteAsync(hash, entries, cancellationToken);
 
         return hash;
-    }
-
-    public async Task<FileTreeHash> EnsureStoredAsync(FileTreeBlob tree, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(tree);
-
-        var hash = FileTreeSerializer.ComputeHash(tree.Entries, _encryption);
-        return await EnsureStoredAsync(hash, tree.Entries, cancellationToken);
     }
 
     // ── 1.5 ValidateAsync ────────────────────────────────────────────────────
