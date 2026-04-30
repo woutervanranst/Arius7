@@ -23,8 +23,6 @@ internal sealed class FileTreeStagingWriter
         DateTimeOffset modified,
         CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
-
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -74,8 +72,6 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
-
         var directoryId = FileTreeStagingPaths.GetDirectoryId(directoryPath);
         var nodePath = FileTreeStagingPaths.GetNodePath(_stagingRoot, directoryId);
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializeFileEntryLine(entry), cancellationToken);
@@ -83,8 +79,6 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendDirectoryEntriesAsync(string[] segments, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
-
         for (var depth = 0; depth < segments.Length - 1; depth++)
         {
             var parentPath      = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
@@ -99,9 +93,7 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
-
-        var nodeLock = _nodeLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
+        var nodeLock = _nodeLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1)); // TODO use lock striping cf memory usage
         await nodeLock.WaitAsync(cancellationToken);
 
         try
@@ -127,10 +119,5 @@ internal sealed class FileTreeStagingWriter
             nodeLock.Dispose();
 
         _nodeLocks.Clear();
-    }
-
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }
