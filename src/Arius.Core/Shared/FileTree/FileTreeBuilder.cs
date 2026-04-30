@@ -107,7 +107,7 @@ public sealed class FileTreeBuilder
         {
             var path = FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId);
             if (!File.Exists(path))
-                return [];
+                return []; // empty directory
 
             return await File.ReadAllLinesAsync(path, ct);
         }
@@ -132,6 +132,7 @@ public sealed class FileTreeBuilder
                     case StagedDirectoryEntry stagedDirectoryEntry:
                         if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
                         {
+                            // the file is append only, directories are added when a file is added so a directoryEntry can appear multiple times, but it should be the same line every time
                             if (!string.Equals(existingDirectoryEntry.DirectoryId, stagedDirectoryEntry.DirectoryId, StringComparison.Ordinal))
                                 throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
 
