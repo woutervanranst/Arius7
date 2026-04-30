@@ -4,13 +4,13 @@ date: 2026-04-29
 decision-makers: Wouter Van Ranst, OpenCode
 ---
 
-# Build Filetrees From Hashed Directory Staging
+# Build Filetrees From Staged Directory Nodes
 
 ## Context and Problem Statement
 
 Arius snapshots point at an immutable filetree root. Filetrees need to describe repository structure for archives ranging from small repositories to repositories with millions of files spread across many directories, without requiring all file entries to be loaded in memory at once.
 
-The question for this ADR is how Arius should stage and build immutable filetree blobs during archive creation while preserving deterministic Merkle hashes, Windows-safe local paths, and clear ownership between archive orchestration, filetree construction, and filetree storage.
+The question for this ADR is how Arius should stage and build immutable filetree nodes during archive creation while preserving deterministic Merkle hashes, Windows-safe local paths, and clear ownership between archive orchestration, filetree construction, and filetree storage.
 
 ## Decision Drivers
 
@@ -21,17 +21,19 @@ The question for this ADR is how Arius should stage and build immutable filetree
 * staging should reuse the persisted `FileEntry` shape for file records instead of creating a second manifest domain model
 * directory staging should be path-local, not content-hash-local
 * filetree storage/cache behavior should be owned by `FileTreeService`, not by archive orchestration
+* filetree hash calculation should be owned by `FileTreeBuilder`, not by `FileTreeService`
+* filetree calculation and upload should overlap where possible without weakening snapshot durability
 
 ## Considered Options
 
 * Build filetrees from a single path-sorted manifest file
 * Build filetrees from literal mirrored directory staging
-* Build filetrees from hashed directory staging
+* Build filetrees from staged directory nodes
 * Build filetrees from a second filesystem walk
 
 ## Decision Outcome
 
-Chosen option: "Build filetrees from hashed directory staging", because it preserves the current immutable directory-blob filetree model while avoiding whole-repository in-memory manifest sorting and avoiding Windows path-length risks from literal path mirroring.
+Chosen option: "Build filetrees from staged directory nodes", because it preserves the current immutable directory-node filetree model while avoiding whole-repository in-memory manifest sorting, keeping staging paths fixed-length, and allowing node calculation to overlap with upload.
 
 During archive creation, completed files are staged under the repository filetree cache at:
 
@@ -47,53 +49,48 @@ Each archive directory maps to a staging node id:
 dirId = SHA256(canonicalRelativeDirectoryPath)
 ```
 
-The root directory path is the empty string. Canonical relative paths use `/` separators, no leading slash, no trailing slash, and ordinal case-sensitive semantics. Staging nodes are faned out by hash prefix:
+The root directory path is the empty string. Canonical relative paths use `/` separators, no leading slash, no trailing slash, and ordinal case-sensitive semantics. Each staged node is stored as one file directly under `.staging`:
 
 ```text
-filetrees/.staging/{dirId}/
+filetrees/.staging/{dirId}
 ```
 
-Each node may contain:
-
-```text
-entries
-directories
-```
-
-`entries` contains canonical serialized `FileEntry` lines for files directly inside that directory:
+Each staged node file contains append-only filetree-shaped records. File lines use the final persisted format directly:
 
 ```text
 <content-hash> F <created:O> <modified:O> <leaf-file-name>
 ```
 
-`directories` contains staged directory entries:
+Staged directory lines use the same overall shape, but the first field is a staged directory id rather than a child `FileTreeHash`:
 
 ```text
 <child-dir-id> D <child-directory-name>/
 ```
 
-The child link format intentionally resembles a directory entry line, but the hash field is a staging directory id until the child subtree is built. It is not a persisted `DirectoryEntry`.
+The child line format intentionally resembles a persisted directory entry, but the first field is only a staging directory id until the child subtree has been built. This staged form is modeled explicitly as `StagedDirectoryEntry : FileTreeEntry`, while persisted nodes continue to use `DirectoryEntry : FileTreeEntry`.
 
-After all archive file work and chunk-index flushing are complete, `FileTreeBuilder` builds the staging graph bottom-up from the root directory id. Each directory combines staged `FileEntry` lines with final `DirectoryEntry` values returned by child builds, sorts by `FileTreeEntry.Name`, and asks `FileTreeService` to store the resulting immutable `FileTreeBlob`. The final root filetree hash becomes the snapshot root.
+After all archive file work and chunk-index flushing are complete, `FileTreeBuilder` builds the staging graph bottom-up from the root directory id. Each directory reads its staged node file, validates duplicate names, resolves child directories to final child `FileTreeHash` values, combines staged `FileEntry` values with final `DirectoryEntry` values, sorts by `FileTreeEntry.Name`, computes its own `FileTreeHash`, and publishes the completed node for storage.
 
-`FileTreeService` owns filetree validation, hash computation, remote existence checks, upload, and local cache writes through an `EnsureStoredAsync(FileTreeBlob)`-style API. `ArchiveCommandHandler` owns archive workflow and decides which files enter staging. `FileTreeBuilder` owns the bottom-up Merkle construction algorithm.
+`FileTreeBuilder` is responsible for hash calculation. `FileTreeService` owns filetree validation, remote existence checks, upload, and local cache writes through an `EnsureStoredAsync(FileTreeHash hash, IReadOnlyList<FileTreeEntry> entries)`-style API. `ArchiveCommandHandler` owns archive workflow and decides which files enter staging. `FileTreeBuilder` owns the bottom-up Merkle construction algorithm.
+
+The builder and storage service are decoupled by a bounded channel of completed directory nodes. Upload workers store completed nodes concurrently while the builder continues calculating parent and sibling nodes. The archive tail still waits for all filetree uploads to finish before publishing the snapshot, so durability semantics are unchanged.
 
 ### Consequences
 
 * Good, because filetree build memory is bounded by active subtrees and the largest individual directory, not by total repository file count.
 * Good, because source path length does not directly determine staging path length.
-* Good, because staged file lines and persisted file-entry lines share one `FileEntry` serialization shape.
-* Good, because child subtrees can be built and stored with bounded parallelism once staging is complete.
+* Good, because staged file lines and persisted file-entry lines share one `FileTreeEntry` serialization surface.
+* Good, because child subtrees can be built while upload workers store completed nodes in parallel.
 * Good, because stale local staging from a crash is safe to delete before the next archive run.
-* Bad, because staging needs a separate child-link file format for directory graph edges.
+* Bad, because staged directory lines still need a staged-only subtype until child hashes are known.
 * Bad, because duplicate child links can be written by concurrent archive workers and must be deduplicated during build.
 * Bad, because one directory containing millions of direct children still produces one large filetree blob.
 
 ### Confirmation
 
-The decision is being followed when archive creation writes completed files into hashed `.staging` directory nodes, staged file records use `FileEntry` serialization, `FileTreeBuilder` builds directories bottom-up from staging, and `FileTreeService` is the only component that decides whether a filetree blob must be uploaded or cached.
+The decision is being followed when archive creation writes completed files into `.staging/{dirId}` node files, staged file records use the final `FileEntry` line format, staged directory records use `StagedDirectoryEntry`, `FileTreeBuilder` computes directory hashes bottom-up from staging, and `FileTreeService` stores already-identified immutable nodes.
 
-Tests should confirm that staging paths are hash-based, stale `.staging` is cleared after acquiring the local lock, nested file paths create parent-child links, duplicate child links do not change the final root hash, and archived repositories list and restore with the expected structure.
+Tests should confirm that staging paths are hash-based, stale `.staging` is cleared after acquiring the local lock, nested file paths create parent-child links, duplicate file names in one staged node fail fast, duplicate child links do not change the final root hash, and archived repositories list and restore with the expected structure.
 
 ## Pros and Cons of the Options
 
@@ -115,15 +112,16 @@ This recreates the archive directory structure under `.staging` and stores an `e
 * Bad, because staging paths are longer than source paths and can hit Windows path-length limits earlier than the source repository.
 * Bad, because reserved staging filenames such as `entries` or `.entries` can collide with real archived names unless extra escaping rules are introduced.
 
-### Build filetrees from hashed directory staging
+### Build filetrees from staged directory nodes
 
 This is the chosen design.
 
 * Good, because staging paths are fixed-length and Windows-friendly.
 * Good, because no whole-repository sort is needed.
-* Good, because each directory can be read, sorted, and built independently after its children are known.
+* Good, because each directory can be read, sorted, hashed, and built independently after its children are known.
 * Good, because filetree-related temporary state stays under the filetree cache.
-* Bad, because parent-child relationships must be stored explicitly in `directories` files.
+* Good, because node calculation can overlap with filetree upload.
+* Bad, because parent-child relationships must still be stored explicitly in staged directory records.
 
 ### Build filetrees from a second filesystem walk
 
@@ -136,7 +134,7 @@ This avoids staging by walking the source tree again after chunk upload work.
 
 ## More Information
 
-This ADR describes the intended filetree architecture as a greenfield design. It does not document a migration path from the previous manifest-based implementation.
+This ADR describes the intended filetree architecture as the target steady-state design. It does not document migration steps or intermediate implementations.
 
 Related decisions:
 
@@ -145,5 +143,5 @@ Related decisions:
 
 The implementation design and task plan are recorded in:
 
-* `docs/superpowers/specs/2026-04-29-scalable-filetree-staging-design.md`
-* `docs/superpowers/plans/2026-04-29-scalable-filetree-staging.md`
+* `docs/superpowers/specs/2026-04-30-decouple-filetree-build-and-upload-design.md`
+* `docs/superpowers/plans/2026-04-30-decouple-filetree-build-and-upload.md`
