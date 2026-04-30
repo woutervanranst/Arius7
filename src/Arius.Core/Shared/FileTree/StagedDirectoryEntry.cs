@@ -47,7 +47,7 @@ internal sealed record StagedDirectoryEntry : FileTreeEntry
         return new StagedDirectoryEntry
         {
             DirectoryId = directoryId,
-            Name = name
+            Name        = name
         };
     }
 }

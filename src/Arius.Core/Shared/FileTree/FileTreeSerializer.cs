@@ -150,7 +150,7 @@ public static class FileTreeSerializer
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name = afterType
+                Name         = afterType
             };
         }
 
@@ -176,7 +176,7 @@ public static class FileTreeSerializer
         {
             'F' => ParseFileEntryLine(line),
             'D' => StagedDirectoryEntry.Parse(line),
-            _ => throw new FormatException($"Invalid tree entry type marker '{afterHash[0]}': '{line}'")
+            _   => throw new FormatException($"Invalid tree entry type marker '{afterHash[0]}': '{line}'")
         };
     }
 
