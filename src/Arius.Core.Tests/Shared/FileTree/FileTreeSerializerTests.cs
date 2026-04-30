@@ -4,17 +4,14 @@ using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
-public class FileTreeBlobSerializerTests
+public class FileTreeSerializerTests
 {
     private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static FileTreeBlob MakeBlob(params (string name, bool isDirectory, string hash)[] items) =>
-        new()
-        {
-            Entries = BuildEntries(items)
-        };
+    private static IReadOnlyList<FileTreeEntry> MakeEntries(params (string name, bool isDirectory, string hash)[] items)
+        => BuildEntries(items);
 
     private static string NormalizeHash(string hash)
         => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
@@ -40,7 +37,7 @@ public class FileTreeBlobSerializerTests
                 $"{new string('b', 64)} D photos/"
             ]);
 
-        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+        Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]
@@ -55,7 +52,7 @@ public class FileTreeBlobSerializerTests
                 $"{new string('b', 64)} D photos/"
             ]);
 
-        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+        Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]
@@ -70,54 +67,54 @@ public class FileTreeBlobSerializerTests
                 $"{new string('d', 64)} D photos/"
             ]);
 
-        Should.Throw<FormatException>(() => FileTreeBlobSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
+        Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
     }
 
     [Test]
     public async Task Serialize_ThenDeserialize_RoundTrips()
     {
-        var blob = MakeBlob(
+        var entries = MakeEntries(
             ("photo.jpg", false, FakeContentHash('a').ToString()),
             ("subdir/",   true,  FakeFileTreeHash('e').ToString()));
 
-        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
-        back.Entries.Count.ShouldBe(2);
+        back.Count.ShouldBe(2);
 
-        var file = back.Entries.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
+        var file = back.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
         file.ContentHash.ShouldBe(FakeContentHash('a'));
         file.Created.ShouldNotBe(default);
         file.Modified.ShouldNotBe(default);
 
-        var dir = back.Entries.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
+        var dir = back.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
         dir.FileTreeHash.ShouldBe(FakeFileTreeHash('e'));
     }
 
     [Test]
     public async Task Serialize_SortsEntriesByName()
     {
-        var blob = MakeBlob(
+        var entries = MakeEntries(
             ("z_last.txt",  false, FakeContentHash('3').ToString()),
             ("a_first.txt", false, FakeContentHash('1').ToString()),
             ("m_mid.txt",   false, FakeContentHash('2').ToString()));
 
-        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
-        back.Entries[0].Name.ShouldBe("a_first.txt");
-        back.Entries[1].Name.ShouldBe("m_mid.txt");
-        back.Entries[2].Name.ShouldBe("z_last.txt");
+        back[0].Name.ShouldBe("a_first.txt");
+        back[1].Name.ShouldBe("m_mid.txt");
+        back[2].Name.ShouldBe("z_last.txt");
     }
 
     [Test]
-    public void Serialize_IsDeterministic_SameInputSameOutput()
+    public void Serialize_IsDeterministic_ForEquivalentEntryLists()
     {
-        var blob1 = MakeBlob(("b.jpg", false, FakeContentHash('2').ToString()), ("a.jpg", false, FakeContentHash('1').ToString()));
-        var blob2 = MakeBlob(("a.jpg", false, FakeContentHash('1').ToString()), ("b.jpg", false, FakeContentHash('2').ToString()));
+        var entries1 = MakeEntries(("b.jpg", false, FakeContentHash('2').ToString()), ("a.jpg", false, FakeContentHash('1').ToString()));
+        var entries2 = MakeEntries(("a.jpg", false, FakeContentHash('1').ToString()), ("b.jpg", false, FakeContentHash('2').ToString()));
 
-        var bytes1 = FileTreeBlobSerializer.Serialize(blob1);
-        var bytes2 = FileTreeBlobSerializer.Serialize(blob2);
+        var bytes1 = FileTreeSerializer.Serialize(entries1);
+        var bytes2 = FileTreeSerializer.Serialize(entries2);
 
         bytes1.ShouldBe(bytes2);
     }
@@ -125,16 +122,13 @@ public class FileTreeBlobSerializerTests
     [Test]
     public void Serialize_DirEntry_HasNoTimestamps_FileEntry_HasTimestamps()
     {
-        var blob = new FileTreeBlob
-        {
-            Entries =
-            [
-                new DirectoryEntry { Name = "sub/", FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
-                new FileEntry { Name = "f.txt", ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
-            ]
-        };
+        IReadOnlyList<FileTreeEntry> entries =
+        [
+            new DirectoryEntry { Name = "sub/", FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
+            new FileEntry { Name = "f.txt", ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
+        ];
 
-        var text = System.Text.Encoding.UTF8.GetString(FileTreeBlobSerializer.Serialize(blob));
+        var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         var dirLine = lines.Single(l => l.Contains(" D "));
@@ -147,23 +141,23 @@ public class FileTreeBlobSerializerTests
     [Test]
     public async Task Serialize_FileEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("my vacation photo.jpg", false, FakeContentHash('a').ToString()));
+        var entries = MakeEntries(("my vacation photo.jpg", false, FakeContentHash('a').ToString()));
 
-        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
-        back.Entries.Single().Name.ShouldBe("my vacation photo.jpg");
+        back.Single().Name.ShouldBe("my vacation photo.jpg");
     }
 
     [Test]
     public async Task Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
-        var blob = MakeBlob(("2024 trip/", true, FakeFileTreeHash('d').ToString()));
+        var entries = MakeEntries(("2024 trip/", true, FakeFileTreeHash('d').ToString()));
 
-        var bytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
-        var back  = await FileTreeBlobSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
 
-        back.Entries.Single().Name.ShouldBe("2024 trip/");
+        back.Single().Name.ShouldBe("2024 trip/");
     }
 
     [Test]
@@ -179,8 +173,8 @@ public class FileTreeBlobSerializerTests
             Modified = modified
         };
 
-        var line = FileTreeBlobSerializer.SerializeFileEntryLine(entry);
-        var parsed = FileTreeBlobSerializer.ParseFileEntryLine(line);
+        var line = FileTreeSerializer.SerializeFileEntryLine(entry);
+        var parsed = FileTreeSerializer.ParseFileEntryLine(line);
 
         parsed.ShouldBe(entry);
     }
@@ -198,8 +192,8 @@ public class FileTreeBlobSerializerTests
             Modified = modified
         };
 
-        var line = FileTreeBlobSerializer.SerializeFileEntryLine(entry) + "\r";
-        var parsed = FileTreeBlobSerializer.ParseFileEntryLine(line);
+        var line = FileTreeSerializer.SerializeFileEntryLine(entry) + "\r";
+        var parsed = FileTreeSerializer.ParseFileEntryLine(line);
 
         parsed.ShouldBe(entry);
     }
@@ -208,10 +202,10 @@ public class FileTreeBlobSerializerTests
     public void ComputeHash_Deterministic_SameInputSameHash()
     {
         var enc  = new PlaintextPassthroughService();
-        var blob = MakeBlob(("file.txt", false, FakeContentHash('d').ToString()));
+        var entries = MakeEntries(("file.txt", false, FakeContentHash('d').ToString()));
 
-        var h1 = FileTreeBlobSerializer.ComputeHash(blob, enc);
-        var h2 = FileTreeBlobSerializer.ComputeHash(blob, enc);
+        var h1 = FileTreeSerializer.ComputeHash(entries, enc);
+        var h2 = FileTreeSerializer.ComputeHash(entries, enc);
 
         h1.ShouldBe(h2);
     }
@@ -220,32 +214,26 @@ public class FileTreeBlobSerializerTests
     public void ComputeHash_MetadataChange_ProducesNewHash()
     {
         var enc  = new PlaintextPassthroughService();
-        var blob1 = new FileTreeBlob
-        {
-            Entries =
-            [
-                new FileEntry
-                {
-                    Name     = "file.txt",
-                    ContentHash = FakeContentHash('d'),
-                    Created  = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
-                    Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
-                }
-            ]
-        };
-        var blob2 = blob1 with
-        {
-            Entries =
-            [
-                ((FileEntry)blob1.Entries[0]) with
-                {
-                    Modified = new DateTimeOffset(2024, 6, 15, 0, 0, 0, TimeSpan.Zero)
-                }
-            ]
-        };
+        IReadOnlyList<FileTreeEntry> entries1 =
+        [
+            new FileEntry
+            {
+                Name     = "file.txt",
+                ContentHash = FakeContentHash('d'),
+                Created  = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
+            }
+        ];
+        IReadOnlyList<FileTreeEntry> entries2 =
+        [
+            ((FileEntry)entries1[0]) with
+            {
+                Modified = new DateTimeOffset(2024, 6, 15, 0, 0, 0, TimeSpan.Zero)
+            }
+        ];
 
-        var h1 = FileTreeBlobSerializer.ComputeHash(blob1, enc);
-        var h2 = FileTreeBlobSerializer.ComputeHash(blob2, enc);
+        var h1 = FileTreeSerializer.ComputeHash(entries1, enc);
+        var h2 = FileTreeSerializer.ComputeHash(entries2, enc);
 
         h1.ShouldNotBe(h2);
     }
@@ -253,12 +241,12 @@ public class FileTreeBlobSerializerTests
     [Test]
     public void ComputeHash_WithPassphrase_DifferentFromPlaintext()
     {
-        var blobPlain   = MakeBlob(("file.txt", false, FakeContentHash('a').ToString()));
+        var entries = MakeEntries(("file.txt", false, FakeContentHash('a').ToString()));
         var plain       = new PlaintextPassthroughService();
         var withPass    = new PassphraseEncryptionService("secret");
 
-        var h1 = FileTreeBlobSerializer.ComputeHash(blobPlain, plain);
-        var h2 = FileTreeBlobSerializer.ComputeHash(blobPlain, withPass);
+        var h1 = FileTreeSerializer.ComputeHash(entries, plain);
+        var h2 = FileTreeSerializer.ComputeHash(entries, withPass);
 
         h1.ShouldNotBe(h2);
     }
