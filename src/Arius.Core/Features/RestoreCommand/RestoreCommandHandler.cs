@@ -513,10 +513,10 @@ public sealed class RestoreCommandHandler
         if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix))
             return;
 
-        // Load tree blob via cache
-        var treeBlob = await _fileTreeService.ReadAsync(treeHash, cancellationToken);
+        // Load tree entries via cache
+        var treeEntries = await _fileTreeService.ReadAsync(treeHash, cancellationToken);
 
-        foreach (var entry in treeBlob.Entries)
+        foreach (var entry in treeEntries)
         {
             var entryPath = currentPath.Length == 0
                 ? entry.Name

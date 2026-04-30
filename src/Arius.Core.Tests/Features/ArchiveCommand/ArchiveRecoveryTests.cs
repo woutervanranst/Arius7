@@ -1,4 +1,5 @@
 using System.Formats.Tar;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
@@ -63,6 +64,95 @@ public class ArchiveRecoveryTests
 
         var finalMeta = await env.Blobs.GetMetadataAsync(blobName);
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+    }
+
+    [Test]
+    public async Task Archive_NewContent_CreatesSnapshotWithRootHash()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("staging", Case.Insensitive);
+        result.ErrorMessage.ShouldContain("already open", Case.Insensitive);
+    }
+
+    [Test]
+    public async Task Archive_WhenCancelledBeforeOpeningStagingSession_PropagatesCancellation()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await env.ArchiveAsync(BlobTier.Cool, cts.Token));
+    }
+
+    [Test]
+    public async Task Archive_WhenOpeningStagingSessionThrowsNonIoException_ReturnsFailedResult()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(
+            BlobTier.Cool,
+            openStagingSession: (_, _) => throw new InvalidOperationException("staging setup failed"));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("staging setup failed");
+    }
+
+    [Test]
+    public async Task Archive_WhenStagingSessionDisposeFails_ReturnsFailedResult()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var stagingRoot = Path.Combine(env.FileTreeCacheDirectory, $"dispose-failure-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(stagingRoot);
+
+        try
+        {
+            var result = await env.ArchiveAsync(
+                BlobTier.Cool,
+                openStagingSession: (_, _) => Task.FromResult<IFileTreeStagingSession>(new DisposeFailingStagingSession(stagingRoot)));
+
+            result.Success.ShouldBeFalse();
+            result.RootHash.ShouldNotBeNull();
+            result.ErrorMessage.ShouldBe("staging cleanup failed");
+        }
+        finally
+        {
+            if (Directory.Exists(stagingRoot))
+                Directory.Delete(stagingRoot, recursive: true);
+        }
+    }
+
+    private sealed class DisposeFailingStagingSession(string stagingRoot) : IFileTreeStagingSession
+    {
+        public string StagingRoot { get; } = stagingRoot;
+
+        public ValueTask DisposeAsync()
+            => ValueTask.FromException(new IOException("staging cleanup failed"));
     }
 
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)

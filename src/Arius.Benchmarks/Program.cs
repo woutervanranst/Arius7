@@ -23,7 +23,7 @@ var config = ManualConfig
     .AddLogger(new StreamLogger(Path.Combine(rawOutputDirectory, "benchmark-output.log"), append: false))
     .WithArtifactsPath(rawOutputDirectory);
 
-var summary = BenchmarkRunner.Run<RepresentativeWorkflowBenchmarks>(config);
+var summary = BenchmarkRunner.Run<ArchiveStepBenchmarks>(config);
 
 BenchmarkTailLog.Append(
     options.TailLogPath,

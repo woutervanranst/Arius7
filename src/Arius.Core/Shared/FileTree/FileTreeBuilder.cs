@@ -1,243 +1,166 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
-/// Builds Merkle tree blobs bottom-up from a sorted manifest file.
-///
-/// Algorithm (tasks 5.6, 5.7, 5.8, 5.9):
-/// 1. Stream sorted entries. Group by immediate parent directory.
-/// 2. For each directory (deepest-first, bottom-up):
-///    a. Collect file entries + already-computed child directory entries.
-///    b. Build <see cref="FileTreeBlob"/>.
-///    c. Compute tree hash.
-///    d. Check via <see cref="FileTreeService.ExistsInRemote"/> — if present, skip upload (dedup).
-///    e. Upload new blob via <see cref="FileTreeService.WriteAsync"/>; disk cache written automatically.
-///    f. Cascade the directory hash up to the parent directory.
-/// 3. Return root tree hash.
-///
-/// Empty directories are skipped (task 5.8): if no files reach a directory
-/// (directly or recursively), that directory generates no tree blob.
+/// Synchronizes Merkle tree blobs bottom-up from a staged filetree root.
 /// </summary>
 public sealed class FileTreeBuilder
 {
-    private readonly IEncryptionService  _encryption;
-    private readonly FileTreeService    _fileTreeService;
+    private const int SiblingSubtreeWorkers = 4;
+    private const int UploadWorkers = 4;
+    private const int UploadChannelCapacity = 16;
+
+    private readonly IEncryptionService _encryption;
+    private readonly FileTreeService _fileTreeService;
 
     /// <summary>
     /// Builds trees using shared services supplied by the caller/DI container.
     /// </summary>
     public FileTreeBuilder(
         IEncryptionService encryption,
-        FileTreeService   fileTreeService)
+        FileTreeService fileTreeService)
     {
         _encryption = encryption;
-        _fileTreeService  = fileTreeService;
+        _fileTreeService = fileTreeService;
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the full Merkle tree from a sorted manifest file and returns the root tree hash.
-    /// Returns <c>null</c> if the manifest is empty (nothing to archive).
+    /// Synchronizes the full Merkle tree from a staged filetree root, uploading any missing
+    /// filetree blobs and returning the root tree hash. Returns <c>null</c> if the staging root
+    /// contains no file entries.
     /// </summary>
-    public async Task<FileTreeHash?> BuildAsync(
-        string            sortedManifestPath,
+    public async Task<FileTreeHash?> SynchronizeAsync(
+        string stagingRoot,
         CancellationToken cancellationToken = default)
     {
-        // Ensure cache is validated before calling ExistsInRemote (idempotent — no-op if already validated).
-        await _fileTreeService.ValidateAsync(cancellationToken);
+        ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
-        // Accumulated directory entries keyed by directory path (forward-slash, no trailing slash)
-        // Value: list of FileTreeEntry for that directory (files + resolved child dirs)
-        var dirEntries = new Dictionary<string, List<FileTreeEntry>>(StringComparer.Ordinal);
-
-        // Stream through sorted manifest entries
-        await foreach (var manifestEntry in ReadManifestAsync(sortedManifestPath, cancellationToken))
-        {
-            var filePath = manifestEntry.Path;  // e.g., "photos/2024/june/a.jpg"
-            var dirPath  = GetDirectoryPath(filePath);  // e.g., "photos/2024/june"
-            var name     = Path.GetFileName(filePath);
-
-            if (!dirEntries.TryGetValue(dirPath, out var list))
-                dirEntries[dirPath] = list = new List<FileTreeEntry>();
-
-            list.Add(new FileEntry
+        var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, IReadOnlyList<FileTreeEntry> Entries)>(UploadChannelCapacity);
+        var uploadTasks = Enumerable.Range(0, UploadWorkers)
+            .Select(_ => Task.Run(async () =>
             {
-                Name        = name,
-                ContentHash = manifestEntry.ContentHash,
-                Created  = manifestEntry.Created,
-                Modified = manifestEntry.Modified
-            });
+                await foreach (var node in uploadChannel.Reader.ReadAllAsync(cancellationToken))
+                    await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, cancellationToken);
+            }, cancellationToken))
+            .ToArray();
+
+        try
+        {
+            var rootHash = await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
+            uploadChannel.Writer.TryComplete();
+            await Task.WhenAll(uploadTasks);
+            return rootHash;
         }
-
-        if (dirEntries.Count == 0) return null;
-
-        // Ensure all intermediate directories exist in dirEntries
-        // (directories that only contain subdirectories, not files, would otherwise be missing)
-        var allDirs = new HashSet<string>(dirEntries.Keys, StringComparer.Ordinal);
-        foreach (var dirPath in dirEntries.Keys.ToList())
+        catch (Exception ex)
         {
-            var parent = GetDirectoryPath(dirPath);
-            while (parent != string.Empty && !allDirs.Contains(parent))
+            uploadChannel.Writer.TryComplete(ex);
+            try
             {
-                allDirs.Add(parent);
-                dirEntries[parent] = new List<FileTreeEntry>();
-                parent = GetDirectoryPath(parent);
+                await Task.WhenAll(uploadTasks);
             }
+            catch
+            {
+                // Surface the original build failure.
+            }
+
+            throw;
         }
 
-        // Process directories bottom-up: deepest paths first (more slashes → deeper)
-        var sortedDirs = dirEntries.Keys
-            .OrderByDescending(d => d.Count(c => c == '/'))
-            .ThenByDescending(d => d, StringComparer.Ordinal)
-            .ToList();
 
-        // Map from directory path → its computed tree hash (for cascading to parents)
-        var dirHashMap = new Dictionary<string, FileTreeHash>(StringComparer.Ordinal);
-
-        FileTreeHash? rootHash = null;
-
-        foreach (var dirPath in sortedDirs)
+        async Task<FileTreeHash?> BuildDirectoryAsync(string directoryId, CancellationToken ct)
         {
-            var entries = dirEntries[dirPath];
+            ct.ThrowIfCancellationRequested();
 
-            // Inject already-computed child directory entries
-            // (any immediate child directories of dirPath that have been processed)
-            foreach (var (childDirPath, childHash) in dirHashMap)
-            {
-                var childParent = GetDirectoryPath(childDirPath);
-                if (childParent == dirPath)
+            var lines = await ReadNodeLinesAsync(directoryId, ct);
+            var (fileEntries, directoryEntries) = ReadNodeEntries(lines);
+            if (fileEntries.Count == 0 && directoryEntries.Count == 0)
+                return null;
+
+            var childEntries = new DirectoryEntry?[directoryEntries.Count];
+            await Parallel.ForEachAsync(
+                directoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
+                new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
+                async (item, ct) =>
                 {
-                    var childName = GetLastSegment(childDirPath);
-                    entries.Add(new DirectoryEntry
-                    {
-                        Name         = childName + "/",
-                        FileTreeHash = childHash
-                    });
+                    await BuildChildDirectoryAsync(item.directoryEntry, item.index, childEntries, ct);
+                });
+
+            var entries = new List<FileTreeEntry>(fileEntries.Count + childEntries.Length);
+            entries.AddRange(fileEntries);
+            entries.AddRange(childEntries.Where(entry => entry is not null)!);
+
+            if (entries.Count == 0)
+                return null;
+
+            entries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
+            var hash = FileTreeSerializer.ComputeHash(entries, _encryption);
+            await uploadChannel.Writer.WriteAsync((hash, entries), ct);
+            return hash;
+        }
+
+        async Task<string[]> ReadNodeLinesAsync(string directoryId, CancellationToken ct)
+        {
+            var path = FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId);
+            if (!File.Exists(path))
+                return [];
+
+            return await File.ReadAllLinesAsync(path, ct);
+        }
+
+        static (List<FileEntry> FileEntries, List<StagedDirectoryEntry> DirectoryEntries) ReadNodeEntries(IEnumerable<string> lines)
+        {
+            var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
+            var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
+
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                switch (FileTreeSerializer.ParseStagedEntryLine(line))
+                {
+                    case FileEntry fileEntry:
+                        if (!fileEntries.TryAdd(fileEntry.Name, fileEntry))
+                            throw new InvalidOperationException($"Duplicate staged file entry '{fileEntry.Name}'.");
+                        break;
+
+                    case StagedDirectoryEntry stagedDirectoryEntry:
+                        if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
+                        {
+                            if (!string.Equals(existingDirectoryEntry.DirectoryId, stagedDirectoryEntry.DirectoryId, StringComparison.Ordinal))
+                                throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
+
+                            break;
+                        }
+
+                        directoryEntries.Add(stagedDirectoryEntry.Name, stagedDirectoryEntry);
+                        break;
                 }
             }
 
-            var tree = new FileTreeBlob { Entries = entries };
-            var hash = FileTreeBlobSerializer.ComputeHash(tree, _encryption);
-
-            // Dedup: upload only if not already cached/known remotely
-            await EnsureUploadedAsync(hash, tree, cancellationToken);
-
-            dirHashMap[dirPath] = hash;
-
-            // If this directory has no parent (empty string = root), it is the root
-            if (dirPath == string.Empty || !dirPath.Contains('/'))
-            {
-                // Check if there's a parent for this dir
-                var parent = GetDirectoryPath(dirPath);
-                if (parent == dirPath) // root
-                    rootHash = hash;
-                // else: will be cascaded to parent when parent is processed
-            }
+            return
+            (
+                fileEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList(),
+                directoryEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList()
+            );
         }
 
-        // The root is the directory with the shallowest path
-        // Find the directory closest to root (fewest slashes)
-        if (rootHash is null)
+        async Task BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
         {
-            var rootDir = dirHashMap.Keys
-                .OrderBy(d => d.Count(c => c == '/'))
-                .ThenBy(d => d, StringComparer.Ordinal)
-                .First();
-
-            // Build the root tree — all immediate children of "" (root)
-            // If all files are in subdirectories, we need to build root blob too
-            rootHash = await BuildRootBlobAsync(dirHashMap, dirEntries, cancellationToken);
-        }
-
-        return rootHash;
-    }
-
-    // ── Private helpers ────────────────────────────────────────────────────────
-
-    private async Task<FileTreeHash> BuildRootBlobAsync(
-        Dictionary<string, FileTreeHash> dirHashMap,
-        Dictionary<string, List<FileTreeEntry>> dirEntries,
-        CancellationToken                cancellationToken)
-    {
-        // Find top-level entries (directories/files whose parent is "")
-        var rootEntryList = new List<FileTreeEntry>();
-
-        // Top-level files (path has no slash)
-        if (dirEntries.TryGetValue(string.Empty, out var rootFiles))
-            rootEntryList.AddRange(rootFiles);
-
-        // Top-level directories (single-segment paths that are in dirHashMap)
-        foreach (var (dirPath, hash) in dirHashMap)
-        {
-            if (dirPath == string.Empty) continue;
-            var parentPath = GetDirectoryPath(dirPath);
-            if (parentPath == string.Empty)
+            var childHash = await BuildDirectoryAsync(directoryEntry.DirectoryId, ct);
+            if (childHash is not null)
             {
-                var dirName = GetLastSegment(dirPath);
-                rootEntryList.Add(new DirectoryEntry
+                childEntries[index] = new DirectoryEntry
                 {
-                    Name         = dirName + "/",
-                    FileTreeHash = hash
-                });
+                    Name = directoryEntry.Name,
+                    FileTreeHash = childHash.Value
+                };
             }
         }
-
-        var rootTree = new FileTreeBlob { Entries = rootEntryList };
-        var rootHash = FileTreeBlobSerializer.ComputeHash(rootTree, _encryption);
-        await EnsureUploadedAsync(rootHash, rootTree, cancellationToken);
-        return rootHash;
-    }
-
-    /// <summary>
-    /// Uploads a tree blob via <see cref="FileTreeService"/> if not already present remotely.
-    /// </summary>
-    private async Task EnsureUploadedAsync(
-        FileTreeHash      treeHash,
-        FileTreeBlob      tree,
-        CancellationToken cancellationToken)
-    {
-        if (_fileTreeService.ExistsInRemote(treeHash)) return;
-        await _fileTreeService.WriteAsync(treeHash, tree, cancellationToken);
-    }
-
-    // ── Manifest streaming ────────────────────────────────────────────────────
-
-    private static async IAsyncEnumerable<ManifestEntry> ReadManifestAsync(
-        string manifestPath,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        using var reader = new StreamReader(manifestPath, System.Text.Encoding.UTF8);
-        string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
-        {
-            if (!string.IsNullOrWhiteSpace(line))
-                yield return ManifestEntry.Parse(line);
-        }
-    }
-
-    // ── Path helpers ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the directory portion of a forward-slash path.
-    /// e.g., "photos/2024/june/a.jpg" → "photos/2024/june"
-    /// e.g., "a.jpg" → "" (root)
-    /// </summary>
-    private static string GetDirectoryPath(string path)
-    {
-        var idx = path.LastIndexOf('/');
-        return idx < 0 ? string.Empty : path[..idx];
-    }
-
-    /// <summary>
-    /// Returns the last path segment (directory name without parent).
-    /// e.g., "photos/2024/june" → "june"
-    /// </summary>
-    private static string GetLastSegment(string path)
-    {
-        var idx = path.LastIndexOf('/');
-        return idx < 0 ? path : path[(idx + 1)..];
     }
 }

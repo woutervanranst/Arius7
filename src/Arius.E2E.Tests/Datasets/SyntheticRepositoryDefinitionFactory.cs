@@ -8,7 +8,7 @@ internal enum SyntheticRepositoryProfile
 
 internal static class SyntheticRepositoryDefinitionFactory
 {
-    public const int RepresentativeScaleDivisor = 8; // tweak this parameter to make the test data set larger or smaller. 8 = ~32 MB in 254 files
+    public const int RepresentativeScaleDivisor = 8; // tweak this parameter to make the test data set larger or smaller. 1 = full representative dataset size
 
     public const string SmallDuplicateRenameSourcePath = "archives/duplicates/copy-a.bin";
     public const string SmallDuplicateStablePathA      = "nested/deep/a/b/c/d/e/f/copy-b.bin";

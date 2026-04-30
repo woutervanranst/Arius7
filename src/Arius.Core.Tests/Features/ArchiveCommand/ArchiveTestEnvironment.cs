@@ -40,6 +40,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
+    public string FileTreeCacheDirectory => FileTreeService.GetDiskCacheDirectory(AccountName, _containerName);
+
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
         var content = new byte[sizeBytes];
@@ -50,7 +52,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return content;
     }
 
-    public async Task<ArchiveResult> ArchiveAsync(BlobTier uploadTier)
+    public async Task<ArchiveResult> ArchiveAsync(
+        BlobTier uploadTier,
+        CancellationToken cancellationToken = default,
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
@@ -58,7 +63,9 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler         = new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName);
+        var handler         = openStagingSession is null
+            ? new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName)
+            : new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName, openStagingSession);
 
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -66,7 +73,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
             }),
-            CancellationToken.None);
+            cancellationToken);
     }
 
     public ShardEntry? Lookup(ContentHash contentHash)
