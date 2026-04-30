@@ -2,8 +2,10 @@ using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 
-internal readonly record struct StagedDirectoryEntry(string DirectoryId, string Name)
+internal sealed record StagedDirectoryEntry : FileTreeEntry
 {
+    public required string DirectoryId { get; init; }
+
     public static StagedDirectoryEntry Parse(string line)
     {
         ArgumentException.ThrowIfNullOrEmpty(line);
@@ -42,6 +44,10 @@ internal readonly record struct StagedDirectoryEntry(string DirectoryId, string 
             throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
         }
 
-        return new StagedDirectoryEntry(directoryId, name);
+        return new StagedDirectoryEntry
+        {
+            DirectoryId = directoryId,
+            Name = name
+        };
     }
 }

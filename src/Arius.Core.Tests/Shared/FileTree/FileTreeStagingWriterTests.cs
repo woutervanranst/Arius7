@@ -30,12 +30,12 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public void GetNodeDirectory_UsesFlatHashDirectory()
+    public void GetNodePath_UsesFlatHashFilePath()
     {
         var stagingRoot = Path.Combine(Path.GetTempPath(), "arius-staging-test");
         var dirId = FileTreeStagingPaths.GetDirectoryId("docs");
 
-        var nodePath = FileTreeStagingPaths.GetNodeDirectory(stagingRoot, dirId);
+        var nodePath = FileTreeStagingPaths.GetNodePath(stagingRoot, dirId);
 
         nodePath.ShouldBe(Path.Combine(stagingRoot, dirId));
     }
@@ -102,7 +102,7 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    public async Task AppendFileEntryAsync_WritesFileEntryToParentDirectoryNode()
+    public async Task AppendFileEntryAsync_WritesSingleNodeFilePerDirectoryId()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
@@ -113,12 +113,15 @@ public class FileTreeStagingWriterTests
             await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
 
             var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
-            var entriesPath = FileTreeStagingPaths.GetEntriesPath(session.StagingRoot, photosId);
-            var line = (await File.ReadAllLinesAsync(entriesPath)).Single();
-            var entry = FileTreeBlobSerializer.ParseFileEntryLine(line);
+            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+            var rootPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId);
+            var photosPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, photosId);
+            var line = (await File.ReadAllLinesAsync(photosPath)).Single();
+            var entry = FileTreeSerializer.ParseFileEntryLine(line);
 
             entry.Name.ShouldBe("a.jpg");
             entry.ContentHash.ShouldBe(TestHash);
+            File.Exists(rootPath).ShouldBeTrue();
         }
         finally
         {
@@ -142,11 +145,11 @@ public class FileTreeStagingWriterTests
             var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
             var photos2024Id = FileTreeStagingPaths.GetDirectoryId("photos/2024");
 
-            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, rootId));
-            var photosChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, photosId));
+            var rootEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId));
+            var photosEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, photosId));
 
-            rootChildren.ShouldContain($"{photosId} D photos/");
-            photosChildren.ShouldContain($"{photos2024Id} D 2024/");
+            rootEntries.ShouldContain($"{photosId} D photos/");
+            photosEntries.ShouldContain($"{photos2024Id} D 2024/");
         }
         finally
         {
@@ -168,12 +171,12 @@ public class FileTreeStagingWriterTests
 
             var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
             var spacedDirectoryId = FileTreeStagingPaths.GetDirectoryId(" photos");
-            var rootChildren = await File.ReadAllTextAsync(FileTreeStagingPaths.GetDirectoriesPath(session.StagingRoot, rootId));
-            var entriesPath = FileTreeStagingPaths.GetEntriesPath(session.StagingRoot, spacedDirectoryId);
-            var line = (await File.ReadAllLinesAsync(entriesPath)).Single();
-            var entry = FileTreeBlobSerializer.ParseFileEntryLine(line);
+            var rootEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId));
+            var nodePath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, spacedDirectoryId);
+            var line = (await File.ReadAllLinesAsync(nodePath)).Single(l => l.Contains(" F ", StringComparison.Ordinal));
+            var entry = FileTreeSerializer.ParseFileEntryLine(line);
 
-            rootChildren.ShouldContain($"{spacedDirectoryId} D  photos/");
+            rootEntries.ShouldContain($"{spacedDirectoryId} D  photos/");
             entry.Name.ShouldBe("a.jpg ");
             entry.ContentHash.ShouldBe(TestHash);
         }

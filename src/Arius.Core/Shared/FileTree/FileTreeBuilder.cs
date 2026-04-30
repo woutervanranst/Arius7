@@ -10,6 +10,7 @@ public sealed class FileTreeBuilder
 {
     private const int SiblingSubtreeWorkers = 4;
 
+    private readonly IEncryptionService _encryption;
     private readonly FileTreeService _fileTreeService;
 
     /// <summary>
@@ -19,6 +20,7 @@ public sealed class FileTreeBuilder
         IEncryptionService encryption,
         FileTreeService fileTreeService)
     {
+        _encryption = encryption;
         _fileTreeService = fileTreeService;
     }
 
@@ -42,12 +44,9 @@ public sealed class FileTreeBuilder
         {
             ct.ThrowIfCancellationRequested();
 
-            var fileEntriesTask = ReadFileEntriesAsync(directoryId, ct);
-            var directoryEntriesTask = ReadDirectoryEntriesAsync(directoryId, ct);
-            await Task.WhenAll(fileEntriesTask, directoryEntriesTask);
-
-            var fileEntries = await fileEntriesTask;
-            var directoryEntries = await directoryEntriesTask;
+            var lines = await ReadNodeLinesAsync(directoryId, ct);
+            var fileEntries = ReadFileEntries(lines);
+            var directoryEntries = ReadDirectoryEntries(lines);
             if (fileEntries.Count == 0 && directoryEntries.Count == 0)
                 return null;
 
@@ -67,39 +66,38 @@ public sealed class FileTreeBuilder
             if (entries.Count == 0)
                 return null;
 
-            var tree = new FileTreeBlob { Entries = entries };
-            return await _fileTreeService.EnsureStoredAsync(tree, ct);
+            var hash = FileTreeSerializer.ComputeHash(entries, _encryption);
+            return await _fileTreeService.EnsureStoredAsync(hash, entries, ct);
         }
 
-        async Task<List<FileEntry>> ReadFileEntriesAsync(string directoryId, CancellationToken ct)
+        async Task<string[]> ReadNodeLinesAsync(string directoryId, CancellationToken ct)
         {
-            var path = FileTreeStagingPaths.GetEntriesPath(stagingRoot, directoryId);
+            var path = FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId);
             if (!File.Exists(path))
                 return [];
 
-            var lines = await File.ReadAllLinesAsync(path, ct);
-            var entries = new List<FileEntry>(lines.Length);
+            return await File.ReadAllLinesAsync(path, ct);
+        }
+
+        static List<FileEntry> ReadFileEntries(IEnumerable<string> lines)
+        {
+            var entries = new List<FileEntry>();
             foreach (var line in lines)
             {
-                if (!string.IsNullOrWhiteSpace(line))
-                    entries.Add(FileTreeBlobSerializer.ParseFileEntryLine(line));
+                if (!string.IsNullOrWhiteSpace(line) && FileTreeSerializer.ParseStagedEntryLine(line) is FileEntry entry)
+                    entries.Add(entry);
             }
 
             return entries;
         }
 
-        async Task<List<StagedDirectoryEntry>> ReadDirectoryEntriesAsync(string directoryId, CancellationToken ct)
+        static List<StagedDirectoryEntry> ReadDirectoryEntries(IEnumerable<string> lines)
         {
-            var path = FileTreeStagingPaths.GetDirectoriesPath(stagingRoot, directoryId);
-            if (!File.Exists(path))
-                return [];
-
-            var lines = await File.ReadAllLinesAsync(path, ct);
             var links = new HashSet<StagedDirectoryEntry>();
             foreach (var line in lines)
             {
-                if (!string.IsNullOrWhiteSpace(line))
-                    links.Add(StagedDirectoryEntry.Parse(line));
+                if (!string.IsNullOrWhiteSpace(line) && FileTreeSerializer.ParseStagedEntryLine(line) is StagedDirectoryEntry entry)
+                    links.Add(entry);
             }
 
             return links.OrderBy(link => link.Name, StringComparer.Ordinal).ToList();

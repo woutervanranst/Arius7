@@ -250,4 +250,16 @@ public class FileTreeSerializerTests
 
         h1.ShouldNotBe(h2);
     }
+
+    [Test]
+    public void ParseStagedEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
+    {
+        var directoryId = FileTreeStagingPaths.GetDirectoryId("photos");
+
+        var parsed = FileTreeSerializer.ParseStagedEntryLine($"{directoryId} D photos/");
+
+        var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
+        entry.DirectoryId.ShouldBe(directoryId);
+        entry.Name.ShouldBe("photos/");
+    }
 }

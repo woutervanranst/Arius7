@@ -157,6 +157,29 @@ public static class FileTreeSerializer
         throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
     }
 
+    public static FileTreeEntry ParseStagedEntryLine(string line)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(line);
+
+        line = line.TrimEnd('\r');
+
+        var firstSpace = line.IndexOf(' ');
+        if (firstSpace < 0)
+            throw new FormatException($"Invalid tree entry (no spaces): '{line}'");
+
+        var afterHash = line[(firstSpace + 1)..];
+
+        if (afterHash.Length < 2 || afterHash[1] != ' ')
+            throw new FormatException($"Invalid tree entry (missing type marker): '{line}'");
+
+        return afterHash[0] switch
+        {
+            'F' => ParseFileEntryLine(line),
+            'D' => StagedDirectoryEntry.Parse(line),
+            _ => throw new FormatException($"Invalid tree entry type marker '{afterHash[0]}': '{line}'")
+        };
+    }
+
     public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
     {
         ArgumentNullException.ThrowIfNull(entries);
