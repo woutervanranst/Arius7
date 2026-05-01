@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using System.Linq;
 using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
@@ -80,6 +81,7 @@ public sealed class FileTreeBuilder
             if (fileEntries.Count == 0 && stagedDirectoryEntries.Count == 0)
                 return null;
 
+            // Convert StagedDirectoryEntries to DirectoryEntries recursively (depth-first)
             var directoryEntries = new DirectoryEntry?[stagedDirectoryEntries.Count];
             await Parallel.ForEachAsync(
                 stagedDirectoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
@@ -97,14 +99,13 @@ public sealed class FileTreeBuilder
                     }
                 });
 
-            var fileTreeEntries = new List<FileTreeEntry>(fileEntries.Count + directoryEntries.Length);
-            fileTreeEntries.AddRange(fileEntries);
-            fileTreeEntries.AddRange(directoryEntries.Where(entry => entry is not null)!);
+            var fileTreeEntries = fileEntries
+                .Concat(directoryEntries.OfType<FileTreeEntry>())
+                .ToArray();
 
-            if (fileTreeEntries.Count == 0)
+            if (fileTreeEntries.Length == 0)
                 return null;
 
-            fileTreeEntries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
             var hash = FileTreeSerializer.ComputeHash(fileTreeEntries, _encryption);
             await uploadChannel.Writer.WriteAsync((hash, fileTreeEntries), ct);
             return hash;
