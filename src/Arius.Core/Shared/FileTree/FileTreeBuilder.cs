@@ -41,19 +41,20 @@ public sealed class FileTreeBuilder
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
         var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, IReadOnlyList<FileTreeEntry> Entries)>(UploadChannelCapacity);
-        var uploadTasks = Enumerable.Range(0, UploadWorkers)
-            .Select(_ => Task.Run(async () =>
+        var uploadTask = Parallel.ForEachAsync(
+            uploadChannel.Reader.ReadAllAsync(cancellationToken),
+            new ParallelOptions
             {
-                await foreach (var node in uploadChannel.Reader.ReadAllAsync(cancellationToken))
-                    await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, cancellationToken);
-            }, cancellationToken))
-            .ToArray();
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = UploadWorkers
+            },
+            async (node, ct) => await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, ct));
 
         try
         {
             var rootHash = await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
             uploadChannel.Writer.TryComplete();
-            await Task.WhenAll(uploadTasks);
+            await uploadTask;
             return rootHash;
         }
         catch (Exception ex)
@@ -61,7 +62,7 @@ public sealed class FileTreeBuilder
             uploadChannel.Writer.TryComplete(ex);
             try
             {
-                await Task.WhenAll(uploadTasks);
+                await uploadTask;
             }
             catch
             {
