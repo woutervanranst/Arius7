@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -68,7 +69,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Download and deserialize to verify content
             await using var stream = await blobs.DownloadAsync(blobName);
-            var entries = await FileTreeSerializer.DeserializeFromStorageAsync(stream, s_enc);
+            var entries = await ReadStoredTreeAsync(stream, s_enc);
 
             entries.Count.ShouldBe(1);
             entries[0].Name.ShouldBe("readme.txt");
@@ -161,5 +162,14 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
+    }
+
+    private static async Task<IReadOnlyList<FileTreeEntry>> ReadStoredTreeAsync(Stream source, IEncryptionService encryption)
+    {
+        await using var decStream = encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var ms = new MemoryStream();
+        await gzipStream.CopyToAsync(ms);
+        return FileTreeSerializer.Deserialize(ms.ToArray());
     }
 }

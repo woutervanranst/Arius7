@@ -102,7 +102,7 @@ public class FileTreeServiceTests
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure (storage serialization)
-            var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear(); // clear seed bookkeeping
 
@@ -139,7 +139,7 @@ public class FileTreeServiceTests
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure only — no local cache
-            var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear();
 
@@ -185,7 +185,7 @@ public class FileTreeServiceTests
             var entries = MakeEntries("partial.txt", "a1b2c3d4");
             var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
-            var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             var t1 = svc.ReadAsync(hash);
@@ -238,6 +238,92 @@ public class FileTreeServiceTests
         }
     }
 
+    [Test]
+    public async Task WriteAsync_WithPassphrase_UploadsEncryptedFileTreeBlob()
+    {
+        const string acct = "tc-write-passphrase", cont = "container";
+        var encryption = new PassphraseEncryptionService("test-passphrase");
+        var blobs = new FakeInMemoryBlobContainerService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "photo.jpg",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                    Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
+                }
+            ];
+
+            var hash = FileTreeBuilder.ComputeHash(entries, encryption);
+
+            await service.WriteAsync(hash, entries);
+
+            var blobName = BlobPaths.FileTree(hash);
+            var uploadedBytes = await ReadBlobBytesAsync(blobs, blobName);
+            var prefix = System.Text.Encoding.ASCII.GetString(uploadedBytes[..6]);
+            prefix.ShouldBe("ArGCM1");
+
+            var text = System.Text.Encoding.UTF8.GetString(uploadedBytes);
+            text.ShouldNotContain("photo.jpg");
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task ReadAsync_WithPassphrase_DownloadedBlobRoundTripsToEntries()
+    {
+        const string acct = "tc-read-passphrase", cont = "container";
+        var encryption = new PassphraseEncryptionService("test-passphrase");
+        var blobs = new FakeInMemoryBlobContainerService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
+        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "photo.jpg",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                    Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
+                },
+                new DirectoryEntry
+                {
+                    Name = "subdir/",
+                    FileTreeHash = FileTreeHash.Parse(new string('e', 64))
+                }
+            ];
+
+            var hash = FileTreeBuilder.ComputeHash(entries, encryption);
+
+            await service.WriteAsync(hash, entries);
+            var roundTripped = await service.ReadAsync(hash);
+
+            roundTripped.ShouldBe(entries);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
     // ── 7.4  WriteAsync — BlobAlreadyExistsException is swallowed ────────────
 
     [Test]
@@ -252,7 +338,7 @@ public class FileTreeServiceTests
             var blobName = BlobPaths.FileTree(hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
-            var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             // Should not throw
@@ -294,6 +380,28 @@ public class FileTreeServiceTests
 
         stored.ShouldBe(hash);
         blobs.Uploaded.ShouldContain(BlobPaths.FileTree(hash));
+    }
+
+    private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, string blobName)
+    {
+        await using var stream = await blobs.DownloadAsync(blobName);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        return ms.ToArray();
+    }
+
+    private static async Task<byte[]> SerializeStorageBytesAsync(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
+    {
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        var ms = new MemoryStream();
+
+        await using (var encStream = encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzipStream.WriteAsync(plaintext);
+        }
+
+        return ms.ToArray();
     }
 
     // ── 7.5  ValidateAsync — snapshot match — no filetrees listing ────────────

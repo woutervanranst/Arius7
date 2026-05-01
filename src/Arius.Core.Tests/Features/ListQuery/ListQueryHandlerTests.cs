@@ -455,7 +455,11 @@ public class ListQueryHandlerTests
     private static async Task<FileTreeHash> SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
         var hash = FileTreeBuilder.ComputeHash(entries, s_encryption);
-        blobs.AddBlob(BlobPaths.FileTree(hash), await FileTreeSerializer.SerializeForStorageAsync(entries, s_encryption));
+        var account = $"acc-{Guid.NewGuid():N}";
+        var container = $"con-{Guid.NewGuid():N}";
+        var chunkIndex = new ChunkIndexService(blobs, s_encryption, account, container);
+        var service = new FileTreeService(blobs, s_encryption, chunkIndex, account, container);
+        await service.WriteAsync(hash, entries);
         return hash;
     }
 

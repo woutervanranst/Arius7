@@ -1,7 +1,5 @@
 using System.Globalization;
-using System.IO.Compression;
 using System.Text;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -13,49 +11,6 @@ namespace Arius.Core.Shared.FileTree;
 public static class FileTreeSerializer
 {
     private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
-    public static async Task<byte[]> SerializeForStorageAsync(
-        IReadOnlyList<FileTreeEntry> entries,
-        IEncryptionService encryption,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(encryption);
-
-        var ms = new MemoryStream();
-
-        await using (var encStream = encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
-        await using (var writer = new StreamWriter(gzipStream, s_utf8, leaveOpen: true))
-        {
-            foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
-            {
-                if (entry is FileEntry fileEntry)
-                    await writer.WriteLineAsync(SerializePersistedFileEntryLine(fileEntry));
-                else if (entry is DirectoryEntry directoryEntry)
-                    await writer.WriteLineAsync(SerializePersistedDirectoryEntryLine(directoryEntry));
-                else
-                    throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
-            }
-        }
-
-        return ms.ToArray();
-    }
-
-    public static async Task<IReadOnlyList<FileTreeEntry>> DeserializeFromStorageAsync(
-        Stream source,
-        IEncryptionService encryption,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(encryption);
-
-        await using var decStream = encryption.WrapForDecryption(source);
-        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream, s_utf8, leaveOpen: true);
-        var content = await reader.ReadToEndAsync(cancellationToken);
-        return ParsePersistedLines(content.Split('\n'));
-    }
 
     public static IReadOnlyList<FileTreeEntry> Deserialize(byte[] bytes)
     {

@@ -71,14 +71,14 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    public async Task Serialize_ThenDeserialize_RoundTrips()
+    public void Serialize_ThenDeserialize_RoundTrips()
     {
         var entries = MakeEntries(
             ("photo.jpg", false, FakeContentHash('a').ToString()),
             ("subdir/",   true,  FakeFileTreeHash('e').ToString()));
 
-        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
-        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = FileTreeSerializer.Serialize(entries);
+        var back  = FileTreeSerializer.Deserialize(bytes);
 
         back.Count.ShouldBe(2);
 
@@ -92,15 +92,15 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    public async Task Serialize_SortsEntriesByName()
+    public void Serialize_SortsEntriesByName()
     {
         var entries = MakeEntries(
             ("z_last.txt",  false, FakeContentHash('3').ToString()),
             ("a_first.txt", false, FakeContentHash('1').ToString()),
             ("m_mid.txt",   false, FakeContentHash('2').ToString()));
 
-        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
-        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = FileTreeSerializer.Serialize(entries);
+        var back  = FileTreeSerializer.Deserialize(bytes);
 
         back[0].Name.ShouldBe("a_first.txt");
         back[1].Name.ShouldBe("m_mid.txt");
@@ -139,23 +139,23 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    public async Task Serialize_FileEntryWithSpacesInName_RoundTrips()
+    public void Serialize_FileEntryWithSpacesInName_RoundTrips()
     {
         var entries = MakeEntries(("my vacation photo.jpg", false, FakeContentHash('a').ToString()));
 
-        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
-        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = FileTreeSerializer.Serialize(entries);
+        var back  = FileTreeSerializer.Deserialize(bytes);
 
         back.Single().Name.ShouldBe("my vacation photo.jpg");
     }
 
     [Test]
-    public async Task Serialize_DirEntryWithSpacesInName_RoundTrips()
+    public void Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
         var entries = MakeEntries(("2024 trip/", true, FakeFileTreeHash('d').ToString()));
 
-        var bytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
-        var back  = await FileTreeSerializer.DeserializeFromStorageAsync(new MemoryStream(bytes), s_enc);
+        var bytes = FileTreeSerializer.Serialize(entries);
+        var back  = FileTreeSerializer.Deserialize(bytes);
 
         back.Single().Name.ShouldBe("2024 trip/");
     }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
@@ -158,12 +159,35 @@ public sealed class FileTreeService
     {
         var blobName = BlobPaths.FileTree(hash);
         await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
-        var entries = await FileTreeSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
+        var entries = await DeserializeStorageAsync(stream, CancellationToken.None);
 
         var plaintext = FileTreeSerializer.Serialize(entries);
         await WriteCacheAtomicallyAsync(diskPath, plaintext, CancellationToken.None);
 
         return entries;
+    }
+
+    private async Task<byte[]> SerializeStorageAsync(IReadOnlyList<FileTreeEntry> entries, CancellationToken cancellationToken)
+    {
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        var ms = new MemoryStream();
+
+        await using (var encStream = _encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzipStream.WriteAsync(plaintext, cancellationToken);
+        }
+
+        return ms.ToArray();
+    }
+
+    private async Task<IReadOnlyList<FileTreeEntry>> DeserializeStorageAsync(Stream source, CancellationToken cancellationToken)
+    {
+        await using var decStream = _encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var ms = new MemoryStream();
+        await gzipStream.CopyToAsync(ms, cancellationToken);
+        return FileTreeSerializer.Deserialize(ms.ToArray());
     }
 
     private static async Task WriteCacheAtomicallyAsync(string diskPath, byte[] plaintext, CancellationToken cancellationToken)
@@ -206,7 +230,7 @@ public sealed class FileTreeService
     {
         var hashText     = hash.ToString();
         var blobName     = BlobPaths.FileTree(hash);
-        var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, _encryption, cancellationToken);
+        var storageBytes = await SerializeStorageAsync(entries, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted
             : ContentTypes.FileTreePlaintext;
