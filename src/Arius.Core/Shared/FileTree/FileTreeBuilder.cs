@@ -36,8 +36,8 @@ public sealed class FileTreeBuilder
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var text = FileTreeSerializer.Serialize(entries);
-        return FileTreeHash.Parse(encryption.ComputeHash(text));
+        var serialized = FileTreeSerializer.Serialize(entries);
+        return FileTreeHash.Parse(encryption.ComputeHash(serialized));
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────

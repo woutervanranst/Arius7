@@ -59,6 +59,14 @@ public class PlaintextPassthroughServiceTests
     }
 
     [Test]
+    public void ComputeHash_Utf8LiteralSpan_MatchesPlainSha256()
+    {
+        ReadOnlySpan<byte> data = "plaintext content"u8;
+        var expected = ContentHash.FromDigest(SHA256.HashData(data));
+        _svc.ComputeHash(data).ShouldBe(expected);
+    }
+
+    [Test]
     public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
     {
         var path = Path.GetTempFileName();

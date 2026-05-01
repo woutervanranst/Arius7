@@ -93,7 +93,7 @@ public class PassphraseEncryptionServiceTests
     public void ComputeHash_SameInput_ProducesSameHash()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
-        var data = "deterministic"u8.ToArray();
+        ReadOnlySpan<byte> data = "deterministic"u8;
 
         var h1 = svc.ComputeHash(data);
         var h2 = svc.ComputeHash(data);
@@ -136,15 +136,15 @@ public class PassphraseEncryptionServiceTests
     }
 
     [Test]
-    public void ComputeHash_ByteArray_MatchesStreamVariant()
+    public void ComputeHash_Span_MatchesStreamVariant()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
-        var data = "cross-variant"u8.ToArray();
+        ReadOnlySpan<byte> data = "cross-variant"u8;
 
-        var hArray  = svc.ComputeHash(data);
-        var hStream = svc.ComputeHashAsync(new MemoryStream(data)).GetAwaiter().GetResult();
+        var hSpan   = svc.ComputeHash(data);
+        var hStream = svc.ComputeHashAsync(new MemoryStream(data.ToArray())).GetAwaiter().GetResult();
 
-        hArray.ShouldBe(hStream);
+        hSpan.ShouldBe(hStream);
     }
 
     // ── 2.7 Passphrase-seeded vs plaintext ────────────────────────────────────
@@ -154,7 +154,7 @@ public class PassphraseEncryptionServiceTests
     {
         var encrypted = new PassphraseEncryptionService(Passphrase);
         var plaintext = new PlaintextPassthroughService();
-        var data      = "some file content"u8.ToArray();
+        ReadOnlySpan<byte> data = "some file content"u8;
 
         encrypted.ComputeHash(data).ShouldNotBe(plaintext.ComputeHash(data));
     }
@@ -166,7 +166,7 @@ public class PassphraseEncryptionServiceTests
     {
         var svcA = new PassphraseEncryptionService("passphrase-a");
         var svcB = new PassphraseEncryptionService("passphrase-b");
-        var data = "same content"u8.ToArray();
+        ReadOnlySpan<byte> data = "same content"u8;
 
         svcA.ComputeHash(data).ShouldNotBe(svcB.ComputeHash(data));
     }
@@ -177,12 +177,12 @@ public class PassphraseEncryptionServiceTests
     public void ComputeHash_MatchesManualSha256PassphrasePlusData()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
-        var data = "test data"u8.ToArray();
+        ReadOnlySpan<byte> data = "test data"u8;
 
         var passBytes = Encoding.UTF8.GetBytes(Passphrase);
         var combined  = new byte[passBytes.Length + data.Length];
         passBytes.CopyTo(combined, 0);
-        data.CopyTo(combined, passBytes.Length);
+        data.CopyTo(combined.AsSpan(passBytes.Length));
         var expected = ContentHash.FromDigest(SHA256.HashData(combined));
 
         svc.ComputeHash(data).ShouldBe(expected);
