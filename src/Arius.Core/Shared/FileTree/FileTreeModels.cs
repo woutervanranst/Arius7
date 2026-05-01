@@ -30,3 +30,8 @@ public sealed record DirectoryEntry : FileTreeEntry
     /// <summary>Tree-hash for directory entries. Lowercase hex SHA-256 (64 chars).</summary>
     public required FileTreeHash FileTreeHash { get; init; }
 }
+
+internal sealed record StagedDirectoryEntry : FileTreeEntry
+{
+    public required string DirectoryId { get; init; }
+}

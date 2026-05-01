@@ -568,11 +568,11 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public void StagedDirectoryEntry_Parse_RejectsNonHashDirectoryIds()
+    public void ParseStagedEntryLine_RejectsNonHashDirectoryIds()
     {
-        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse("not-a-directory-id D child/"));
-        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{new string('a', 63)} D child/"));
-        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{new string('g', 64)} D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine("not-a-directory-id D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{new string('a', 63)} D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{new string('g', 64)} D child/"));
     }
 
     [Test]
@@ -580,11 +580,11 @@ public class FileTreeBuilderTests
     [Arguments("child\\")]
     [Arguments("./")]
     [Arguments("../")]
-    public void StagedDirectoryEntry_Parse_RejectsNonCanonicalNames(string name)
+    public void ParseStagedEntryLine_RejectsNonCanonicalNames(string name)
     {
         var directoryId = new string('a', 64);
 
-        Should.Throw<FormatException>(() => StagedDirectoryEntry.Parse($"{directoryId} D {name}"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{directoryId} D {name}"));
     }
 
     [Test]

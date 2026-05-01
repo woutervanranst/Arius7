@@ -175,7 +175,7 @@ public static class FileTreeSerializer
         return afterHash[0] switch
         {
             'F' => ParseFileEntryLine(line),
-            'D' => StagedDirectoryEntry.Parse(line),
+            'D' => ParseStagedDirectoryEntryLine(line),
             _   => throw new FormatException($"Invalid tree entry type marker '{afterHash[0]}': '{line}'")
         };
     }
@@ -203,6 +203,47 @@ public static class FileTreeSerializer
         }
 
         return entries;
+    }
+
+    private static StagedDirectoryEntry ParseStagedDirectoryEntryLine(string line)
+    {
+        var firstSpace = line.IndexOf(' ');
+        if (firstSpace < 0)
+            throw new FormatException($"Invalid staged directory entry (no spaces): '{line}'");
+
+        var normalizedDirectoryId = line[..firstSpace];
+        try
+        {
+            normalizedDirectoryId = HashCodec.NormalizeHex(normalizedDirectoryId);
+        }
+        catch (FormatException ex)
+        {
+            throw new FormatException($"Invalid staged directory entry (invalid directory id): '{line}'", ex);
+        }
+
+        var afterId = line[(firstSpace + 1)..];
+        if (afterId.Length < 2 || afterId[0] != 'D' || afterId[1] != ' ')
+            throw new FormatException($"Invalid staged directory entry (missing type marker): '{line}'");
+
+        var name = afterId[2..];
+        if (string.IsNullOrWhiteSpace(name))
+            throw new FormatException($"Invalid staged directory entry (empty name): '{line}'");
+
+        if (!name.EndsWith("/", StringComparison.Ordinal)
+            || name.Length == 1
+            || name.Contains('\\')
+            || name[..^1].Contains('/')
+            || name is "./" or "../"
+            || string.IsNullOrWhiteSpace(name[..^1]))
+        {
+            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
+        }
+
+        return new StagedDirectoryEntry
+        {
+            DirectoryId = normalizedDirectoryId,
+            Name = name
+        };
     }
 
     private static FileEntry ParseFileEntry(string hash, string afterType, string line)
