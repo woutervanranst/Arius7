@@ -81,7 +81,7 @@ internal sealed class FileTreeStagingWriter
     {
         var directoryId = FileTreeStagingPaths.GetDirectoryId(directoryPath);
         var nodePath = FileTreeStagingPaths.GetNodePath(_stagingRoot, directoryId);
-        await AppendLineAsync(nodePath, FileTreeSerializer.SerializeFileEntryLine(entry), cancellationToken);
+        await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
     private async Task AppendDirectoryEntriesAsync(string[] segments, CancellationToken cancellationToken)

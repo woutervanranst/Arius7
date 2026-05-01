@@ -316,14 +316,14 @@ public class FileTreeBuilderTests
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
-            var first = FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+            var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
                 Name = "a.txt",
                 ContentHash = FakeContentHash('a'),
                 Created = now,
                 Modified = now
             });
-            var second = FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+            var second = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
                 Name = "a.txt",
                 ContentHash = FakeContentHash('b'),
@@ -371,7 +371,7 @@ public class FileTreeBuilderTests
             await WriteNodeLinesAsync(
                 stagingSession1.StagingRoot,
                 childId,
-                FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+                FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
                     Name = "a.jpg",
                     ContentHash = FakeContentHash('c'),
@@ -395,7 +395,7 @@ public class FileTreeBuilderTests
             await WriteNodeLinesAsync(
                 stagingSession2.StagingRoot,
                 childId,
-                FileTreeSerializer.SerializeFileEntryLine(new FileEntry
+                FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
                     Name = "a.jpg",
                     ContentHash = FakeContentHash('c'),
@@ -568,11 +568,82 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    public void ParseStagedEntryLine_RejectsNonHashDirectoryIds()
+    public void ComputeHash_Deterministic_SameInputSameHash()
     {
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine("not-a-directory-id D child/"));
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{new string('a', 63)} D child/"));
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{new string('g', 64)} D child/"));
+        var enc = new PlaintextPassthroughService();
+        IReadOnlyList<FileTreeEntry> entries =
+        [
+            new FileEntry
+            {
+                Name = "file.txt",
+                ContentHash = FakeContentHash('d'),
+                Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)
+            }
+        ];
+
+        var h1 = FileTreeBuilder.ComputeHash(entries, enc);
+        var h2 = FileTreeBuilder.ComputeHash(entries, enc);
+
+        h1.ShouldBe(h2);
+    }
+
+    [Test]
+    public void ComputeHash_MetadataChange_ProducesNewHash()
+    {
+        var enc = new PlaintextPassthroughService();
+        IReadOnlyList<FileTreeEntry> entries1 =
+        [
+            new FileEntry
+            {
+                Name = "file.txt",
+                ContentHash = FakeContentHash('d'),
+                Created = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
+            }
+        ];
+        IReadOnlyList<FileTreeEntry> entries2 =
+        [
+            ((FileEntry)entries1[0]) with
+            {
+                Modified = new DateTimeOffset(2024, 6, 15, 0, 0, 0, TimeSpan.Zero)
+            }
+        ];
+
+        var h1 = FileTreeBuilder.ComputeHash(entries1, enc);
+        var h2 = FileTreeBuilder.ComputeHash(entries2, enc);
+
+        h1.ShouldNotBe(h2);
+    }
+
+    [Test]
+    public void ComputeHash_WithPassphrase_DifferentFromPlaintext()
+    {
+        var entries = (IReadOnlyList<FileTreeEntry>)
+        [
+            new FileEntry
+            {
+                Name = "file.txt",
+                ContentHash = FakeContentHash('a'),
+                Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)
+            }
+        ];
+        var plain = new PlaintextPassthroughService();
+        var withPass = new PassphraseEncryptionService("secret");
+
+        var h1 = FileTreeBuilder.ComputeHash(entries, plain);
+        var h2 = FileTreeBuilder.ComputeHash(entries, withPass);
+
+        h1.ShouldNotBe(h2);
+    }
+
+    [Test]
+    public void ParseStagedNodeEntryLine_RejectsNonHashDirectoryIds()
+    {
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine("not-a-directory-id D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('a', 63)} D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('g', 64)} D child/"));
     }
 
     [Test]
@@ -580,11 +651,11 @@ public class FileTreeBuilderTests
     [Arguments("child\\")]
     [Arguments("./")]
     [Arguments("../")]
-    public void ParseStagedEntryLine_RejectsNonCanonicalNames(string name)
+    public void ParseStagedNodeEntryLine_RejectsNonCanonicalNames(string name)
     {
         var directoryId = new string('a', 64);
 
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedEntryLine($"{directoryId} D {name}"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {name}"));
     }
 
     [Test]

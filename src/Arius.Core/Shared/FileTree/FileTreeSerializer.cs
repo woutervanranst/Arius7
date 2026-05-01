@@ -7,7 +7,8 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
-/// Serializes and deserializes persisted filetree entries to and from the canonical text format.
+/// Serializes and deserializes canonical filetree node content.
+/// Persisted nodes and staged nodes use different line formats, so parsing APIs are named by format.
 /// </summary>
 public static class FileTreeSerializer
 {
@@ -30,9 +31,9 @@ public static class FileTreeSerializer
             foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
             {
                 if (entry is FileEntry fileEntry)
-                    await writer.WriteLineAsync(SerializeFileEntryLine(fileEntry));
+                    await writer.WriteLineAsync(SerializePersistedFileEntryLine(fileEntry));
                 else if (entry is DirectoryEntry directoryEntry)
-                    await writer.WriteLineAsync($"{directoryEntry.FileTreeHash} D {directoryEntry.Name}");
+                    await writer.WriteLineAsync(SerializePersistedDirectoryEntryLine(directoryEntry));
                 else
                     throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
             }
@@ -73,9 +74,9 @@ public static class FileTreeSerializer
         foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
         {
             if (entry is FileEntry fileEntry)
-                sb.AppendLine(SerializeFileEntryLine(fileEntry));
+                sb.AppendLine(SerializePersistedFileEntryLine(fileEntry));
             else if (entry is DirectoryEntry directoryEntry)
-                sb.AppendLine(SerializeDirectoryEntryLine(directoryEntry));
+                sb.AppendLine(SerializePersistedDirectoryEntryLine(directoryEntry));
             else
                 throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
         }
@@ -83,25 +84,20 @@ public static class FileTreeSerializer
         return s_utf8.GetBytes(sb.ToString());
     }
 
-    // -- Serialize ---
+    /// <summary>
+    /// Serializes one file entry in the persisted filetree node format.
+    /// </summary>
+    public static string SerializePersistedFileEntryLine(FileEntry entry) => $"{entry.ContentHash} F {entry.Created:O} {entry.Modified:O} {entry.Name}";
 
-    public static string SerializeFileEntryLine(FileEntry entry)           => $"{entry.ContentHash} F {entry.Created:O} {entry.Modified:O} {entry.Name}";
-    public static string SerializeDirectoryEntryLine(DirectoryEntry entry) => $"{entry.FileTreeHash} D {entry.Name}";
+    /// <summary>
+    /// Serializes one directory entry in the persisted filetree node format.
+    /// </summary>
+    public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => $"{entry.FileTreeHash} D {entry.Name}";
 
-    // -- Hash ---
-
-    public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(encryption);
-
-        var text = Serialize(entries);
-        return FileTreeHash.Parse(encryption.ComputeHash(text));
-    }
-
-    // -- Parse ---
-
-    public static FileEntry ParseFileEntryLine(string line)
+    /// <summary>
+    /// Parses a persisted file entry line of the form '{content-hash} F {created} {modified} {name}'.
+    /// </summary>
+    public static FileEntry ParsePersistedFileEntryLine(string line)
     {
         ArgumentException.ThrowIfNullOrEmpty(line);
 
@@ -120,7 +116,10 @@ public static class FileTreeSerializer
         return ParseFileEntry(hash, afterHash[2..], line);
     }
 
-    public static FileTreeEntry ParsePersistedEntryLine(string line)
+    /// <summary>
+    /// Parses one persisted filetree node line into either a <see cref="FileEntry"/> or <see cref="DirectoryEntry"/>.
+    /// </summary>
+    public static FileTreeEntry ParsePersistedNodeEntryLine(string line)
     {
         ArgumentException.ThrowIfNullOrEmpty(line);
 
@@ -160,7 +159,11 @@ public static class FileTreeSerializer
         throw new FormatException($"Invalid tree entry type marker '{typeMarker}': '{line}'");
     }
 
-    public static FileTreeEntry ParseStagedEntryLine(string line)
+    /// <summary>
+    /// Parses one staged node line into either a <see cref="FileEntry"/> or <see cref="StagedDirectoryEntry"/>.
+    /// Staged directory lines use a directory id instead of a child filetree hash.
+    /// </summary>
+    public static FileTreeEntry ParseStagedNodeEntryLine(string line)
     {
         ArgumentException.ThrowIfNullOrEmpty(line);
 
@@ -177,7 +180,7 @@ public static class FileTreeSerializer
 
         return afterHash[0] switch
         {
-            'F' => ParseFileEntryLine(line),
+            'F' => ParsePersistedFileEntryLine(line),
             'D' => ParseStagedDirectoryEntryLine(line),
             _   => throw new FormatException($"Invalid tree entry type marker '{afterHash[0]}': '{line}'")
         };
@@ -193,7 +196,7 @@ public static class FileTreeSerializer
             if (string.IsNullOrEmpty(line))
                 continue;
 
-            entries.Add(ParsePersistedEntryLine(line));
+            entries.Add(ParsePersistedNodeEntryLine(line));
         }
 
         return entries;

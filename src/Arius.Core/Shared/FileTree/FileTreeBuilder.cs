@@ -28,6 +28,18 @@ public sealed class FileTreeBuilder
         _fileTreeService = fileTreeService;
     }
 
+    /// <summary>
+    /// Computes the canonical filetree hash for one node from its sorted serialized content.
+    /// </summary>
+    public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(encryption);
+
+        var text = FileTreeSerializer.Serialize(entries);
+        return FileTreeHash.Parse(encryption.ComputeHash(text));
+    }
+
     // ── Main entry point ──────────────────────────────────────────────────────
 
     /// <summary>
@@ -106,7 +118,7 @@ public sealed class FileTreeBuilder
             if (fileTreeEntries.Length == 0)
                 return null;
 
-            var hash = FileTreeSerializer.ComputeHash(fileTreeEntries, _encryption);
+            var hash = ComputeHash(fileTreeEntries, _encryption);
             await uploadChannel.Writer.WriteAsync((hash, fileTreeEntries), ct);
             return hash;
         }
@@ -130,7 +142,7 @@ public sealed class FileTreeBuilder
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
-                switch (FileTreeSerializer.ParseStagedEntryLine(line))
+                switch (FileTreeSerializer.ParseStagedNodeEntryLine(line))
                 {
                     case FileEntry fileEntry:
                         if (!fileEntries.TryAdd(fileEntry.Name, fileEntry))

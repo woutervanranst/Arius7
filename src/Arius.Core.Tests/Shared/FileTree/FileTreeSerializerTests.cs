@@ -161,7 +161,7 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    public void SerializeFileEntryLine_RoundTripsSingleFileEntry()
+    public void SerializePersistedFileEntryLine_RoundTripsSingleFileEntry()
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
@@ -173,14 +173,14 @@ public class FileTreeSerializerTests
             Modified = modified
         };
 
-        var line = FileTreeSerializer.SerializeFileEntryLine(entry);
-        var parsed = FileTreeSerializer.ParseFileEntryLine(line);
+        var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry);
+        var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
         parsed.ShouldBe(entry);
     }
 
     [Test]
-    public void ParseFileEntryLine_TrailingCarriageReturn_RoundTripsSingleFileEntry()
+    public void ParsePersistedFileEntryLine_TrailingCarriageReturn_RoundTripsSingleFileEntry()
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
@@ -192,71 +192,18 @@ public class FileTreeSerializerTests
             Modified = modified
         };
 
-        var line = FileTreeSerializer.SerializeFileEntryLine(entry) + "\r";
-        var parsed = FileTreeSerializer.ParseFileEntryLine(line);
+        var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry) + "\r";
+        var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
         parsed.ShouldBe(entry);
     }
 
     [Test]
-    public void ComputeHash_Deterministic_SameInputSameHash()
-    {
-        var enc  = new PlaintextPassthroughService();
-        var entries = MakeEntries(("file.txt", false, FakeContentHash('d').ToString()));
-
-        var h1 = FileTreeSerializer.ComputeHash(entries, enc);
-        var h2 = FileTreeSerializer.ComputeHash(entries, enc);
-
-        h1.ShouldBe(h2);
-    }
-
-    [Test]
-    public void ComputeHash_MetadataChange_ProducesNewHash()
-    {
-        var enc  = new PlaintextPassthroughService();
-        IReadOnlyList<FileTreeEntry> entries1 =
-        [
-            new FileEntry
-            {
-                Name     = "file.txt",
-                ContentHash = FakeContentHash('d'),
-                Created  = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
-                Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
-            }
-        ];
-        IReadOnlyList<FileTreeEntry> entries2 =
-        [
-            ((FileEntry)entries1[0]) with
-            {
-                Modified = new DateTimeOffset(2024, 6, 15, 0, 0, 0, TimeSpan.Zero)
-            }
-        ];
-
-        var h1 = FileTreeSerializer.ComputeHash(entries1, enc);
-        var h2 = FileTreeSerializer.ComputeHash(entries2, enc);
-
-        h1.ShouldNotBe(h2);
-    }
-
-    [Test]
-    public void ComputeHash_WithPassphrase_DifferentFromPlaintext()
-    {
-        var entries = MakeEntries(("file.txt", false, FakeContentHash('a').ToString()));
-        var plain       = new PlaintextPassthroughService();
-        var withPass    = new PassphraseEncryptionService("secret");
-
-        var h1 = FileTreeSerializer.ComputeHash(entries, plain);
-        var h2 = FileTreeSerializer.ComputeHash(entries, withPass);
-
-        h1.ShouldNotBe(h2);
-    }
-
-    [Test]
-    public void ParseStagedEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
+    public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
         var directoryId = FileTreeStagingPaths.GetDirectoryId("photos");
 
-        var parsed = FileTreeSerializer.ParseStagedEntryLine($"{directoryId} D photos/");
+        var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/");
 
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
         entry.DirectoryNameHash.ShouldBe(directoryId);

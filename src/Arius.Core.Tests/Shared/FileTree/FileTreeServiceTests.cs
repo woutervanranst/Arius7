@@ -68,7 +68,7 @@ public class FileTreeServiceTests
         try
         {
             var entries   = MakeEntries();
-            var hash      = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var diskPath = Path.Combine(cacheDir, hash.ToString());
 
             // Pre-populate disk cache with plaintext
@@ -98,7 +98,7 @@ public class FileTreeServiceTests
         try
         {
             var entries   = MakeEntries("photo.jpg", "deadbeef");
-            var hash      = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure (storage serialization)
@@ -135,7 +135,7 @@ public class FileTreeServiceTests
         try
         {
             var entries   = MakeEntries("concurrent.txt", "cc001122");
-            var hash      = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure only — no local cache
@@ -183,7 +183,7 @@ public class FileTreeServiceTests
         try
         {
             var entries = MakeEntries("partial.txt", "a1b2c3d4");
-            var hash = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
             var storageBytes = await FileTreeSerializer.SerializeForStorageAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
@@ -219,7 +219,7 @@ public class FileTreeServiceTests
         try
         {
             var entries = MakeEntries("doc.pdf", "cafebabe");
-            var hash = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
 
             await svc.WriteAsync(hash, entries);
 
@@ -248,7 +248,7 @@ public class FileTreeServiceTests
         try
         {
             var entries   = MakeEntries();
-            var hash      = FileTreeSerializer.ComputeHash(entries, s_enc);
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
@@ -289,7 +289,7 @@ public class FileTreeServiceTests
             }
         ];
 
-        var hash = FileTreeSerializer.ComputeHash(entries, encryption);
+        var hash = FileTreeBuilder.ComputeHash(entries, encryption);
         var stored = await service.EnsureStoredAsync(hash, entries);
 
         stored.ShouldBe(hash);

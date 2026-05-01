@@ -27,7 +27,7 @@ public class ListQueryHandlerTests
         var snapshot = new SnapshotManifest
         {
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
-            RootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption),
+            RootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption),
             FileCount = 1,
             TotalSize = 123,
             AriusVersion = "test"
@@ -74,7 +74,7 @@ public class ListQueryHandlerTests
             DirectoryEntryOf("nested/", FakeFileTreeHash('d')),
             FileEntryOf("guide.txt", FakeContentHash('e')));
 
-        var docsHash = FileTreeSerializer.ComputeHash(docsTree, s_encryption);
+        var docsHash = FileTreeBuilder.ComputeHash(docsTree, s_encryption);
         var rootTree = Entries(
             DirectoryEntryOf("docs/", docsHash),
             FileEntryOf("root.txt", FakeContentHash('f')));
@@ -82,7 +82,7 @@ public class ListQueryHandlerTests
         var snapshot = new SnapshotManifest
         {
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
-            RootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption),
+            RootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption),
             FileCount = 2,
             TotalSize = 456,
             AriusVersion = "test"
@@ -126,7 +126,7 @@ public class ListQueryHandlerTests
             var snapshot = new SnapshotManifest
             {
                 Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
-                RootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption),
+                RootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption),
                 FileCount = 2,
                 TotalSize = 100,
                 AriusVersion = "test"
@@ -207,11 +207,11 @@ public class ListQueryHandlerTests
     public async Task Handle_RecursiveFalse_YieldsOnlyImmediateChildren()
     {
         var childTree = Entries(FileEntryOf("deep.txt", FakeContentHash('6')));
-        var childHash = FileTreeSerializer.ComputeHash(childTree, s_encryption);
+        var childHash = FileTreeBuilder.ComputeHash(childTree, s_encryption);
         var rootTree = Entries(
             DirectoryEntryOf("child/", childHash),
             FileEntryOf("root.txt", FakeContentHash('7')));
-        var rootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
@@ -245,7 +245,7 @@ public class ListQueryHandlerTests
             FileEntryOf("VACATION.jpg", FakeContentHash('9')),
             FileEntryOf("sunset.jpg", FakeContentHash('a')),
             FileEntryOf("readme.txt", FakeContentHash('c')));
-        var rootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
@@ -276,14 +276,14 @@ public class ListQueryHandlerTests
         {
             IReadOnlyList<FileTreeEntry> cloudLocalTree = [];
             IReadOnlyList<FileTreeEntry> cloudOnlyTree = [];
-            var cloudLocalHash = FileTreeSerializer.ComputeHash(cloudLocalTree, s_encryption);
-            var cloudOnlyHash = FileTreeSerializer.ComputeHash(cloudOnlyTree, s_encryption);
+            var cloudLocalHash = FileTreeBuilder.ComputeHash(cloudLocalTree, s_encryption);
+            var cloudOnlyHash = FileTreeBuilder.ComputeHash(cloudOnlyTree, s_encryption);
 
             // root has: cloud+local dir, cloud-only dir; local has: local-only dir
             var rootTree = Entries(
                 DirectoryEntryOf("cloud-local-dir/", cloudLocalHash),
                 DirectoryEntryOf("cloud-only-dir/", cloudOnlyHash));
-            var rootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption);
+            var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
             var snapshot = MakeSnapshot(rootHash);
 
             var blobs = new FakeSeededBlobContainerService();
@@ -324,12 +324,12 @@ public class ListQueryHandlerTests
     public async Task Handle_BatchSizeLookup_CalledOncePerDirectory_SizeNullWhenNotInIndex()
     {
         var childTree = Entries(FileEntryOf("child-file.txt", FakeContentHash('d')));
-        var childHash = FileTreeSerializer.ComputeHash(childTree, s_encryption);
+        var childHash = FileTreeBuilder.ComputeHash(childTree, s_encryption);
         var rootTree = Entries(
             DirectoryEntryOf("child/", childHash),
             FileEntryOf("known.txt", ContentHashFor("known")),
             FileEntryOf("unknown.txt", FakeContentHash('f')));
-        var rootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
@@ -372,7 +372,7 @@ public class ListQueryHandlerTests
     public async Task Handle_SpecificVersionNotFound_ThrowsWithDescriptiveMessage()
     {
         IReadOnlyList<FileTreeEntry> rootTree = [];
-        var rootHash = FileTreeSerializer.ComputeHash(rootTree, s_encryption);
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
         var blobs = new FakeSeededBlobContainerService();
@@ -396,7 +396,7 @@ public class ListQueryHandlerTests
         // Each level is a separate WalkDirectoryAsync call, so cancellation is
         // checked at each level boundary (ThrowIfCancellationRequested at top of method).
         IReadOnlyList<FileTreeEntry> leafTree = [];
-        var leafHash = FileTreeSerializer.ComputeHash(leafTree, s_encryption);
+        var leafHash = FileTreeBuilder.ComputeHash(leafTree, s_encryption);
 
         // Build chain: level10 → level9 → … → level1 → root
         var currentHash  = leafHash;
@@ -408,7 +408,7 @@ public class ListQueryHandlerTests
             var tree = Entries(
                 DirectoryEntryOf($"level{i + 1}/", currentHash),
                 FileEntryOf($"file{i}.txt", FakeContentHash("123456789a"[10 - i])));
-            currentHash = FileTreeSerializer.ComputeHash(tree, s_encryption);
+            currentHash = FileTreeBuilder.ComputeHash(tree, s_encryption);
             await SeedTreeAsync(blobs, tree);
         }
 
@@ -454,7 +454,7 @@ public class ListQueryHandlerTests
 
     private static async Task<FileTreeHash> SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
-        var hash = FileTreeSerializer.ComputeHash(entries, s_encryption);
+        var hash = FileTreeBuilder.ComputeHash(entries, s_encryption);
         blobs.AddBlob(BlobPaths.FileTree(hash), await FileTreeSerializer.SerializeForStorageAsync(entries, s_encryption));
         return hash;
     }

@@ -117,7 +117,7 @@ public class FileTreeStagingWriterTests
             var rootPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId);
             var photosPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, photosId);
             var line = (await File.ReadAllLinesAsync(photosPath)).Single();
-            var entry = FileTreeSerializer.ParseFileEntryLine(line);
+            var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
             entry.Name.ShouldBe("a.jpg");
             entry.ContentHash.ShouldBe(TestHash);
@@ -174,7 +174,7 @@ public class FileTreeStagingWriterTests
             var rootEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId));
             var nodePath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, spacedDirectoryId);
             var line = (await File.ReadAllLinesAsync(nodePath)).Single(l => l.Contains(" F ", StringComparison.Ordinal));
-            var entry = FileTreeSerializer.ParseFileEntryLine(line);
+            var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
             rootEntries.ShouldContain($"{spacedDirectoryId} D  photos/");
             entry.Name.ShouldBe("a.jpg ");
