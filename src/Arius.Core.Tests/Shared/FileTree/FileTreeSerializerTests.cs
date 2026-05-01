@@ -259,7 +259,7 @@ public class FileTreeSerializerTests
         var parsed = FileTreeSerializer.ParseStagedEntryLine($"{directoryId} D photos/");
 
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
-        entry.DirectoryId.ShouldBe(directoryId);
+        entry.DirectoryNameHash.ShouldBe(directoryId);
         entry.Name.ShouldBe("photos/");
     }
 }

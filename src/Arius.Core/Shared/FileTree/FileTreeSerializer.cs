@@ -211,10 +211,10 @@ public static class FileTreeSerializer
         if (firstSpace < 0)
             throw new FormatException($"Invalid staged directory entry (no spaces): '{line}'");
 
-        var normalizedDirectoryId = line[..firstSpace];
+        var normalizedDirectoryNameHash = line[..firstSpace];
         try
         {
-            normalizedDirectoryId = HashCodec.NormalizeHex(normalizedDirectoryId);
+            normalizedDirectoryNameHash = HashCodec.NormalizeHex(normalizedDirectoryNameHash);
         }
         catch (FormatException ex)
         {
@@ -241,7 +241,7 @@ public static class FileTreeSerializer
 
         return new StagedDirectoryEntry
         {
-            DirectoryId = normalizedDirectoryId,
+            DirectoryNameHash = normalizedDirectoryNameHash,
             Name = name
         };
     }

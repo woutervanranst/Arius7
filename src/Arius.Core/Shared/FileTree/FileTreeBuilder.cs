@@ -133,7 +133,7 @@ public sealed class FileTreeBuilder
                         if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
                         {
                             // the file is append only, directories are added when a file is added so a directoryEntry can appear multiple times, but it should be the same line every time
-                            if (!string.Equals(existingDirectoryEntry.DirectoryId, stagedDirectoryEntry.DirectoryId, StringComparison.Ordinal))
+                            if (!string.Equals(existingDirectoryEntry.DirectoryNameHash, stagedDirectoryEntry.DirectoryNameHash, StringComparison.Ordinal))
                                 throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
 
                             break;
@@ -153,7 +153,7 @@ public sealed class FileTreeBuilder
 
         async Task BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, int index, DirectoryEntry?[] childEntries, CancellationToken ct)
         {
-            var childHash = await BuildDirectoryAsync(directoryEntry.DirectoryId, ct);
+            var childHash = await BuildDirectoryAsync(directoryEntry.DirectoryNameHash, ct);
             if (childHash is not null)
             {
                 childEntries[index] = new DirectoryEntry

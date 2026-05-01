@@ -33,5 +33,5 @@ public sealed record DirectoryEntry : FileTreeEntry
 
 internal sealed record StagedDirectoryEntry : FileTreeEntry
 {
-    public required string DirectoryId { get; init; }
+    public required string DirectoryNameHash { get; init; }
 }
