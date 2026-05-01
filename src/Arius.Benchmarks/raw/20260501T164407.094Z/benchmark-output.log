@@ -1,0 +1,156 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 1 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/" /p:OutDir="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:OutputPath="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:PublishDir="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/publish/" in /Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1
+// command took 1.63 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/" /p:OutDir="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:OutputPath="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" /p:PublishDir="/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/publish/" --output "/Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0/" in /Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1
+// command took 9.06 sec and exited with 0
+// ***** Done, took 00:00:10 (10.76 sec)   *****
+// Found 1 benchmarks:
+//   ArchiveStepBenchmarks.Archive_Step_V1_Representative_Azurite: Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+
+// **************************
+// Benchmark: ArchiveStepBenchmarks.Archive_Step_V1_Representative_Azurite: Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Arius.Benchmarks-Job-HILDPN-1.dll --anonymousPipes 124 125 --benchmarkName Arius.Benchmarks.ArchiveStepBenchmarks.Archive_Step_V1_Representative_Azurite --job "InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0" --benchmarkId 0 in /Users/wouter/.superset/worktrees/Arius7/speedup-filetree-upload/src/Arius.Benchmarks/bin/Release/net10.0/Arius.Benchmarks-Job-HILDPN-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a
+// GC=Concurrent Workstation
+// HardwareIntrinsics=ArmBase+AdvSimd,AES,CRC32,DP,RDM,SHA1,SHA256 VectorSize=128
+// Job: Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+
+[testcontainers.org 00:00:00.05] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.3.1
+  Kernel Version: 6.12.76-linuxkit
+  API Version: 1.54
+  Operating System: Docker Desktop
+  Total Memory: 7.65 GB
+  Labels: 
+    com.docker.desktop.address=unix:///Users/wouter/Library/Containers/com.docker.docker/Data/docker-cli.sock
+[testcontainers.org 00:00:00.13] Docker container 98aed09e494f created
+[testcontainers.org 00:00:00.16] Start Docker container 98aed09e494f
+[testcontainers.org 00:00:00.28] Wait for Docker container 98aed09e494f to complete readiness checks
+[testcontainers.org 00:00:01.31] Docker container 98aed09e494f ready
+[testcontainers.org 00:00:01.38] Docker container e310eed8500f created
+[testcontainers.org 00:00:01.39] Start Docker container e310eed8500f
+[testcontainers.org 00:00:01.47] Wait for Docker container e310eed8500f to complete readiness checks
+[testcontainers.org 00:00:02.52] Docker container e310eed8500f ready
+OverheadJitting  1: 1 op, 64250.00 ns, 64.2500 us/op
+WorkloadJitting  1: 1 op, 32633936583.00 ns, 32.6339 s/op
+
+OverheadWarmup   1: 1 op, 791.00 ns, 791.0000 ns/op
+OverheadWarmup   2: 1 op, 375.00 ns, 375.0000 ns/op
+OverheadWarmup   3: 1 op, 1000.00 ns, 1.0000 us/op
+OverheadWarmup   4: 1 op, 167.00 ns, 167.0000 ns/op
+OverheadWarmup   5: 1 op, 292.00 ns, 292.0000 ns/op
+OverheadWarmup   6: 1 op, 167.00 ns, 167.0000 ns/op
+
+OverheadActual   1: 1 op, 708.00 ns, 708.0000 ns/op
+OverheadActual   2: 1 op, 417.00 ns, 417.0000 ns/op
+OverheadActual   3: 1 op, 500.00 ns, 500.0000 ns/op
+OverheadActual   4: 1 op, 125.00 ns, 125.0000 ns/op
+OverheadActual   5: 1 op, 583.00 ns, 583.0000 ns/op
+OverheadActual   6: 1 op, 83.00 ns, 83.0000 ns/op
+OverheadActual   7: 1 op, 250.00 ns, 250.0000 ns/op
+OverheadActual   8: 1 op, 125.00 ns, 125.0000 ns/op
+OverheadActual   9: 1 op, 333.00 ns, 333.0000 ns/op
+OverheadActual  10: 1 op, 125.00 ns, 125.0000 ns/op
+OverheadActual  11: 1 op, 541.00 ns, 541.0000 ns/op
+OverheadActual  12: 1 op, 83.00 ns, 83.0000 ns/op
+OverheadActual  13: 1 op, 584.00 ns, 584.0000 ns/op
+OverheadActual  14: 1 op, 458.00 ns, 458.0000 ns/op
+OverheadActual  15: 1 op, 625.00 ns, 625.0000 ns/op
+OverheadActual  16: 1 op, 625.00 ns, 625.0000 ns/op
+OverheadActual  17: 1 op, 0.00 ns, 0.0000 ns/op
+OverheadActual  18: 1 op, 458.00 ns, 458.0000 ns/op
+OverheadActual  19: 1 op, 208.00 ns, 208.0000 ns/op
+OverheadActual  20: 1 op, 83.00 ns, 83.0000 ns/op
+
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 33145489333.00 ns, 33.1455 s/op
+WorkloadActual   2: 1 op, 33226427792.00 ns, 33.2264 s/op
+WorkloadActual   3: 1 op, 33104080625.00 ns, 33.1041 s/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 33145488958.00 ns, 33.1455 s/op
+WorkloadResult   2: 1 op, 33226427417.00 ns, 33.2264 s/op
+WorkloadResult   3: 1 op, 33104080250.00 ns, 33.1041 s/op
+// GC:  56 5 0 466486960 1
+// Threading:  39835 2 1
+// Exceptions:  8635
+
+[testcontainers.org 00:02:52.83] Delete Docker container e310eed8500f
+// AfterAll
+// Benchmark Process 33861 has exited with code 0.
+
+Mean = 33.159 s, StdErr = 0.036 s (0.11%), N = 3, StdDev = 0.062 s
+Min = 33.104 s, Q1 = 33.125 s, Median = 33.145 s, Q3 = 33.186 s, Max = 33.226 s
+IQR = 0.061 s, LowerFence = 33.033 s, UpperFence = 33.278 s
+ConfidenceInterval = [32.023 s; 34.294 s] (CI 99.9%), Margin = 1.135 s (3.42% of Mean)
+Skewness = 0.2, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 0 (0,0%) benchmark(s) to run. Estimated finish 2026-05-01 18:47 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  src/Arius.Benchmarks/raw/20260501T164407.094Z/results/Arius.Benchmarks.ArchiveStepBenchmarks-report.csv
+  src/Arius.Benchmarks/raw/20260501T164407.094Z/results/Arius.Benchmarks.ArchiveStepBenchmarks-report-github.md
+  src/Arius.Benchmarks/raw/20260501T164407.094Z/results/Arius.Benchmarks.ArchiveStepBenchmarks-report.html
+
+// * Detailed results *
+ArchiveStepBenchmarks.Archive_Step_V1_Representative_Azurite: Job-HILDPN(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=0)
+Runtime = .NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a; GC = Concurrent Workstation
+Mean = 33.159 s, StdErr = 0.036 s (0.11%), N = 3, StdDev = 0.062 s
+Min = 33.104 s, Q1 = 33.125 s, Median = 33.145 s, Q3 = 33.186 s, Max = 33.226 s
+IQR = 0.061 s, LowerFence = 33.033 s, UpperFence = 33.278 s
+ConfidenceInterval = [32.023 s; 34.294 s] (CI 99.9%), Margin = 1.135 s (3.42% of Mean)
+Skewness = 0.2, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[33.047 s ; 33.283 s) | @@@
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, macOS Tahoe 26.4 (25E246) [Darwin 25.4.0]
+Apple M4, 1 CPU, 10 logical and 10 physical cores
+.NET SDK 10.0.201
+  [Host]     : .NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a
+  Job-HILDPN : .NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a
+
+InvocationCount=1  IterationCount=3  LaunchCount=1  
+UnrollFactor=1  WarmupCount=0  
+
+| Method                                 | Mean    | Error   | StdDev  | Gen0       | Completed Work Items | Lock Contentions | Gen1      | Allocated |
+|--------------------------------------- |--------:|--------:|--------:|-----------:|---------------------:|-----------------:|----------:|----------:|
+| Archive_Step_V1_Representative_Azurite | 33.16 s | 1.135 s | 0.062 s | 56000.0000 |           39835.0000 |           2.0000 | 5000.0000 | 444.88 MB |
+
+// * Legends *
+  Mean                 : Arithmetic mean of all measurements
+  Error                : Half of 99.9% confidence interval
+  StdDev               : Standard deviation of all measurements
+  Gen0                 : GC Generation 0 collects per 1000 operations
+  Completed Work Items : The number of work items that have been processed in ThreadPool (per single operation)
+  Lock Contentions     : The number of times there was contention upon trying to take a Monitor's lock (per single operation)
+  Gen1                 : GC Generation 1 collects per 1000 operations
+  Allocated            : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  1 s                  : 1 Second (1 sec)
+
+// * Diagnostic Output - ThreadingDiagnoser *
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:02:54 (174.87 sec), executed benchmarks: 1
+
+Global total time: 00:03:05 (185.82 sec), executed benchmarks: 1
+// * Artifacts cleanup *
+Artifacts cleanup is finished
