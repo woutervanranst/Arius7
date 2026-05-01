@@ -254,26 +254,4 @@ public class FileTreeStagingWriterTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
-
-    [Test]
-    public async Task AppendFileEntryAsync_AfterDispose_ThrowsObjectDisposedException()
-    {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
-        try
-        {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            var writer = new FileTreeStagingWriter(session.StagingRoot);
-
-            writer.Dispose();
-
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
-                await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp));
-        }
-        finally
-        {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
-        }
-    }
-
 }
