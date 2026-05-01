@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -6,7 +5,9 @@ namespace Arius.Core.Shared.FileTree;
 internal sealed class FileTreeStagingWriter
     : IDisposable
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _nodeLocks = new(StringComparer.Ordinal);
+    private const int StripeCount = 256;
+
+    private readonly SemaphoreSlim[] _lockStripes;
     private readonly string _stagingRoot;
     private bool _disposed;
 
@@ -14,7 +15,13 @@ internal sealed class FileTreeStagingWriter
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
         _stagingRoot = stagingRoot;
+        _lockStripes = Enumerable.Range(0, StripeCount)
+            .Select(_ => new SemaphoreSlim(1, 1))
+            .ToArray();
     }
+
+    internal int LockStripeCount => _lockStripes.Length;
+    internal int ActiveLockCount => _lockStripes.Length;
 
     public async Task AppendFileEntryAsync(
         string filePath,
@@ -93,7 +100,7 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
     {
-        var nodeLock = _nodeLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1)); // TODO use lock striping cf memory usage
+        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
         await nodeLock.WaitAsync(cancellationToken);
 
         try
@@ -115,9 +122,7 @@ internal sealed class FileTreeStagingWriter
 
         _disposed = true;
 
-        foreach (var nodeLock in _nodeLocks.Values)
+        foreach (var nodeLock in _lockStripes)
             nodeLock.Dispose();
-
-        _nodeLocks.Clear();
     }
 }

@@ -254,4 +254,25 @@ public class FileTreeStagingWriterTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
+
+    [Test]
+    public async Task AppendFileEntryAsync_UsesBoundedLockStripeCount()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            for (var i = 0; i < 2_000; i++)
+                await writer.AppendFileEntryAsync($"dir-{i}/file-{i}.bin", TestHash, TestTimestamp, TestTimestamp);
+
+            writer.LockStripeCount.ShouldBe(writer.ActiveLockCount);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
 }
