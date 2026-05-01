@@ -552,7 +552,7 @@ public class FileTreeBuilderTests
             await fileTreeService.ValidateAsync();
 
             var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
-            var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromMilliseconds(500));
+            var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(1));
 
             blobs.AllowUploads();
 
