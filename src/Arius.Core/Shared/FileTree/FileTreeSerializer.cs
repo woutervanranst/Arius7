@@ -73,30 +73,33 @@ public static class FileTreeSerializer
         foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
         {
             if (entry is FileEntry fileEntry)
-            {
                 sb.AppendLine(SerializeFileEntryLine(fileEntry));
-            }
             else if (entry is DirectoryEntry directoryEntry)
-            {
-                sb.Append(directoryEntry.FileTreeHash);
-                sb.Append(" D ");
-                sb.AppendLine(directoryEntry.Name);
-            }
+                sb.AppendLine(SerializeDirectoryEntryLine(directoryEntry));
             else
-            {
                 throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
-            }
         }
 
         return s_utf8.GetBytes(sb.ToString());
     }
 
-    public static string SerializeFileEntryLine(FileEntry entry)
-    {
-        ArgumentNullException.ThrowIfNull(entry);
+    // -- Serialize ---
 
-        return $"{entry.ContentHash} F {entry.Created:O} {entry.Modified:O} {entry.Name}";
+    public static string SerializeFileEntryLine(FileEntry entry)           => $"{entry.ContentHash} F {entry.Created:O} {entry.Modified:O} {entry.Name}";
+    public static string SerializeDirectoryEntryLine(DirectoryEntry entry) => $"{entry.FileTreeHash} D {entry.Name}";
+
+    // -- Hash ---
+
+    public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(encryption);
+
+        var text = Serialize(entries);
+        return FileTreeHash.Parse(encryption.ComputeHash(text));
     }
+
+    // -- Parse ---
 
     public static FileEntry ParseFileEntryLine(string line)
     {
@@ -180,15 +183,6 @@ public static class FileTreeSerializer
         };
     }
 
-    public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(encryption);
-
-        var text = Serialize(entries);
-        return FileTreeHash.Parse(encryption.ComputeHash(text));
-    }
-
     private static IReadOnlyList<FileTreeEntry> ParsePersistedLines(IEnumerable<string> lines)
     {
         var entries = new List<FileTreeEntry>();
@@ -242,7 +236,7 @@ public static class FileTreeSerializer
         return new StagedDirectoryEntry
         {
             DirectoryNameHash = normalizedDirectoryNameHash,
-            Name = name
+            Name              = name
         };
     }
 
@@ -255,12 +249,12 @@ public static class FileTreeSerializer
         var created = DateTimeOffset.Parse(afterType[..s1], null, DateTimeStyles.RoundtripKind);
 
         var afterCreated = afterType[(s1 + 1)..];
-        var s2 = afterCreated.IndexOf(' ');
+        var s2           = afterCreated.IndexOf(' ');
         if (s2 < 0)
             throw new FormatException($"Invalid file entry (missing modified): '{line}'");
 
         var modified = DateTimeOffset.Parse(afterCreated[..s2], null, DateTimeStyles.RoundtripKind);
-        var name = afterCreated[(s2 + 1)..];
+        var name     = afterCreated[(s2 + 1)..];
 
         if (string.IsNullOrWhiteSpace(name))
             throw new FormatException($"Invalid file entry (empty name): '{line}'");
@@ -271,9 +265,9 @@ public static class FileTreeSerializer
         return new FileEntry
         {
             ContentHash = contentHash,
-            Created = created,
-            Modified = modified,
-            Name = name
+            Created     = created,
+            Modified    = modified,
+            Name        = name
         };
     }
 }
