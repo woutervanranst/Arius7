@@ -88,8 +88,15 @@ public sealed class FileTreeBuilder
                 new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
                 async (item, ct) =>
                 {
-                    var childEntry = await BuildChildDirectoryAsync(item.directoryEntry, ct);
-                    childEntries[item.index] = childEntry;
+                    var childHash = await BuildDirectoryAsync(item.directoryEntry.DirectoryNameHash, ct);
+                    if (childHash is not null)
+                    {
+                        childEntries[item.index] = new DirectoryEntry
+                        {
+                            Name = item.directoryEntry.Name,
+                            FileTreeHash = childHash.Value
+                        };
+                    }
                 });
 
             var entries = new List<FileTreeEntry>(fileEntries.Count + childEntries.Length);
@@ -153,19 +160,5 @@ public sealed class FileTreeBuilder
             );
         }
 
-        async Task<DirectoryEntry?> BuildChildDirectoryAsync(StagedDirectoryEntry directoryEntry, CancellationToken ct)
-        {
-            var childHash = await BuildDirectoryAsync(directoryEntry.DirectoryNameHash, ct);
-            if (childHash is null)
-            {
-                return null;
-            }
-
-            return new DirectoryEntry
-            {
-                Name = directoryEntry.Name,
-                FileTreeHash = childHash.Value
-            };
-        }
     }
 }
