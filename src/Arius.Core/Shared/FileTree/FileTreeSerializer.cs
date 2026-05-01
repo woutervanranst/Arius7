@@ -92,7 +92,9 @@ public static class FileTreeSerializer
     /// <summary>
     /// Serializes one directory entry in the persisted filetree node format.
     /// </summary>
-    public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => $"{entry.FileTreeHash} D {entry.Name}";
+    public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => SerializePersistedDirectoryEntryLine(entry.FileTreeHash, entry.Name);
+    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, string name) => $"{hash} D {name}";
+    public static string SerializePersistedDirectoryEntryLine(string hash, string name)       => $"{hash} D {name}";
 
     /// <summary>
     /// Parses a persisted file entry line of the form '{content-hash} F {created} {modified} {name}'.
