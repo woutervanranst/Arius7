@@ -153,11 +153,7 @@ public sealed class FileTreeBuilder
                 }
             }
 
-            return
-            (
-                fileEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList(),
-                directoryEntries.Values.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToList()
-            );
+            return ([.. fileEntries.Values], [.. directoryEntries.Values]);
         }
 
     }
