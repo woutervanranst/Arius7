@@ -28,16 +28,13 @@ public sealed class FileTreeBuilder
         _fileTreeService = fileTreeService;
     }
 
-    /// <summary>
-    /// Computes the canonical filetree hash for one node from its sorted serialized content.
-    /// </summary>
     public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var serialized = FileTreeSerializer.Serialize(entries);
-        return FileTreeHash.Parse(encryption.ComputeHash(serialized));
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        return FileTreeHash.Parse(encryption.ComputeHash(plaintext));
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
@@ -53,12 +50,12 @@ public sealed class FileTreeBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
-        var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, IReadOnlyList<FileTreeEntry> Entries)>(UploadChannelCapacity);
+        var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext)>(UploadChannelCapacity);
         var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(cancellationToken),
             new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = UploadWorkers },
             async (node, ct) =>
             {
-                await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, ct);
+                await _fileTreeService.EnsureStoredAsync(node, ct);
             });
 
         try
@@ -75,9 +72,10 @@ public sealed class FileTreeBuilder
             {
                 await uploadTask;
             }
-            catch
+            catch (Exception uploadException)
             {
-                // Surface the original build failure.
+                // Preserve the original build failure while retaining the upload failure for diagnosis.
+                ex.Data["FileTreeUploadFailure"] = uploadException;
             }
 
             throw;
@@ -118,8 +116,9 @@ public sealed class FileTreeBuilder
             if (fileTreeEntries.Length == 0)
                 return null;
 
-            var hash = ComputeHash(fileTreeEntries, _encryption);
-            await uploadChannel.Writer.WriteAsync((hash, fileTreeEntries), ct);
+            var plaintext = FileTreeSerializer.Serialize(fileTreeEntries);
+            var hash = FileTreeHash.Parse(_encryption.ComputeHash(plaintext));
+            await uploadChannel.Writer.WriteAsync((hash, plaintext), ct);
             return hash;
         }
 

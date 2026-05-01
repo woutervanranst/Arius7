@@ -200,23 +200,21 @@ public sealed class FileTreeService
 
     // ── WriteAsync ────────────────────────────────────────────────────────
 
-    public async Task<FileTreeHash> EnsureStoredAsync(FileTreeHash hash, IReadOnlyList<FileTreeEntry> entries, CancellationToken cancellationToken = default)
+    internal async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
-        if (!ExistsInRemote(hash))
-            await WriteAsync(hash, entries, cancellationToken);
-
-        return hash;
+        if (!ExistsInRemote(payload.Hash))
+            await WriteAsync(payload, cancellationToken);
     }
 
     /// <summary>
     /// Uploads the tree entries to Azure (if not already present) and writes the plaintext
     /// representation to the local disk cache.
     /// </summary>
-    public async Task WriteAsync(FileTreeHash hash, IReadOnlyList<FileTreeEntry> entries, CancellationToken cancellationToken = default)
+    public async Task WriteAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
-        var hashText     = hash.ToString();
-        var blobName     = BlobPaths.FileTree(hash);
-        var storageBytes = await SerializeStorageAsync(entries, cancellationToken);
+        var hashText     = payload.Hash.ToString();
+        var blobName     = BlobPaths.FileTree(payload.Hash);
+        var storageBytes = await SerializeStorageAsync(payload.Plaintext, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted
             : ContentTypes.FileTreePlaintext;
@@ -232,16 +230,14 @@ public sealed class FileTreeService
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
         var diskPath  = Path.Combine(_diskCacheDir, hashText);
-        var plaintext = FileTreeSerializer.Serialize(entries);
-        await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
+        await File.WriteAllBytesAsync(diskPath, payload.Plaintext.ToArray(), cancellationToken);
     }
 
 
     // -- Serialize & Deserialize ---
 
-    private async Task<byte[]> SerializeStorageAsync(IReadOnlyList<FileTreeEntry> entries, CancellationToken cancellationToken)
+    private async Task<byte[]> SerializeStorageAsync(ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
     {
-        var plaintext = FileTreeSerializer.Serialize(entries);
         var ms        = new MemoryStream();
 
         await using (var encStream = _encryption.WrapForEncryption(ms))

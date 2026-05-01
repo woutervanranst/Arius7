@@ -8,6 +8,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared.Storage;
+using System.Reflection;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -219,18 +220,60 @@ public class FileTreeServiceTests
         try
         {
             var entries = MakeEntries("doc.pdf", "cafebabe");
-            var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
-            await svc.WriteAsync(hash, entries);
+            await svc.WriteAsync(payload);
 
             // Azure was uploaded
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPaths.FileTree(payload.Hash);
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = Path.Combine(cacheDir, payload.Hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task WriteAsync_CanonicalPayload_ReusesProvidedPlaintextForUploadAndDiskCache()
+    {
+        const string acct = "tc-write-canonical", cont = "container";
+        var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        try
+        {
+            var entries = new List<FileTreeEntry>
+            {
+                new FileEntry
+                {
+                    Name = "alpha.txt",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = s_ts1,
+                    Modified = s_ts2
+                }
+            };
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            var expectedPlaintext = payload.Plaintext.ToArray();
+
+            entries[0] = ((FileEntry)entries[0]) with { Name = "omega.txt" };
+
+            await svc.WriteAsync(payload);
+
+            var diskPath = Path.Combine(cacheDir, payload.Hash.ToString());
+            (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
+
+            var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTree(payload.Hash));
+            await using var gzipStream = new System.IO.Compression.GZipStream(new MemoryStream(blobBytes), System.IO.Compression.CompressionMode.Decompress);
+            using var plaintextStream = new MemoryStream();
+            await gzipStream.CopyToAsync(plaintextStream);
+            plaintextStream.ToArray().ShouldBe(expectedPlaintext);
         }
         finally
         {
@@ -263,11 +306,12 @@ public class FileTreeServiceTests
                 }
             ];
 
-            var hash = FileTreeBuilder.ComputeHash(entries, encryption);
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
-            await service.WriteAsync(hash, entries);
+            await service.WriteAsync(payload);
 
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPaths.FileTree(payload.Hash);
             var uploadedBytes = await ReadBlobBytesAsync(blobs, blobName);
             var prefix = System.Text.Encoding.ASCII.GetString(uploadedBytes[..6]);
             prefix.ShouldBe("ArGCM1");
@@ -311,10 +355,11 @@ public class FileTreeServiceTests
                 }
             ];
 
-            var hash = FileTreeBuilder.ComputeHash(entries, encryption);
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
-            await service.WriteAsync(hash, entries);
-            var roundTripped = await service.ReadAsync(hash);
+            await service.WriteAsync(payload);
+            var roundTripped = await service.ReadAsync(payload.Hash);
 
             roundTripped.ShouldBe(entries);
         }
@@ -334,18 +379,19 @@ public class FileTreeServiceTests
         try
         {
             var entries   = MakeEntries();
-            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPaths.FileTree(hash);
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload   = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            var blobName = BlobPaths.FileTree(payload.Hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             // Should not throw
-            await Should.NotThrowAsync(() => svc.WriteAsync(hash, entries));
+            await Should.NotThrowAsync(() => svc.WriteAsync(payload));
 
             // Disk file should still be written
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = Path.Combine(cacheDir, payload.Hash.ToString());
             File.Exists(diskPath).ShouldBeTrue();
         }
         finally
@@ -355,7 +401,7 @@ public class FileTreeServiceTests
     }
 
     [Test]
-    public async Task EnsureStoredAsync_UsesProvidedHash_AndWritesMissingTree()
+    public async Task EnsureStoredAsync_PayloadOverload_WritesMissingTree()
     {
         var blobs = new FakeRecordingBlobContainerService();
         var account = $"acc-{Guid.NewGuid():N}";
@@ -375,11 +421,11 @@ public class FileTreeServiceTests
             }
         ];
 
-        var hash = FileTreeBuilder.ComputeHash(entries, encryption);
-        var stored = await service.EnsureStoredAsync(hash, entries);
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        await service.EnsureStoredAsync(payload);
 
-        stored.ShouldBe(hash);
-        blobs.Uploaded.ShouldContain(BlobPaths.FileTree(hash));
+        blobs.Uploaded.ShouldContain(BlobPaths.FileTree(payload.Hash));
     }
 
     private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, string blobName)

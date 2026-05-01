@@ -454,13 +454,18 @@ public class ListQueryHandlerTests
 
     private static async Task<FileTreeHash> SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
-        var hash = FileTreeBuilder.ComputeHash(entries, s_encryption);
-        var account = $"acc-{Guid.NewGuid():N}";
-        var container = $"con-{Guid.NewGuid():N}";
-        var chunkIndex = new ChunkIndexService(blobs, s_encryption, account, container);
-        var service = new FileTreeService(blobs, s_encryption, chunkIndex, account, container);
-        await service.WriteAsync(hash, entries);
-        return hash;
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        var payload = (Hash: FileTreeHash.Parse(s_encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        using var ms = new MemoryStream();
+
+        await using (var encStream = s_encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzipStream.WriteAsync(payload.Plaintext);
+        }
+
+        blobs.AddBlob(BlobPaths.FileTree(payload.Hash), ms.ToArray());
+        return payload.Hash;
     }
 
     private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
