@@ -81,11 +81,11 @@ internal sealed class FileTreeStagingWriter
     {
         for (var depth = 0; depth < segments.Length - 1; depth++)
         {
-            var parentPath      = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
-            var childPath       = string.Join('/', segments, 0, depth + 1);
-            var childName       = segments[depth] + "/";
-            var childId         = FileTreeStagingPaths.GetDirectoryId(childPath);
-            var nodePath = FileTreeStagingPaths.GetNodePath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
+            var parentPath = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
+            var childPath  = string.Join('/', segments, 0, depth + 1);
+            var childName  = segments[depth] + "/";
+            var childId    = FileTreeStagingPaths.GetDirectoryId(childPath);
+            var nodePath   = FileTreeStagingPaths.GetNodePath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
 
             await AppendLineAsync(nodePath, $"{childId} D {childName}", cancellationToken);
         }
