@@ -334,8 +334,7 @@ public sealed class FileTreeService
     public bool ExistsInRemote(FileTreeHash hash)
     {
         if (!_validated)
-            throw new InvalidOperationException(
-                $"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
+            throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
         return File.Exists(Path.Combine(_diskCacheDir, hash.ToString()));
     }

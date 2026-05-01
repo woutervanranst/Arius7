@@ -9,8 +9,8 @@ namespace Arius.Core.Shared.FileTree;
 /// </summary>
 public sealed class FileTreeBuilder
 {
-    private const int SiblingSubtreeWorkers = 4;
-    private const int UploadWorkers = 4;
+    private const int SiblingSubtreeWorkers = 1;
+    private const int UploadWorkers = 1;
     private const int UploadChannelCapacity = 16;
 
     private readonly IEncryptionService _encryption;
@@ -41,14 +41,12 @@ public sealed class FileTreeBuilder
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
         var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, IReadOnlyList<FileTreeEntry> Entries)>(UploadChannelCapacity);
-        var uploadTask = Parallel.ForEachAsync(
-            uploadChannel.Reader.ReadAllAsync(cancellationToken),
-            new ParallelOptions
+        var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(cancellationToken),
+            new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = UploadWorkers },
+            async (node, ct) =>
             {
-                CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = UploadWorkers
-            },
-            async (node, ct) => await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, ct));
+                await _fileTreeService.EnsureStoredAsync(node.Hash, node.Entries, ct);
+            });
 
         try
         {
@@ -78,37 +76,37 @@ public sealed class FileTreeBuilder
             ct.ThrowIfCancellationRequested();
 
             var lines = await ReadNodeLinesAsync(directoryId, ct);
-            var (fileEntries, directoryEntries) = ReadNodeEntries(lines);
-            if (fileEntries.Count == 0 && directoryEntries.Count == 0)
+            var (fileEntries, stagedDirectoryEntries) = ReadNodeEntries(lines);
+            if (fileEntries.Count == 0 && stagedDirectoryEntries.Count == 0)
                 return null;
 
-            var childEntries = new DirectoryEntry?[directoryEntries.Count];
+            var directoryEntries = new DirectoryEntry?[stagedDirectoryEntries.Count];
             await Parallel.ForEachAsync(
-                directoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
+                stagedDirectoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
                 new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
-                async (item, ct) =>
+                async (item, ct2) =>
                 {
-                    var childHash = await BuildDirectoryAsync(item.directoryEntry.DirectoryNameHash, ct);
+                    var childHash = await BuildDirectoryAsync(item.directoryEntry.DirectoryNameHash, ct2);
                     if (childHash is not null)
                     {
-                        childEntries[item.index] = new DirectoryEntry
+                        directoryEntries[item.index] = new DirectoryEntry
                         {
-                            Name = item.directoryEntry.Name,
+                            Name         = item.directoryEntry.Name,
                             FileTreeHash = childHash.Value
                         };
                     }
                 });
 
-            var entries = new List<FileTreeEntry>(fileEntries.Count + childEntries.Length);
-            entries.AddRange(fileEntries);
-            entries.AddRange(childEntries.Where(entry => entry is not null)!);
+            var fileTreeEntries = new List<FileTreeEntry>(fileEntries.Count + directoryEntries.Length);
+            fileTreeEntries.AddRange(fileEntries);
+            fileTreeEntries.AddRange(directoryEntries.Where(entry => entry is not null)!);
 
-            if (entries.Count == 0)
+            if (fileTreeEntries.Count == 0)
                 return null;
 
-            entries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
-            var hash = FileTreeSerializer.ComputeHash(entries, _encryption);
-            await uploadChannel.Writer.WriteAsync((hash, entries), ct);
+            fileTreeEntries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
+            var hash = FileTreeSerializer.ComputeHash(fileTreeEntries, _encryption);
+            await uploadChannel.Writer.WriteAsync((hash, fileTreeEntries), ct);
             return hash;
         }
 
@@ -155,6 +153,5 @@ public sealed class FileTreeBuilder
 
             return ([.. fileEntries.Values], [.. directoryEntries.Values]);
         }
-
     }
 }
