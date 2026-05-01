@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
 using System.Threading.Channels;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -144,7 +145,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
-        var stagingCacheDirectory = FileTreeService.GetDiskCacheDirectory(_accountName, _containerName);
+        var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheDirectory(_accountName, _containerName);
         IFileTreeStagingSession stagingSession;
 
         FileTreeHash? snapshotRootHash = null;

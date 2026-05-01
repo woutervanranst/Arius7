@@ -46,7 +46,7 @@ public class FileTreeServiceTests
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir     = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir     = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
@@ -177,7 +177,7 @@ public class FileTreeServiceTests
         var blobs = new SlowDownloadBlobContainerService();
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
@@ -289,7 +289,7 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
@@ -333,7 +333,7 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
@@ -491,7 +491,7 @@ public class FileTreeServiceTests
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 

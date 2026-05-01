@@ -56,21 +56,13 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        _diskCacheDir    = GetDiskCacheDirectory(accountName, containerName);
+        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
         _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
         Directory.CreateDirectory(_diskCacheDir);
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
     }
-
-    // ── Directory helpers ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns <c>~/.arius/{accountName}-{containerName}/filetrees</c>.
-    /// </summary>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
 
     // ── 1.3 ReadAsync ─────────────────────────────────────────────────────────
 

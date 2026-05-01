@@ -31,7 +31,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _containerName = $"test-container-{Guid.NewGuid():N}";
         Directory.CreateDirectory(_rootDirectory);
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -40,7 +40,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => FileTreeService.GetDiskCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
 
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
@@ -58,7 +58,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(FileTreeService.GetDiskCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
