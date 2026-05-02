@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
