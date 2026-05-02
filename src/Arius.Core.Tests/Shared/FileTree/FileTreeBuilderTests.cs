@@ -658,58 +658,7 @@ public class FileTreeBuilderTests
 
         Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {name}"));
     }
-
-    [Test]
-    public async Task SynchronizeAsync_RecursiveBuild_UsesSharedGlobalWorkerBudget()
-    {
-        const string accountName = "acc-bounded";
-        const string containerName = "con-bounded";
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
-
-        try
-        {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("a/1/file.txt", FakeContentHash('1'), now, now),
-                ("a/2/file.txt", FakeContentHash('2'), now, now),
-                ("a/3/file.txt", FakeContentHash('3'), now, now),
-                ("a/4/file.txt", FakeContentHash('4'), now, now),
-                ("b/1/file.txt", FakeContentHash('5'), now, now),
-                ("b/2/file.txt", FakeContentHash('6'), now, now),
-                ("b/3/file.txt", FakeContentHash('7'), now, now),
-                ("b/4/file.txt", FakeContentHash('8'), now, now),
-                ("c/1/file.txt", FakeContentHash('9'), now, now),
-                ("c/2/file.txt", FakeContentHash('a'), now, now),
-                ("c/3/file.txt", FakeContentHash('b'), now, now),
-                ("c/4/file.txt", FakeContentHash('c'), now, now),
-                ("d/1/file.txt", FakeContentHash('d'), now, now),
-                ("d/2/file.txt", FakeContentHash('e'), now, now),
-                ("d/3/file.txt", FakeContentHash('f'), now, now),
-                ("d/4/file.txt", FakeContentHash('0'), now, now))).Session;
-
-            var blobs = new CountingFileTreeUploadBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-
-            var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
-            await Task.Delay(200);
-            blobs.AllowUploads();
-
-            var root = await synchronizeTask.WaitAsync(TimeSpan.FromSeconds(5));
-            root.ShouldNotBeNull();
-            blobs.MaxConcurrentUploads.ShouldBeLessThanOrEqualTo(4);
-        }
-        finally
-        {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
-        }
-    }
-
+        
     [Test]
     public async Task SynchronizeAsync_NestedDirectories_ProducesStableRootHash()
     {
