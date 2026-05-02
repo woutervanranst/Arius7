@@ -4,7 +4,7 @@ date: 2026-04-29
 decision-makers: Wouter Van Ranst, OpenCode
 ---
 
-# Build Filetrees From Staged Directory Nodes
+# Improve scalability of FileTree Build
 
 ## Context and Problem Statement
 
@@ -143,6 +143,6 @@ Related decisions:
 
 The implementation design and task plan are recorded in:
 
-* `docs/superpowers/specs/2026-04-30-decouple-filetree-build-and-upload-design.md`
+* `docs/superpowers/specs/2026-04-30-filetree-staging-and-build-design.md`
 * `docs/superpowers/plans/2026-04-30-decouple-filetree-build-and-upload.md`
 * `docs/filetrees.md`
