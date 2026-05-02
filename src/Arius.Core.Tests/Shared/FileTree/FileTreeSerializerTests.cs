@@ -108,6 +108,22 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    public void Serialize_UsesAscendingOrdinalOrderInPlaintext()
+    {
+        var entries = MakeEntries(
+            ("z_last.txt", false, FakeContentHash('3').ToString()),
+            ("a_first.txt", false, FakeContentHash('1').ToString()),
+            ("m_mid/", true, FakeFileTreeHash('2').ToString()));
+
+        var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        lines[0].ShouldContain(" a_first.txt");
+        lines[1].ShouldContain(" m_mid/");
+        lines[2].ShouldContain(" z_last.txt");
+    }
+
+    [Test]
     public void Serialize_IsDeterministic_ForEquivalentEntryLists()
     {
         var entries1 = MakeEntries(("b.jpg", false, FakeContentHash('2').ToString()), ("a.jpg", false, FakeContentHash('1').ToString()));
@@ -208,5 +224,30 @@ public class FileTreeSerializerTests
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
         entry.DirectoryNameHash.ShouldBe(directoryId);
         entry.Name.ShouldBe("photos/");
+    }
+
+    [Test]
+    public void ParsePersistedNodeEntryLine_DirectoryLine_ReturnsDirectoryEntry()
+    {
+        var hash = FakeFileTreeHash('d');
+
+        var parsed = FileTreeSerializer.ParsePersistedNodeEntryLine($"{hash} D photos/");
+
+        var entry = parsed.ShouldBeOfType<DirectoryEntry>();
+        entry.FileTreeHash.ShouldBe(hash);
+        entry.Name.ShouldBe("photos/");
+    }
+
+    [Test]
+    [Arguments("photos")]
+    [Arguments("photos//")]
+    [Arguments("photos/2024/")]
+    [Arguments("photos\\")]
+    public void ParseStagedNodeEntryLine_NonCanonicalDirectoryName_Throws(string directoryName)
+    {
+        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+
+        Should.Throw<FormatException>(() =>
+            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {directoryName}"));
     }
 }
