@@ -4,6 +4,17 @@ namespace Arius.Core.Tests.Shared.Streaming;
 
 public class ProgressStreamTests
 {
+    private sealed class TrackingMemoryStream(byte[] buffer) : MemoryStream(buffer)
+    {
+        public bool WasDisposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            WasDisposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
     [Test]
     public void Read_ReportsProgressAfterEachChunk()
     {
@@ -108,5 +119,19 @@ public class ProgressStreamTests
 
         n.ShouldBe(100);
         lastReport.ShouldBe(100);
+    }
+
+    [Test]
+    public void Dispose_DisposesInnerStream()
+    {
+        var data = new byte[16];
+        var inner = new TrackingMemoryStream(data);
+        var progress = new SyncProgress<long>(_ => { });
+
+        var sut = new ProgressStream(inner, progress);
+
+        sut.Dispose();
+
+        inner.WasDisposed.ShouldBeTrue();
     }
 }
