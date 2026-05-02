@@ -10,8 +10,12 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 {
+    private readonly HashSet<string> _remoteBlobs = new(StringComparer.Ordinal);
+
     public HashSet<string> Uploaded { get; } = new(StringComparer.Ordinal);
     public HashSet<string> HeadChecked { get; } = new(StringComparer.Ordinal);
+
+    public void SeedRemoteBlob(string blobName) => _remoteBlobs.Add(blobName);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -30,11 +34,18 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
     public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
     {
         HeadChecked.Add(blobName);
-        return Task.FromResult(new BlobMetadata { Exists = false });
+        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
     }
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
-        AsyncEnumerable.Empty<string>();
+    public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var blobName in _remoteBlobs.Where(name => name.StartsWith(prefix, StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return blobName;
+            await Task.Yield();
+        }
+    }
 
     public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;

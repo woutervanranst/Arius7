@@ -481,6 +481,9 @@ public class FileTreeBuilderTests
             uploadCount1.ShouldBeGreaterThan(0);
 
             var blobs2   = new FakeRecordingBlobContainerService();
+            foreach (var blobName in blobs.Uploaded)
+                blobs2.SeedRemoteBlob(blobName);
+
             FileTreeHash? root2;
             await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
             {
