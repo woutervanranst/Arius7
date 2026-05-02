@@ -2,6 +2,11 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 
+/// <summary>
+/// Blob-container fake that fails every download with one supplied exception.
+/// It exists to exercise <see cref="FileTreeService"/> read paths that must propagate
+/// a download failure instead of hanging or masking the error behind cache coordination.
+/// </summary>
 internal sealed class ThrowingDownloadBlobContainerService(Exception exception) : IBlobContainerService
 {
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
