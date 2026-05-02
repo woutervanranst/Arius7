@@ -10,8 +10,8 @@ namespace Arius.Core.Shared.FileTree;
 /// </summary>
 public sealed class FileTreeBuilder
 {
-    private const int SiblingSubtreeWorkers = 1;
-    private const int UploadWorkers = 1;
+    private const int SiblingSubtreeWorkers = 4;
+    private const int UploadWorkers = 4;
     private const int UploadChannelCapacity = 16;
 
     private readonly IEncryptionService _encryption;
@@ -60,7 +60,9 @@ public sealed class FileTreeBuilder
 
         try
         {
-            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(string.Empty), cancellationToken);
+            // Recursively build the FileTree starting from the root
+            var rootPath = string.Empty;
+            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(rootPath), cancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
             return rootHash;
@@ -88,11 +90,11 @@ public sealed class FileTreeBuilder
 
             var lines = await ReadNodeLinesAsync(directoryId, ct);
             var (fileEntries, stagedDirectoryEntries) = ReadNodeEntries(lines);
-            if (fileEntries.Count == 0 && stagedDirectoryEntries.Count == 0)
+            if (fileEntries.Empty() && stagedDirectoryEntries.Empty())
                 return null;
 
             // Convert StagedDirectoryEntries to DirectoryEntries recursively (depth-first)
-            var directoryEntries = new DirectoryEntry?[stagedDirectoryEntries.Count];
+            var directoryEntries = new DirectoryEntry?[stagedDirectoryEntries.Length];
             await Parallel.ForEachAsync(
                 stagedDirectoryEntries.Select((directoryEntry, index) => (directoryEntry, index)),
                 new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
@@ -111,7 +113,7 @@ public sealed class FileTreeBuilder
 
             var fileTreeEntries = fileEntries
                 .Concat(directoryEntries.OfType<FileTreeEntry>())
-                .ToArray();
+                .ToArray(); // note: Serialize is doing the sorting
 
             if (fileTreeEntries.Length == 0)
                 return null;
@@ -131,7 +133,7 @@ public sealed class FileTreeBuilder
             return await File.ReadAllLinesAsync(path, ct);
         }
 
-        static (List<FileEntry> FileEntries, List<StagedDirectoryEntry> DirectoryEntries) ReadNodeEntries(IEnumerable<string> lines)
+        static (FileEntry[] FileEntries, StagedDirectoryEntry[] DirectoryEntries) ReadNodeEntries(IEnumerable<string> lines)
         {
             var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
             var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
