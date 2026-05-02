@@ -151,6 +151,35 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    public async Task AppendFileEntryAsync_SingleSegmentPath_WritesEntryToRootNodeOnly()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await writer.AppendFileEntryAsync("a.jpg", TestHash, TestTimestamp, TestTimestamp);
+
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId);
+            var rootEntries = await File.ReadAllLinesAsync(rootPath);
+
+            rootEntries.Length.ShouldBe(1);
+            var entry = FileTreeSerializer.ParsePersistedFileEntryLine(rootEntries.Single());
+            entry.Name.ShouldBe("a.jpg");
+            entry.ContentHash.ShouldBe(TestHash);
+
+            Directory.EnumerateFiles(session.StagingRoot).ShouldHaveSingleItem();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task AppendFileEntryAsync_WritesDirectoryEntriesForNestedPath()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
