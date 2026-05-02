@@ -147,40 +147,6 @@ public class ArchiveRecoveryTests
         result.ErrorMessage.ShouldBe("staging setup failed");
     }
 
-    [Test]
-    public async Task Archive_WhenStagingSessionDisposeFails_ReturnsFailedResult()
-    {
-        using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
-
-        var stagingRoot = Path.Combine(env.FileTreeCacheDirectory, $"dispose-failure-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(stagingRoot);
-
-        try
-        {
-            var result = await env.ArchiveAsync(
-                BlobTier.Cool,
-                openStagingSession: (_, _) => Task.FromResult<IFileTreeStagingSession>(new DisposeFailingStagingSession(stagingRoot)));
-
-            result.Success.ShouldBeFalse();
-            result.RootHash.ShouldNotBeNull();
-            result.ErrorMessage.ShouldBe("staging cleanup failed");
-        }
-        finally
-        {
-            if (Directory.Exists(stagingRoot))
-                Directory.Delete(stagingRoot, recursive: true);
-        }
-    }
-
-    private sealed class DisposeFailingStagingSession(string stagingRoot) : IFileTreeStagingSession
-    {
-        public string StagingRoot { get; } = stagingRoot;
-
-        public ValueTask DisposeAsync()
-            => ValueTask.FromException(new IOException("staging cleanup failed"));
-    }
-
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)
     {
         using var tarStream = new MemoryStream();

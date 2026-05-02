@@ -18,29 +18,29 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 - **THEN** `FileTreeService` SHALL follow the same `{Thing}Service` pattern as `ChunkIndexService`, located in `Shared/FileTree/`
 
 ### Requirement: FileTreeService.ReadAsync
-`FileTreeService.ReadAsync(string hash, CancellationToken)` SHALL return a deserialized `IReadOnlyList<FileTreeEntry>` by checking the local disk cache first, then falling back to Azure download. On cache miss, the downloaded node SHALL be deserialized, then written to the disk cache using the canonical serialized text produced by `FileTreeSerializer.Serialize` before returning. On cache hit, the cached file SHALL be read from disk and deserialized via `FileTreeSerializer.Deserialize` without any remote call. The method SHALL handle storage-format deserialization and decryption internally via `FileTreeSerializer`.
+`FileTreeService.ReadAsync(string hash, CancellationToken)` SHALL return a deserialized `FileTreeBlob` by checking the local disk cache first, then falling back to Azure download. On cache miss, the downloaded blob SHALL be deserialized, then written to the disk cache using the canonical serialized text produced by `FileTreeBlobSerializer.Serialize` before returning. On cache hit, the cached file SHALL be read from disk and deserialized via `FileTreeBlobSerializer.Deserialize` without any remote call. The method SHALL handle storage-format deserialization and decryption internally via `FileTreeBlobSerializer`.
 
 #### Scenario: Cache hit
 - **WHEN** `ReadAsync("abc123")` is called and `~/.arius/{repo}/filetrees/abc123` exists on disk
-- **THEN** the service SHALL read from disk, deserialize, and return the filetree entries without any Azure call
+- **THEN** the service SHALL read from disk, deserialize, and return the `FileTreeBlob` without any Azure call
 
 #### Scenario: Cache miss
 - **WHEN** `ReadAsync("abc123")` is called and no local file exists
-- **THEN** the service SHALL download from `filetrees/abc123` in Azure, deserialize, write the canonical serialized text from `FileTreeSerializer.Serialize` to `~/.arius/{repo}/filetrees/abc123`, and return the filetree entries
+- **THEN** the service SHALL download from `filetrees/abc123` in Azure, deserialize, write the canonical serialized text from `FileTreeBlobSerializer.Serialize` to `~/.arius/{repo}/filetrees/abc123`, and return the `FileTreeBlob`
 
 #### Scenario: Concurrent reads for same hash
 - **WHEN** multiple concurrent calls to `ReadAsync` request the same hash
 - **THEN** the service SHALL not corrupt the disk cache file (writes SHALL be atomic or serialized per hash)
 
 ### Requirement: FileTreeService.WriteAsync
-`FileTreeService.WriteAsync(string hash, IReadOnlyList<FileTreeEntry>, CancellationToken)` SHALL serialize the filetree entries for storage upload, upload to Azure at `filetrees/{hash}`, and write the canonical serialized text produced by `FileTreeSerializer.Serialize` to the local disk cache. This is a write-through operation. The upload SHALL use `overwrite: false` semantics (content-addressed blobs are immutable). If the blob already exists in Azure (`BlobAlreadyExistsException`), the upload SHALL be silently skipped but the disk cache SHALL still be written in the same on-disk format.
+`FileTreeService.WriteAsync(string hash, FileTreeBlob, CancellationToken)` SHALL serialize the tree blob for storage upload, upload to Azure at `filetrees/{hash}`, and write the canonical serialized text produced by `FileTreeBlobSerializer.Serialize` to the local disk cache. This is a write-through operation. The upload SHALL use `overwrite: false` semantics (content-addressed blobs are immutable). If the blob already exists in Azure (`BlobAlreadyExistsException`), the upload SHALL be silently skipped but the disk cache SHALL still be written in the same on-disk format.
 
 #### Scenario: Write new tree blob
-- **WHEN** `WriteAsync("def456", entries)` is called for a new filetree node
-- **THEN** the service SHALL serialize, upload to Azure at `filetrees/def456`, and write the canonical serialized text from `FileTreeSerializer.Serialize` to `~/.arius/{repo}/filetrees/def456`
+- **WHEN** `WriteAsync("def456", treeBlob)` is called for a new blob
+- **THEN** the service SHALL serialize, upload to Azure at `filetrees/def456`, and write the canonical serialized text from `FileTreeBlobSerializer.Serialize` to `~/.arius/{repo}/filetrees/def456`
 
 #### Scenario: Write existing tree blob
-- **WHEN** `WriteAsync("def456", entries)` is called and the blob already exists in Azure
+- **WHEN** `WriteAsync("def456", treeBlob)` is called and the blob already exists in Azure
 - **THEN** the upload SHALL be silently skipped (catch `BlobAlreadyExistsException`) and the disk cache SHALL still be written
 
 ### Requirement: FileTreeService.ExistsInRemote
