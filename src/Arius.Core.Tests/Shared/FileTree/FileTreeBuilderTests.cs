@@ -5,6 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using System.Collections.Concurrent;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -32,7 +33,7 @@ public class FileTreeBuilderTests
         private readonly TaskCompletionSource<bool> _twoUploadsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _startedUploads;
 
-        public HashSet<string> Uploaded { get; } = new(StringComparer.Ordinal);
+        public ConcurrentDictionary<string, byte> Uploaded { get; } = new(StringComparer.Ordinal);
 
         public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -46,7 +47,7 @@ public class FileTreeBuilderTests
                 await _allowUploads.Task.WaitAsync(cancellationToken);
             }
 
-            Uploaded.Add(blobName);
+            Uploaded.TryAdd(blobName, 0);
         }
 
         public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
@@ -566,6 +567,29 @@ public class FileTreeBuilderTests
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task BlockingUploadBlobContainerService_RecordsAllConcurrentUploads()
+    {
+        var blobs = new BlockingFileTreeUploadBlobContainerService();
+        var uploads = Enumerable.Range(0, 2_000)
+            .Select(async i =>
+            {
+                using var content = new MemoryStream();
+                await blobs.UploadAsync($"{BlobPaths.FileTrees}/blob-{i}", content, new Dictionary<string, string>(), BlobTier.Hot);
+            })
+            .ToArray();
+
+        var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(1));
+        sawTwoConcurrentStarts.ShouldBeTrue();
+
+        blobs.AllowUploads();
+        await Task.WhenAll(uploads);
+
+        blobs.Uploaded.Count.ShouldBe(2_000);
+        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}/blob-0");
+        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}/blob-1999");
     }
 
     [Test]
