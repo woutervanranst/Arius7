@@ -42,6 +42,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
 
+    public FakeLogCollector ArchiveLogs => _logger.Collector;
+
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
         var content = new byte[sizeBytes];

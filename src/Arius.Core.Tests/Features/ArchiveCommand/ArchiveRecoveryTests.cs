@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -76,6 +77,31 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_NewContent_EmitsTailPhaseTimingLogs()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var messages = env.ArchiveLogs
+            .GetSnapshot(clear: false)
+            .Select(static record => record.Message)
+            .Where(static message => message.Contains("[phase] tail", StringComparison.Ordinal))
+            .ToArray();
+
+        messages.ShouldContain(message => message.Contains("[phase] tail validate-filetrees", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail flush-index", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail build-filetree", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail snapshot", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail write-pointers", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail delete-local", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tail complete", StringComparison.Ordinal));
     }
 
     [Test]

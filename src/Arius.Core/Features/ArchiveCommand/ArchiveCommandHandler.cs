@@ -509,17 +509,21 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
+            _logger.LogInformation("[phase] tail validate-filetrees");
+            await _fileTreeService.ValidateAsync(cancellationToken);
+
             // Task 8.10: Index flush
+            _logger.LogInformation("[phase] tail flush-index");
             await _chunkIndex.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
 
-            // Task 5.1: Validate the filetree service before building the tree.
-            await _fileTreeService.ValidateAsync(cancellationToken);
             // Task 8.11: Build tree from staged entries → create snapshot
+            _logger.LogInformation("[phase] tail build-filetree");
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
             var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
+            _logger.LogInformation("[phase] tail snapshot");
             if (rootHash is not null)
             {
                 var latestSnapshot = await _snapshotSvc.ResolveAsync(cancellationToken: cancellationToken);
@@ -541,6 +545,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // Task 8.12: Write pointer files ×N in parallel
+            _logger.LogInformation("[phase] tail write-pointers");
             if (!opts.NoPointers)
             {
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
@@ -552,6 +557,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // Task 8.13: Remove local binary files
+            _logger.LogInformation("[phase] tail delete-local");
             if (opts.RemoveLocal)
             {
                 foreach (var path in pendingDeletes)
@@ -566,6 +572,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                 }
             }
+
+            _logger.LogInformation("[phase] tail complete");
 
             _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
@@ -626,4 +634,5 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
         await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
     }
+
 }
