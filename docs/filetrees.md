@@ -12,18 +12,18 @@ This document explains the current archive-time filetree pipeline in code:
 
 ```mermaid
 flowchart TD
-    A[Local files and pointer files] --> B[ArchiveCommandHandler]
-    B --> C[WriteFileTreeEntry]
-    C --> D[FileTreeStagingWriter]
-    D --> E[.staging/{directory-id} node files]
-    E --> F[FileTreeBuilder.SynchronizeAsync]
-    F --> G[Recursive BuildDirectoryAsync]
-    G --> H[hash + plaintext upload channel]
-    H --> I[FileTreeService.EnsureStoredAsync]
-    I --> J[if missing: blob storage filetrees/{fileTreeHash}]
-    I --> K[if missing: final disk cache filetrees/{fileTreeHash}]
-    F --> L[root FileTreeHash]
-    L --> M[SnapshotService.CreateAsync or reuse latest]
+    A["Local files and pointer files"] --> B["ArchiveCommandHandler"]
+    B --> C["WriteFileTreeEntry"]
+    C --> D["FileTreeStagingWriter"]
+    D --> E[".staging/{directory-id} node files"]
+    E --> F["FileTreeBuilder.SynchronizeAsync"]
+    F --> G["Recursive BuildDirectoryAsync"]
+    G --> H["hash + plaintext upload channel"]
+    H --> I["FileTreeService.EnsureStoredAsync"]
+    I --> J["if missing: blob storage filetrees/{fileTreeHash}"]
+    I --> K["if missing: final disk cache filetrees/{fileTreeHash}"]
+    F --> L["root FileTreeHash"]
+    L --> M["SnapshotService.CreateAsync or reuse latest"]
 ```
 
 ## Paths and storage layout

@@ -249,6 +249,9 @@ Merkle tree nodes. Each blob is a UTF-8 text file named by its tree-hash (SHA-25
 canonical text, optionally passphrase-seeded). A tree blob lists the entries in one
 directory — one line per entry, sorted by name:
 
+See [`docs/filetrees.md`](docs/filetrees.md) for the archive-time staging, build, upload,
+and cache pipeline behind these nodes.
+
 ```
 abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 photo.jpg
 def456... D subdir/
