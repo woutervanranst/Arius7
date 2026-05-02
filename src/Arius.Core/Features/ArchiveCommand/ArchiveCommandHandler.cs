@@ -509,13 +509,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
-            // Task 5.1: Validate the filetree service before building the tree.
-            await _fileTreeService.ValidateAsync(cancellationToken);
-
             // Task 8.10: Index flush
             await _chunkIndex.FlushAsync(cancellationToken);
             _logger.LogInformation("[index] Flush complete");
 
+            // Task 5.1: Validate the filetree service before building the tree.
+            await _fileTreeService.ValidateAsync(cancellationToken);
             // Task 8.11: Build tree from staged entries → create snapshot
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
             var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
