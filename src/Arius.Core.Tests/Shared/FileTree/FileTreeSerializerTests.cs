@@ -215,6 +215,14 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    public void ParsePersistedFileEntryLine_EmptyCreatedTimestamp_ThrowsFormatException()
+    {
+        var line = $"{NormalizeHash("abc")} F  {s_modified:O} broken.txt";
+
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParsePersistedFileEntryLine(line));
+    }
+
+    [Test]
     public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId("photos");

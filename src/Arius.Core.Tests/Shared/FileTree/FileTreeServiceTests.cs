@@ -210,6 +210,32 @@ public class FileTreeServiceTests
         }
     }
 
+    [Test]
+    public async Task ReadAsync_DownloadFailure_PropagatesExceptionWithoutHanging()
+    {
+        const string acct = "tc-read-failure", cont = "container";
+        var expected = new InvalidOperationException("download failed");
+        var blobs = new ThrowingDownloadBlobContainerService(expected);
+        var index = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            var hash = FakeFileTreeHash('f');
+
+            var ex = await Should.ThrowAsync<InvalidOperationException>(() => svc.ReadAsync(hash));
+
+            ex.Message.ShouldBe(expected.Message);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
     // ── 7.3  WriteAsync — Azure upload + disk cache write ────────────────────
 
     [Test]

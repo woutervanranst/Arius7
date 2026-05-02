@@ -102,6 +102,26 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    public async Task DisposeAsync_RemovesStagingRootImmediately()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await File.WriteAllTextAsync(Path.Combine(session.StagingRoot, "owned-by-first"), "first");
+
+            await session.DisposeAsync();
+
+            Directory.Exists(FileTreePaths.GetStagingRootDirectory(cacheDir)).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task AppendFileEntryAsync_WritesSingleNodeFilePerDirectoryId()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
