@@ -1,6 +1,5 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
-using System.Linq;
 using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
@@ -11,7 +10,7 @@ namespace Arius.Core.Shared.FileTree;
 public sealed class FileTreeBuilder
 {
     private const int SiblingSubtreeWorkers = 4;
-    private const int UploadWorkers = 4;
+    private const int UploadWorkers = 8;
     private const int UploadChannelCapacity = 16;
 
     private readonly IEncryptionService _encryption;
@@ -44,9 +43,7 @@ public sealed class FileTreeBuilder
     /// filetree blobs and returning the root tree hash. Returns <c>null</c> if the staging root
     /// contains no file entries.
     /// </summary>
-    public async Task<FileTreeHash?> SynchronizeAsync(
-        string stagingRoot,
-        CancellationToken cancellationToken = default)
+    public async Task<FileTreeHash?> SynchronizeAsync(string stagingRoot, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
