@@ -158,36 +158,6 @@ public sealed class FileTreeService
 
             return entries;
         }
-
-        static async Task WriteCacheAtomicallyAsync(string diskPath, byte[] plaintext, CancellationToken cancellationToken)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(diskPath)!);
-            var tempPath = Path.Combine(Path.GetDirectoryName(diskPath)!, $".{Path.GetFileName(diskPath)}.{Guid.NewGuid():N}.tmp");
-
-            try
-            {
-                await File.WriteAllBytesAsync(tempPath, plaintext, cancellationToken);
-
-                // Publish with an atomic replace/move so concurrent readers either see the old cache
-                // file or the complete new one, never a truncated intermediate file.
-                if (OperatingSystem.IsWindows() && File.Exists(diskPath))
-                    File.Replace(tempPath, diskPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
-                else
-                    File.Move(tempPath, diskPath, overwrite: true);
-            }
-            finally
-            {
-                try
-                {
-                    if (File.Exists(tempPath))
-                        File.Delete(tempPath);
-                }
-                catch
-                {
-                    // Best-effort temp cleanup only.
-                }
-            }
-        }
     }
 
     // ── WriteAsync ────────────────────────────────────────────────────────
@@ -222,7 +192,7 @@ public sealed class FileTreeService
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
         var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
-        await File.WriteAllBytesAsync(diskPath, payload.Plaintext.ToArray(), cancellationToken);
+        await WriteCacheAtomicallyAsync(diskPath, payload.Plaintext, cancellationToken);
     }
 
 
@@ -248,6 +218,36 @@ public sealed class FileTreeService
         using var       ms         = new MemoryStream();
         await gzipStream.CopyToAsync(ms, cancellationToken);
         return FileTreeSerializer.Deserialize(ms.ToArray());
+    }
+
+    private static async Task WriteCacheAtomicallyAsync(string diskPath, ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(diskPath)!);
+        var tempPath = Path.Combine(Path.GetDirectoryName(diskPath)!, $".{Path.GetFileName(diskPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, plaintext.ToArray(), cancellationToken);
+
+            // Publish with an atomic replace/move so concurrent readers either see the old cache
+            // file or the complete new one, never a truncated intermediate file.
+            if (OperatingSystem.IsWindows() && File.Exists(diskPath))
+                File.Replace(tempPath, diskPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            else
+                File.Move(tempPath, diskPath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+                // Best-effort temp cleanup only.
+            }
+        }
     }
 
     // ── ValidateAsync ────────────────────────────────────────────────────

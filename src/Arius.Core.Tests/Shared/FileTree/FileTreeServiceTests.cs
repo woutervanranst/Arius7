@@ -427,6 +427,32 @@ public class FileTreeServiceTests
     }
 
     [Test]
+    public async Task WriteCacheAtomicallyAsync_PublishesCompleteCacheFile()
+    {
+        var method = typeof(FileTreeService).GetMethod("WriteCacheAtomicallyAsync", BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.ShouldNotBeNull();
+
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"filetree-cache-{Guid.NewGuid():N}");
+        var diskPath = Path.Combine(cacheDir, "cache-entry");
+        var plaintext = FileTreeSerializer.Serialize(MakeEntries("atomic.txt", "12345678"));
+
+        try
+        {
+            var task = (Task)method.Invoke(null, [diskPath, (ReadOnlyMemory<byte>)plaintext, CancellationToken.None])!;
+            await task;
+
+            File.Exists(diskPath).ShouldBeTrue();
+            (await File.ReadAllBytesAsync(diskPath)).ShouldBe(plaintext);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task EnsureStoredAsync_PayloadOverload_WritesMissingTree()
     {
         var blobs = new FakeRecordingBlobContainerService();
