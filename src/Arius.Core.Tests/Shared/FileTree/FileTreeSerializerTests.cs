@@ -201,7 +201,7 @@ public class FileTreeSerializerTests
     [Test]
     public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
-        var directoryId = FileTreeStagingPaths.GetDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
 
         var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/");
 

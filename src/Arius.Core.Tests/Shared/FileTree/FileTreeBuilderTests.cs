@@ -157,7 +157,7 @@ public class FileTreeBuilderTests
 
     private static async Task WriteNodeLinesAsync(string stagingRoot, string directoryId, params string[] lines)
     {
-        await File.WriteAllLinesAsync(FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId), lines);
+        await File.WriteAllLinesAsync(FileTreePaths.GetStagingNodePath(stagingRoot, directoryId), lines);
     }
 
     [Test]
@@ -316,7 +316,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
             var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
                 Name = "a.txt",
@@ -360,8 +360,8 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var childId = FileTreeStagingPaths.GetDirectoryId("photos");
-            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
+            var childId = FileTreePaths.GetStagingDirectoryId("photos");
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
 
             await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir);
             await WriteNodeLinesAsync(

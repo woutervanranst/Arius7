@@ -60,7 +60,7 @@ public sealed class FileTreeBuilder
 
         try
         {
-            var rootHash = await BuildDirectoryAsync(FileTreeStagingPaths.GetDirectoryId(string.Empty), cancellationToken);
+            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(string.Empty), cancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
             return rootHash;
@@ -124,7 +124,7 @@ public sealed class FileTreeBuilder
 
         async Task<string[]> ReadNodeLinesAsync(string directoryId, CancellationToken ct)
         {
-            var path = FileTreeStagingPaths.GetNodePath(stagingRoot, directoryId);
+            var path = FileTreePaths.GetStagingNodePath(stagingRoot, directoryId);
             if (!File.Exists(path))
                 return []; // empty directory
 

@@ -79,8 +79,8 @@ internal sealed class FileTreeStagingWriter
 
     private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
-        var directoryId = FileTreeStagingPaths.GetDirectoryId(directoryPath);
-        var nodePath = FileTreeStagingPaths.GetNodePath(_stagingRoot, directoryId);
+        var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
+        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, directoryId);
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
@@ -91,8 +91,8 @@ internal sealed class FileTreeStagingWriter
             var parentPath    = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
             var directoryPath = string.Join('/', segments, 0, depth + 1);
             var directoryName = segments[depth] + "/";
-            var directoryId   = FileTreeStagingPaths.GetDirectoryId(directoryPath);
-            var nodePath      = FileTreeStagingPaths.GetNodePath(_stagingRoot, FileTreeStagingPaths.GetDirectoryId(parentPath));
+            var directoryId   = FileTreePaths.GetStagingDirectoryId(directoryPath);
+            var nodePath      = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
 
             await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
         }

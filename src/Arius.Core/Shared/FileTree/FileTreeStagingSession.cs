@@ -24,7 +24,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         Directory.CreateDirectory(fileTreeCacheDirectory);
 
-        var lockPath = FileTreeStagingPaths.GetLockPath(fileTreeCacheDirectory);
+        var lockPath = FileTreePaths.GetStagingLockPath(fileTreeCacheDirectory);
         FileStream lockStream;
 
         try
@@ -38,7 +38,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         try
         {
-            var stagingRoot = FileTreeStagingPaths.GetStagingRoot(fileTreeCacheDirectory);
+            var stagingRoot = FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory);
             if (Directory.Exists(stagingRoot))
                 Directory.Delete(stagingRoot, recursive: true);
 

@@ -76,7 +76,7 @@ public sealed class FileTreeService
     public async Task<IReadOnlyList<FileTreeEntry>> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
     {
         var hashText = hash.ToString();
-        var diskPath = Path.Combine(_diskCacheDir, hashText);
+        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
 
         // Avoid race conditions between concurrent readers and writers for the same hash by
         // coordinating via a per-hash in-flight task.
@@ -221,7 +221,7 @@ public sealed class FileTreeService
         }
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
-        var diskPath  = Path.Combine(_diskCacheDir, hashText);
+        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
         await File.WriteAllBytesAsync(diskPath, payload.Plaintext.ToArray(), cancellationToken);
     }
 
@@ -315,7 +315,7 @@ public sealed class FileTreeService
         {
             cancellationToken.ThrowIfCancellationRequested();
             var hash     = Path.GetFileName(blobName); // strip "filetrees/" prefix
-            var diskPath = Path.Combine(_diskCacheDir, hash);
+            var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hash);
             if (!File.Exists(diskPath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
@@ -352,6 +352,6 @@ public sealed class FileTreeService
         if (!_validated)
             throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
-        return File.Exists(Path.Combine(_diskCacheDir, hash.ToString()));
+        return File.Exists(FileTreePaths.GetCachePath(_diskCacheDir, hash));
     }
 }

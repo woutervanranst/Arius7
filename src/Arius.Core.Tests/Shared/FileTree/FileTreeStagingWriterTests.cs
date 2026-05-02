@@ -11,8 +11,8 @@ public class FileTreeStagingWriterTests
     [Test]
     public void GetDirectoryId_UsesCanonicalForwardSlashPath()
     {
-        var id1 = FileTreeStagingPaths.GetDirectoryId("photos/2024");
-        var id2 = FileTreeStagingPaths.GetDirectoryId("photos\\2024");
+        var id1 = FileTreePaths.GetStagingDirectoryId("photos/2024");
+        var id2 = FileTreePaths.GetStagingDirectoryId("photos\\2024");
 
         id1.ShouldBe(id2);
         id1.Length.ShouldBe(64);
@@ -26,16 +26,16 @@ public class FileTreeStagingWriterTests
     [Arguments("C:\\photos")]
     public void GetDirectoryId_RootedPath_Throws(string directoryPath)
     {
-        Should.Throw<ArgumentException>(() => FileTreeStagingPaths.GetDirectoryId(directoryPath));
+        Should.Throw<ArgumentException>(() => FileTreePaths.GetStagingDirectoryId(directoryPath));
     }
 
     [Test]
     public void GetNodePath_UsesFlatHashFilePath()
     {
         var stagingRoot = Path.Combine(Path.GetTempPath(), "arius-staging-test");
-        var dirId = FileTreeStagingPaths.GetDirectoryId("docs");
+        var dirId = FileTreePaths.GetStagingDirectoryId("docs");
 
-        var nodePath = FileTreeStagingPaths.GetNodePath(stagingRoot, dirId);
+        var nodePath = FileTreePaths.GetStagingNodePath(stagingRoot, dirId);
 
         nodePath.ShouldBe(Path.Combine(stagingRoot, dirId));
     }
@@ -46,7 +46,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            var stagingRoot = FileTreeStagingPaths.GetStagingRoot(cacheDir);
+            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheDir);
             Directory.CreateDirectory(stagingRoot);
             await File.WriteAllTextAsync(Path.Combine(stagingRoot, "stale"), "old");
 
@@ -112,10 +112,10 @@ public class FileTreeStagingWriterTests
 
             await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
 
-            var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
-            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
-            var rootPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId);
-            var photosPath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, photosId);
+            var photosId = FileTreePaths.GetStagingDirectoryId("photos");
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId);
+            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId);
             var line = (await File.ReadAllLinesAsync(photosPath)).Single();
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
@@ -141,12 +141,12 @@ public class FileTreeStagingWriterTests
 
             await writer.AppendFileEntryAsync("photos/2024/a.jpg", ContentHash.Parse(new string('b', 64)), TestTimestamp, TestTimestamp);
 
-            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
-            var photosId = FileTreeStagingPaths.GetDirectoryId("photos");
-            var photos2024Id = FileTreeStagingPaths.GetDirectoryId("photos/2024");
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var photosId = FileTreePaths.GetStagingDirectoryId("photos");
+            var photos2024Id = FileTreePaths.GetStagingDirectoryId("photos/2024");
 
-            var rootEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId));
-            var photosEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, photosId));
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId));
+            var photosEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId));
 
             rootEntries.ShouldContain($"{photosId} D photos/");
             photosEntries.ShouldContain($"{photos2024Id} D 2024/");
@@ -169,10 +169,10 @@ public class FileTreeStagingWriterTests
 
             await writer.AppendFileEntryAsync(" photos/a.jpg ", TestHash, TestTimestamp, TestTimestamp);
 
-            var rootId = FileTreeStagingPaths.GetDirectoryId(string.Empty);
-            var spacedDirectoryId = FileTreeStagingPaths.GetDirectoryId(" photos");
-            var rootEntries = await File.ReadAllLinesAsync(FileTreeStagingPaths.GetNodePath(session.StagingRoot, rootId));
-            var nodePath = FileTreeStagingPaths.GetNodePath(session.StagingRoot, spacedDirectoryId);
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var spacedDirectoryId = FileTreePaths.GetStagingDirectoryId(" photos");
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId));
+            var nodePath = FileTreePaths.GetStagingNodePath(session.StagingRoot, spacedDirectoryId);
             var line = (await File.ReadAllLinesAsync(nodePath)).Single(l => l.Contains(" F ", StringComparison.Ordinal));
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
