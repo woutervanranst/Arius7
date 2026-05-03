@@ -113,8 +113,8 @@ Because staging is append-only, the same staged directory edge can be written mu
 
 At the end of the archive pipeline, `ArchiveCommandHandler` waits for all chunk-related stages to complete and then runs this filetree tail in order:
 
-1. `_chunkIndex.FlushAsync(...)`
-2. `_fileTreeService.ValidateAsync(...)`
+1. `_fileTreeService.ValidateAsync(...)`
+2. `_chunkIndex.FlushAsync(...)`
 3. `new FileTreeBuilder(_encryption, _fileTreeService).SynchronizeAsync(stagingSession.StagingRoot, ...)`
 4. snapshot reuse or snapshot creation via `SnapshotService`
 
@@ -247,7 +247,6 @@ sequenceDiagram
     FSW->>FSW: Append F line to parent node file
 
     ACH->>ACH: Wait for upload pipeline to finish
-    ACH->>ACH: _chunkIndex.FlushAsync()
     ACH->>FTS: ValidateAsync()
     FTS->>Blob: List snapshots/
 
@@ -258,6 +257,8 @@ sequenceDiagram
         FTS->>FTS: create zero-byte marker files
         FTS->>FTS: delete chunk-index L2 and invalidate L1
     end
+
+    ACH->>ACH: _chunkIndex.FlushAsync()
 
     ACH->>FTB: SynchronizeAsync(stagingRoot)
     par recursive build
