@@ -179,102 +179,101 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
         try
         {
-            await using (stagingSession)
+            await using var session         = stagingSession;
+            using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
+            var             pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
+            var             pendingDeletes  = new ConcurrentBag<string>();
+
+            // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+            // Used by the dedup stage to detect duplicates within the same run before the
+            // index is updated.
+            var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
+
+            // Channels between stages (task 8.2)
+            var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
+            var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
+            var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
+            var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
+
+            // ── Register queue-depth getters (task 2.3) ──────────────────────
+            opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
+            opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
+
+            // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
+            _logger.LogInformation("[phase] enumerate");
+            var enumTask = Task.Run(async () =>
             {
-                using var stagingWriter = new FileTreeStagingWriter(stagingSession.StagingRoot);
-                var pendingPointers = new ConcurrentBag<(string FullPath, ContentHash Hash)>();
-                var pendingDeletes  = new ConcurrentBag<string>();
-
-                // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
-                // Used by the dedup stage to detect duplicates within the same run before the
-                // index is updated.
-                var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
-
-                // Channels between stages (task 8.2)
-                var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-                var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
-                var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-                var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-                var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
-                var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
-
-                // ── Register queue-depth getters (task 2.3) ──────────────────────
-                opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
-                opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
-
-                // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
-                _logger.LogInformation("[phase] enumerate");
-                var enumTask = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
-                        var  pairs      = enumerator.Enumerate(opts.RootDirectory);
-                        long count      = 0;
-                        long totalBytes = 0;
+                    var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
+                    var  pairs      = enumerator.Enumerate(opts.RootDirectory);
+                    long count      = 0;
+                    long totalBytes = 0;
 
-                        foreach (var pair in pairs)
-                        {
-                            count++;
-                            var fullPath = pair.BinaryExists
-                                ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
-                                : null;
-                            var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
-                            totalBytes += fileSize;
-                            await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
-                            await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
-                        }
-
-                        Interlocked.Add(ref filesScanned, count);
-                        await _mediator.Publish(new ScanCompleteEvent(count, totalBytes), cancellationToken);
-                        _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
-                    }
-                    finally
+                    foreach (var pair in pairs)
                     {
-                        filePairChannel.Writer.Complete();
+                        count++;
+                        var fullPath = pair.BinaryExists
+                            ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
+                            : null;
+                        var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
+                        totalBytes += fileSize;
+                        await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
+                        await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
                     }
-                }, cancellationToken);
+
+                    Interlocked.Add(ref filesScanned, count);
+                    await _mediator.Publish(new ScanCompleteEvent(count, totalBytes), cancellationToken);
+                    _logger.LogInformation("[scan] Enumeration complete: {Count} file(s) found", count);
+                }
+                finally
+                {
+                    filePairChannel.Writer.Complete();
+                }
+            }, cancellationToken);
 
             // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
             _logger.LogInformation("[phase] hash");
             var hashTask = Parallel.ForEachAsync(
-                filePairChannel.Reader.ReadAllAsync(cancellationToken),
-                new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
-                async (pair, ct) =>
-                {
-                    var fullBinaryPath = pair.BinaryExists
-                        ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
-                        : null;
-                    var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
-
-                    await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
-
-                    ContentHash contentHash;
-                    if (pair is { BinaryExists: false, PointerHash: not null })
+                    filePairChannel.Reader.ReadAllAsync(cancellationToken),
+                    new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
+                    async (pair, ct) =>
                     {
-                        // Pointer-only: use pointer hash directly (no re-hash)
-                        contentHash = pair.PointerHash.Value;
-                    }
-                    else if (pair.BinaryExists)
-                    {
-                        await using var fs           = File.OpenRead(fullBinaryPath!);
-                        var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
-                        await using var ps           = new ProgressStream(fs, hashProgress);
-                        contentHash = await _encryption.ComputeHashAsync(ps, ct);
-                    }
-                    else
-                    {
-                        // No binary and no pointer hash → skip
-                        _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
-                        return;
-                    }
+                        var fullBinaryPath = pair.BinaryExists
+                            ? Path.Combine(opts.RootDirectory, pair.RelativePath.Replace('/', Path.DirectorySeparatorChar))
+                            : null;
+                        var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
 
-                    await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
+                        await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
-                    _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
+                        ContentHash contentHash;
+                        if (pair is { BinaryExists: false, PointerHash: not null })
+                        {
+                            // Pointer-only: use pointer hash directly (no re-hash)
+                            contentHash = pair.PointerHash.Value;
+                        }
+                        else if (pair.BinaryExists)
+                        {
+                            await using var fs           = File.OpenRead(fullBinaryPath!);
+                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                            await using var ps           = new ProgressStream(fs, hashProgress);
+                            contentHash = await _encryption.ComputeHashAsync(ps, ct);
+                        }
+                        else
+                        {
+                            // No binary and no pointer hash → skip
+                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
+                            return;
+                        }
 
-                    await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, opts.RootDirectory), ct);
-                })
+                        await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
+
+                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
+
+                        await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, opts.RootDirectory), ct);
+                    })
                 .ContinueWith(_ => hashedChannel.Writer.Complete(), CancellationToken.None);
 
             // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
@@ -423,8 +422,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         if (tarWriter is null)
                         {
                             currentTarPath = Path.GetTempFileName();
-                            tarStream = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
-                            tarWriter = new TarWriter(tarStream, leaveOpen: false);
+                            tarStream      = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                            tarWriter      = new TarWriter(tarStream, leaveOpen: false);
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
 
@@ -585,17 +584,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
-                return new ArchiveResult
-                {
-                    Success       = true,
-                    FilesScanned  = filesScanned,
-                    FilesUploaded = filesUploaded,
-                    FilesDeduped  = filesDeduped,
-                    TotalSize     = totalSize,
-                    RootHash      = snapshotRootHash,
-                    SnapshotTime  = snapshotTime
-                };
-            }
+            return new ArchiveResult
+            {
+                Success       = true,
+                FilesScanned  = filesScanned,
+                FilesUploaded = filesUploaded,
+                FilesDeduped  = filesDeduped,
+                TotalSize     = totalSize,
+                RootHash      = snapshotRootHash,
+                SnapshotTime  = snapshotTime
+            };
         }
         catch (Exception ex)
         {
