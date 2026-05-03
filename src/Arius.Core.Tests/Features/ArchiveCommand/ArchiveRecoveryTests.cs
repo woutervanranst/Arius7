@@ -2,7 +2,6 @@ using System.Formats.Tar;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
-using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 

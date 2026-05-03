@@ -21,7 +21,6 @@ internal sealed class FileTreeStagingWriter
     }
 
     internal int LockStripeCount => _lockStripes.Length;
-    internal int ActiveLockCount => _lockStripes.Length;
 
     public async Task AppendFileEntryAsync(
         string filePath,
