@@ -3,16 +3,13 @@
 Filetrees are Arius's immutable [Merkle-tree](https://en.wikipedia.org/wiki/Merkle_tree) representation of repository structure. A snapshot does not point at individual files directly; it points at one root `FileTreeHash`, and that root expands into directory nodes whose leaves are `FileEntry` records containing `ContentHash` values.
 
 ```mermaid
-flowchart TD
-    S["Snapshot"] --> R["root FileTreeHash"]
-    R --> DE["DirectoryEntry\nname: docs/\nchild: FileTreeHash"]
-    R --> FE["FileEntry\nname: readme.md\ncontent: ContentHash"]
-    DE --> C["child FileTreeHash"]
-    C --> FE2["FileEntry\nname: plan.md\ncontent: ContentHash"]
-    FE --> CH1["ContentHash"]
-    FE2 --> CH2["ContentHash"]
-    CH1 --> CK1["Chunk\nstores file bytes"]
-    CH2 --> CK2["Chunk\nstores file bytes"]
+flowchart TB
+    S["Snapshot"] --> N["root FileTree node"]
+    N -- contains --> DE["DirectoryEntry"] & FE["FileEntry"]
+    FE --> CH["ContentHash"]
+    CH --> CK["Chunk"]
+    DE --> H["child FileTreeHash"]
+    H -. resolves to another .-> N
 ```
 
 This document explains the current archive-time filetree pipeline in code:
