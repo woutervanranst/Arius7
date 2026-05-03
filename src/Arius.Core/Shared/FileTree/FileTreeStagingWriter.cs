@@ -12,7 +12,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     public FileTreeStagingWriter(string stagingRoot)
     {
-        ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(stagingRoot);
         _stagingRoot = stagingRoot;
         _lockStripes = Enumerable.Range(0, StripeCount)
             .Select(_ => new SemaphoreSlim(1, 1))
