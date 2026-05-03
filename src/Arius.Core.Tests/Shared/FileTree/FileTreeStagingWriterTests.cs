@@ -16,7 +16,7 @@ public class FileTreeStagingWriterTests
 
         id1.ShouldBe(id2);
         id1.Length.ShouldBe(64);
-        id1.ShouldAllBe(c => Uri.IsHexDigit(c));
+        id1.ShouldAllBe(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
     }
 
     [Test]
