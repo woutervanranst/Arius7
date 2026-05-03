@@ -2,6 +2,10 @@
 
 Filetrees are Arius's immutable [Merkle-tree](https://en.wikipedia.org/wiki/Merkle_tree) representation of repository structure. A snapshot does not point at individual files directly; it points at one root `FileTreeHash`, and that root expands into directory nodes whose leaves are `FileEntry` records containing `ContentHash` values.
 
+This document covers the general filetree model first, then the current archive-time pipeline that builds and stores filetrees.
+
+## Concepts
+
 ```mermaid
 flowchart TB
     S["Snapshot"] --> N["root FileTree node"]
@@ -12,7 +16,61 @@ flowchart TB
     H -. resolves to another .-> N
 ```
 
-This document explains the current archive-time filetree pipeline in code:
+At a conceptual level:
+
+- a `Snapshot` points at one root `FileTreeHash`
+- a filetree node contains `DirectoryEntry` and `FileEntry` values
+- a `DirectoryEntry` points at another `FileTreeHash`
+- a `FileEntry` contains a `ContentHash`, which points at a chunk that stores the file bytes
+
+## Paths and storage layout
+
+| Location | Owner | Purpose |
+| --- | --- | --- |
+| `~/.arius/{account}-{container}/filetrees/.staging/` | `FileTreeStagingSession` + `FileTreeStagingWriter` | Temporary per-run staging graph. One file per staged directory id. |
+| `~/.arius/{account}-{container}/filetrees/.staging.lock` | `FileTreeStagingSession` | Local mutual exclusion. Prevents two local archive runs from sharing the same staging area. |
+| `~/.arius/{account}-{container}/filetrees/{fileTreeHash}` | `FileTreeService` | Final non-staging plaintext cache of one immutable filetree node. Zero-byte files are remote-existence markers. |
+| `filetrees/{fileTreeHash}` in blob storage | `FileTreeService` | Final persisted filetree blob: canonical plaintext, gzip-compressed, then optionally encrypted. |
+| `~/.arius/{account}-{container}/snapshots/{timestamp}` | `SnapshotService` | Latest local snapshot cache, used by `FileTreeService.ValidateAsync()` to decide whether local filetree knowledge is trustworthy. |
+
+The repository-local roots come from `RepositoryPaths`. Filetree-specific path helpers live in `FileTreePaths`.
+
+## Types and responsibilities
+
+| Type | Responsibility |
+| --- | --- |
+| `FilePair` | Local archive-time view of one path: binary-only, pointer-only, or both. Produced by `LocalFileEnumerator`. |
+| `HashedFilePair` | `FilePair` plus resolved `ContentHash`. This is the file-level payload that reaches `WriteFileTreeEntry(...)`. |
+| `FileToUpload` | A `HashedFilePair` that still needs upload, plus size for routing into large-file or tar upload paths. |
+| `TarEntry` / `SealedTar` | Small-file upload bookkeeping. After tar upload finishes, each entry is written to filetree staging. |
+| `FileTreeStagingSession` | Owns `.staging/` lifetime and `.staging.lock`. Clears stale staging and guarantees one local staging session per repository cache. |
+| `FileTreeStagingWriter` | Converts canonical relative file paths into append-only staged node files. Writes staged ancestor directory lines and leaf file lines. |
+| `FileTreePaths` | Computes staged directory ids, staging node paths, lock paths, and final cache paths. |
+| `FileTreeEntry` | Base type for entries inside a filetree node. |
+| `FileEntry` | Final file leaf: `Name`, `ContentHash`, `Created`, `Modified`. |
+| `DirectoryEntry` | Final persisted child-directory edge: `Name` plus child `FileTreeHash`. |
+| `StagedDirectoryEntry` | Staged-only child-directory edge: `Name` plus child staging directory id. Used only before child hashes are known. |
+| `FileTreeSerializer` | Canonical text serialization and parsing for filetree nodes. Parses persisted lines and staged lines into the correct subtype. |
+| `FileTreeBuilder` | Reads staged node files, validates duplicates, recursively builds child subtrees, serializes canonical plaintext, computes `FileTreeHash`, and publishes completed nodes to the upload channel. |
+| `FileTreeService` | Validates local knowledge of remote filetrees, answers `ExistsInRemote(...)`, uploads finished nodes, writes the final disk cache, and reads persisted nodes back later. |
+| `ChunkIndexService` | Not part of filetree structure itself, but the filetree tail depends on it. `ValidateAsync(...)` invalidates its caches on snapshot mismatch so stale dedup state is not trusted. |
+| `SnapshotService` | Publishes the commit point for the archive by recording the root `FileTreeHash` after all referenced filetrees are stored. |
+| `IBlobContainerService` | Low-level storage boundary used by `FileTreeService` for remote listing, download, and upload. |
+| `IEncryptionService` | Supplies filetree hashing and storage encryption/decryption streams. The builder uses it for `FileTreeHash` calculation; the service uses it for persisted blob encoding. |
+
+## Important invariants
+
+- `ValidateAsync(...)` must run before `SynchronizeAsync(...)`, because `ExistsInRemote(...)` throws if validation has not happened.
+- Staging uses path-derived directory ids, not final `FileTreeHash` values.
+- Final filetree blobs are immutable and content-addressed by `FileTreeHash`.
+- Empty directories are omitted from the final tree.
+- Duplicate file names in one staged node are invalid.
+- Duplicate directory edges are allowed only when they are byte-for-byte the same logical edge.
+- Snapshot creation happens only after filetree uploads have finished.
+
+## Archive-Time Flow
+
+The current archive-time pipeline in code is:
 
 - `ArchiveCommandHandler` decides when file entries are staged and when tree building starts.
 - `FileTreeBuilder` turns staged directory-node files into final immutable filetree nodes.
@@ -35,18 +93,6 @@ flowchart TD
     F --> L["root FileTreeHash"]
     L --> M["SnapshotService.CreateAsync or reuse latest"]
 ```
-
-## Paths and storage layout
-
-| Location | Owner | Purpose |
-| --- | --- | --- |
-| `~/.arius/{account}-{container}/filetrees/.staging/` | `FileTreeStagingSession` + `FileTreeStagingWriter` | Temporary per-run staging graph. One file per staged directory id. |
-| `~/.arius/{account}-{container}/filetrees/.staging.lock` | `FileTreeStagingSession` | Local mutual exclusion. Prevents two local archive runs from sharing the same staging area. |
-| `~/.arius/{account}-{container}/filetrees/{fileTreeHash}` | `FileTreeService` | Final non-staging plaintext cache of one immutable filetree node. Zero-byte files are remote-existence markers. |
-| `filetrees/{fileTreeHash}` in blob storage | `FileTreeService` | Final persisted filetree blob: canonical plaintext, gzip-compressed, then optionally encrypted. |
-| `~/.arius/{account}-{container}/snapshots/{timestamp}` | `SnapshotService` | Latest local snapshot cache, used by `FileTreeService.ValidateAsync()` to decide whether local filetree knowledge is trustworthy. |
-
-The repository-local roots come from `RepositoryPaths`. Filetree-specific path helpers live in `FileTreePaths`.
 
 ## End-to-end archive flow
 
@@ -297,42 +343,11 @@ sequenceDiagram
     end
 ```
 
-## Types and responsibilities
+## Restore
 
-| Type | Responsibility |
-| --- | --- |
-| `FilePair` | Local archive-time view of one path: binary-only, pointer-only, or both. Produced by `LocalFileEnumerator`. |
-| `HashedFilePair` | `FilePair` plus resolved `ContentHash`. This is the file-level payload that reaches `WriteFileTreeEntry(...)`. |
-| `FileToUpload` | A `HashedFilePair` that still needs upload, plus size for routing into large-file or tar upload paths. |
-| `TarEntry` / `SealedTar` | Small-file upload bookkeeping. After tar upload finishes, each entry is written to filetree staging. |
-| `FileTreeStagingSession` | Owns `.staging/` lifetime and `.staging.lock`. Clears stale staging and guarantees one local staging session per repository cache. |
-| `FileTreeStagingWriter` | Converts canonical relative file paths into append-only staged node files. Writes staged ancestor directory lines and leaf file lines. |
-| `FileTreePaths` | Computes staged directory ids, staging node paths, lock paths, and final cache paths. |
-| `FileTreeEntry` | Base type for entries inside a filetree node. |
-| `FileEntry` | Final file leaf: `Name`, `ContentHash`, `Created`, `Modified`. |
-| `DirectoryEntry` | Final persisted child-directory edge: `Name` plus child `FileTreeHash`. |
-| `StagedDirectoryEntry` | Staged-only child-directory edge: `Name` plus child staging directory id. Used only before child hashes are known. |
-| `FileTreeSerializer` | Canonical text serialization and parsing for filetree nodes. Parses persisted lines and staged lines into the correct subtype. |
-| `FileTreeBuilder` | Reads staged node files, validates duplicates, recursively builds child subtrees, serializes canonical plaintext, computes `FileTreeHash`, and publishes completed nodes to the upload channel. |
-| `FileTreeService` | Validates local knowledge of remote filetrees, answers `ExistsInRemote(...)`, uploads finished nodes, writes the final disk cache, and reads persisted nodes back later. |
-| `ChunkIndexService` | Not part of filetree structure itself, but the filetree tail depends on it. `ValidateAsync(...)` invalidates its caches on snapshot mismatch so stale dedup state is not trusted. |
-| `SnapshotService` | Publishes the commit point for the archive by recording the root `FileTreeHash` after all referenced filetrees are stored. |
-| `IBlobContainerService` | Low-level storage boundary used by `FileTreeService` for remote listing, download, and upload. |
-| `IEncryptionService` | Supplies filetree hashing and storage encryption/decryption streams. The builder uses it for `FileTreeHash` calculation; the service uses it for persisted blob encoding. |
+`ls` and `restore` both read filetrees through `FileTreeService`.
 
-## Important invariants
-
-- `ValidateAsync(...)` must run before `SynchronizeAsync(...)`, because `ExistsInRemote(...)` throws if validation has not happened.
-- Staging uses path-derived directory ids, not final `FileTreeHash` values.
-- Final filetree blobs are immutable and content-addressed by `FileTreeHash`.
-- Empty directories are omitted from the final tree.
-- Duplicate file names in one staged node are invalid.
-- Duplicate directory edges are allowed only when they are byte-for-byte the same logical edge.
-- Snapshot creation happens only after filetree uploads have finished.
-
-## Read path after archive
-
-The same `FileTreeService` is later used by `ls` and `restore`.
+Full restore-path documentation is future work. The notes below capture the current high-level read behavior.
 
 - `ReadAsync(hash)` first checks `filetrees/{hash}` on disk.
 - non-empty cache file: deserialize and return immediately
