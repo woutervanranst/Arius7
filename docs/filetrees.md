@@ -39,13 +39,8 @@ The repository-local roots come from `RepositoryPaths`. Filetree-specific path h
 
 | Type | Responsibility |
 | --- | --- |
-| `FilePair` | Local archive-time view of one path: binary-only, pointer-only, or both. Produced by `LocalFileEnumerator`. |
-| `HashedFilePair` | `FilePair` plus resolved `ContentHash`. This is the file-level payload that reaches `WriteFileTreeEntry(...)`. |
-| `FileToUpload` | A `HashedFilePair` that still needs upload, plus size for routing into large-file or tar upload paths. |
-| `TarEntry` / `SealedTar` | Small-file upload bookkeeping. After tar upload finishes, each entry is written to filetree staging. |
 | `FileTreeStagingSession` | Owns `.staging/` lifetime and `.staging.lock`. Clears stale staging and guarantees one local staging session per repository cache. |
 | `FileTreeStagingWriter` | Converts canonical relative file paths into append-only staged node files. Writes staged ancestor directory lines and leaf file lines. |
-| `FileTreePaths` | Computes staged directory ids, staging node paths, lock paths, and final cache paths. |
 | `FileTreeEntry` | Base type for entries inside a filetree node. |
 | `FileEntry` | Final file leaf: `Name`, `ContentHash`, `Created`, `Modified`. |
 | `DirectoryEntry` | Final persisted child-directory edge: `Name` plus child `FileTreeHash`. |
@@ -53,10 +48,7 @@ The repository-local roots come from `RepositoryPaths`. Filetree-specific path h
 | `FileTreeSerializer` | Canonical text serialization and parsing for filetree nodes. Parses persisted lines and staged lines into the correct subtype. |
 | `FileTreeBuilder` | Reads staged node files, validates duplicates, recursively builds child subtrees, serializes canonical plaintext, computes `FileTreeHash`, and publishes completed nodes to the upload channel. |
 | `FileTreeService` | Validates local knowledge of remote filetrees, answers `ExistsInRemote(...)`, uploads finished nodes, writes the final disk cache, and reads persisted nodes back later. |
-| `ChunkIndexService` | Not part of filetree structure itself, but the filetree tail depends on it. `ValidateAsync(...)` invalidates its caches on snapshot mismatch so stale dedup state is not trusted. |
 | `SnapshotService` | Publishes the commit point for the archive by recording the root `FileTreeHash` after all referenced filetrees are stored. |
-| `IBlobContainerService` | Low-level storage boundary used by `FileTreeService` for remote listing, download, and upload. |
-| `IEncryptionService` | Supplies filetree hashing and storage encryption/decryption streams. The builder uses it for `FileTreeHash` calculation; the service uses it for persisted blob encoding. |
 
 ## Important invariants
 
