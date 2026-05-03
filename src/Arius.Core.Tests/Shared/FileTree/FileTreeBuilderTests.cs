@@ -145,6 +145,42 @@ public class FileTreeBuilderTests
         }
     }
 
+    private sealed class FaultingAndBlockingFileTreeUploadBlobContainerService : IBlobContainerService
+    {
+        private readonly TaskCompletionSource<bool> _blockedUploads = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _fileTreeUploads;
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+        {
+            if (!blobName.StartsWith(BlobPaths.FileTrees, StringComparison.Ordinal))
+                return;
+
+            if (Interlocked.Increment(ref _fileTreeUploads) == 1)
+                throw new InvalidOperationException("Simulated filetree upload failure.");
+
+            await _blockedUploads.Task.WaitAsync(cancellationToken);
+        }
+
+        public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new BlobMetadata { Exists = false });
+
+        public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
+            AsyncEnumerable.Empty<string>();
+
+        public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     private static FileTreeBuilder CreateBuilder(
         IBlobContainerService blobs,
         string accountName,
@@ -564,6 +600,46 @@ public class FileTreeBuilderTests
             var root = await synchronizeTask.WaitAsync(TimeSpan.FromSeconds(5));
             root.ShouldNotBeNull();
             sawTwoConcurrentStarts.ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_CancelsProducerWhenUploadWorkerFaults()
+    {
+        const string accountName = "acc-upload-failure";
+        const string containerName = "con-upload-failure";
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
+        if (Directory.Exists(cacheDir))
+            Directory.Delete(cacheDir, recursive: true);
+
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            const string hexChars = "0123456789abcdef";
+            var files = Enumerable.Range(0, 32)
+                .Select(i => (
+                    Path: $"dir-{i:D2}/file.txt",
+                    Hash: FakeContentHash(hexChars[i % hexChars.Length]),
+                    Created: now,
+                    Modified: now))
+                .ToArray();
+
+            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, files)).Session;
+
+            var blobs = new FaultingAndBlockingFileTreeUploadBlobContainerService();
+            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await builder.SynchronizeAsync(stagingSession.StagingRoot).WaitAsync(TimeSpan.FromSeconds(5)));
+
+            ex.ShouldNotBeNull();
+            ex.Message.ShouldContain("Simulated filetree upload failure.");
         }
         finally
         {

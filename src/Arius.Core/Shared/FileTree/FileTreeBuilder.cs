@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
@@ -47,35 +48,46 @@ public sealed class FileTreeBuilder
     {
         ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
 
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var workerCancellationToken = linkedCts.Token;
+        ExceptionDispatchInfo? uploadFailure = null;
+
         var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext)>(UploadChannelCapacity);
-        var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(cancellationToken),
-            new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = UploadWorkers },
+        var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(workerCancellationToken),
+            new ParallelOptions { CancellationToken = workerCancellationToken, MaxDegreeOfParallelism = UploadWorkers },
             async (node, ct) =>
             {
-                await _fileTreeService.EnsureStoredAsync(node, ct);
+                try
+                {
+                    await _fileTreeService.EnsureStoredAsync(node, ct);
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.CompareExchange(ref uploadFailure, ExceptionDispatchInfo.Capture(ex), null);
+                    linkedCts.Cancel();
+                    throw;
+                }
             });
 
         try
         {
             // Recursively build the FileTree starting from the root
             var rootPath = string.Empty;
-            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(rootPath), cancellationToken);
+            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(rootPath), workerCancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
             return rootHash;
         }
+        catch (OperationCanceledException) when (uploadFailure is not null && !cancellationToken.IsCancellationRequested)
+        {
+            await ObserveUploadTaskAsync(uploadFailure.SourceException);
+
+            uploadFailure.Throw();
+            throw new InvalidOperationException("Upload failure should have been rethrown.");
+        }
         catch (Exception ex)
         {
-            uploadChannel.Writer.TryComplete(ex);
-            try
-            {
-                await uploadTask;
-            }
-            catch (Exception uploadException)
-            {
-                // Preserve the original build failure while retaining the upload failure for diagnosis.
-                ex.Data["FileTreeUploadFailure"] = uploadException;
-            }
+            await ObserveUploadTaskAsync(ex);
 
             throw;
         }
@@ -163,6 +175,25 @@ public sealed class FileTreeBuilder
             }
 
             return ([.. fileEntries.Values], [.. directoryEntries.Values]);
+        }
+
+        async Task ObserveUploadTaskAsync(Exception primaryException)
+        {
+            uploadChannel.Writer.TryComplete(primaryException);
+
+            try
+            {
+                await uploadTask;
+            }
+            catch (OperationCanceledException) when (uploadFailure is not null && !cancellationToken.IsCancellationRequested)
+            {
+                primaryException.Data["SuppressedUploadCancellation"] = true;
+            }
+            catch (Exception uploadException) when (!ReferenceEquals(uploadException, primaryException))
+            {
+                // Preserve the original build failure while retaining the upload failure for diagnosis.
+                primaryException.Data["FileTreeUploadFailure"] = uploadException;
+            }
         }
     }
 }
