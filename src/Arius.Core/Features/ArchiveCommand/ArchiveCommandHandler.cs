@@ -122,6 +122,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
 
         // ── Ensure container exists ───────────────────────────────────────────
+        _logger.LogInformation("[phase] ensure-container");
         await _blobs.CreateContainerIfNotExistsAsync(cancellationToken);
 
         // Validate options (task 8.13)
@@ -153,6 +154,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
         try
         {
+            _logger.LogInformation("[phase] open-staging");
             stagingSession = await _openStagingSession(stagingCacheDirectory, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -201,6 +203,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
 
                 // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
+                _logger.LogInformation("[phase] enumerate");
                 var enumTask = Task.Run(async () =>
                 {
                     try
@@ -233,6 +236,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }, cancellationToken);
 
             // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
+            _logger.LogInformation("[phase] hash");
             var hashTask = Parallel.ForEachAsync(
                 filePairChannel.Reader.ReadAllAsync(cancellationToken),
                 new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
@@ -274,6 +278,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 .ContinueWith(_ => hashedChannel.Writer.Complete(), CancellationToken.None);
 
             // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
+            _logger.LogInformation("[phase] dedup-route");
             var dedupTask = Task.Run(async () =>
             {
                 try
@@ -334,6 +339,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }, cancellationToken);
 
             // ── Stage 4a: Large file upload ×N (task 8.7) ─────────────────────
+            _logger.LogInformation("[phase] large-upload");
             var largeUploadTask = Parallel.ForEachAsync(
                 largeChannel.Reader.ReadAllAsync(cancellationToken),
                 new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
@@ -370,6 +376,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 });
 
             // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
+            _logger.LogInformation("[phase] tar-build");
             var tarBuilderTask = Task.Run(async () =>
             {
                 try
@@ -453,6 +460,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }, cancellationToken);
 
             // ── Stage 4c: Tar upload ×N (task 8.9) ────────────────────────────
+            _logger.LogInformation("[phase] tar-upload");
             var tarUploadTask = Parallel.ForEachAsync(
                 sealedTarChannel.Reader.ReadAllAsync(cancellationToken),
                 new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
@@ -500,6 +508,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 });
 
             // Wait for all upload stages to complete
+            _logger.LogInformation("[phase] await-workers");
             await largeUploadTask;
             await tarBuilderTask;
             await tarUploadTask;
@@ -509,21 +518,20 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
-            _logger.LogInformation("[phase] tail validate-filetrees");
+            _logger.LogInformation("[phase] validate-filetrees");
             await _fileTreeService.ValidateAsync(cancellationToken);
 
             // Task 8.10: Index flush
-            _logger.LogInformation("[phase] tail flush-index");
+            _logger.LogInformation("[phase] flush-index");
             await _chunkIndex.FlushAsync(cancellationToken);
-            _logger.LogInformation("[index] Flush complete");
 
             // Task 8.11: Build tree from staged entries → create snapshot
-            _logger.LogInformation("[phase] tail build-filetree");
+            _logger.LogInformation("[phase] build-filetree");
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
             var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
-            _logger.LogInformation("[phase] tail snapshot");
+            _logger.LogInformation("[phase] snapshot");
             if (rootHash is not null)
             {
                 var latestSnapshot = await _snapshotSvc.ResolveAsync(cancellationToken: cancellationToken);
@@ -545,7 +553,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // Task 8.12: Write pointer files ×N in parallel
-            _logger.LogInformation("[phase] tail write-pointers");
+            _logger.LogInformation("[phase] write-pointers");
             if (!opts.NoPointers)
             {
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
@@ -557,7 +565,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // Task 8.13: Remove local binary files
-            _logger.LogInformation("[phase] tail delete-local");
+            _logger.LogInformation("[phase] delete-local");
             if (opts.RemoveLocal)
             {
                 foreach (var path in pendingDeletes)
@@ -573,7 +581,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }
 
-            _logger.LogInformation("[phase] tail complete");
+            _logger.LogInformation("[phase] complete");
 
             _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} size={Size} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 

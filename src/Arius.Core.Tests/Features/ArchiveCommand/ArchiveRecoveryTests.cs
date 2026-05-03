@@ -79,7 +79,7 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_NewContent_EmitsTailPhaseTimingLogs()
+    public async Task Archive_NewContent_EmitsConsistentPhaseTimingLogs()
     {
         using var env = new ArchiveTestEnvironment();
         env.WriteRandomFile("docs/readme.txt", 1024);
@@ -91,16 +91,24 @@ public class ArchiveRecoveryTests
         var messages = env.ArchiveLogs
             .GetSnapshot(clear: false)
             .Select(static record => record.Message)
-            .Where(static message => message.Contains("[phase] tail", StringComparison.Ordinal))
             .ToArray();
 
-        messages.ShouldContain(message => message.Contains("[phase] tail validate-filetrees", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail flush-index", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail build-filetree", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail snapshot", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail write-pointers", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail delete-local", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tail complete", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] ensure-container", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] open-staging", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] enumerate", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] hash", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] dedup-route", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] large-upload", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tar-build", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] flush-index", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] build-filetree", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] complete", StringComparison.Ordinal));
     }
 
     [Test]
