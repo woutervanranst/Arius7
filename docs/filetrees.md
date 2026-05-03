@@ -146,7 +146,9 @@ On the slow path, `ValidateAsync(...)`:
 - deletes all chunk-index L2 files
 - calls `ChunkIndexService.InvalidateL1()`
 
-Those empty files are marker files. They mean: "this `FileTreeHash` exists remotely, but the plaintext node has not been downloaded to disk yet." After validation, `ExistsInRemote(hash)` is just `File.Exists(...)`, and marker files count as true.
+Those empty files are marker files. They mean: "this `FileTreeHash` exists remotely, but the plaintext node has not been downloaded to disk yet." This is safe because filetrees are immutable, content-addressed Merkle nodes: once `filetrees/{hash}` exists remotely, that existence fact stays true for that hash and the blob's meaning cannot drift underneath the marker file. After validation, `ExistsInRemote(hash)` is just `File.Exists(...)`, and marker files count as true.
+
+This is also the performance optimization. `FileTreeBuilder` asks `ExistsInRemote(...)` for each completed directory node. Without marker files, that would require a remote existence check per node on snapshot mismatch, which is very slow. Instead, Arius pays for one `ListAsync(filetrees/)` walk up front, materializes local markers for all known remote hashes, and then serves the rest of the run's existence checks from the local filesystem.
 
 ## Recursive build and upload
 

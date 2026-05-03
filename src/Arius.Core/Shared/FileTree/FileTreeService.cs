@@ -311,6 +311,10 @@ public sealed class FileTreeService
 
         // Slow path: snapshot mismatch (or no local snapshot at all).
         // Materialize empty marker files for all remote filetree blobs not yet cached.
+        //   Filetree blobs are immutable and content-addressed, so one remote list gives us a
+        //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
+        //   any uncached remote trees now so ExistsInRemote() can stay a cheap local File.Exists()
+        //   check during the entire build instead of doing a remote existence probe per tree node.
         await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTrees, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
