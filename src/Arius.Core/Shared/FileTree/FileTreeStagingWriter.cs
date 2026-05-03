@@ -2,14 +2,13 @@ using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 
-internal sealed class FileTreeStagingWriter
-    : IDisposable
+internal sealed class FileTreeStagingWriter : IDisposable
 {
-    private const int StripeCount = 256;
+    private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
     private readonly SemaphoreSlim[] _lockStripes;
-    private readonly string _stagingRoot;
-    private bool _disposed;
+    private readonly string          _stagingRoot;
+    private          bool            _disposed;
 
     public FileTreeStagingWriter(string stagingRoot)
     {
