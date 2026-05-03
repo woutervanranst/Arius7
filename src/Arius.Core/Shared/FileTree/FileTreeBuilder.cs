@@ -97,8 +97,7 @@ public sealed class FileTreeBuilder
         {
             ct.ThrowIfCancellationRequested();
 
-            var lines = await ReadNodeLinesAsync(directoryId, ct);
-            var (fileEntries, stagedDirectoryEntries) = ReadNodeEntries(lines);
+            var (fileEntries, stagedDirectoryEntries) = await ReadNodeEntriesAsync(ReadNodeLinesAsync(directoryId, ct), ct);
             if (fileEntries.Empty() && stagedDirectoryEntries.Empty())
                 return null;
 
@@ -133,48 +132,14 @@ public sealed class FileTreeBuilder
             return hash;
         }
 
-        async Task<string[]> ReadNodeLinesAsync(string directoryId, CancellationToken ct)
+        async IAsyncEnumerable<string> ReadNodeLinesAsync(string directoryId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
             var path = FileTreePaths.GetStagingNodePath(stagingRoot, directoryId);
             if (!File.Exists(path))
-                return []; // empty directory
+                yield break; // empty directory
 
-            return await File.ReadAllLinesAsync(path, ct);
-        }
-
-        static (FileEntry[] FileEntries, StagedDirectoryEntry[] DirectoryEntries) ReadNodeEntries(IEnumerable<string> lines)
-        {
-            var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
-            var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                switch (FileTreeSerializer.ParseStagedNodeEntryLine(line))
-                {
-                    case FileEntry fileEntry:
-                        if (!fileEntries.TryAdd(fileEntry.Name, fileEntry))
-                            throw new InvalidOperationException($"Duplicate staged file entry '{fileEntry.Name}'.");
-                        break;
-
-                    case StagedDirectoryEntry stagedDirectoryEntry:
-                        if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
-                        {
-                            // the file is append only, directories are added when a file is added so a directoryEntry can appear multiple times, but it should be the same line every time
-                            if (!string.Equals(existingDirectoryEntry.DirectoryNameHash, stagedDirectoryEntry.DirectoryNameHash, StringComparison.Ordinal))
-                                throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
-
-                            break;
-                        }
-
-                        directoryEntries.Add(stagedDirectoryEntry.Name, stagedDirectoryEntry);
-                        break;
-                }
-            }
-
-            return ([.. fileEntries.Values], [.. directoryEntries.Values]);
+            await foreach (var line in File.ReadLinesAsync(path, ct))
+                yield return line;
         }
 
         async Task ObserveUploadTaskAsync(Exception primaryException)
@@ -195,5 +160,43 @@ public sealed class FileTreeBuilder
                 primaryException.Data["FileTreeUploadFailure"] = uploadException;
             }
         }
+    }
+
+    internal static async Task<(FileEntry[] FileEntries, StagedDirectoryEntry[] DirectoryEntries)> ReadNodeEntriesAsync(IAsyncEnumerable<string> lines, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
+        var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
+
+        await foreach (var line in lines.WithCancellation(cancellationToken))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            switch (FileTreeSerializer.ParseStagedNodeEntryLine(line))
+            {
+                case FileEntry fileEntry:
+                    // Add it. Files are unique in a directory so that should not fail. If it does, that's an exception.
+                    if (!fileEntries.TryAdd(fileEntry.Name, fileEntry))
+                        throw new InvalidOperationException($"Duplicate staged file entry '{fileEntry.Name}'.");
+                    break;
+
+                case StagedDirectoryEntry stagedDirectoryEntry:
+                    // Directories are added when a file is added, so a DirectoryEntry can appear multiple times, but it should be identical. If it's not, that s an exception.
+                    if (directoryEntries.TryGetValue(stagedDirectoryEntry.Name, out var existingDirectoryEntry))
+                    {
+                        if (!string.Equals(existingDirectoryEntry.DirectoryNameHash, stagedDirectoryEntry.DirectoryNameHash, StringComparison.Ordinal))
+                            throw new InvalidOperationException($"Conflicting staged directory entry '{stagedDirectoryEntry.Name}'.");
+
+                        continue;
+                    }
+
+                    directoryEntries.Add(stagedDirectoryEntry.Name, stagedDirectoryEntry);
+                    break;
+            }
+        }
+
+        return ([.. fileEntries.Values], [.. directoryEntries.Values]);
     }
 }

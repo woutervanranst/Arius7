@@ -6,6 +6,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
+using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -228,6 +229,47 @@ public class FileTreeBuilderTests
         {
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ReadNodeEntriesAsync_DuplicateFileDetectedBeforeSourceIsFullyEnumerated()
+    {
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var enumerationAdvancedPastDuplicate = false;
+        var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
+        {
+            Name = "a.txt",
+            ContentHash = FakeContentHash('a'),
+            Created = now,
+            Modified = now
+        });
+        var duplicate = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
+        {
+            Name = "a.txt",
+            ContentHash = FakeContentHash('b'),
+            Created = now,
+            Modified = now
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await FileTreeBuilder.ReadNodeEntriesAsync(EnumerateLines(), CancellationToken.None));
+
+        ex.ShouldNotBeNull();
+        ex.Message.ShouldContain("Duplicate staged file entry 'a.txt'.");
+        enumerationAdvancedPastDuplicate.ShouldBeFalse();
+
+        async IAsyncEnumerable<string> EnumerateLines([EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield return first;
+            await Task.Yield();
+
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return duplicate;
+            await Task.Yield();
+
+            enumerationAdvancedPastDuplicate = true;
+            throw new InvalidOperationException("The parser should stop once it finds the duplicate.");
         }
     }
 
