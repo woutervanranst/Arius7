@@ -293,8 +293,8 @@ public class FileTreeBuilderTests
             await WriteNodeLinesAsync(
                 stagingSession1.StagingRoot,
                 rootId,
-                $"{childId} D photos/",
-                $"{childId} D photos/");
+                $"{childId} D photos",
+                $"{childId} D photos");
             await WriteNodeLinesAsync(
                 stagingSession1.StagingRoot,
                 childId,
@@ -318,7 +318,7 @@ public class FileTreeBuilderTests
             await WriteNodeLinesAsync(
                 stagingSession2.StagingRoot,
                 rootId,
-                $"{childId} D photos/");
+                $"{childId} D photos");
             await WriteNodeLinesAsync(
                 stagingSession2.StagingRoot,
                 childId,
@@ -634,9 +634,9 @@ public class FileTreeBuilderTests
     [Test]
     public void ParseStagedNodeEntryLine_RejectsNonHashDirectoryIds()
     {
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine("not-a-directory-id D child/"));
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('a', 63)} D child/"));
-        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('g', 64)} D child/"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine("not-a-directory-id D child"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('a', 63)} D child"));
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{new string('g', 64)} D child"));
     }
 
     [Test]
