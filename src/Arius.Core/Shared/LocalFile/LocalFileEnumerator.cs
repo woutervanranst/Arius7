@@ -84,9 +84,9 @@ public sealed class LocalFileEnumerator
     /// </summary>
     public IEnumerable<FilePair> Enumerate(LocalRootPath rootDirectory)
     {
-        foreach (var file in EnumerateFilesDepthFirst(rootDirectory.ToString()))
+        foreach (var (file, filePath) in EnumerateFilesDepthFirst(RelativePath.Root.RootedAt(rootDirectory)))
         {
-            var relativePath = rootDirectory.GetRelativePath(file.FullName);
+            var relativePath = filePath.RelativePath;
             var relativeName = relativePath.ToString();
 
             if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
@@ -168,16 +168,16 @@ public sealed class LocalFileEnumerator
 
     // ── Depth-first file walk ─────────────────────────────────────────────────
 
-    private IEnumerable<FileInfo> EnumerateFilesDepthFirst(string directory)
+    private IEnumerable<(FileInfo File, RootedPath Path)> EnumerateFilesDepthFirst(RootedPath directory)
     {
         DirectoryInfo dirInfo;
         try
         {
-            dirInfo = new DirectoryInfo(directory);
+            dirInfo = new DirectoryInfo(directory.FullPath);
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not access directory: {Directory}", directory);
+            _logger?.LogWarning(ex, "Could not access directory: {Directory}", directory.FullPath);
             yield break;
         }
 
@@ -189,12 +189,15 @@ public sealed class LocalFileEnumerator
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not enumerate files in: {Directory}", directory);
+            _logger?.LogWarning(ex, "Could not enumerate files in: {Directory}", directory.FullPath);
             files = [];
         }
 
         foreach (var file in files)
-            yield return file;
+        {
+            var filePath = (directory.RelativePath / PathSegment.Parse(file.Name)).RootedAt(directory.Root);
+            yield return (file, filePath);
+        }
 
         // Then recurse into subdirectories (depth-first)
         IEnumerable<DirectoryInfo> subdirs;
@@ -204,13 +207,14 @@ public sealed class LocalFileEnumerator
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", directory);
+            _logger?.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", directory.FullPath);
             subdirs = [];
         }
 
         foreach (var sub in subdirs)
         {
-            foreach (var file in EnumerateFilesDepthFirst(sub.FullName))
+            var subdirectory = (directory.RelativePath / PathSegment.Parse(sub.Name)).RootedAt(directory.Root);
+            foreach (var file in EnumerateFilesDepthFirst(subdirectory))
                 yield return file;
         }
     }

@@ -70,7 +70,7 @@ public class RestoreCommandHandlerTests
         progressIdentifiers.ShouldContain("docs/readme.txt");
         progressIdentifiers.ShouldNotContain(identifier => identifier.Contains('\\'));
 
-        var restoredPath = PathOf("docs/readme.txt").ToPlatformPath(fixture.RestoreRoot);
+        var restoredPath = PathOf("docs/readme.txt").RootedAt(RootOf(fixture.RestoreRoot)).FullPath;
         File.Exists(restoredPath).ShouldBeTrue();
         File.ReadAllBytes(restoredPath).ShouldBe(content);
     }

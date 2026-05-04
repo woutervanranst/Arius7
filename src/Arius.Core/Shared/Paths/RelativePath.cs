@@ -93,13 +93,6 @@ public readonly record struct RelativePath
         return Parse(value.Replace('\\', '/'), allowEmpty);
     }
 
-    public string ToPlatformPath(string rootDirectory)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        return Path.Combine(rootDirectory, Value.Replace('/', Path.DirectorySeparatorChar));
-    }
-
-
     public RootedPath RootedAt(LocalRootPath root) => new(root, this);
 
 

@@ -11,6 +11,26 @@ public class FileItemViewModelTests
     private static readonly ContentHash ContentHashA = FakeContentHash('a');
 
     [Test]
+    public void Constructor_UsesRelativePathName_ForDisplayName()
+    {
+        var file = new RepositoryFileEntry(
+            RelativePath: PathOf("nested/report.txt"),
+            ContentHash: ContentHashA,
+            OriginalSize: 1,
+            Created: null,
+            Modified: null,
+            ExistsInCloud: true,
+            ExistsLocally: true,
+            HasPointerFile: false,
+            BinaryExists: false,
+            Hydrated: null);
+
+        var viewModel = new FileItemViewModel(file);
+
+        viewModel.Name.ShouldBe("report.txt");
+    }
+
+    [Test]
     public void HydrationStatus_WhenChanged_UpdatesChunkStateColorAndTooltip()
     {
         var file = new RepositoryFileEntry(
