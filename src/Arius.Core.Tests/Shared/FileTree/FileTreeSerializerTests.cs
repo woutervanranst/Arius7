@@ -256,6 +256,17 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    [Arguments("photos\\")]
+    [Arguments("photos/2024/")]
+    public void ParsePersistedNodeEntryLine_MalformedDirectoryName_ThrowsFormatException(string directoryName)
+    {
+        var hash = FakeFileTreeHash('d');
+
+        Should.Throw<FormatException>(() =>
+            FileTreeSerializer.ParsePersistedNodeEntryLine($"{hash} D {directoryName}"));
+    }
+
+    [Test]
     [Arguments("photos")]
     [Arguments("photos//")]
     [Arguments("photos/2024/")]

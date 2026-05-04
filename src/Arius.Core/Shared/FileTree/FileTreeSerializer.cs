@@ -107,10 +107,20 @@ public static class FileTreeSerializer
             if (!FileTreeHash.TryParse(hash, out var fileTreeHash))
                 throw new FormatException($"Invalid directory entry (invalid tree hash): '{line}'");
 
+            PathSegment name;
+            try
+            {
+                name = PathSegment.Parse(afterType.TrimEnd('/'));
+            }
+            catch (ArgumentException ex)
+            {
+                throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'", ex);
+            }
+
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name         = PathSegment.Parse(afterType.TrimEnd('/'))
+                Name         = name
             };
         }
 
