@@ -3,7 +3,6 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
-using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.Cli.Tests.Commands.Ls;
 

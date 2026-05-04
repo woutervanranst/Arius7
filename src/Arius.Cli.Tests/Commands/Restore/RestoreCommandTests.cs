@@ -47,7 +47,7 @@ public class RestoreCommandTests
 
         var call = harness.RestoreHandler.ReceivedCalls().Single();
         var cmd = (RestoreCommand)call.GetArguments()[0]!;
-        cmd.Options.RootDirectory.ShouldBe(LocalRootPath.Parse(Path.GetFullPath("/data")));
+        cmd.Options.RootDirectory.ShouldBe(RootOf(Path.GetFullPath("/data")));
         cmd.Options.Version.ShouldBeNull();
         cmd.Options.NoPointers.ShouldBeFalse();
         cmd.Options.Overwrite.ShouldBeFalse();

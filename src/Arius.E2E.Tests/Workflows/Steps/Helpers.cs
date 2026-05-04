@@ -16,7 +16,7 @@ internal static class Helpers
     {
         var options = new RestoreOptions
         {
-            RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
+            RootDirectory = RootOf(fixture.RestoreRoot),
             Overwrite     = overwrite,
             Version       = version,
         };

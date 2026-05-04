@@ -56,7 +56,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         {
             File.WriteAllText(Path.Combine(tempRoot, "hello.txt"), "hello");
 
-            var opts   = new ArchiveCommandOptions { RootDirectory = LocalRootPath.Parse(tempRoot), UploadTier = BlobTier.Hot };
+            var opts   = new ArchiveCommandOptions { RootDirectory = RootOf(tempRoot), UploadTier = BlobTier.Hot };
             var result = await handler.Handle(new ArchiveCommand(opts), CancellationToken.None);
 
             result.Success.ShouldBeTrue(result.ErrorMessage);

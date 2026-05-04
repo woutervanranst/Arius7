@@ -181,7 +181,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult1 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = LocalRootPath.Parse(fix.RestoreRoot + "/v1"),
+                RootDirectory = RootOf(fix.RestoreRoot + "/v1"),
                 Version       = snapshot1,
                 Overwrite     = true,
             }), default);
@@ -199,7 +199,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult2 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = LocalRootPath.Parse(v2Dir),
+                RootDirectory = RootOf(v2Dir),
                 Overwrite     = true,
             }), default);
 
@@ -290,7 +290,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+                RootDirectory = RootOf(fix.LocalRoot),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
             }), default);
@@ -305,7 +305,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var r2 = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+                RootDirectory = RootOf(fix.LocalRoot),
                 UploadTier    = BlobTier.Hot,
             }), default);
 
@@ -411,7 +411,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Restore latest: keep.bin only
         var latestDir = Path.Combine(fix.RestoreRoot, "latest");
         var rl = await fix.CreateRestoreHandler().Handle(
-            new RestoreCommand(new RestoreOptions { RootDirectory = LocalRootPath.Parse(latestDir), Overwrite = true }), default);
+            new RestoreCommand(new RestoreOptions { RootDirectory = RootOf(latestDir), Overwrite = true }), default);
         rl.Success.ShouldBeTrue();
         rl.FilesRestored.ShouldBe(1);
         File.Exists(Path.Combine(latestDir, "keep.bin")).ShouldBeTrue();
@@ -420,7 +420,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Restore snapshot 1: both files
         var v1Dir = Path.Combine(fix.RestoreRoot, "v1");
         var rv1 = await fix.CreateRestoreHandler().Handle(
-            new RestoreCommand(new RestoreOptions { RootDirectory = LocalRootPath.Parse(v1Dir), Version = snapshot1, Overwrite = true }), default);
+            new RestoreCommand(new RestoreOptions { RootDirectory = RootOf(v1Dir), Version = snapshot1, Overwrite = true }), default);
         rv1.Success.ShouldBeTrue();
         rv1.FilesRestored.ShouldBe(2);
         File.Exists(Path.Combine(v1Dir, "delete.bin")).ShouldBeTrue();
@@ -496,7 +496,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = LocalRootPath.Parse(fix.LocalRoot),
+                RootDirectory      = RootOf(fix.LocalRoot),
                 UploadTier         = BlobTier.Hot,
                 SmallFileThreshold = 1024 * 1024, // = file size → routes to large
             }), default);
@@ -587,7 +587,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+                RootDirectory = RootOf(fix.LocalRoot),
                 UploadTier    = BlobTier.Hot,
                 NoPointers    = true,
             }), default);
@@ -610,7 +610,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+                RootDirectory = RootOf(fix.LocalRoot),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
                 NoPointers    = true,

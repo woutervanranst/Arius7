@@ -24,7 +24,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[1024 * 1024]); // 1 MB
         var archiveResult = await fix.ArchiveAsync(new()
         {
-            RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+            RootDirectory = RootOf(fix.LocalRoot),
             UploadTier    = BlobTier.Archive,
         });
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -33,7 +33,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
+            RootDirectory = RootOf(fix.RestoreRoot),
             Overwrite     = true,
             ConfirmRehydration = (estimate, ct) =>
             {
@@ -73,7 +73,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         fix.WriteFile("data.bin", new byte[1024]);
         var archiveResult = await fix.ArchiveAsync(new()
         {
-            RootDirectory = LocalRootPath.Parse(fix.LocalRoot),
+            RootDirectory = RootOf(fix.LocalRoot),
             UploadTier    = BlobTier.Hot,
         });
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -82,7 +82,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
+            RootDirectory = RootOf(fix.RestoreRoot),
             Overwrite     = true,
             ConfirmRehydration = (estimate, ct) =>
             {

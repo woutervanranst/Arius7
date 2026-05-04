@@ -106,7 +106,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new ArchiveCommandOptions
         {
-            RootDirectory = LocalRootPath.Parse(LocalRoot),
+            RootDirectory = RootOf(LocalRoot),
             UploadTier    = BlobTier.Hot,
         };
         return CreateArchiveHandler().Handle(new ArchiveCommand(opts), ct).AsTask();
@@ -119,7 +119,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new RestoreOptions
         {
-            RootDirectory = LocalRootPath.Parse(RestoreRoot),
+            RootDirectory = RootOf(RestoreRoot),
             Overwrite     = true,
         };
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();

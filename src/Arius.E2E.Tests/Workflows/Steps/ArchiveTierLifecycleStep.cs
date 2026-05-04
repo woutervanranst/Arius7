@@ -67,7 +67,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var initialResult = await initialRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = LocalRootPath.Parse(state.Fixture.RestoreRoot),
+                RootDirectory = RootOf(state.Fixture.RestoreRoot),
                 TargetPath    = RelativePath.Parse(targetChunk.TargetRelativePath),
                 Overwrite     = true,
                 ConfirmRehydration = (estimate, _) =>
@@ -103,7 +103,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             // and that it cleans up the temporary rehydrated blob afterward.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory  = LocalRootPath.Parse(readyRestoreRoot),
+                RootDirectory  = RootOf(readyRestoreRoot),
                 TargetPath     = RelativePath.Parse(targetChunk.TargetRelativePath),
                 Overwrite      = true,
                 ConfirmCleanup = (count, _, _) =>

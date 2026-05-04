@@ -73,7 +73,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(_rootDirectory),
+                RootDirectory = RootOf(_rootDirectory),
                 UploadTier    = uploadTier,
             }),
             cancellationToken);

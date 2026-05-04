@@ -20,7 +20,7 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 
         var options = new ArchiveCommandOptions
         {
-            RootDirectory = LocalRootPath.Parse(state.Fixture.LocalRoot),
+            RootDirectory = RootOf(state.Fixture.LocalRoot),
             UploadTier    = UploadTier,
             NoPointers    = NoPointers,
             RemoveLocal   = RemoveLocal,

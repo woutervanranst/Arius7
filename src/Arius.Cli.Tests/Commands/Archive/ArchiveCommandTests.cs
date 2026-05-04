@@ -59,6 +59,6 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.CommandOptions.RootDirectory.ShouldBe(LocalRootPath.Parse(Path.GetFullPath("/tmp")));
+        cmd.CommandOptions.RootDirectory.ShouldBe(RootOf(Path.GetFullPath("/tmp")));
     }
 }

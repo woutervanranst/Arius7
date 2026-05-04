@@ -58,7 +58,7 @@ public class RelativePathTests
     [Test]
     public void RootedAt_JoinsWithRootDirectory()
     {
-        var root = LocalRootPath.Parse(Path.Combine("C:", "repo"));
+        var root = RootOf(Path.Combine("C:", "repo"));
         var path = RelativePath.Parse("photos/2024/a.jpg");
 
         path.RootedAt(root).FullPath.ShouldBe(Path.Combine(root.ToString(), "photos", "2024", "a.jpg"));

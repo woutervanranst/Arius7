@@ -160,7 +160,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRootPath.Parse(LocalRoot),
+                RootDirectory = RootOf(LocalRoot),
                 UploadTier    = _defaultTier,
             }),
             ct).AsTask();
@@ -169,7 +169,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = LocalRootPath.Parse(RestoreRoot),
+                RootDirectory = RootOf(RestoreRoot),
                 Overwrite     = true,
             }),
             ct).AsTask();
