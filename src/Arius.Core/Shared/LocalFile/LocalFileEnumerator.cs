@@ -24,6 +24,9 @@ public sealed record FilePair
     /// </summary>
     public required RelativePath RelativePath { get; init; }
 
+    /// <summary>Full local filesystem path to the binary file when it exists on disk.</summary>
+    public          string? BinaryFullPath { get; init; }
+
     /// <summary><c>true</c> if the binary file is present on disk.</summary>
     public required bool BinaryExists { get; init; }
 
@@ -103,6 +106,7 @@ public sealed class LocalFileEnumerator
                 yield return new FilePair
                 {
                     RelativePath  = binaryFileRelativePath,
+                    BinaryFullPath = null,
                     BinaryExists  = false,
                     PointerExists = true,
                     PointerHash   = pointerHash,
@@ -126,6 +130,7 @@ public sealed class LocalFileEnumerator
                 yield return new FilePair
                 {
                     RelativePath  = relativePath,
+                    BinaryFullPath = file.FullName,
                     BinaryExists  = true,
                     PointerExists = hasPointer,
                     PointerHash   = pointerHash,

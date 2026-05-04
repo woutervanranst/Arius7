@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -37,7 +38,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Timestamp, file.Timestamp);
+            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Timestamp, file.Timestamp);
 
         return session;
     }

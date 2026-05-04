@@ -8,6 +8,25 @@
 
 **Tech Stack:** C# / .NET / TUnit
 
+**Status:** Implemented. This plan is now historical context plus guidance for follow-up cleanup, not a pending execution plan.
+
+---
+
+### Implemented Outcome
+
+- `LocalFileEnumerator` now emits `FilePair.RelativePath` as `RelativePath`.
+- archive pipeline state now carries typed repository paths through `FilePair` and `HashedFilePair`.
+- archive regression coverage now asserts canonical path text at current string boundaries and canonical persisted filetree output.
+- current archive event/progress surfaces remain string-based in this slice.
+
+### Follow-Up Direction
+
+When continuing archive path cleanup beyond this slice:
+
+- prefer re-typing archive-owned state such as channels, bags, and intermediate records before adding helper methods that only convert `RelativePath` back into `string`
+- prefer changing owning shared APIs to accept `RelativePath` directly when that boundary is semantically theirs
+- avoid new feature-local helpers like `ToRelativePathText`, `GetLocalPath`, or `GetFileTreePath` when stronger types or better-owned APIs would remove them
+
 ---
 
 ### File Structure
@@ -44,6 +63,8 @@ At the end of this slice:
 - `HashedFilePair` and archive pipeline code carry typed relative paths internally
 - archive events may still expose string payloads for logging/CLI compatibility, but they should be produced from `RelativePath.ToString()` at the boundary
 - local OS path joins remain explicit boundary code using `opts.RootDirectory` plus `RelativePath.ToString()`
+
+This slice is complete. Remaining work should treat these points as achieved baseline behavior.
 
 ---
 
@@ -317,7 +338,8 @@ Expected:
 - Event payloads, CLI progress callbacks, and logs may remain string-based for now.
 - Do not add typed list/restore/public query models in this slice.
 - Do not type `ArchiveCommandOptions.RootDirectory`; it is a local filesystem boundary, not a repository path.
-- Do not introduce new path helper methods if a boundary conversion plus `RelativePath` operation is sufficient.
+- Prefer re-typing channels, bags, intermediate records, and owning shared APIs before introducing helper methods whose main purpose is `RelativePath`/`string` conversion.
+- If a conversion helper is still necessary, put it on the owning shared boundary rather than in `ArchiveCommandHandler`.
 
 ### Self-Review
 

@@ -154,11 +154,23 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Prefer one top-level class per file, with the filename matching the class name.
 - Prefer **local methods** over private static methods for helper functionality that is only used within a single method
 
+## Strong Types Over Primitives
+
+- Prefer rich domain or boundary-owned types over raw `string`, `int`, tuples, and other primitives as soon as a value has real semantics.
+- Avoid primitive obsession. If a value has identity, validation rules, or behavior, look for the right existing type first or introduce a focused type when justified.
+- Before adding helper methods whose main job is converting a strong type to or from primitives, first ask whether the owning state or API should become typed instead.
+- Prefer re-typing channels, bags, intermediate records, and shared method signatures over adding feature-local conversion helpers.
+- Keep primitive values only at true boundaries such as logs, current event/CLI/progress payloads, persisted wire formats, storage names, and host OS path joins that have not yet been typed.
+- If a conversion helper is still warranted, put it on the owning shared boundary or domain API, not as a feature-handler-local helper with a generic name.
+- Avoid introducing new handler-local helpers like `ToXText` when a stronger type or a better boundary-owned API would remove the need entirely.
+
 ## Domain language
 
 - **binary file**: a file on disk that Arius archives and restores.
 - **pointer file**: a file on disk containing the content hash.
 - **FilePair**: the local archive-time view of one path, combining the binary file and its optional pointer file. A `FilePair` can be binary-only, pointer-only, or have both present.
+- **PathSegment**: one canonical repository path segment. It has no `/` or `\`, is not `.` or `..`, and contains no control characters.
+- **RelativePath**: a canonical repository-internal path built from `PathSegment` values. Use `RelativePath.Root` for the root. Equality and hashing are ordinal and case-sensitive, and trailing slash is not part of identity.
 - **hash** Arius is a content addressed storage and deduplicates binary files based on content hash.
   - **content hash**: the hash of the (original) binary file's content
   - **chunk hash**: the name of the chunk in which the content is actually stored (identical for large chunks, different for tar chunks)

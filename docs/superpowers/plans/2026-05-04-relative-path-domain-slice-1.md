@@ -8,22 +8,40 @@
 
 **Tech Stack:** C# / .NET / TUnit
 
+**Status:** Implemented. This plan is now historical context for the landed slice 1 work and should not be treated as the current source of truth for next steps.
+
+---
+
+### Implemented Outcome
+
+- `PathSegment` and `RelativePath` were added in `src/Arius.Core/Shared/Paths/`.
+- `src/Arius.Core.Tests/Shared/PathSegmentTests.cs` and `src/Arius.Core.Tests/Shared/RelativePathTests.cs` were added.
+- `RepositoryRelativePath` and its tests were removed instead of kept as a compatibility layer.
+- `FileTreePaths`, `FileTreeStagingWriter`, and `FileTreeSerializer` now parse canonical repository paths with `RelativePath` directly.
+
+Implication for later slices:
+
+- Do not plan new work around reviving `RepositoryRelativePath`.
+- Prefer re-typing downstream APIs and state to use `RelativePath` directly instead of adding bridge helpers back in.
+
 ---
 
 ### File Structure
 
-**Create**
+**Originally planned to create**
 - `src/Arius.Core/Shared/Paths/PathSegment.cs`
 - `src/Arius.Core/Shared/Paths/RelativePath.cs`
 - `src/Arius.Core.Tests/Shared/PathSegmentTests.cs`
 - `src/Arius.Core.Tests/Shared/RelativePathTests.cs`
 
-**Modify**
+**Originally planned to modify**
 - `src/Arius.Core/Shared/RepositoryRelativePath.cs`
 - `src/Arius.Core.Tests/Shared/RepositoryRelativePathTests.cs`
 - `src/Arius.Core/Shared/FileTree/FileTreePaths.cs`
 - `src/Arius.Core/Shared/FileTree/FileTreeStagingWriter.cs`
 - `src/Arius.Core/Shared/FileTree/FileTreeSerializer.cs`
+
+Note: the `RepositoryRelativePath` files were removed during implementation rather than retained as adapters.
 
 **Do not modify in this slice**
 - `src/Arius.Core/Features/ArchiveCommand/`

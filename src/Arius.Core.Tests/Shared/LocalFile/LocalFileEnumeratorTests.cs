@@ -55,13 +55,14 @@ public class LocalFileEnumeratorTests : IDisposable
     [Test]
     public void Enumerate_BinaryOnly_ProducesFilePairWithNoPointer()
     {
-        CreateFile("documents/report.pdf");
+        var fullPath = CreateFile("documents/report.pdf");
 
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("documents/report.pdf"));
         pairs[0].BinaryExists.ShouldBeTrue();
+        pairs[0].BinaryFullPath.ShouldBe(fullPath);
         pairs[0].PointerExists.ShouldBeFalse();
         pairs[0].PointerHash.ShouldBeNull();
     }
@@ -78,6 +79,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.Count.ShouldBe(1);
         pairs[0].BinaryExists.ShouldBeFalse();
+        pairs[0].BinaryFullPath.ShouldBeNull();
         pairs[0].PointerExists.ShouldBeTrue();
         pairs[0].PointerHash.ShouldBe(ContentHash.Parse(hash));
         pairs[0].FileSize.ShouldBeNull();

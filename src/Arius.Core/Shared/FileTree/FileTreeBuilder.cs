@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -72,8 +73,7 @@ public sealed class FileTreeBuilder
         try
         {
             // Recursively build the FileTree starting from the root
-            var rootPath = string.Empty;
-            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(rootPath), workerCancellationToken);
+            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(RelativePath.Root), workerCancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
             return rootHash;

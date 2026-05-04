@@ -36,12 +36,9 @@ internal static class FileTreePaths
     /// Returns the deterministic staging directory id for one relative directory path.
     /// Example output usage: <c>~/.arius/<container>/filetrees/.staging/&lt;directoryId&gt;</c>
     /// </summary>
-    public static string GetStagingDirectoryId(string directoryPath)
+    public static string GetStagingDirectoryId(RelativePath directoryPath)
     {
-        _ = RelativePath.Parse(directoryPath, allowEmpty: true);
-
-        var canonicalPath = directoryPath;
-        return HashCodec.ToLowerHex(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalPath)));
+        return HashCodec.ToLowerHex(SHA256.HashData(Encoding.UTF8.GetBytes(directoryPath.ToString())));
     }
 
     /// <summary>

@@ -159,9 +159,28 @@ Boundary code is responsible for:
 - converting `RelativePath` back to OS paths during restore and fixture materialization
 - performing safe root-containment checks when joining local disk roots with repository-relative paths
 
+When boundary conversion repeats, prefer changing the owning shared API to accept `RelativePath` directly instead of adding feature-local helper methods that only convert typed paths back into strings.
+
 Local path joining and containment stay here deliberately. They depend on host filesystem rules and should not become responsibilities of `RelativePath`.
 
 The important rule is that once a path enters the Arius repository domain, it should stop being a raw string and become `RelativePath`.
+
+## Boundary Ownership Guidance
+
+When migrating a string-based flow toward `RelativePath`, prefer this order:
+
+1. re-type the state, channels, bags, intermediate records, and method signatures that semantically carry repository paths
+2. move repeated path-boundary operations onto the owning shared API when the boundary is shared and meaningful
+3. leave `.ToString()` only at true string boundaries that are intentionally still string-based
+
+Examples of true string boundaries:
+
+- current event payloads and CLI/progress callback payloads that still expose `string`
+- persisted wire formats and serialized filetree line formats that have not yet been re-typed
+- storage names and log messages
+- local OS path joins that still operate on host filesystem strings
+
+Avoid introducing feature-local helper methods like `ToRelativePathText`, `GetLocalPath`, or `GetFileTreePath` when a stronger intermediate type or a better-owned shared API would remove the need.
 
 ## Why Kind-Neutral Paths
 
@@ -213,28 +232,48 @@ This is a broad architectural migration, so the work should proceed in slices.
 - implement canonical parsing and root semantics
 - keep compatibility adapters where existing code still needs `string`
 
+Implemented outcome:
+
+- `PathSegment` and `RelativePath` landed in `src/Arius.Core/Shared/Paths/`
+- the old `RepositoryRelativePath` helper path was removed instead of retained as a long-lived adapter
+- filetree path-validation entry points now parse with `RelativePath` directly
+
 ### Slice 2: Archive entry boundary
 
 - convert local enumeration output to `RelativePath` immediately
 - make `FilePair.RelativePath` typed
 - stop passing canonical repository paths as raw strings through archive internals
 
+Implemented outcome:
+
+- `LocalFileEnumerator` now emits `FilePair.RelativePath` as `RelativePath`
+- archive pipeline state is typed around `FilePair` and `HashedFilePair`
+- current archive event/progress/log surfaces remain string-based at their existing boundaries
+
+Follow-up cleanup direction:
+
+- prefer re-typing remaining archive-owned state and shared APIs before adding any more local conversion helpers
+- if archive repeatedly needs local-path or filetree-path boundary operations, move those responsibilities onto the owning shared APIs rather than keeping feature-local wrappers
+
 ### Slice 3: Restore and list domain models
 
 - change `FileToRestore.RelativePath` to `RelativePath`
 - change `RepositoryEntry.RelativePath` and derived models to `RelativePath`
 - move path comparisons and subtree operations onto typed APIs where possible
+- prefer re-typing list/restore intermediate state and shared method signatures before introducing conversion helpers
 
 ### Slice 4: Filetree model cleanup
 
 - change `FileTreeEntry.Name` to `PathSegment`
 - move trailing slash directory formatting fully into serializer and list-display boundaries
 - remove serializer-specific string identity from in-memory filetree models
+- where filetree write/read APIs currently accept repository-path strings, prefer changing those APIs to accept `RelativePath` or `PathSegment` directly when they own the boundary
 
 ### Slice 5: Tests, fixtures, and E2E dataset helpers
 
 - replace repeated canonical-path helpers with typed construction/parsing
 - keep safe local join and fixture root-containment checks at the local-path boundary
+- prefer typed test fixture inputs and outputs over helper methods that only wrap path strings
 
 ## Expected Codebase Effects
 
@@ -272,6 +311,7 @@ The design is being followed when:
 The design is not being followed when:
 
 - new canonical-path string helpers appear in core domain code
+- new feature-local path conversion helpers appear where the state or owning shared API could have been typed instead
 - directory identity still depends on trailing slash in in-memory models
 - repository path parsing and normalization continue to happen repeatedly after the initial boundary
 - repository path equality changes with the current machine's filesystem rules

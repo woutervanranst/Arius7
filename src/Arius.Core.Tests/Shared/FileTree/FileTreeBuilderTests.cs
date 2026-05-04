@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
@@ -23,7 +24,7 @@ public class FileTreeBuilderTests
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
+            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Created, file.Modified);
 
         return (session, session.StagingRoot);
     }
@@ -200,7 +201,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
             var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
                 Name = "a.txt",
@@ -285,8 +286,8 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var childId = FileTreePaths.GetStagingDirectoryId("photos");
-            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
+            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
 
             await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir);
             await WriteNodeLinesAsync(

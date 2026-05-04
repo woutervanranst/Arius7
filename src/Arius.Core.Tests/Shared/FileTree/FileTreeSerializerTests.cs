@@ -1,6 +1,7 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -225,7 +226,7 @@ public class FileTreeSerializerTests
     [Test]
     public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/");
 
@@ -253,7 +254,7 @@ public class FileTreeSerializerTests
     [Arguments("photos\\")]
     public void ParseStagedNodeEntryLine_NonCanonicalDirectoryName_Throws(string directoryName)
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
             FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {directoryName}"));
@@ -262,7 +263,7 @@ public class FileTreeSerializerTests
     [Test]
     public void ParseStagedNodeEntryLine_DirectoryNameContainingCarriageReturn_Throws()
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
             FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos\r/"));
@@ -271,7 +272,7 @@ public class FileTreeSerializerTests
     [Test]
     public void ParseStagedNodeEntryLine_MultiSegmentCanonicalDirectoryName_Throws()
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
             FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/2024/"));

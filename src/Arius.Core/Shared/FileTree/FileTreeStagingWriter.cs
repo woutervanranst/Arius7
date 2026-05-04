@@ -21,25 +21,17 @@ internal sealed class FileTreeStagingWriter : IDisposable
     }
 
     public async Task AppendFileEntryAsync(
-        string filePath,
+        RelativePath filePath,
         ContentHash contentHash,
         DateTimeOffset created,
         DateTimeOffset modified,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        try
-        {
-            _ = RelativePath.Parse(filePath);
-        }
-        catch (ArgumentException) when (!string.IsNullOrEmpty(filePath))
-        {
-            throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-        }
+        var filePathText = filePath.ToString();
 
-        var segments = filePath.Split('/');
+        var segments = filePathText.Split('/');
         if (segments.Length == 0)
             throw new ArgumentException("File path must include a file name.", nameof(filePath));
 
@@ -47,7 +39,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
         if (string.IsNullOrWhiteSpace(fileName))
             throw new ArgumentException("File path must include a non-empty file name.", nameof(filePath));
 
-        var parentPath = segments.Length == 1 ? string.Empty : string.Join('/', segments, 0, segments.Length - 1);
+        var parentPath = filePath.Parent ?? RelativePath.Root;
 
         await AppendDirectoryEntriesAsync(segments, cancellationToken);
         await AppendFileEntryAsync(parentPath, new FileEntry
@@ -59,7 +51,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
         }, cancellationToken);
     }
 
-    private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
+    private async Task AppendFileEntryAsync(RelativePath directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
         var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, directoryId);
@@ -70,8 +62,10 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         for (var depth = 0; depth < segments.Length - 1; depth++)
         {
-            var parentPath    = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
-            var directoryPath = string.Join('/', segments, 0, depth + 1);
+            var parentPath = depth == 0
+                ? RelativePath.Root
+                : RelativePath.Parse(string.Join('/', segments, 0, depth));
+            var directoryPath = RelativePath.Parse(string.Join('/', segments, 0, depth + 1));
             var directoryName = segments[depth] + "/";
             var directoryId   = FileTreePaths.GetStagingDirectoryId(directoryPath);
             var nodePath      = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
