@@ -72,6 +72,14 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    public void GetDirectoryName_TrimsSerializerSlashAndParsesSegment()
+    {
+        var entry = new DirectoryEntry { Name = "photos/", FileTreeHash = FakeFileTreeHash('d') };
+
+        entry.GetDirectoryName().ShouldBe(PathSegment.Parse("photos"));
+    }
+
+    [Test]
     public void Serialize_ThenDeserialize_RoundTrips()
     {
         var entries = MakeEntries(

@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Paths;
 using Arius.Explorer.RepositoryExplorer;
 
 namespace Arius.Explorer.Tests.RepositoryExplorer;
@@ -7,9 +8,9 @@ public class TreeNodeViewModelTests
     [Test]
     public void Constructor_WithPlaceholder_AddsLoadingChild()
     {
-        var node = new TreeNodeViewModel("/root/");
+        var node = new TreeNodeViewModel(PathOf("root"));
 
-        node.Prefix.ShouldBe("/root/");
+        node.Prefix.ShouldBe(PathOf("root"));
         node.Folders.Count.ShouldBe(1);
         node.Folders[0].Name.ShouldBe("Loading...");
     }
@@ -18,7 +19,7 @@ public class TreeNodeViewModelTests
     public void IsSelected_WhenSetToTrue_ExpandsAndInvokesCallback()
     {
         TreeNodeViewModel selectedNode = null!;
-        var node = new TreeNodeViewModel("/root/", onSelected: selected => selectedNode = selected, showPlaceholder: false);
+        var node = new TreeNodeViewModel(PathOf("root"), onSelected: selected => selectedNode = selected, showPlaceholder: false);
 
         node.IsSelected = true;
 
@@ -29,7 +30,7 @@ public class TreeNodeViewModelTests
     [Test]
     public void IsExpanded_WhenSetToTrue_SelectsNode()
     {
-        var node = new TreeNodeViewModel("/root/", showPlaceholder: false);
+        var node = new TreeNodeViewModel(PathOf("root"), showPlaceholder: false);
 
         node.IsExpanded = true;
 

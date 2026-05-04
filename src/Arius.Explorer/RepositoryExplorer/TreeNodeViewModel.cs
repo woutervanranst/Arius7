@@ -1,15 +1,16 @@
 using System;
 using System.Collections.ObjectModel;
+using Arius.Core.Shared.Paths;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Arius.Explorer.RepositoryExplorer;
 
 public partial class TreeNodeViewModel : ObservableObject
 {
-    private readonly string prefix;
+    private readonly RelativePath prefix;
     private readonly Action<TreeNodeViewModel>? onSelected;
 
-    public string Prefix => prefix;
+    public RelativePath Prefix => prefix;
 
     [ObservableProperty]
     private string name = string.Empty;
@@ -26,7 +27,7 @@ public partial class TreeNodeViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<FileItemViewModel> items = [];
 
-    public TreeNodeViewModel(string prefix, Action<TreeNodeViewModel>? onSelected = null, bool showPlaceholder = true)
+    public TreeNodeViewModel(RelativePath prefix, Action<TreeNodeViewModel>? onSelected = null, bool showPlaceholder = true)
     {
         this.prefix = prefix;
         this.onSelected = onSelected;
@@ -34,7 +35,7 @@ public partial class TreeNodeViewModel : ObservableObject
         // Add placeholder child to show expansion chevron
         if (showPlaceholder)
         {
-            folders = [new TreeNodeViewModel("", null, false) { Name = "Loading..." }];
+            folders = [new TreeNodeViewModel(RelativePath.Root, null, false) { Name = "Loading..." }];
         }
     }
 

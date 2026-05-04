@@ -46,5 +46,8 @@ public readonly record struct PathSegment
         }
     }
 
+    public bool Equals(PathSegment other, StringComparison comparison) =>
+        string.Equals(Value, other.Value, comparison);
+
     public override string ToString() => Value;
 }

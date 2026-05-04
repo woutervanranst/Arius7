@@ -134,7 +134,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             // NOTE no loading indicators here bc this is super quick; the actual loading happens in LoadNodeContentAsync
 
             // Create root node
-            var rootNode = new TreeNodeViewModel(string.Empty, OnNodeSelected)
+            var rootNode = new TreeNodeViewModel(RelativePath.Root, OnNodeSelected)
             {
                 Name       = "Root",
                 IsSelected = true,
@@ -176,7 +176,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             var query = new ListQuery(new ListQueryOptions
             {
-                Prefix = ParseRepositoryRelativePath(node.Prefix),
+                Prefix = node.Prefix,
                 Recursive = false,
                 LocalPath = Repository.LocalDirectoryPath,
             });
@@ -202,7 +202,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                     {
                         case RepositoryDirectoryEntry directory:
                             var dirName = ExtractDirectoryName(directory.RelativePath.ToString());
-                            var childNode = new TreeNodeViewModel(directory.RelativePath.ToString(), OnNodeSelected)
+                            var childNode = new TreeNodeViewModel(directory.RelativePath, OnNodeSelected)
                             {
                                 Name = dirName
                             };
@@ -504,12 +504,4 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         return lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
     }
 
-    private static RelativePath? ParseRepositoryRelativePath(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        var normalized = value.Replace('\\', '/').Trim('/');
-        return normalized.Length == 0 ? null : RelativePath.Parse(normalized);
-    }
 }

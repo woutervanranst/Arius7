@@ -35,4 +35,14 @@ public class PathSegmentTests
     {
         Should.Throw<ArgumentNullException>(() => PathSegment.Parse(null!));
     }
+
+    [Test]
+    public void Equals_WithStringComparison_SupportsOrdinalIgnoreCase()
+    {
+        var lower = PathSegment.Parse("docs");
+        var upper = PathSegment.Parse("Docs");
+
+        lower.Equals(upper, StringComparison.OrdinalIgnoreCase).ShouldBeTrue();
+        lower.Equals(upper, StringComparison.Ordinal).ShouldBeFalse();
+    }
 }

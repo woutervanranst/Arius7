@@ -178,7 +178,7 @@ public class RepositoryExplorerViewModelTests
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger);
         var fileA = new FileItemViewModel(new RepositoryFileEntry(PathOf("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true));
         var fileB = new FileItemViewModel(new RepositoryFileEntry(PathOf("file-b.txt"), ContentHashB, 2048, null, null, true, true, true, true, true));
-        var selectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
+        var selectedTreeNode = new TreeNodeViewModel(RelativePath.Root, showPlaceholder: false)
         {
             Items = new ObservableCollection<FileItemViewModel> { fileA, fileB }
         };
@@ -233,7 +233,7 @@ public class RepositoryExplorerViewModelTests
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger)
         {
             Repository = CreateRepository(),
-            SelectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
+            SelectedTreeNode = new TreeNodeViewModel(RelativePath.Root, showPlaceholder: false)
         };
 
         viewModel.SelectedFiles.Add(new FileItemViewModel(new RepositoryFileEntry(PathOf("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true)));
@@ -268,7 +268,7 @@ public class RepositoryExplorerViewModelTests
             Repository = CreateRepository()
         };
 
-        var node = new TreeNodeViewModel("/", showPlaceholder: false)
+        var node = new TreeNodeViewModel(RelativePath.Root, showPlaceholder: false)
         {
             Items = new ObservableCollection<FileItemViewModel>
             {
@@ -312,7 +312,7 @@ public class RepositoryExplorerViewModelTests
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger)
         {
             Repository = CreateRepository(),
-            SelectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
+            SelectedTreeNode = new TreeNodeViewModel(RelativePath.Root, showPlaceholder: false)
         };
 
         var selectedFile = new FileItemViewModel(new RepositoryFileEntry(PathOf("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true));

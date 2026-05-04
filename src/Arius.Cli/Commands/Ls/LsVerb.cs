@@ -161,9 +161,7 @@ internal static class LsVerb
         static RelativePath? ParsePrefix(string? value)
         {
             if (string.IsNullOrWhiteSpace(value))
-            {
                 return null;
-            }
 
             var normalized = value.Replace('\\', '/').Trim('/');
             return normalized.Length == 0 ? null : RelativePath.Parse(normalized);

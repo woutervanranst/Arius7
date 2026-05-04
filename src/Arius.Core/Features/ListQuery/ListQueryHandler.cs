@@ -108,19 +108,17 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
         {
-            var directoryName = NormalizeDirectoryEntryName(entry.Name);
-            var relativePath = currentRelativeDirectory / PathSegment.Parse(directoryName);
-            var existsLocally = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
+            var directorySegment = entry.GetDirectoryName();
+            var directoryName    = directorySegment.ToString();
+            var existsLocally    = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
 
             yieldedDirectoryNames.Add(directoryName);
+            var relativePath = currentRelativeDirectory / directorySegment;
             yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
             if (recursive)
             {
-                recursionTargets.Add(new RecursionTarget(
-                    RelativeDirectory: relativePath,
-                    TreeHash: entry.FileTreeHash,
-                    LocalDirectory: existsLocally ? localDirectory!.FullPath : null));
+                recursionTargets.Add(new RecursionTarget(RelativeDirectory: relativePath, TreeHash: entry.FileTreeHash, LocalDirectory: existsLocally ? localDirectory!.FullPath : null));
             }
         }
 
@@ -253,7 +251,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
-                .FirstOrDefault(e => string.Equals(NormalizeDirectoryEntryName(e.Name), segment.ToString(), StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(e => e.GetDirectoryName().Equals(segment, StringComparison.OrdinalIgnoreCase));
 
             currentHash = nextDirectory?.FileTreeHash;
         }
@@ -365,8 +363,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private static string? NormalizeLocalRoot(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
-
-    private static string NormalizeDirectoryEntryName(string name) => name.TrimEnd('/');
 
     private static bool MatchesFilter(string fileName, string? filter) =>
         filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);
