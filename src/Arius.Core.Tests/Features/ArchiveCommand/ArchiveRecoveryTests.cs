@@ -1,6 +1,8 @@
 using System.Formats.Tar;
+using System.IO.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
@@ -112,6 +114,39 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_TypedRelativePath_UsesCanonicalPathTextAtCurrentStringBoundaries()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 2 * 1024 * 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var messages = env.ArchiveLogs
+            .GetSnapshot(clear: false)
+            .Select(static record => record.Message)
+            .ToArray();
+
+        messages.ShouldContain(message => message.Contains("[hash] docs/readme.txt ->", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[dedup] docs/readme.txt -> new/", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[upload] Start: docs/readme.txt", StringComparison.Ordinal));
+        messages.ShouldNotContain(message => message.Contains("docs\\readme.txt", StringComparison.Ordinal));
+
+        var snapshotBlobName = env.Blobs.UploadedBlobNames
+            .Single(name => name.StartsWith(BlobPaths.Snapshots, StringComparison.Ordinal));
+
+        var snapshot = await ReadSnapshotAsync(env, snapshotBlobName);
+        var rootEntries = await ReadFileTreeAsync(env, snapshot.RootHash);
+        var docsDirectory = rootEntries.OfType<DirectoryEntry>().Single(entry => entry.Name == "docs/");
+        var docsEntries = await ReadFileTreeAsync(env, docsDirectory.FileTreeHash);
+
+        docsEntries.OfType<FileEntry>().Single(entry => entry.Name == "readme.txt");
+        rootEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.Contains('\\'));
+        docsEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.Contains('\\'));
+    }
+
+    [Test]
     public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
     {
         using var env = new ArchiveTestEnvironment();
@@ -168,5 +203,23 @@ public class ArchiveRecoveryTests
         }
 
         return ChunkHash.Parse(env.Encryption.ComputeHash(tarStream.ToArray()));
+    }
+
+    private static async Task<SnapshotManifest> ReadSnapshotAsync(ArchiveTestEnvironment env, string snapshotBlobName)
+    {
+        await using var stream = await env.Blobs.DownloadAsync(snapshotBlobName);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        return await SnapshotSerializer.DeserializeAsync(memory.ToArray(), env.Encryption);
+    }
+
+    private static async Task<IReadOnlyList<FileTreeEntry>> ReadFileTreeAsync(ArchiveTestEnvironment env, FileTreeHash hash)
+    {
+        await using var stream = await env.Blobs.DownloadAsync(BlobPaths.FileTree(hash));
+        await using var decrypted = env.Encryption.WrapForDecryption(stream);
+        await using var gzip = new GZipStream(decrypted, CompressionMode.Decompress);
+        using var memory = new MemoryStream();
+        await gzip.CopyToAsync(memory);
+        return FileTreeSerializer.Deserialize(memory.ToArray());
     }
 }
