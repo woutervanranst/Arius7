@@ -11,8 +11,17 @@ public class TreeNodeViewModelTests
         var node = new TreeNodeViewModel(PathOf("root"));
 
         node.Prefix.ShouldBe(PathOf("root"));
+        node.Name.ShouldBe("root");
         node.Folders.Count.ShouldBe(1);
         node.Folders[0].Name.ShouldBe("Loading...");
+    }
+
+    [Test]
+    public void Constructor_WhenPrefixIsNested_UsesLastSegmentAsName()
+    {
+        var node = new TreeNodeViewModel(PathOf("folder1/folder2"), showPlaceholder: false);
+
+        node.Name.ShouldBe("folder2");
     }
 
     [Test]

@@ -198,15 +198,10 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    switch (result)
-                    {
-                        case RepositoryDirectoryEntry directory:
-                            var dirName = ExtractDirectoryName(directory.RelativePath.ToString());
-                            var childNode = new TreeNodeViewModel(directory.RelativePath, OnNodeSelected)
-                            {
-                                Name = dirName
-                            };
-
+                        switch (result)
+                        {
+                            case RepositoryDirectoryEntry directory:
+                            var childNode = new TreeNodeViewModel(directory.RelativePath, OnNodeSelected);
                             node.Folders.Add(childNode);
 
                             break;
@@ -494,14 +489,6 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         nodeLoadCancellation?.Cancel();
         nodeLoadCancellation?.Dispose();
         nodeLoadCancellation = null;
-    }
-
-    private static string ExtractDirectoryName(string relativeName) // TODO move this logic to the TreeNodeViewModel, just like FileItemViewModel
-    {
-        // Extract directory name from path like "/folder1/folder2/" -> "folder2"
-        var trimmed = relativeName.TrimEnd('/');
-        var lastSlash = trimmed.LastIndexOf('/');
-        return lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
     }
 
 }

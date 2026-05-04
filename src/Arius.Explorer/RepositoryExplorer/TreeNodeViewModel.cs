@@ -31,6 +31,7 @@ public partial class TreeNodeViewModel : ObservableObject
     {
         this.prefix = prefix;
         this.onSelected = onSelected;
+        Name = prefix.Name?.ToString() ?? string.Empty;
 
         // Add placeholder child to show expansion chevron
         if (showPlaceholder)
