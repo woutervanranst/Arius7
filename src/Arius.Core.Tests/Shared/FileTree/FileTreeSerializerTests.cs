@@ -21,8 +21,8 @@ public class FileTreeSerializerTests
     {
         var entries = new List<FileTreeEntry>(items.Length);
         entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? new DirectoryEntry { Name = item.name, FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash)) }
-            : new FileEntry { Name      = item.name, ContentHash  = ContentHash.Parse(NormalizeHash(item.hash)), Created = s_created, Modified = s_modified })));
+            ? new DirectoryEntry { Name = SegmentOf(item.name), FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash)) }
+            : new FileEntry { Name      = SegmentOf(item.name), ContentHash  = ContentHash.Parse(NormalizeHash(item.hash)), Created = s_created, Modified = s_modified })));
 
         return entries;
     }
@@ -72,11 +72,11 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    public void GetDirectoryName_TrimsSerializerSlashAndParsesSegment()
+    public void DirectoryEntry_Name_UsesPathSegmentInMemory()
     {
-        var entry = new DirectoryEntry { Name = "photos/", FileTreeHash = FakeFileTreeHash('d') };
+        var entry = new DirectoryEntry { Name = SegmentOf("photos"), FileTreeHash = FakeFileTreeHash('d') };
 
-        entry.GetDirectoryName().ShouldBe(SegmentOf("photos"));
+        entry.Name.ShouldBe(SegmentOf("photos"));
     }
 
     [Test]
@@ -84,19 +84,19 @@ public class FileTreeSerializerTests
     {
         var entries = MakeEntries(
             ("photo.jpg", false, FakeContentHash('a').ToString()),
-            ("subdir/",   true,  FakeFileTreeHash('e').ToString()));
+            ("subdir",    true,  FakeFileTreeHash('e').ToString()));
 
         var bytes = FileTreeSerializer.Serialize(entries);
         var back  = FileTreeSerializer.Deserialize(bytes);
 
         back.Count.ShouldBe(2);
 
-        var file = back.Single(e => e.Name == "photo.jpg").ShouldBeOfType<FileEntry>();
+        var file = back.Single(e => e.Name == SegmentOf("photo.jpg")).ShouldBeOfType<FileEntry>();
         file.ContentHash.ShouldBe(FakeContentHash('a'));
         file.Created.ShouldNotBe(default);
         file.Modified.ShouldNotBe(default);
 
-        var dir = back.Single(e => e.Name == "subdir/").ShouldBeOfType<DirectoryEntry>();
+        var dir = back.Single(e => e.Name == SegmentOf("subdir")).ShouldBeOfType<DirectoryEntry>();
         dir.FileTreeHash.ShouldBe(FakeFileTreeHash('e'));
     }
 
@@ -111,9 +111,9 @@ public class FileTreeSerializerTests
         var bytes = FileTreeSerializer.Serialize(entries);
         var back  = FileTreeSerializer.Deserialize(bytes);
 
-        back[0].Name.ShouldBe("a_first.txt");
-        back[1].Name.ShouldBe("m_mid.txt");
-        back[2].Name.ShouldBe("z_last.txt");
+        back[0].Name.ShouldBe(SegmentOf("a_first.txt"));
+        back[1].Name.ShouldBe(SegmentOf("m_mid.txt"));
+        back[2].Name.ShouldBe(SegmentOf("z_last.txt"));
     }
 
     [Test]
@@ -122,7 +122,7 @@ public class FileTreeSerializerTests
         var entries = MakeEntries(
             ("z_last.txt", false, FakeContentHash('3').ToString()),
             ("a_first.txt", false, FakeContentHash('1').ToString()),
-            ("m_mid/", true, FakeFileTreeHash('2').ToString()));
+            ("m_mid", true, FakeFileTreeHash('2').ToString()));
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -149,8 +149,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            new DirectoryEntry { Name = "sub/", FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
-            new FileEntry { Name = "f.txt", ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
+            new DirectoryEntry { Name = SegmentOf("sub"), FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
+            new FileEntry { Name = SegmentOf("f.txt"), ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
@@ -171,18 +171,18 @@ public class FileTreeSerializerTests
         var bytes = FileTreeSerializer.Serialize(entries);
         var back  = FileTreeSerializer.Deserialize(bytes);
 
-        back.Single().Name.ShouldBe("my vacation photo.jpg");
+        back.Single().Name.ShouldBe(SegmentOf("my vacation photo.jpg"));
     }
 
     [Test]
     public void Serialize_DirEntryWithSpacesInName_RoundTrips()
     {
-        var entries = MakeEntries(("2024 trip/", true, FakeFileTreeHash('d').ToString()));
+        var entries = MakeEntries(("2024 trip", true, FakeFileTreeHash('d').ToString()));
 
         var bytes = FileTreeSerializer.Serialize(entries);
         var back  = FileTreeSerializer.Deserialize(bytes);
 
-        back.Single().Name.ShouldBe("2024 trip/");
+        back.Single().Name.ShouldBe(SegmentOf("2024 trip"));
     }
 
     [Test]
@@ -192,7 +192,7 @@ public class FileTreeSerializerTests
         var modified = created.AddMinutes(5);
         var entry = new FileEntry
         {
-            Name = "file with spaces.txt",
+            Name = SegmentOf("file with spaces.txt"),
             ContentHash = ContentHash.Parse(NormalizeHash("abc")),
             Created = created,
             Modified = modified
@@ -211,7 +211,7 @@ public class FileTreeSerializerTests
         var modified = created.AddMinutes(5);
         var entry = new FileEntry
         {
-            Name = "file with spaces.txt",
+            Name = SegmentOf("file with spaces.txt"),
             ContentHash = ContentHash.Parse(NormalizeHash("abc")),
             Created = created,
             Modified = modified
@@ -240,7 +240,7 @@ public class FileTreeSerializerTests
 
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
         entry.DirectoryNameHash.ShouldBe(directoryId);
-        entry.Name.ShouldBe("photos/");
+        entry.Name.ShouldBe(SegmentOf("photos"));
     }
 
     [Test]
@@ -252,7 +252,7 @@ public class FileTreeSerializerTests
 
         var entry = parsed.ShouldBeOfType<DirectoryEntry>();
         entry.FileTreeHash.ShouldBe(hash);
-        entry.Name.ShouldBe("photos/");
+        entry.Name.ShouldBe(SegmentOf("photos"));
     }
 
     [Test]

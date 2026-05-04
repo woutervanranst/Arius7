@@ -166,8 +166,8 @@ public sealed class FileTreeBuilder
     {
         ArgumentNullException.ThrowIfNull(lines);
 
-        var fileEntries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
-        var directoryEntries = new Dictionary<string, StagedDirectoryEntry>(StringComparer.Ordinal);
+        var fileEntries = new Dictionary<PathSegment, FileEntry>();
+        var directoryEntries = new Dictionary<PathSegment, StagedDirectoryEntry>();
 
         await foreach (var line in lines.WithCancellation(cancellationToken))
         {

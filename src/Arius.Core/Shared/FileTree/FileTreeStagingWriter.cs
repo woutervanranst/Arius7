@@ -44,7 +44,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
         await AppendDirectoryEntriesAsync(segments, cancellationToken);
         await AppendFileEntryAsync(parentPath, new FileEntry
         {
-            Name        = fileName,
+            Name        = PathSegment.Parse(fileName),
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified
@@ -66,7 +66,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
                 ? RelativePath.Root
                 : RelativePath.Parse(string.Join('/', segments, 0, depth));
             var directoryPath = RelativePath.Parse(string.Join('/', segments, 0, depth + 1));
-            var directoryName = segments[depth] + "/";
+            var directoryName = PathSegment.Parse(segments[depth]);
             var directoryId   = FileTreePaths.GetStagingDirectoryId(directoryPath);
             var nodePath      = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
 

@@ -525,7 +525,7 @@ public sealed class RestoreCommandHandler
             }
             else if (entry is FileEntry fileEntry)
             {
-                var filePath = currentPath / PathSegment.Parse(entry.Name);
+                var filePath = currentPath / fileEntry.Name;
 
                 if (targetPrefix is null || filePath.StartsWith(targetPrefix.Value))
                 {

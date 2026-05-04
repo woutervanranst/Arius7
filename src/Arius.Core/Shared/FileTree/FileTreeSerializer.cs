@@ -27,7 +27,7 @@ public static class FileTreeSerializer
 
         var sb = new StringBuilder();
 
-        foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+        foreach (var entry in entries.OrderBy(e => e.Name.ToString(), StringComparer.Ordinal))
         {
             if (entry is FileEntry fileEntry)
                 sb.AppendLine(SerializePersistedFileEntryLine(fileEntry));
@@ -49,8 +49,8 @@ public static class FileTreeSerializer
     /// Serializes one directory entry in the persisted filetree node format.
     /// </summary>
     public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => SerializePersistedDirectoryEntryLine(entry.FileTreeHash, entry.Name);
-    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, string name) => $"{hash} D {name}";
-    public static string SerializePersistedDirectoryEntryLine(string hash, string name)       => $"{hash} D {name}";
+    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, PathSegment name) => $"{hash} D {name}/";
+    public static string SerializePersistedDirectoryEntryLine(string hash, PathSegment name)       => $"{hash} D {name}/";
 
     /// <summary>
     /// Parses a persisted file entry line of the form '{content-hash} F {created} {modified} {name}'.
@@ -110,7 +110,7 @@ public static class FileTreeSerializer
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name         = afterType
+                Name         = PathSegment.Parse(afterType.TrimEnd('/'))
             };
         }
 
@@ -186,7 +186,7 @@ public static class FileTreeSerializer
         return new StagedDirectoryEntry
         {
             DirectoryNameHash = normalizedDirectoryNameHash,
-            Name              = name
+            Name              = PathSegment.Parse(name.TrimEnd('/'))
         };
     }
 
@@ -237,7 +237,7 @@ public static class FileTreeSerializer
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified,
-            Name        = name
+            Name        = PathSegment.Parse(name)
         };
     }
 }

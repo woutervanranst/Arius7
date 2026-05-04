@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -10,7 +11,7 @@ namespace Arius.Core.Shared.FileTree;
 public abstract record FileTreeEntry
 {
     /// <summary>File or directory name (not a full path).</summary>
-    public required string         Name     { get; init; }
+    public required PathSegment    Name     { get; init; }
 }
 
 public sealed record FileEntry : FileTreeEntry

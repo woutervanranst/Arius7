@@ -7,6 +7,6 @@ internal static class DirectoryEntryExtensions
     public static PathSegment GetDirectoryName(this DirectoryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return PathSegment.Parse(entry.Name.TrimEnd('/'));
+        return entry.Name;
     }
 }

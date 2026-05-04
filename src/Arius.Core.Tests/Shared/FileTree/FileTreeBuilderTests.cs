@@ -204,14 +204,14 @@ public class FileTreeBuilderTests
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
             var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
-                Name = "a.txt",
+                Name = SegmentOf("a.txt"),
                 ContentHash = FakeContentHash('a'),
                 Created = now,
                 Modified = now
             });
             var second = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
-                Name = "a.txt",
+                Name = SegmentOf("a.txt"),
                 ContentHash = FakeContentHash('b'),
                 Created = now,
                 Modified = now
@@ -240,14 +240,14 @@ public class FileTreeBuilderTests
         var enumerationAdvancedPastDuplicate = false;
         var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            Name = "a.txt",
+            Name = SegmentOf("a.txt"),
             ContentHash = FakeContentHash('a'),
             Created = now,
             Modified = now
         });
         var duplicate = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            Name = "a.txt",
+            Name = SegmentOf("a.txt"),
             ContentHash = FakeContentHash('b'),
             Created = now,
             Modified = now
@@ -300,7 +300,7 @@ public class FileTreeBuilderTests
                 childId,
                 FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
-                    Name = "a.jpg",
+                    Name = SegmentOf("a.jpg"),
                     ContentHash = FakeContentHash('c'),
                     Created = now,
                     Modified = now
@@ -324,7 +324,7 @@ public class FileTreeBuilderTests
                 childId,
                 FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
-                    Name = "a.jpg",
+                    Name = SegmentOf("a.jpg"),
                     ContentHash = FakeContentHash('c'),
                     Created = now,
                     Modified = now
@@ -568,7 +568,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = SegmentOf("file.txt"),
                 ContentHash = FakeContentHash('d'),
                 Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)
@@ -589,7 +589,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = SegmentOf("file.txt"),
                 ContentHash = FakeContentHash('d'),
                 Created = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
@@ -616,7 +616,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = SegmentOf("file.txt"),
                 ContentHash = FakeContentHash('a'),
                 Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)

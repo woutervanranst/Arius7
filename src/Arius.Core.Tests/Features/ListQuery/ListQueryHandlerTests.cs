@@ -471,7 +471,7 @@ public class ListQueryHandlerTests
 
     private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
     {
-        Name = name,
+        Name = SegmentOf(name),
         ContentHash = hash,
         Created = s_created,
         Modified = s_modified
@@ -479,7 +479,7 @@ public class ListQueryHandlerTests
 
     private static DirectoryEntry DirectoryEntryOf(string name, FileTreeHash hash) => new()
     {
-        Name = name,
+        Name = SegmentOf(name.TrimEnd('/')),
         FileTreeHash = hash
     };
 }

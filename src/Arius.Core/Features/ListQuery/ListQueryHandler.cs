@@ -103,7 +103,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         var cloudEntries = treeEntries ?? [];
 
         var yieldedDirectoryNames = new HashSet<PathSegment>(PathSegment.OrdinalIgnoreCaseComparer);
-        var yieldedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var yieldedFileNames = new HashSet<PathSegment>(PathSegment.OrdinalIgnoreCaseComparer);
         var recursionTargets = new List<RecursionTarget>();
 
         foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
@@ -145,7 +145,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         var visibleCloudFiles = cloudEntries
             .OfType<FileEntry>()
-            .Select(e => new CloudFileCandidate(e, localSnapshot.Files.GetValueOrDefault(e.Name)))
+            .Select(e => new CloudFileCandidate(e, localSnapshot.Files.GetValueOrDefault(e.Name.ToString())))
             .ToList();
 
         foreach (var candidate in visibleCloudFiles)
@@ -154,7 +154,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         var hashes = visibleCloudFiles
-            .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
+            .Where(candidate => MatchesFilter(candidate.Entry.Name.ToString(), filter))
             .Select(candidate => candidate.Entry.ContentHash)
             .Distinct()
             .ToList();
@@ -164,12 +164,12 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var candidate in visibleCloudFiles)
         {
-            if (!MatchesFilter(candidate.Entry.Name, filter))
+            if (!MatchesFilter(candidate.Entry.Name.ToString(), filter))
             {
                 continue;
             }
 
-            var relativePath = currentRelativeDirectory / PathSegment.Parse(candidate.Entry.Name);
+            var relativePath = currentRelativeDirectory / candidate.Entry.Name;
             var localFile = candidate.LocalFile;
             long? originalSize = localFile?.FileSize;
             if (sizeLookup.TryGetValue(candidate.Entry.ContentHash, out var shardEntry))
@@ -190,7 +190,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var localFile in localSnapshot.Files.Values)
         {
-            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name, filter))
+            var localFileSegment = PathSegment.Parse(localFile.Name);
+
+            if (yieldedFileNames.Contains(localFileSegment) || !MatchesFilter(localFile.Name, filter))
             {
                 continue;
             }

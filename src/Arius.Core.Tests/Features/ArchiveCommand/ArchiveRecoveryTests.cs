@@ -138,12 +138,12 @@ public class ArchiveRecoveryTests
 
         var snapshot = await ReadSnapshotAsync(env, snapshotBlobName);
         var rootEntries = await ReadFileTreeAsync(env, snapshot.RootHash);
-        var docsDirectory = rootEntries.OfType<DirectoryEntry>().Single(entry => entry.Name == "docs/");
+        var docsDirectory = rootEntries.OfType<DirectoryEntry>().Single(entry => entry.Name == SegmentOf("docs"));
         var docsEntries = await ReadFileTreeAsync(env, docsDirectory.FileTreeHash);
 
-        docsEntries.OfType<FileEntry>().Single(entry => entry.Name == "readme.txt");
-        rootEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.Contains('\\'));
-        docsEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.Contains('\\'));
+        docsEntries.OfType<FileEntry>().Single(entry => entry.Name == SegmentOf("readme.txt"));
+        rootEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.ToString().Contains('\\'));
+        docsEntries.OfType<FileEntry>().ShouldNotContain(entry => entry.Name.ToString().Contains('\\'));
     }
 
     [Test]
