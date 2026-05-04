@@ -434,23 +434,32 @@ public class FileTreeServiceTests
         var encryption = new PlaintextPassthroughService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, account, container);
         var service = new FileTreeService(blobs, encryption, chunkIndex, account, container);
-        await service.ValidateAsync();
-        IReadOnlyList<FileTreeEntry> entries =
-        [
-            new FileEntry
-            {
-                Name = "readme.txt",
-                ContentHash = ContentHash.Parse(new string('c', 64)),
-                Created = DateTimeOffset.UnixEpoch,
-                Modified = DateTimeOffset.UnixEpoch
-            }
-        ];
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(account, container);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(account, container);
+        try
+        {
+            await service.ValidateAsync();
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "readme.txt",
+                    ContentHash = ContentHash.Parse(new string('c', 64)),
+                    Created = DateTimeOffset.UnixEpoch,
+                    Modified = DateTimeOffset.UnixEpoch
+                }
+            ];
 
-        var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
-        await service.EnsureStoredAsync(payload);
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            await service.EnsureStoredAsync(payload);
 
-        blobs.Uploaded.ShouldContain(BlobPaths.FileTree(payload.Hash));
+            blobs.Uploaded.ShouldContain(BlobPaths.FileTree(payload.Hash));
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
     }
 
     private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, string blobName)
