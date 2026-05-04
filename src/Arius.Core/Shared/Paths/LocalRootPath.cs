@@ -43,6 +43,44 @@ public readonly record struct LocalRootPath
         }
     }
 
+    public RelativePath GetRelativePath(string fullPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullPath);
+
+        if (!Path.IsPathFullyQualified(fullPath))
+        {
+            throw new ArgumentException("Full path must be absolute.", nameof(fullPath));
+        }
+
+        var absolute = Path.GetFullPath(fullPath);
+        var relative = Path.GetRelativePath(Value, absolute);
+        if (relative == ".")
+        {
+            return RelativePath.Root;
+        }
+
+        if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        {
+            throw new ArgumentOutOfRangeException(nameof(fullPath), "Path must stay within the local root.");
+        }
+
+        return RelativePath.FromPlatformRelativePath(relative, allowEmpty: true);
+    }
+
+    public bool TryGetRelativePath(string fullPath, out RelativePath path)
+    {
+        try
+        {
+            path = GetRelativePath(fullPath);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            path = default;
+            return false;
+        }
+    }
+
     public bool Equals(LocalRootPath other) => Comparer.Equals(Value, other.Value);
 
     public override int GetHashCode() => Comparer.GetHashCode(Value);

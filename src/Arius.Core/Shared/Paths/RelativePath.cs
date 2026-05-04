@@ -100,6 +100,9 @@ public readonly record struct RelativePath
     }
 
 
+    public RootedPath RootedAt(LocalRootPath root) => new(root, this);
+
+
     public bool StartsWith(RelativePath other)
     {
         if (other.IsRoot)

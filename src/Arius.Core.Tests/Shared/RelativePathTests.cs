@@ -56,12 +56,12 @@ public class RelativePathTests
     }
 
     [Test]
-    public void ToPlatformPath_JoinsWithRootDirectory()
+    public void RootedAt_JoinsWithRootDirectory()
     {
-        var root = Path.Combine("C:", "repo");
+        var root = LocalRootPath.Parse(Path.Combine("C:", "repo"));
         var path = RelativePath.Parse("photos/2024/a.jpg");
 
-        path.ToPlatformPath(root).ShouldBe(Path.Combine(root, "photos", "2024", "a.jpg"));
+        path.RootedAt(root).FullPath.ShouldBe(Path.Combine(root.ToString(), "photos", "2024", "a.jpg"));
     }
 
     [Test]
