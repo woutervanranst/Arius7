@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Microsoft.Extensions.Logging.Testing;
@@ -53,7 +54,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry($"{chunkType}.bin", contentHash, 100, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse($"{chunkType}.bin"), contentHash, 100, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -97,8 +98,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry("thin.bin", thinContentHash, 50, null, null, true, false, null, null),
-            new RepositoryFileEntry("tar.bin", tarContentHash, 75, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse("thin.bin"), thinContentHash, 50, null, null, true, false, null, null),
+            new RepositoryFileEntry(RelativePath.Parse("tar.bin"), tarContentHash, 75, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();

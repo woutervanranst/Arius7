@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -128,7 +129,7 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in files)
             {
-                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
 
                 if (File.Exists(localPath))
                 {
@@ -142,29 +143,29 @@ public sealed class RestoreCommandHandler
                         {
                             _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
-                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
                             continue;
                         }
 
                         // File exists with different hash, no --overwrite → keep local
                         _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
                         skipped++;
-                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
                         continue;
                     }
                     else
                     {
                         _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
                         var fi = new FileInfo(localPath);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.Overwrite, fi.Length), cancellationToken);
                     }
                 }
                 else
                 {
                     _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath);
-                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.New, 0), cancellationToken);
+                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.New, 0), cancellationToken);
                 }
 
                 toRestore.Add(file);
@@ -371,7 +372,7 @@ public sealed class RestoreCommandHandler
                         {
                             await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
                             Interlocked.Increment(ref filesRestoredLong);
-                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
+                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), indexEntry.OriginalSize), ct);
                         }
                     }
                     else
@@ -473,12 +474,12 @@ public sealed class RestoreCommandHandler
     private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, string? targetPath, CancellationToken cancellationToken)
     {
         var result = new List<FileToRestore>();
-        var prefix = NormalizePath(targetPath);
+        var prefix = NormalizeTargetPath(targetPath);
 
         var lastEmit = DateTimeOffset.UtcNow;
         var lastEmitCount = 0;
 
-        await WalkTreeAsync(rootHash, string.Empty, prefix, result, cancellationToken, async () =>
+        await WalkTreeAsync(rootHash, RelativePath.Root, prefix, result, cancellationToken, async () =>
         {
             // Emit progress event every 10 files or every 100ms
             var now = DateTimeOffset.UtcNow;
@@ -502,15 +503,15 @@ public sealed class RestoreCommandHandler
     }
 
     private async Task WalkTreeAsync(
-        FileTreeHash       treeHash,
-        string             currentPath,     // forward-slash relative, no trailing slash
-        string?            targetPrefix,
+        FileTreeHash        treeHash,
+        RelativePath        currentPath,
+        RelativePath?       targetPrefix,
         List<FileToRestore> result,
-        CancellationToken  cancellationToken,
-        Func<Task>?        onFileDiscovered = null)
+        CancellationToken   cancellationToken,
+        Func<Task>?         onFileDiscovered = null)
     {
         // Skip entire subtrees that cannot match the prefix filter
-        if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix))
+        if (targetPrefix is { } resolvedTargetPrefix && !IsPathRelevant(currentPath, resolvedTargetPrefix))
             return;
 
         // Load tree entries via cache
@@ -518,23 +519,19 @@ public sealed class RestoreCommandHandler
 
         foreach (var entry in treeEntries)
         {
-            var entryPath = currentPath.Length == 0
-                ? entry.Name
-                : $"{currentPath}/{entry.Name}";
-
             if (entry is DirectoryEntry directoryEntry)
             {
-                // Strip trailing slash from directory name used in path assembly
-                var dirPath = entryPath.TrimEnd('/');
+                var dirPath = currentPath / PathSegment.Parse(entry.Name.TrimEnd('/'));
                 await WalkTreeAsync(directoryEntry.FileTreeHash, dirPath, targetPrefix, result, cancellationToken, onFileDiscovered);
             }
             else if (entry is FileEntry fileEntry)
             {
-                // File entry
-                if (targetPrefix is null || entryPath.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                var filePath = currentPath / PathSegment.Parse(entry.Name);
+
+                if (targetPrefix is null || filePath.StartsWith(targetPrefix.Value))
                 {
                     result.Add(new FileToRestore(
-                        RelativePath : entryPath,
+                        RelativePath : filePath,
                         ContentHash  : fileEntry.ContentHash,
                         Created      : fileEntry.Created,
                         Modified     : fileEntry.Modified));
@@ -546,21 +543,22 @@ public sealed class RestoreCommandHandler
         }
     }
 
-    private static bool IsPathRelevant(string currentPath, string targetPrefix)
+    private static bool IsPathRelevant(RelativePath currentPath, RelativePath targetPrefix)
     {
-        if (currentPath.Length == 0) return true; // root always relevant
-
-        // currentPath is a directory; it's relevant if either:
-        //   (a) it's a prefix of targetPrefix (we need to descend into it)
-        //   (b) targetPrefix is a prefix of it (it's inside the target dir)
-        return targetPrefix.StartsWith(currentPath, StringComparison.OrdinalIgnoreCase)
-            || currentPath.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase);
+        return currentPath.IsRoot
+            || targetPrefix.StartsWith(currentPath)
+            || currentPath.StartsWith(targetPrefix);
     }
 
-    private static string? NormalizePath(string? path)
+    private static RelativePath? NormalizeTargetPath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        return path.Replace('\\', '/').TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        var normalized = path.Replace('\\', '/').Trim('/');
+        return normalized.Length == 0
+            ? null
+            : RelativePath.Parse(normalized);
     }
 
     // ── Large file restore (task 10.7) ────────────────────────────────────────
@@ -572,12 +570,12 @@ public sealed class RestoreCommandHandler
         long           compressedSize,
         CancellationToken cancellationToken)
     {
-        var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
 
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
         {
-            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath, compressedSize, DownloadKind.LargeFile);
+            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
             await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
@@ -639,7 +637,7 @@ public sealed class RestoreCommandHandler
             for (var i = 0; i < filesForHash.Count; i++)
             {
                 var file = filesForHash[i];
-                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
@@ -673,7 +671,7 @@ public sealed class RestoreCommandHandler
                     File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath).Length), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), new FileInfo(localPath).Length), cancellationToken);
                 restored++;
             }
         }

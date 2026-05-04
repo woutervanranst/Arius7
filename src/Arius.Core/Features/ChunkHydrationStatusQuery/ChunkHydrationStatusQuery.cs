@@ -57,7 +57,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
             if (!indexEntries.TryGetValue(contentHash, out var entry))
             {
                 _logger.LogWarning("Content hash not found in chunk index while resolving hydration status: {ContentHash}", file.ContentHash);
-                yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, ChunkHydrationStatus.Unknown);
+                yield return new ChunkHydrationStatusResult(file.RelativePath.ToString(), file.ContentHash, ChunkHydrationStatus.Unknown);
                 continue;
             }
 
@@ -67,7 +67,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
                 statusByChunkHash[entry.ChunkHash] = status;
             }
 
-            yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, status);
+            yield return new ChunkHydrationStatusResult(file.RelativePath.ToString(), file.ContentHash, status);
         }
     }
 }

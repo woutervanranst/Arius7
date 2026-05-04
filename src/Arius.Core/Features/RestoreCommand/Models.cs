@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -8,7 +9,7 @@ namespace Arius.Core.Features.RestoreCommand;
 /// A file entry collected during tree traversal that needs to be restored.
 /// </summary>
 internal sealed record FileToRestore(
-    string         RelativePath,  // forward-slash, relative to archive root
+    RelativePath   RelativePath,
     ContentHash    ContentHash,
     DateTimeOffset Created,
     DateTimeOffset Modified

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Mediator;
 
 namespace Arius.Core.Features.ListQuery;
@@ -43,13 +44,13 @@ public sealed record ListQueryOptions
 /// <summary>
 /// Base type for entries emitted by the streaming repository listing.
 /// </summary>
-public abstract record RepositoryEntry(string RelativePath);
+public abstract record RepositoryEntry(RelativePath RelativePath);
 
 /// <summary>
 /// A file entry emitted by the repository listing.
 /// </summary>
 public sealed record RepositoryFileEntry(
-    string RelativePath,
+    RelativePath RelativePath,
     ContentHash? ContentHash,
     long? OriginalSize,
     DateTimeOffset? Created,
@@ -66,7 +67,7 @@ public sealed record RepositoryFileEntry(
 /// Directory paths always end with a trailing slash.
 /// </summary>
 public sealed record RepositoryDirectoryEntry(
-    string RelativePath,
+    RelativePath RelativePath,
     FileTreeHash? TreeHash,
     bool ExistsInCloud,
     bool ExistsLocally)
