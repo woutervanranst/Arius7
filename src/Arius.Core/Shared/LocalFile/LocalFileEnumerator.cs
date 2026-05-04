@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Shared.LocalFile;
@@ -21,7 +22,7 @@ public sealed record FilePair
     /// Forward-slash-normalized path relative to the archive root (no leading slash).
     /// e.g. <c>photos/2024/june/a.jpg</c>
     /// </summary>
-    public required string RelativePath { get; init; }
+    public required RelativePath RelativePath { get; init; }
 
     /// <summary><c>true</c> if the binary file is present on disk.</summary>
     public required bool BinaryExists { get; init; }
@@ -91,6 +92,7 @@ public sealed class LocalFileEnumerator
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
                 var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
+                var binaryFileRelativePath = RelativePath.Parse(binaryFileRelativeName);
                 var binaryFileFullPath = Path.Combine(rootDirectory, binaryFileRelativeName.Replace('/', Path.DirectorySeparatorChar));
 
                 if (File.Exists(binaryFileFullPath))
@@ -100,7 +102,7 @@ public sealed class LocalFileEnumerator
                 var pointerHash = ReadPointerHash(file.FullName, relativeName);
                 yield return new FilePair
                 {
-                    RelativePath  = binaryFileRelativeName,
+                    RelativePath  = binaryFileRelativePath,
                     BinaryExists  = false,
                     PointerExists = true,
                     PointerHash   = pointerHash,
@@ -112,6 +114,7 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
+                var relativePath = RelativePath.Parse(relativeName);
                 var pointerRel  = relativeName + PointerSuffix;
                 var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
                 var hasPointer  = File.Exists(pointerPath);
@@ -122,7 +125,7 @@ public sealed class LocalFileEnumerator
 
                 yield return new FilePair
                 {
-                    RelativePath  = relativeName, // this will be the relative name of the BinaryFile
+                    RelativePath  = relativePath,
                     BinaryExists  = true,
                     PointerExists = hasPointer,
                     PointerHash   = pointerHash,
