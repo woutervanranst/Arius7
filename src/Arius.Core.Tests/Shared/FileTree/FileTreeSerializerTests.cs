@@ -35,7 +35,7 @@ public class FileTreeSerializerTests
             [
                 $"not-a-hash F {s_created:O} {s_modified:O} broken.txt",
                 $"{new string('a', 64)} F {s_created:O} {s_modified:O} healthy.txt",
-                $"{new string('b', 64)} D photos/"
+                $"{new string('b', 64)} D photos"
             ]);
 
         Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
@@ -50,7 +50,7 @@ public class FileTreeSerializerTests
                 $"not-a-hash F garbage broken.txt",
                 $"{new string('c', 64)} D",
                 $"{new string('a', 64)} F {s_created:O} {s_modified:O} healthy.txt",
-                $"{new string('b', 64)} D photos/"
+                $"{new string('b', 64)} D photos"
             ]);
 
         Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
@@ -65,7 +65,7 @@ public class FileTreeSerializerTests
                 $"{new string('a', 64)} F {s_created:O} {s_modified:O} ",
                 $"{new string('b', 64)} F {s_created:O} {s_modified:O}    ",
                 $"{new string('c', 64)} F {s_created:O} {s_modified:O} healthy.txt",
-                $"{new string('d', 64)} D photos/"
+                $"{new string('d', 64)} D photos"
             ]);
 
         Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text + "\n")));
@@ -128,8 +128,19 @@ public class FileTreeSerializerTests
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         lines[0].ShouldContain(" a_first.txt");
-        lines[1].ShouldContain(" m_mid/");
+        lines[1].ShouldContain(" m_mid");
         lines[2].ShouldContain(" z_last.txt");
+    }
+
+    [Test]
+    public void Serialize_DirectoryEntry_PersistsBareSegmentName()
+    {
+        var entries = MakeEntries(("subdir", true, FakeFileTreeHash('d').ToString()));
+
+        var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
+
+        text.ShouldContain(" D subdir");
+        text.ShouldNotContain(" D subdir/");
     }
 
     [Test]
@@ -236,7 +247,7 @@ public class FileTreeSerializerTests
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
-        var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/");
+        var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos");
 
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
         entry.DirectoryNameHash.ShouldBe(directoryId);
@@ -248,7 +259,7 @@ public class FileTreeSerializerTests
     {
         var hash = FakeFileTreeHash('d');
 
-        var parsed = FileTreeSerializer.ParsePersistedNodeEntryLine($"{hash} D photos/");
+        var parsed = FileTreeSerializer.ParsePersistedNodeEntryLine($"{hash} D photos");
 
         var entry = parsed.ShouldBeOfType<DirectoryEntry>();
         entry.FileTreeHash.ShouldBe(hash);
@@ -256,9 +267,10 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    [Arguments("photos/")]
     [Arguments("photos//")]
+    [Arguments("photos/2024")]
     [Arguments("photos\\")]
-    [Arguments("photos/2024/")]
     public void ParsePersistedNodeEntryLine_MalformedDirectoryName_ThrowsFormatException(string directoryName)
     {
         var hash = FakeFileTreeHash('d');
@@ -268,9 +280,9 @@ public class FileTreeSerializerTests
     }
 
     [Test]
-    [Arguments("photos")]
+    [Arguments("photos/")]
     [Arguments("photos//")]
-    [Arguments("photos/2024/")]
+    [Arguments("photos/2024")]
     [Arguments("photos\\")]
     public void ParseStagedNodeEntryLine_NonCanonicalDirectoryName_Throws(string directoryName)
     {
@@ -286,7 +298,7 @@ public class FileTreeSerializerTests
         var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
-            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos\r/"));
+            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos\r2024"));
     }
 
     [Test]
@@ -295,6 +307,6 @@ public class FileTreeSerializerTests
         var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
-            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/2024/"));
+            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/2024"));
     }
 }

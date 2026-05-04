@@ -49,8 +49,8 @@ public static class FileTreeSerializer
     /// Serializes one directory entry in the persisted filetree node format.
     /// </summary>
     public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => SerializePersistedDirectoryEntryLine(entry.FileTreeHash, entry.Name);
-    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, PathSegment name) => $"{hash} D {name}/";
-    public static string SerializePersistedDirectoryEntryLine(string hash, PathSegment name)       => $"{hash} D {name}/";
+    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, PathSegment name) => $"{hash} D {name}";
+    public static string SerializePersistedDirectoryEntryLine(string hash, PathSegment name)       => $"{hash} D {name}";
 
     /// <summary>
     /// Parses a persisted file entry line of the form '{content-hash} F {created} {modified} {name}'.
@@ -110,7 +110,7 @@ public static class FileTreeSerializer
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name         = ParsePersistedDirectoryEntryName(afterType, line)
+                Name         = ParseDirectoryEntryName(afterType, line, "Invalid directory entry")
             };
         }
 
@@ -181,51 +181,23 @@ public static class FileTreeSerializer
             throw new FormatException($"Invalid staged directory entry (missing type marker): '{line}'");
 
         var name = afterId[2..];
-        ValidateCanonicalDirectoryEntryName(name, line);
 
         return new StagedDirectoryEntry
         {
             DirectoryNameHash = normalizedDirectoryNameHash,
-            Name              = PathSegment.Parse(name.TrimEnd('/'))
+            Name              = ParseDirectoryEntryName(name, line, "Invalid staged directory entry")
         };
     }
 
-    private static PathSegment ParsePersistedDirectoryEntryName(string name, string line)
+    private static PathSegment ParseDirectoryEntryName(string name, string line, string errorPrefix)
     {
-        if (!name.EndsWith("/", StringComparison.Ordinal) || name.Length == 1)
-            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'");
-
-        var trimmedName = name[..^1];
-        if (trimmedName.Contains('/', StringComparison.Ordinal))
-            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'");
-
         try
         {
-            return PathSegment.Parse(trimmedName);
+            return PathSegment.Parse(name);
         }
         catch (ArgumentException ex)
         {
-            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'", ex);
-        }
-    }
-
-    private static void ValidateCanonicalDirectoryEntryName(string name, string line)
-    {
-        if (!name.EndsWith("/", StringComparison.Ordinal) || name.Length == 1)
-            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
-
-        var trimmedName = name[..^1];
-
-        if (trimmedName.Contains('/', StringComparison.Ordinal))
-            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
-
-        try
-        {
-            _ = RelativePath.Parse(trimmedName);
-        }
-        catch (ArgumentException ex)
-        {
-            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'", ex);
+            throw new FormatException($"{errorPrefix} (non-canonical name): '{line}'", ex);
         }
     }
 
