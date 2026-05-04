@@ -281,4 +281,27 @@ public class FileTreeStagingWriterTests
                 Directory.Delete(cacheDir, recursive: true);
         }
     }
+
+    [Test]
+    public async Task AppendFileEntryAsync_InvalidFilePath_PreservesExceptionContract()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await writer.AppendFileEntryAsync("photos/./a.jpg", TestHash, TestTimestamp, TestTimestamp));
+
+            exception.ShouldNotBeNull();
+            exception.Message.ShouldStartWith("File path must be a canonical relative path.");
+            exception.ParamName.ShouldBe("filePath");
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
 }

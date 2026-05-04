@@ -29,7 +29,14 @@ internal sealed class FileTreeStagingWriter : IDisposable
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        ValidateCanonicalRelativePath(filePath);
+        try
+        {
+            RepositoryRelativePath.ValidateCanonical(filePath);
+        }
+        catch (ArgumentException) when (!string.IsNullOrEmpty(filePath))
+        {
+            throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+        }
 
         var segments = filePath.Split('/');
         if (segments.Length == 0)
@@ -49,33 +56,6 @@ internal sealed class FileTreeStagingWriter : IDisposable
             Created     = created,
             Modified    = modified
         }, cancellationToken);
-
-        static void ValidateCanonicalRelativePath(string path)
-        {
-            if (path.StartsWith('/')
-                || Path.IsPathRooted(path)
-                || (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '/'))
-                throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-            var segments = path.Split('/');
-            if (segments.Length == 0)
-                throw new ArgumentException("File path must include a file name.", nameof(filePath));
-
-            foreach (var segment in segments)
-            {
-                if (segment.Length == 0 || string.IsNullOrWhiteSpace(segment))
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment is "." or "..")
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment.Contains('\\'))
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment.IndexOfAny(['\r', '\n', '\0']) >= 0)
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-            }
-        }
     }
 
     private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
