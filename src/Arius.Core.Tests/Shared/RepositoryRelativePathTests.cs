@@ -5,6 +5,12 @@ namespace Arius.Core.Tests.Shared;
 public class RepositoryRelativePathTests
 {
     [Test]
+    public void ValidateCanonical_NullPath_ThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => RepositoryRelativePath.ValidateCanonical(null!));
+    }
+
+    [Test]
     [Arguments("photos/a.jpg")]
     [Arguments("photos/2024/a.jpg")]
     [Arguments(" photos/a.jpg ")]
