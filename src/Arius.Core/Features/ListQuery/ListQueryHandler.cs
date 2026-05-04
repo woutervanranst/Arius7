@@ -50,7 +50,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             _accountName,
             _containerName,
             opts.Version ?? "latest",
-            opts.Prefix ?? "(none)",
+            opts.Prefix?.ToString() ?? "(none)",
             opts.Filter ?? "(none)",
             opts.Recursive,
             opts.LocalPath ?? "(none)");
@@ -64,12 +64,11 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     : $"Snapshot '{opts.Version}' not found.");
         }
 
-        var prefix = NormalizePrefix(opts.Prefix);
         var localRoot = NormalizeLocalRoot(opts.LocalPath);
         var (treeHash, localDir, relativeDirectory) = await ResolveStartingPointAsync(
             snapshot.RootHash,
             localRoot,
-            prefix,
+            opts.Prefix,
             cancellationToken);
 
         await foreach (var entry in WalkDirectoryAsync(
@@ -241,10 +240,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             return (rootHash, localRoot, RelativePath.Root);
         }
 
-        var segments = prefix.Value.ToString().Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         FileTreeHash? currentHash = rootHash;
 
-        foreach (var segment in segments)
+        foreach (var segment in prefix.Value.Segments)
         {
             if (currentHash is null)
             {
@@ -255,20 +253,20 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
-                .FirstOrDefault(e => string.Equals(NormalizeDirectoryEntryName(e.Name), segment, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(e => string.Equals(NormalizeDirectoryEntryName(e.Name), segment.ToString(), StringComparison.OrdinalIgnoreCase));
 
             currentHash = nextDirectory?.FileTreeHash;
         }
 
         var localDirectory = localRoot;
-        foreach (var segment in segments)
+        foreach (var segment in prefix.Value.Segments)
         {
             if (localDirectory is null)
             {
                 break;
             }
 
-            var candidate = Path.Combine(localDirectory, segment);
+            var candidate = Path.Combine(localDirectory, segment.ToString());
             localDirectory = Directory.Exists(candidate) ? candidate : null;
         }
 
@@ -363,17 +361,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             _logger.LogWarning(ex, "Could not read pointer file: {RelPath}", relPath);
             return null;
         }
-    }
-
-    private static RelativePath? NormalizePrefix(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        var normalized = path.Replace('\\', '/').Trim('/');
-        return normalized.Length == 0 ? null : RelativePath.Parse(normalized);
     }
 
     private static string? NormalizeLocalRoot(string? path) =>

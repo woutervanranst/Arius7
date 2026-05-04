@@ -17,6 +17,10 @@ public readonly record struct RelativePath
 
     public int SegmentCount => IsRoot ? 0 : Value.Count(static c => c == '/') + 1;
 
+    public IReadOnlyList<PathSegment> Segments => IsRoot
+        ? []
+        : Value.Split('/').Select(PathSegment.Parse).ToArray();
+
     public PathSegment? Name => IsRoot ? null : PathSegment.Parse(Value[(Value.LastIndexOf('/') + 1)..]);
 
     public RelativePath? Parent

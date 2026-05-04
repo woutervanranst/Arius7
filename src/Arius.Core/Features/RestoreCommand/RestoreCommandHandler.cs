@@ -471,15 +471,14 @@ public sealed class RestoreCommandHandler
     /// that match <paramref name="targetPath"/> (or all files if <c>null</c>).
     /// Emits batched <see cref="TreeTraversalProgressEvent"/> during traversal.
     /// </summary>
-    private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, string? targetPath, CancellationToken cancellationToken)
+    private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, RelativePath? targetPath, CancellationToken cancellationToken)
     {
         var result = new List<FileToRestore>();
-        var prefix = NormalizeTargetPath(targetPath);
 
         var lastEmit = DateTimeOffset.UtcNow;
         var lastEmitCount = 0;
 
-        await WalkTreeAsync(rootHash, RelativePath.Root, prefix, result, cancellationToken, async () =>
+        await WalkTreeAsync(rootHash, RelativePath.Root, targetPath, result, cancellationToken, async () =>
         {
             // Emit progress event every 10 files or every 100ms
             var now = DateTimeOffset.UtcNow;
@@ -548,17 +547,6 @@ public sealed class RestoreCommandHandler
         return currentPath.IsRoot
             || targetPrefix.StartsWith(currentPath)
             || currentPath.StartsWith(targetPrefix);
-    }
-
-    private static RelativePath? NormalizeTargetPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return null;
-
-        var normalized = path.Replace('\\', '/').Trim('/');
-        return normalized.Length == 0
-            ? null
-            : RelativePath.Parse(normalized);
     }
 
     // ── Large file restore (task 10.7) ────────────────────────────────────────

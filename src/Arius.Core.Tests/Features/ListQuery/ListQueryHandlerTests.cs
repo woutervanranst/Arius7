@@ -99,7 +99,7 @@ public class ListQueryHandlerTests
         var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = PathOf("docs"), Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }

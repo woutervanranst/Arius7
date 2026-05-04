@@ -99,7 +99,7 @@ public class RestoreCommandHandlerTests
             {
                 RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
-                TargetPath    = "docs",
+                TargetPath    = PathOf("docs"),
             }),
             CancellationToken.None);
 
@@ -109,7 +109,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_TargetPathWithLeadingSlash_RestoresSelectedRootFile()
+    public async Task Handle_TargetPathWithTypedRootFile_RestoresSelectedRootFile()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
             $"acct-restore-leading-slash-{Guid.NewGuid():N}",
@@ -133,7 +133,7 @@ public class RestoreCommandHandlerTests
             {
                 RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
-                TargetPath    = "/file-a.txt",
+                TargetPath    = PathOf("file-a.txt"),
             }),
             CancellationToken.None);
 

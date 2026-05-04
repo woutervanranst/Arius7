@@ -21,7 +21,7 @@ public sealed record ListQueryOptions
     /// Path prefix filter: only return files whose relative path starts with this value.
     /// <c>null</c> = no prefix filter.
     /// </summary>
-    public string? Prefix { get; init; }
+    public RelativePath? Prefix { get; init; }
 
     /// <summary>
     /// Filename substring filter (case-insensitive).

@@ -176,7 +176,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             var query = new ListQuery(new ListQueryOptions
             {
-                Prefix = string.IsNullOrWhiteSpace(node.Prefix) ? null : node.Prefix,
+                Prefix = ParseRepositoryRelativePath(node.Prefix),
                 Recursive = false,
                 LocalPath = Repository.LocalDirectoryPath,
             });
@@ -429,7 +429,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                 var command = new RestoreCommand(new RestoreOptions
                 {
                     RootDirectory = Repository.LocalDirectoryPath,
-                    TargetPath = selectedFile.File.RelativePath.ToString(),
+                    TargetPath = selectedFile.File.RelativePath,
                     Overwrite = true,
                     NoPointers = false,
                 });
@@ -502,5 +502,14 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         var trimmed = relativeName.TrimEnd('/');
         var lastSlash = trimmed.LastIndexOf('/');
         return lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
+    }
+
+    private static RelativePath? ParseRepositoryRelativePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Replace('\\', '/').Trim('/');
+        return normalized.Length == 0 ? null : RelativePath.Parse(normalized);
     }
 }

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Arius.Core.Features.ListQuery;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -107,7 +108,7 @@ internal static class LsVerb
                 var opts = new ListQueryOptions
                 {
                     Version = version,
-                    Prefix  = prefix,
+                    Prefix  = ParsePrefix(prefix),
                     Filter  = filter,
                 };
 
@@ -156,5 +157,16 @@ internal static class LsVerb
         });
 
         return cmd;
+
+        static RelativePath? ParsePrefix(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var normalized = value.Replace('\\', '/').Trim('/');
+            return normalized.Length == 0 ? null : RelativePath.Parse(normalized);
+        }
     }
 }

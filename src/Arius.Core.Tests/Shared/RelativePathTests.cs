@@ -18,6 +18,7 @@ public class RelativePathTests
 
         path.IsRoot.ShouldBeFalse();
         path.SegmentCount.ShouldBe(3);
+        path.Segments.ShouldBe([PathSegment.Parse("photos"), PathSegment.Parse("2024"), PathSegment.Parse("a.jpg")]);
         path.Name.ShouldBe(PathSegment.Parse("a.jpg"));
         path.Parent.ShouldBe(RelativePath.Parse("photos/2024"));
         path.ToString().ShouldBe("photos/2024/a.jpg");

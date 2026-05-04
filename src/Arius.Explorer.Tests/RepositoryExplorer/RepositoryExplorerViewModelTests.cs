@@ -286,7 +286,7 @@ public class RepositoryExplorerViewModelTests
         await mediator.Received(1).Send(
             Arg.Is<RestoreCommand>(command =>
                 command.Options.RootDirectory == "C:/data" &&
-                command.Options.TargetPath == "file-a.txt" &&
+                command.Options.TargetPath == PathOf("file-a.txt") &&
                 command.Options.Overwrite &&
                 command.Options.NoPointers == false),
             Arg.Any<CancellationToken>());

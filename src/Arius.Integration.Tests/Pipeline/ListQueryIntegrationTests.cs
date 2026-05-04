@@ -55,7 +55,7 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
 
-        var entries = await fix.ListAsync(new ListQueryOptions { Prefix = "photos" });
+        var entries = await fix.ListAsync(new ListQueryOptions { Prefix = PathOf("photos") });
         entries.Count.ShouldBe(2);
         entries.All(e => e.RelativePath.StartsWith(PathOf("photos"))).ShouldBeTrue();
     }
