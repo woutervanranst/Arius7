@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -17,32 +19,46 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     private const string Account = "devstoreaccount1";
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string containerName)
+    private static FileTreeBuilder CreateBuilder(
+        IBlobContainerService blobs,
+        string containerName,
+        out FileTreeService fileTreeService)
     {
         var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
-        var fileTreeService = new FileTreeService(blobs, s_enc, index, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, s_enc, index, Account, containerName);
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
-    private static ManifestEntry MakeEntry(string path, ContentHash hash, DateTimeOffset ts) =>
-        new(path, hash, ts, ts);
+    private static async Task<FileTreeStagingSession> CreateStagingAsync(
+        string containerName,
+        params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
+    {
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(Account, containerName);
+        var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+        using var writer = new FileTreeStagingWriter(session.StagingRoot);
+        foreach (var file in files)
+            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Timestamp, file.Timestamp);
+
+        return session;
+    }
 
     // ── Upload and download roundtrip ─────────────────────────────────────────
 
     [Test]
-    public async Task BuildAsync_SingleFile_BlobUploadedToFileTreesPrefix()
+    public async Task SynchronizeAsync_SingleFile_BlobUploadedToFileTreesPrefix()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
 
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("readme.txt", FakeContentHash('a'), now);
-            await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
+            await using var stagingSession = await CreateStagingAsync(
+                container.Name,
+                ("readme.txt", FakeContentHash('a'), now));
 
-            var builder  = CreateBuilder(blobs, container.Name);
-            var rootHash = await builder.BuildAsync(manifestPath);
+            var builder  = CreateBuilder(blobs, container.Name, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+            var rootHash = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             rootHash.ShouldNotBeNull();
             var resolvedRootHash = rootHash!.Value;
@@ -54,17 +70,16 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Download and deserialize to verify content
             await using var stream = await blobs.DownloadAsync(blobName);
-            var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, s_enc);
+            var entries = await ReadStoredTreeAsync(stream, s_enc);
 
-            treeBlob.Entries.Count.ShouldBe(1);
-            treeBlob.Entries[0].Name.ShouldBe("readme.txt");
-            treeBlob.Entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
+            entries.Count.ShouldBe(1);
+            entries[0].Name.ShouldBe("readme.txt");
+            entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
         }
         finally
         {
-            File.Delete(manifestPath);
             // clean up disk cache
-            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -72,19 +87,20 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     // ── Dedup across runs: second run should not re-upload ────────────────────
 
     [Test]
-    public async Task BuildAsync_SecondRun_SameManifest_DoesNotReupload()
+    public async Task SynchronizeAsync_SecondRun_SameManifest_DoesNotReupload()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
 
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var entry = MakeEntry("photo.jpg", FakeContentHash('b'), now);
-            await File.WriteAllTextAsync(manifestPath, entry.Serialize() + "\n");
+            await using var stagingSession = await CreateStagingAsync(
+                container.Name,
+                ("photo.jpg", FakeContentHash('b'), now));
 
-            var builder1 = CreateBuilder(blobs, container.Name);
-            var root1    = await builder1.BuildAsync(manifestPath);
+            var builder1 = CreateBuilder(blobs, container.Name, out var fileTreeService1);
+            await fileTreeService1.ValidateAsync();
+            var root1    = await builder1.SynchronizeAsync(stagingSession.StagingRoot);
 
             // Count blobs in filetrees/ after first run
             var blobsAfterRun1 = new List<string>();
@@ -92,8 +108,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
                 blobsAfterRun1.Add(b);
 
             // Second run with same manifest
-            var builder2 = CreateBuilder(blobs, container.Name);
-            var root2    = await builder2.BuildAsync(manifestPath);
+            var builder2 = CreateBuilder(blobs, container.Name, out var fileTreeService2);
+            await fileTreeService2.ValidateAsync();
+            var root2    = await builder2.SynchronizeAsync(stagingSession.StagingRoot);
 
             root2.ShouldBe(root1);
 
@@ -106,8 +123,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            File.Delete(manifestPath);
-            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -115,24 +131,22 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     // ── Nested directories produce correct tree hierarchy ─────────────────────
 
     [Test]
-    public async Task BuildAsync_NestedDirectories_ProducesCorrectTree()
+    public async Task SynchronizeAsync_NestedDirectories_ProducesCorrectTree()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
 
-        var manifestPath = Path.GetTempFileName();
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var lines = new[]
-            {
-                MakeEntry("photos/2024/june/a.jpg", FakeContentHash('c'), now).Serialize(),
-                MakeEntry("photos/2024/june/b.jpg", FakeContentHash('d'), now).Serialize(),
-                MakeEntry("docs/report.pdf",        FakeContentHash('e'), now).Serialize(),
-            };
-            await File.WriteAllTextAsync(manifestPath, string.Join("\n", lines) + "\n");
+            await using var stagingSession = await CreateStagingAsync(
+                container.Name,
+                ("photos/2024/june/a.jpg", FakeContentHash('c'), now),
+                ("photos/2024/june/b.jpg", FakeContentHash('d'), now),
+                ("docs/report.pdf", FakeContentHash('e'), now));
 
-            var builder  = CreateBuilder(blobs, container.Name);
-            var rootHash = await builder.BuildAsync(manifestPath);
+            var builder  = CreateBuilder(blobs, container.Name, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+            var rootHash = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             rootHash.ShouldNotBeNull();
 
@@ -146,9 +160,17 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            File.Delete(manifestPath);
-            var cacheDir = FileTreeService.GetDiskCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
+    }
+
+    private static async Task<IReadOnlyList<FileTreeEntry>> ReadStoredTreeAsync(Stream source, IEncryptionService encryption)
+    {
+        await using var decStream = encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var ms = new MemoryStream();
+        await gzipStream.CopyToAsync(ms);
+        return FileTreeSerializer.Deserialize(ms.ToArray());
     }
 }

@@ -21,7 +21,7 @@ internal sealed class CbcEncryptionServiceAdapter(string passphrase) : IEncrypti
     /// <summary>Auto-detects magic bytes — handles both CBC and GCM on read.</summary>
     public Stream WrapForDecryption(Stream inner) => _inner.WrapForDecryption(inner);
 
-    public ContentHash ComputeHash(byte[] data) => _inner.ComputeHash(data);
+    public ContentHash ComputeHash(ReadOnlySpan<byte> data) => _inner.ComputeHash(data);
 
     public Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
         _inner.ComputeHashAsync(data, ct);

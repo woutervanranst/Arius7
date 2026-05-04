@@ -219,7 +219,7 @@ public class RestoreCommandHandlerTests
             var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
             var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
 
-            var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8.ToArray()).ToString());
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8).ToString());
             var snapshot = new SnapshotManifest
             {
                 Timestamp    = DateTimeOffset.UtcNow,
@@ -229,7 +229,7 @@ public class RestoreCommandHandlerTests
                 AriusVersion = "test"
             };
 
-            var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8.ToArray()).ToString());
+            var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8).ToString());
             var chunkHash = ChunkHash.Parse(validHash);
             index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7));
 

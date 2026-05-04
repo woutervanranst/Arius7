@@ -3,7 +3,7 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Core.Shared.FileTree;
 
 /// <summary>
-/// One entry in a <see cref="FileTreeBlob"/>.
+/// One entry in a persisted filetree node.
 /// Files carry a content-hash; directories carry a tree-hash.
 /// Timestamps are present for file entries (UTC, ISO-8601). Directory entries omit timestamps.
 /// </summary>
@@ -31,13 +31,7 @@ public sealed record DirectoryEntry : FileTreeEntry
     public required FileTreeHash FileTreeHash { get; init; }
 }
 
-/// <summary>
-/// A Merkle tree node representing a single directory.
-/// Serialized as text (one entry per line) and uploaded to <c>filetrees/&lt;tree-hash&gt;</c>.
-/// Entries are sorted by <see cref="FileTreeEntry.Name"/> in the serialized form.
-/// </summary>
-public sealed record FileTreeBlob
+internal sealed record StagedDirectoryEntry : FileTreeEntry
 {
-    /// <summary>All entries in this directory, sorted deterministically by name.</summary>
-    public required IReadOnlyList<FileTreeEntry> Entries { get; init; }
+    public required string DirectoryNameHash { get; init; }
 }

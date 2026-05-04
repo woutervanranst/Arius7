@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
@@ -38,7 +39,7 @@ public sealed class FileTreeService
     /// </summary>
     private bool _validated;
 
-    private readonly ConcurrentDictionary<FileTreeHash, Lazy<Task<FileTreeBlob>>> _inFlightReads = [];
+    private readonly ConcurrentDictionary<FileTreeHash, TaskCompletionSource<IReadOnlyList<FileTreeEntry>>> _inFlightReads = [];
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
@@ -55,7 +56,7 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        _diskCacheDir    = GetDiskCacheDirectory(accountName, containerName);
+        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
         _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
@@ -63,27 +64,19 @@ public sealed class FileTreeService
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
     }
 
-    // ── Directory helpers ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns <c>~/.arius/{accountName}-{containerName}/filetrees</c>.
-    /// </summary>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
-
     // ── 1.3 ReadAsync ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the <see cref="FileTreeBlob"/> for the given <paramref name="hash"/>.
+    /// Returns the persisted filetree entries for the given <paramref name="hash"/>.
     /// <list type="bullet">
     ///   <item>Cache hit: reads the plaintext disk file and deserializes.</item>
     ///   <item>Cache miss: downloads from Azure, writes plaintext to disk, returns blob.</item>
     /// </list>
     /// </summary>
-    public async Task<FileTreeBlob> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<FileTreeEntry>> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
     {
         var hashText = hash.ToString();
-        var diskPath = Path.Combine(_diskCacheDir, hashText);
+        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
 
         // Avoid race conditions between concurrent readers and writers for the same hash by
         // coordinating via a per-hash in-flight task.
@@ -97,77 +90,144 @@ public sealed class FileTreeService
         if (TryReadCachedTree(diskPath, cancellationToken) is { } cachedTree)
             return cachedTree;
 
-        var lazyRead = _inFlightReads.GetOrAdd(
-            hash,
-            _ => new Lazy<Task<FileTreeBlob>>(
-                () => DownloadAndCacheAsync(hash, diskPath),
-                LazyThreadSafetyMode.ExecutionAndPublication));
+        var pendingRead = new TaskCompletionSource<IReadOnlyList<FileTreeEntry>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var inFlightRead = _inFlightReads.GetOrAdd(hash, pendingRead);
 
-        try
+        if (ReferenceEquals(inFlightRead, pendingRead))
         {
-            return await lazyRead.Value.WaitAsync(cancellationToken);
+            try
+            {
+                var treeBlob = await DownloadAndCacheAsync(hash, diskPath);
+                inFlightRead.TrySetResult(treeBlob);
+            }
+            catch (Exception ex)
+            {
+                inFlightRead.TrySetException(ex);
+            }
+            finally
+            {
+                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, TaskCompletionSource<IReadOnlyList<FileTreeEntry>>>(hash, inFlightRead));
+            }
         }
-        finally
-        {
-            if (lazyRead is { IsValueCreated: true, Value.IsCompleted: true })
-                _inFlightReads.TryRemove(new KeyValuePair<FileTreeHash, Lazy<Task<FileTreeBlob>>>(hash, lazyRead));
-        }
-    }
 
-    private FileTreeBlob? TryReadCachedTree(string diskPath, CancellationToken cancellationToken)
-    {
-        if (!File.Exists(diskPath))
-            return null;
+        return await inFlightRead.Task.WaitAsync(cancellationToken);
 
-        try
+
+        IReadOnlyList<FileTreeEntry>? TryReadCachedTree(string diskPath, CancellationToken cancellationToken)
         {
-            var cached = File.ReadAllBytes(diskPath);
-            if (cached.Length == 0)
+            if (!File.Exists(diskPath))
                 return null;
 
             try
             {
-                return FileTreeBlobSerializer.Deserialize(cached);
+                var cached = File.ReadAllBytes(diskPath);
+                if (cached.Length == 0)
+                    return null;
+
+                try
+                {
+                    return FileTreeSerializer.Deserialize(cached);
+                }
+                catch (Exception)
+                {
+                    // Corrupt cache file (e.g. partial write from a prior crash).
+                    // Delete and fall through to Azure download.
+                    try { File.Delete(diskPath); } catch { /* best-effort */ }
+                }
             }
-            catch (Exception)
+            catch (FileNotFoundException)
             {
-                // Corrupt cache file (e.g. partial write from a prior crash).
-                // Delete and fall through to Azure download.
-                try { File.Delete(diskPath); } catch { /* best-effort */ }
+                // Another concurrent caller may have replaced the cache file between Exists and read.
             }
-        }
-        catch (FileNotFoundException)
-        {
-            // Another concurrent caller may have replaced the cache file between Exists and read.
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // Treat concurrent directory cleanup or creation races as a cache miss.
+            catch (DirectoryNotFoundException)
+            {
+                // Treat concurrent directory cleanup or creation races as a cache miss.
+            }
+
+            return null;
         }
 
-        return null;
+        async Task<IReadOnlyList<FileTreeEntry>> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
+        {
+            var             blobName = BlobPaths.FileTree(hash);
+            await using var stream   = await _blobs.DownloadAsync(blobName, CancellationToken.None);
+            var             entries  = await DeserializeStorageAsync(stream, CancellationToken.None);
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            await WriteCacheAtomicallyAsync(diskPath, plaintext, CancellationToken.None);
+
+            return entries;
+        }
     }
 
-    private async Task<FileTreeBlob> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
+    // ── WriteAsync ────────────────────────────────────────────────────────
+
+    internal async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
-        var blobName = BlobPaths.FileTree(hash);
-        await using var stream = await _blobs.DownloadAsync(blobName, CancellationToken.None);
-        var treeBlob = await FileTreeBlobSerializer.DeserializeFromStorageAsync(stream, _encryption, CancellationToken.None);
-
-        var plaintext = FileTreeBlobSerializer.Serialize(treeBlob);
-        await WriteCacheAtomicallyAsync(diskPath, plaintext, CancellationToken.None);
-
-        return treeBlob;
+        if (!ExistsInRemote(payload.Hash))
+            await WriteAsync(payload, cancellationToken);
     }
 
-    private static async Task WriteCacheAtomicallyAsync(string diskPath, byte[] plaintext, CancellationToken cancellationToken)
+    /// <summary>
+    /// Uploads the tree entries to Azure (if not already present) and writes the plaintext
+    /// representation to the local disk cache.
+    /// </summary>
+    public async Task WriteAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
+    {
+        var hashText     = payload.Hash.ToString();
+        var blobName     = BlobPaths.FileTree(payload.Hash);
+        var storageBytes = await SerializeStorageAsync(payload.Plaintext, cancellationToken);
+        var contentType  = _encryption.IsEncrypted
+            ? ContentTypes.FileTreeGcmEncrypted
+            : ContentTypes.FileTreePlaintext;
+
+        try
+        {
+            await _blobs.UploadAsync(blobName, new MemoryStream(storageBytes), new Dictionary<string, string>(), BlobTier.Cool, contentType, overwrite: false, cancellationToken: cancellationToken);
+        }
+        catch (BlobAlreadyExistsException)
+        {
+            // Blob was already uploaded (crash recovery or concurrent run). Continue.
+        }
+
+        // Write plaintext to disk cache regardless of whether upload was new or existing.
+        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
+        await WriteCacheAtomicallyAsync(diskPath, payload.Plaintext, cancellationToken);
+    }
+
+
+    // -- Serialize & Deserialize ---
+
+    private async Task<byte[]> SerializeStorageAsync(ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
+    {
+        var ms        = new MemoryStream();
+
+        await using (var encStream = _encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzipStream.WriteAsync(plaintext, cancellationToken);
+        }
+
+        return ms.ToArray();
+    }
+
+    private async Task<IReadOnlyList<FileTreeEntry>> DeserializeStorageAsync(Stream source, CancellationToken cancellationToken)
+    {
+        await using var decStream  = _encryption.WrapForDecryption(source);
+        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var       ms         = new MemoryStream();
+        await gzipStream.CopyToAsync(ms, cancellationToken);
+        return FileTreeSerializer.Deserialize(ms.ToArray());
+    }
+
+    private static async Task WriteCacheAtomicallyAsync(string diskPath, ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(diskPath)!);
         var tempPath = Path.Combine(Path.GetDirectoryName(diskPath)!, $".{Path.GetFileName(diskPath)}.{Guid.NewGuid():N}.tmp");
 
         try
         {
-            await File.WriteAllBytesAsync(tempPath, plaintext, cancellationToken);
+            await File.WriteAllBytesAsync(tempPath, plaintext.ToArray(), cancellationToken);
 
             // Publish with an atomic replace/move so concurrent readers either see the old cache
             // file or the complete new one, never a truncated intermediate file.
@@ -190,37 +250,7 @@ public sealed class FileTreeService
         }
     }
 
-    // ── 1.4 WriteAsync ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Uploads the tree blob to Azure (if not already present) and writes the plaintext
-    /// representation to the local disk cache.
-    /// </summary>
-    public async Task WriteAsync(FileTreeHash hash, FileTreeBlob tree, CancellationToken cancellationToken = default)
-    {
-        var hashText     = hash.ToString();
-        var blobName     = BlobPaths.FileTree(hash);
-        var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(tree, _encryption, cancellationToken);
-        var contentType  = _encryption.IsEncrypted
-            ? ContentTypes.FileTreeGcmEncrypted
-            : ContentTypes.FileTreePlaintext;
-
-        try
-        {
-            await _blobs.UploadAsync(blobName, new MemoryStream(storageBytes), new Dictionary<string, string>(), BlobTier.Cool, contentType, overwrite: false, cancellationToken: cancellationToken);
-        }
-        catch (BlobAlreadyExistsException)
-        {
-            // Blob was already uploaded (crash recovery or concurrent run). Continue.
-        }
-
-        // Write plaintext to disk cache regardless of whether upload was new or existing.
-        var diskPath  = Path.Combine(_diskCacheDir, hashText);
-        var plaintext = FileTreeBlobSerializer.Serialize(tree);
-        await File.WriteAllBytesAsync(diskPath, plaintext, cancellationToken);
-    }
-
-    // ── 1.5 ValidateAsync ────────────────────────────────────────────────────
+    // ── ValidateAsync ────────────────────────────────────────────────────
 
     /// <summary>
     /// Compares the latest local snapshot (from <see cref="SnapshotService"/>'s disk cache) with
@@ -281,11 +311,15 @@ public sealed class FileTreeService
 
         // Slow path: snapshot mismatch (or no local snapshot at all).
         // Materialize empty marker files for all remote filetree blobs not yet cached.
+        //   Filetree blobs are immutable and content-addressed, so one remote list gives us a
+        //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
+        //   any uncached remote trees now so ExistsInRemote() can stay a cheap local File.Exists()
+        //   check during the entire build instead of doing a remote existence probe per tree node.
         await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTrees, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var hash     = Path.GetFileName(blobName); // strip "filetrees/" prefix
-            var diskPath = Path.Combine(_diskCacheDir, hash);
+            var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hash);
             if (!File.Exists(diskPath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
@@ -308,7 +342,7 @@ public sealed class FileTreeService
         _validated = true;
     }
 
-    // ── 1.6 ExistsInRemote ────────────────────────────────────────────────────
+    // ── ExistsInRemote ────────────────────────────────────────────────────
 
     /// <summary>
     /// Returns <c>true</c> if the filetree blob for the given <paramref name="hash"/> exists in
@@ -320,9 +354,8 @@ public sealed class FileTreeService
     public bool ExistsInRemote(FileTreeHash hash)
     {
         if (!_validated)
-            throw new InvalidOperationException(
-                $"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
+            throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
-        return File.Exists(Path.Combine(_diskCacheDir, hash.ToString()));
+        return File.Exists(FileTreePaths.GetCachePath(_diskCacheDir, hash));
     }
 }

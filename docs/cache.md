@@ -50,11 +50,13 @@ caches are trustworthy.
 
 ## FileTreeService
 
-**What it caches:** `FileTreeBlob` objects — the Merkle tree nodes that describe
-directory structure. Each blob is content-addressed: its filename *is* its
-SHA-256 hash, so a file on disk is correct by definition.
+**What it caches:** serialized filetree nodes represented in code as
+`IReadOnlyList<FileTreeEntry>` — the Merkle tree nodes that describe directory
+structure. Each blob is content-addressed: its filename *is* its SHA-256 hash,
+so a file on disk is correct by definition.
 
-**Where:** `~/.arius/{account}-{container}/filetrees/{hash}` as plain JSON.
+**Where:** `~/.arius/{account}-{container}/filetrees/{hash}` as canonical
+plaintext filetree lines.
 An empty (zero-byte) file is a *remote-existence marker* — the blob is known to
 exist in Azure but has not been downloaded yet.
 

@@ -112,6 +112,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Repository container name used for cache paths and service wiring.</summary>
     public string ContainerName => _container;
 
+    public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
+
     /// <summary>
     /// Creates a fixture around a caller-provided blob container using normal passphrase encryption.
     /// Use this for pipeline-style tests that exercise the same encryption path as production while
