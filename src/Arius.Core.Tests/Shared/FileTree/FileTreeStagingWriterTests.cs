@@ -19,6 +19,16 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    [Arguments("photos//2024")]
+    [Arguments("photos/./2024")]
+    [Arguments("photos/../2024")]
+    [Arguments("photos\\2024")]
+    public void GetDirectoryId_NonCanonicalPath_Throws(string directoryPath)
+    {
+        Should.Throw<ArgumentException>(() => FileTreePaths.GetStagingDirectoryId(directoryPath));
+    }
+
+    [Test]
     public async Task OpenAsync_DeletesExistingStagingDirectory()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
