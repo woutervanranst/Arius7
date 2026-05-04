@@ -85,6 +85,18 @@ public readonly record struct RelativePath
         }
     }
 
+    public static RelativePath FromPlatformRelativePath(string value, bool allowEmpty = false)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return Parse(value.Replace('\\', '/'), allowEmpty);
+    }
+
+    public string ToPlatformPath(string rootDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+        return Path.Combine(rootDirectory, Value.Replace('/', Path.DirectorySeparatorChar));
+    }
+
     public bool StartsWith(RelativePath other)
     {
         if (other.IsRoot)

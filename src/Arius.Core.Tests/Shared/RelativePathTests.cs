@@ -47,6 +47,23 @@ public class RelativePathTests
     }
 
     [Test]
+    public void FromPlatformRelativePath_NormalizesDirectorySeparators()
+    {
+        var path = RelativePath.FromPlatformRelativePath(@"photos\2024\a.jpg");
+
+        path.ShouldBe(RelativePath.Parse("photos/2024/a.jpg"));
+    }
+
+    [Test]
+    public void ToPlatformPath_JoinsWithRootDirectory()
+    {
+        var root = Path.Combine("C:", "repo");
+        var path = RelativePath.Parse("photos/2024/a.jpg");
+
+        path.ToPlatformPath(root).ShouldBe(Path.Combine(root, "photos", "2024", "a.jpg"));
+    }
+
+    [Test]
     [Arguments("")]
     [Arguments(" ")]
     [Arguments("/photos")]
@@ -58,5 +75,15 @@ public class RelativePathTests
     public void Parse_InvalidPath_ThrowsArgumentException(string value)
     {
         Should.Throw<ArgumentException>(() => RelativePath.Parse(value));
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments(" ")]
+    [Arguments(@"\photos")]
+    [Arguments(@"photos\\a.jpg")]
+    public void FromPlatformRelativePath_InvalidPath_ThrowsArgumentException(string value)
+    {
+        Should.Throw<ArgumentException>(() => RelativePath.FromPlatformRelativePath(value));
     }
 }

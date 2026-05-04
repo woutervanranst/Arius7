@@ -160,6 +160,7 @@ Boundary code is responsible for:
 - performing safe root-containment checks when joining local disk roots with repository-relative paths
 
 When boundary conversion repeats, prefer changing the owning shared API to accept `RelativePath` directly instead of adding feature-local helper methods that only convert typed paths back into strings.
+For local filesystem conversion specifically, keep the boundary API in `Shared/Paths` so repository-path semantics stay near the type while rooted host-path behavior still remains an explicit boundary concern.
 
 Local path joining and containment stay here deliberately. They depend on host filesystem rules and should not become responsibilities of `RelativePath`.
 
@@ -178,7 +179,7 @@ Examples of true string boundaries:
 - current event payloads and CLI/progress callback payloads that still expose `string`
 - persisted wire formats and serialized filetree line formats that have not yet been re-typed
 - storage names and log messages
-- local OS path joins that still operate on host filesystem strings
+- local OS path joins that still operate on host filesystem strings, preferably through a `Shared/Paths` boundary API rather than feature-local string manipulation
 
 Avoid introducing feature-local helper methods like `ToRelativePathText`, `GetLocalPath`, or `GetFileTreePath` when a stronger intermediate type or a better-owned shared API would remove the need.
 
