@@ -258,4 +258,22 @@ public class FileTreeSerializerTests
         Should.Throw<FormatException>(() =>
             FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {directoryName}"));
     }
+
+    [Test]
+    public void ParseStagedNodeEntryLine_DirectoryNameContainingCarriageReturn_Throws()
+    {
+        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+
+        Should.Throw<FormatException>(() =>
+            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos\r/"));
+    }
+
+    [Test]
+    public void ParseStagedNodeEntryLine_MultiSegmentCanonicalDirectoryName_Throws()
+    {
+        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+
+        Should.Throw<FormatException>(() =>
+            FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/2024/"));
+    }
 }

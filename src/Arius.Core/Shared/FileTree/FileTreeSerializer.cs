@@ -180,24 +180,33 @@ public static class FileTreeSerializer
             throw new FormatException($"Invalid staged directory entry (missing type marker): '{line}'");
 
         var name = afterId[2..];
-        if (string.IsNullOrWhiteSpace(name))
-            throw new FormatException($"Invalid staged directory entry (empty name): '{line}'");
-
-        if (!name.EndsWith("/", StringComparison.Ordinal)
-            || name.Length == 1
-            || name.Contains('\\')
-            || name[..^1].Contains('/')
-            || name is "./" or "../"
-            || string.IsNullOrWhiteSpace(name[..^1]))
-        {
-            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
-        }
+        ValidateCanonicalDirectoryEntryName(name, line);
 
         return new StagedDirectoryEntry
         {
             DirectoryNameHash = normalizedDirectoryNameHash,
             Name              = name
         };
+    }
+
+    private static void ValidateCanonicalDirectoryEntryName(string name, string line)
+    {
+        if (!name.EndsWith("/", StringComparison.Ordinal) || name.Length == 1)
+            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
+
+        var trimmedName = name[..^1];
+
+        if (trimmedName.Contains('/', StringComparison.Ordinal))
+            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'");
+
+        try
+        {
+            RepositoryRelativePath.ValidateCanonical(trimmedName);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new FormatException($"Invalid staged directory entry (non-canonical name): '{line}'", ex);
+        }
     }
 
     private static FileEntry ParseFileEntry(string hash, string afterType, string line)
