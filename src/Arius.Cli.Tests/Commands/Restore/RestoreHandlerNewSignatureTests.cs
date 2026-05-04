@@ -15,7 +15,7 @@ public class RestoreHandlerNewSignatureTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("a/b.txt"), 4096L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(PathOf("a/b.txt"), 4096L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(4096L);
@@ -29,7 +29,7 @@ public class RestoreHandlerNewSignatureTests
         var state   = new ProgressState();
         var handler = new FileSkippedHandler(state);
 
-        await handler.Handle(new FileSkippedEvent(RelativePath.Parse("c/d.txt"), 2048L), CancellationToken.None);
+        await handler.Handle(new FileSkippedEvent(PathOf("c/d.txt"), 2048L), CancellationToken.None);
 
         state.FilesSkipped.ShouldBe(1L);
         state.BytesSkipped.ShouldBe(2048L);

@@ -14,7 +14,7 @@ public class FileItemViewModelTests
     public void HydrationStatus_WhenChanged_UpdatesChunkStateColorAndTooltip()
     {
         var file = new RepositoryFileEntry(
-            RelativePath: RelativePath.Parse("file.txt"),
+            RelativePath: PathOf("file.txt"),
             ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,

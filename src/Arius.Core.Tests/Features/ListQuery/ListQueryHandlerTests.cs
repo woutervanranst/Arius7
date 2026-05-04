@@ -51,13 +51,13 @@ public class ListQueryHandlerTests
         results.Count.ShouldBe(2);
 
         var directory = results.OfType<RepositoryDirectoryEntry>().Single();
-        directory.RelativePath.ShouldBe(RelativePath.Parse("docs"));
+        directory.RelativePath.ShouldBe(PathOf("docs"));
         directory.ExistsInCloud.ShouldBeTrue();
         directory.ExistsLocally.ShouldBeFalse();
         directory.TreeHash.ShouldBe(TreeHashFor("docs"));
 
         var file = results.OfType<RepositoryFileEntry>().Single();
-        file.RelativePath.ShouldBe(RelativePath.Parse("readme.txt"));
+        file.RelativePath.ShouldBe(PathOf("readme.txt"));
         file.ContentHash.ShouldBe(ContentHashFor("readme"));
         file.OriginalSize.ShouldBe(123);
         file.Created.ShouldBe(s_created);
@@ -105,8 +105,8 @@ public class ListQueryHandlerTests
         }
 
         results.Count.ShouldBe(2);
-        results.Select(entry => entry.RelativePath).OrderBy(path => path.ToString()).ShouldBe([RelativePath.Parse("docs/guide.txt"), RelativePath.Parse("docs/nested")]);
-        results.ShouldNotContain(entry => entry.RelativePath == RelativePath.Parse("root.txt"));
+        results.Select(entry => entry.RelativePath).OrderBy(path => path.ToString()).ShouldBe([PathOf("docs/guide.txt"), PathOf("docs/nested")]);
+        results.ShouldNotContain(entry => entry.RelativePath == PathOf("root.txt"));
     }
 
     [Test]
@@ -153,21 +153,21 @@ public class ListQueryHandlerTests
 
             results.Count.ShouldBe(3);
 
-            var shared = results.Single(file => file.RelativePath == RelativePath.Parse("shared.txt"));
+            var shared = results.Single(file => file.RelativePath == PathOf("shared.txt"));
             shared.ExistsInCloud.ShouldBeTrue();
             shared.ExistsLocally.ShouldBeTrue();
             shared.HasPointerFile.ShouldBe(true);
             shared.BinaryExists.ShouldBe(true);
             shared.OriginalSize.ShouldBe(20);
 
-            var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("cloud-only.txt"));
+            var cloudOnly = results.Single(file => file.RelativePath == PathOf("cloud-only.txt"));
             cloudOnly.ExistsInCloud.ShouldBeTrue();
             cloudOnly.ExistsLocally.ShouldBeFalse();
             cloudOnly.HasPointerFile.ShouldBeNull();
             cloudOnly.BinaryExists.ShouldBeNull();
             cloudOnly.OriginalSize.ShouldBe(10);
 
-            var localOnly = results.Single(file => file.RelativePath == RelativePath.Parse("local-only.txt"));
+            var localOnly = results.Single(file => file.RelativePath == PathOf("local-only.txt"));
             localOnly.ExistsInCloud.ShouldBeFalse();
             localOnly.ExistsLocally.ShouldBeTrue();
             localOnly.HasPointerFile.ShouldBe(false);
@@ -225,17 +225,17 @@ public class ListQueryHandlerTests
 
         var nonRecursive = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None).ToListAsync();
         nonRecursive.Count.ShouldBe(2);
-        nonRecursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child"));
-        nonRecursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("root.txt"));
-        nonRecursive.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("child/deep.txt"));
+        nonRecursive.ShouldContain(e => e.RelativePath == PathOf("child"));
+        nonRecursive.ShouldContain(e => e.RelativePath == PathOf("root.txt"));
+        nonRecursive.ShouldNotContain(e => e.RelativePath == PathOf("child/deep.txt"));
 
         await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-r", "ctr-33-r", s_encryption);
         var handler2 = fixture2.CreateListQueryHandler();
 
         var recursive = await handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None).ToListAsync();
-        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child"));
-        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("root.txt"));
-        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child/deep.txt"));
+        recursive.ShouldContain(e => e.RelativePath == PathOf("child"));
+        recursive.ShouldContain(e => e.RelativePath == PathOf("root.txt"));
+        recursive.ShouldContain(e => e.RelativePath == PathOf("child/deep.txt"));
     }
 
     [Test]
@@ -260,10 +260,10 @@ public class ListQueryHandlerTests
         var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None).ToListAsync();
 
          // Directories are NOT filtered — Photos/ should still appear
-        results.ShouldContain(e => e.RelativePath == RelativePath.Parse("Photos"));
-        results.ShouldContain(e => e.RelativePath == RelativePath.Parse("VACATION.jpg"));
-        results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("sunset.jpg"));
-        results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("readme.txt"));
+        results.ShouldContain(e => e.RelativePath == PathOf("Photos"));
+        results.ShouldContain(e => e.RelativePath == PathOf("VACATION.jpg"));
+        results.ShouldNotContain(e => e.RelativePath == PathOf("sunset.jpg"));
+        results.ShouldNotContain(e => e.RelativePath == PathOf("readme.txt"));
     }
 
     [Test]
@@ -302,15 +302,15 @@ public class ListQueryHandlerTests
 
             dirs.Count.ShouldBe(3);
 
-            var cloudLocal = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-local-dir"));
+            var cloudLocal = dirs.Single(d => d.RelativePath == PathOf("cloud-local-dir"));
             cloudLocal.ExistsInCloud.ShouldBeTrue();
             cloudLocal.ExistsLocally.ShouldBeTrue();
 
-            var cloudOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-only-dir"));
+            var cloudOnly = dirs.Single(d => d.RelativePath == PathOf("cloud-only-dir"));
             cloudOnly.ExistsInCloud.ShouldBeTrue();
             cloudOnly.ExistsLocally.ShouldBeFalse();
 
-            var localOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("local-only-dir"));
+            var localOnly = dirs.Single(d => d.RelativePath == PathOf("local-only-dir"));
             localOnly.ExistsInCloud.ShouldBeFalse();
             localOnly.ExistsLocally.ShouldBeTrue();
         }
@@ -346,9 +346,9 @@ public class ListQueryHandlerTests
             .OfType<RepositoryFileEntry>()
             .ToListAsync();
 
-        var known   = files.Single(f => f.RelativePath == RelativePath.Parse("known.txt"));
-        var unknown = files.Single(f => f.RelativePath == RelativePath.Parse("unknown.txt"));
-        var child   = files.Single(f => f.RelativePath == RelativePath.Parse("child/child-file.txt"));
+        var known   = files.Single(f => f.RelativePath == PathOf("known.txt"));
+        var unknown = files.Single(f => f.RelativePath == PathOf("unknown.txt"));
+        var child   = files.Single(f => f.RelativePath == PathOf("child/child-file.txt"));
 
         known.OriginalSize.ShouldBe(999);
         unknown.OriginalSize.ShouldBeNull();

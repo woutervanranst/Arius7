@@ -54,7 +54,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry(RelativePath.Parse($"{chunkType}.bin"), contentHash, 100, null, null, true, false, null, null)
+            new RepositoryFileEntry(PathOf($"{chunkType}.bin"), contentHash, 100, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -62,7 +62,7 @@ public class ResolveFileHydrationStatusesHandlerTests
             results.Add(result);
 
         results.Count.ShouldBe(1);
-        results.ShouldContain(result => result.RelativePath == RelativePath.Parse($"{chunkType}.bin") && result.Status == testCase.ExpectedStatus);
+        results.ShouldContain(result => result.RelativePath == PathOf($"{chunkType}.bin") && result.Status == testCase.ExpectedStatus);
     }
 
     [Test]
@@ -98,8 +98,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry(RelativePath.Parse("thin.bin"), thinContentHash, 50, null, null, true, false, null, null),
-            new RepositoryFileEntry(RelativePath.Parse("tar.bin"), tarContentHash, 75, null, null, true, false, null, null)
+            new RepositoryFileEntry(PathOf("thin.bin"), thinContentHash, 50, null, null, true, false, null, null),
+            new RepositoryFileEntry(PathOf("tar.bin"), tarContentHash, 75, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -107,8 +107,8 @@ public class ResolveFileHydrationStatusesHandlerTests
             results.Add(result);
 
         results.Count.ShouldBe(2);
-        results.ShouldContain(result => result.RelativePath == RelativePath.Parse("thin.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
-        results.ShouldContain(result => result.RelativePath == RelativePath.Parse("tar.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == PathOf("thin.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == PathOf("tar.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ThinChunk(thinContentHash));
         blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
     }

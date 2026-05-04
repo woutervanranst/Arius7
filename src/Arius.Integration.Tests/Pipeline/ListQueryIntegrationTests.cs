@@ -35,10 +35,10 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
         entries.Count.ShouldBe(4);
 
         var paths = entries.Select(e => e.RelativePath).ToHashSet();
-        paths.ShouldContain(RelativePath.Parse("photos/vacation.jpg"));
-        paths.ShouldContain(RelativePath.Parse("photos/sunset.jpg"));
-        paths.ShouldContain(RelativePath.Parse("docs/readme.txt"));
-        paths.ShouldContain(RelativePath.Parse("root.txt"));
+        paths.ShouldContain(PathOf("photos/vacation.jpg"));
+        paths.ShouldContain(PathOf("photos/sunset.jpg"));
+        paths.ShouldContain(PathOf("docs/readme.txt"));
+        paths.ShouldContain(PathOf("root.txt"));
     }
 
     // ── 11.7b: prefix filter ──────────────────────────────────────────────────
@@ -57,7 +57,7 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
 
         var entries = await fix.ListAsync(new ListQueryOptions { Prefix = "photos" });
         entries.Count.ShouldBe(2);
-        entries.All(e => e.RelativePath.StartsWith(RelativePath.Parse("photos"))).ShouldBeTrue();
+        entries.All(e => e.RelativePath.StartsWith(PathOf("photos"))).ShouldBeTrue();
     }
 
     // ── 11.7c: filename substring filter ──────────────────────────────────────
@@ -122,6 +122,6 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
         // ls version 1 → only v1-only
         var listV1 = await fix.ListAsync(new ListQueryOptions { Version = snapshot1 });
         listV1.Count.ShouldBe(1);
-        listV1[0].RelativePath.ShouldBe(RelativePath.Parse("v1-only.txt"));
+        listV1[0].RelativePath.ShouldBe(PathOf("v1-only.txt"));
     }
 }

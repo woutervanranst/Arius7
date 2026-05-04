@@ -22,12 +22,12 @@ public class RestoreCommandHandlerTests
     public void FileToRestore_UsesTypedRelativePath()
     {
         var file = new FileToRestore(
-            RelativePath.Parse("docs/readme.txt"),
+            PathOf("docs/readme.txt"),
             ContentHash.Parse(new string('a', 64)),
             new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero));
 
-        file.RelativePath.ShouldBe(RelativePath.Parse("docs/readme.txt"));
+        file.RelativePath.ShouldBe(PathOf("docs/readme.txt"));
     }
 
     [Test]
@@ -70,7 +70,7 @@ public class RestoreCommandHandlerTests
         progressIdentifiers.ShouldContain("docs/readme.txt");
         progressIdentifiers.ShouldNotContain(identifier => identifier.Contains('\\'));
 
-        var restoredPath = RelativePath.Parse("docs/readme.txt").ToPlatformPath(fixture.RestoreRoot);
+        var restoredPath = PathOf("docs/readme.txt").ToPlatformPath(fixture.RestoreRoot);
         File.Exists(restoredPath).ShouldBeTrue();
         File.ReadAllBytes(restoredPath).ShouldBe(content);
     }
