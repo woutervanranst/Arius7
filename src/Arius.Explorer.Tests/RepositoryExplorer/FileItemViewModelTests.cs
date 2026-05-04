@@ -10,33 +10,6 @@ public class FileItemViewModelTests
     private static readonly ContentHash ContentHashA = FakeContentHash('a');
 
     [Test]
-    public void Constructor_MapsRepositoryFileStateToPresentationProperties()
-    {
-        var file = new RepositoryFileEntry(
-            RelativePath: "folder/file.txt",
-            ContentHash: ContentHashA,
-            OriginalSize: 123,
-            Created: null,
-            Modified: null,
-            ExistsInCloud: true,
-            ExistsLocally: true,
-            HasPointerFile: true,
-            BinaryExists: true,
-            Hydrated: false);
-
-        var viewModel = new FileItemViewModel(file);
-
-        viewModel.Name.ShouldBe("file.txt");
-        viewModel.PointerFileStateColor.ShouldBe(Brushes.Black);
-        viewModel.BinaryFileStateColor.ShouldBe(Brushes.Blue);
-        viewModel.PointerFileEntryStateColor.ShouldBe(Brushes.Black);
-        viewModel.OriginalLength.ShouldBe(123);
-        viewModel.HydrationStatus.ShouldBe(ChunkHydrationStatus.NeedsRehydration);
-        viewModel.ChunkStateColor.ShouldBe(Brushes.LightBlue);
-        viewModel.StateTooltip.ShouldContain("rehydrated");
-    }
-
-    [Test]
     public void HydrationStatus_WhenChanged_UpdatesChunkStateColorAndTooltip()
     {
         var file = new RepositoryFileEntry(

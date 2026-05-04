@@ -1,5 +1,8 @@
 namespace Arius.Core.Shared.Hashes;
 
+/// <summary>
+/// Helpers for the various Hash* types (structs cannot inherit)
+/// </summary>
 internal static class HashCodec
 {
     public const int Sha256ByteLength = 32;

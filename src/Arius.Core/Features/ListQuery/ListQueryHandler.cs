@@ -93,14 +93,14 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        FileTreeBlob? treeBlob = null;
+        IReadOnlyList<FileTreeEntry>? treeEntries = null;
         if (treeHash is { } currentTreeHash)
         {
-            treeBlob = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken);
+            treeEntries = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken);
         }
 
         var localSnapshot = BuildLocalDirectorySnapshot(localDir, currentRelativeDirectory);
-        var cloudEntries = treeBlob?.Entries ?? [];
+        var cloudEntries = treeEntries ?? [];
 
         var yieldedDirectoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var yieldedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -250,9 +250,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 break;
             }
 
-            var treeBlob = await _fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
+            var treeEntries = await _fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
 
-            var nextDirectory = treeBlob.Entries
+            var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
                 .FirstOrDefault(e => string.Equals(NormalizeDirectoryEntryName(e.Name), segment, StringComparison.OrdinalIgnoreCase));
 

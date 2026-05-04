@@ -91,9 +91,8 @@ public sealed class PassphraseEncryptionService : IEncryptionService
     }
 
     /// <inheritdoc/>
-    public ContentHash ComputeHash(byte[] data)
+    public ContentHash ComputeHash(ReadOnlySpan<byte> data)
     {
-        ArgumentNullException.ThrowIfNull(data);
         // SHA256(passphrase_bytes + data_bytes) — literal concat, not HMAC.
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha.AppendData(_passphraseBytes);

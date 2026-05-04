@@ -2,6 +2,13 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 
+/// <summary>
+/// Blob-container fake that returns snapshot names in the caller-provided order and records whether
+/// filetree listing was requested.
+/// It exists to prove <see cref="FileTreeService.ValidateAsync"/> sorts remote snapshots itself
+/// instead of trusting backend enumeration order, and to distinguish fast-path validation from a
+/// slow-path filetree scan.
+/// </summary>
 internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string> snapshots) : IBlobContainerService
 {
     public bool FileTreesListed { get; private set; }

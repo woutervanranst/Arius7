@@ -164,8 +164,8 @@ public class GoldenFileDecryptionTests
     {
         var svc = new PassphraseEncryptionService(Passphrase);
 
-        var worldHash    = svc.ComputeHash("world"u8.ToArray()).ToString();
-        var fortyTwoHash = svc.ComputeHash("42"u8.ToArray()).ToString();
+        var worldHash    = svc.ComputeHash("world"u8).ToString();
+        var fortyTwoHash = svc.ComputeHash("42"u8).ToString();
 
         worldHash.ShouldBe(WorldContentHash);
         fortyTwoHash.ShouldBe(FortyTwoContentHash);

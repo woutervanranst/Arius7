@@ -3,6 +3,12 @@ using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 
+/// <summary>
+/// Blob-container fake that blocks the first download until the test releases it, while delegating
+/// all storage state to <see cref="FakeInMemoryBlobContainerService"/>.
+/// It exists to create deterministic concurrent-read races so filetree cache publication behavior
+/// can be verified without relying on timing-sensitive sleeps.
+/// </summary>
 internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
 {
     private readonly FakeInMemoryBlobContainerService _inner = new();

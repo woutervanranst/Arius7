@@ -2,19 +2,17 @@ namespace Arius.Core.Shared.Hashes;
 
 public readonly record struct FileTreeHash
 {
-    private readonly string _value;
-
     private FileTreeHash(string value)
     {
         ArgumentException.ThrowIfNullOrEmpty(value);
-        _value = value;
+        Value = value;
     }
 
     public string Prefix4 => Value[..4];
 
     public string Short8 => Value[..8];
 
-    private string Value => _value ?? throw new InvalidOperationException("FileTreeHash is uninitialized.");
+    private string Value => field ?? throw new InvalidOperationException("FileTreeHash is uninitialized.");
 
     public static FileTreeHash Parse(string value) => new(HashCodec.NormalizeHex(value));
 

@@ -30,14 +30,14 @@ public interface IEncryptionService
     Stream WrapForDecryption(Stream inner);
 
     /// <summary>
-    /// Computes a content hash for a byte array.
+    /// Computes a content hash for a byte span.
     /// With a passphrase: SHA256(passphrase_bytes + data_bytes).
     /// Without a passphrase: SHA256(data_bytes).
     /// </summary>
-    ContentHash ComputeHash(byte[] data);
+    ContentHash ComputeHash(ReadOnlySpan<byte> data);
 
     /// <summary>
-    /// Streaming variant of <see cref="ComputeHash(byte[])"/>.
+    /// Streaming variant of <see cref="ComputeHash(ReadOnlySpan{byte})"/>.
     /// Reads the entire stream to compute the hash; does not seek or reset the stream.
     /// </summary>
     Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default);

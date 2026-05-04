@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Arius.Benchmarks.RepresentativeWorkflowBenchmarks-20260501-172408</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, macOS Tahoe 26.4 (25E246) [Darwin 25.4.0]
+Apple M4, 1 CPU, 10 logical and 10 physical cores
+.NET SDK 10.0.201
+  [Host]     : .NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a
+  Job-HILDPN : .NET 10.0.5 (10.0.5, 10.0.526.15411), Arm64 RyuJIT armv8.0-a
+</code></pre>
+<pre><code>InvocationCount=1  IterationCount=3  LaunchCount=1  
+UnrollFactor=1  WarmupCount=0  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                                            </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0 </th><th>Completed Work Items</th><th>Lock Contentions</th><th>Gen1</th><th>Gen2</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Canonical_Representative_Workflow_Runs_On_Supported_Backends (Azurite)&#39;</td><td>1.453 m</td><td>0.1986 m</td><td>0.0109 m</td><td>434000.0000</td><td>506427.0000</td><td>15.0000</td><td>54000.0000</td><td>4000.0000</td><td>3.52 GB</td>
+</tr></tbody></table>
+</body>
+</html>

@@ -1,4 +1,5 @@
 using System.Formats.Tar;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
@@ -63,6 +64,94 @@ public class ArchiveRecoveryTests
 
         var finalMeta = await env.Blobs.GetMetadataAsync(blobName);
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+    }
+
+    [Test]
+    public async Task Archive_NewContent_CreatesSnapshotWithRootHash()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_NewContent_EmitsConsistentPhaseTimingLogs()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var messages = env.ArchiveLogs
+            .GetSnapshot(clear: false)
+            .Select(static record => record.Message)
+            .ToArray();
+
+        messages.ShouldContain(message => message.Contains("[phase] ensure-container", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] open-staging", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] enumerate", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] hash", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] dedup-route", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] large-upload", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tar-build", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] flush-index", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] build-filetree", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] complete", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("staging", Case.Insensitive);
+        result.ErrorMessage.ShouldContain("already open", Case.Insensitive);
+    }
+
+    [Test]
+    public async Task Archive_WhenCancelledBeforeOpeningStagingSession_PropagatesCancellation()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await env.ArchiveAsync(BlobTier.Cool, cts.Token));
+    }
+
+    [Test]
+    public async Task Archive_WhenOpeningStagingSessionThrowsNonIoException_ReturnsFailedResult()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 1024);
+
+        var result = await env.ArchiveAsync(
+            BlobTier.Cool,
+            openStagingSession: (_, _) => throw new InvalidOperationException("staging setup failed"));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("staging setup failed");
     }
 
     private static ChunkHash ComputeTarHash(ArchiveTestEnvironment env, ContentHash contentHash, byte[] content)

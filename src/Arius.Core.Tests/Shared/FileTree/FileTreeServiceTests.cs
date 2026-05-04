@@ -5,6 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared.Storage;
 
@@ -24,20 +25,16 @@ public class FileTreeServiceTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static FileTreeBlob MakeBlob(string fileName = "a.txt", string hash = "aabbccdd") =>
-        new()
+    private static IReadOnlyList<FileTreeEntry> MakeEntries(string fileName = "a.txt", string hash = "aabbccdd") =>
+    [
+        new FileEntry
         {
-            Entries =
-            [
-                new FileEntry
-                {
-                    Name        = fileName,
-                    ContentHash = ContentHash.Parse(NormalizeHash(hash)),
-                    Created  = s_ts1,
-                    Modified = s_ts2
-                }
-            ]
-        };
+            Name        = fileName,
+            ContentHash = ContentHash.Parse(NormalizeHash(hash)),
+            Created  = s_ts1,
+            Modified = s_ts2
+        }
+    ];
 
     private static string NormalizeHash(string hash)
         => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
@@ -48,7 +45,7 @@ public class FileTreeServiceTests
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir     = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir     = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
@@ -70,18 +67,18 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            var blob     = MakeBlob();
-            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var entries   = MakeEntries();
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
 
             // Pre-populate disk cache with plaintext
-            var plaintext = FileTreeBlobSerializer.Serialize(blob);
+            var plaintext = FileTreeSerializer.Serialize(entries);
             await File.WriteAllBytesAsync(diskPath, plaintext);
 
             var result = await svc.ReadAsync(hash);
 
-            result.Entries.Count.ShouldBe(1);
-            result.Entries[0].Name.ShouldBe("a.txt");
+            result.Count.ShouldBe(1);
+            result[0].Name.ShouldBe("a.txt");
             // No Azure download should have been requested
             blobs.RequestedBlobNames.ShouldBeEmpty();
         }
@@ -100,25 +97,25 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            var blob     = MakeBlob("photo.jpg", "deadbeef");
-            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
+            var entries   = MakeEntries("photo.jpg", "deadbeef");
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure (storage serialization)
-            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear(); // clear seed bookkeeping
 
             var result = await svc.ReadAsync(hash);
 
-            result.Entries.Count.ShouldBe(1);
-            result.Entries[0].Name.ShouldBe("photo.jpg");
+            result.Count.ShouldBe(1);
+            result[0].Name.ShouldBe("photo.jpg");
 
             // Azure was called
             blobs.RequestedBlobNames.ShouldContain(blobName);
 
             // Disk file was written (write-through)
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
         }
@@ -137,12 +134,12 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            var blob     = MakeBlob("concurrent.txt", "cc001122");
-            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
+            var entries   = MakeEntries("concurrent.txt", "cc001122");
+            var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
 
             // Pre-populate Azure only — no local cache
-            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
             blobs.RequestedBlobNames.Clear();
 
@@ -152,13 +149,13 @@ public class FileTreeServiceTests
             var results = await Task.WhenAll(t1, t2);
 
             // Both should return the correct blob
-            results[0].Entries.Count.ShouldBe(1);
-            results[0].Entries[0].Name.ShouldBe("concurrent.txt");
-            results[1].Entries.Count.ShouldBe(1);
-            results[1].Entries[0].Name.ShouldBe("concurrent.txt");
+            results[0].Count.ShouldBe(1);
+            results[0][0].Name.ShouldBe("concurrent.txt");
+            results[1].Count.ShouldBe(1);
+            results[1][0].Name.ShouldBe("concurrent.txt");
 
             // Disk file must exist and have content (not empty / corrupt)
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
 
@@ -179,16 +176,16 @@ public class FileTreeServiceTests
         var blobs = new SlowDownloadBlobContainerService();
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
         {
-            var blob = MakeBlob("partial.txt", "a1b2c3d4");
-            var hash = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
+            var entries = MakeEntries("partial.txt", "a1b2c3d4");
+            var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
             var blobName = BlobPaths.FileTree(hash);
-            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             var t1 = svc.ReadAsync(hash);
@@ -199,12 +196,38 @@ public class FileTreeServiceTests
 
             var results = await Task.WhenAll(t1, t2);
 
-            results.SelectMany(result => result.Entries).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
+            results.SelectMany(result => result).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
 
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
-            FileTreeBlobSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath)).Entries[0].Name.ShouldBe("partial.txt");
+            FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe("partial.txt");
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task ReadAsync_DownloadFailure_PropagatesExceptionWithoutHanging()
+    {
+        const string acct = "tc-read-failure", cont = "container";
+        var expected = new InvalidOperationException("download failed");
+        var blobs = new ThrowingDownloadBlobContainerService(expected);
+        var index = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            var hash = FakeFileTreeHash('f');
+
+            var ex = await Should.ThrowAsync<InvalidOperationException>(() => svc.ReadAsync(hash));
+
+            ex.Message.ShouldBe(expected.Message);
         }
         finally
         {
@@ -221,19 +244,149 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            var blob = MakeBlob("doc.pdf", "cafebabe");
-            var hash = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
+            var entries = MakeEntries("doc.pdf", "cafebabe");
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
-            await svc.WriteAsync(hash, blob);
+            await svc.WriteAsync(payload);
 
             // Azure was uploaded
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPaths.FileTree(payload.Hash);
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task WriteAsync_CanonicalPayload_ReusesProvidedPlaintextForUploadAndDiskCache()
+    {
+        const string acct = "tc-write-canonical", cont = "container";
+        var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        try
+        {
+            var entries = new List<FileTreeEntry>
+            {
+                new FileEntry
+                {
+                    Name = "alpha.txt",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = s_ts1,
+                    Modified = s_ts2
+                }
+            };
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            var expectedPlaintext = payload.Plaintext.ToArray();
+
+            entries[0] = ((FileEntry)entries[0]) with { Name = "omega.txt" };
+
+            await svc.WriteAsync(payload);
+
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
+            (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
+
+            var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTree(payload.Hash));
+            await using var gzipStream = new System.IO.Compression.GZipStream(new MemoryStream(blobBytes), System.IO.Compression.CompressionMode.Decompress);
+            using var plaintextStream = new MemoryStream();
+            await gzipStream.CopyToAsync(plaintextStream);
+            plaintextStream.ToArray().ShouldBe(expectedPlaintext);
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task WriteAsync_WithPassphrase_UploadsEncryptedFileTreeBlob()
+    {
+        const string acct = "tc-write-passphrase", cont = "container";
+        var encryption = new PassphraseEncryptionService("test-passphrase");
+        var blobs = new FakeInMemoryBlobContainerService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "photo.jpg",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                    Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
+                }
+            ];
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+
+            await service.WriteAsync(payload);
+
+            var blobName = BlobPaths.FileTree(payload.Hash);
+            var uploadedBytes = await ReadBlobBytesAsync(blobs, blobName);
+            var prefix = System.Text.Encoding.ASCII.GetString(uploadedBytes[..6]);
+            prefix.ShouldBe("ArGCM1");
+
+            var text = System.Text.Encoding.UTF8.GetString(uploadedBytes);
+            text.ShouldNotContain("photo.jpg");
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task ReadAsync_WithPassphrase_DownloadedBlobRoundTripsToEntries()
+    {
+        const string acct = "tc-read-passphrase", cont = "container";
+        var encryption = new PassphraseEncryptionService("test-passphrase");
+        var blobs = new FakeInMemoryBlobContainerService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "photo.jpg",
+                    ContentHash = ContentHash.Parse(new string('a', 64)),
+                    Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
+                    Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
+                },
+                new DirectoryEntry
+                {
+                    Name = "subdir/",
+                    FileTreeHash = FileTreeHash.Parse(new string('e', 64))
+                }
+            ];
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+
+            await service.WriteAsync(payload);
+            var roundTripped = await service.ReadAsync(payload.Hash);
+
+            roundTripped.ShouldBe(entries);
         }
         finally
         {
@@ -250,25 +403,85 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
         try
         {
-            var blob     = MakeBlob();
-            var hash     = FileTreeBlobSerializer.ComputeHash(blob, s_enc);
-            var blobName = BlobPaths.FileTree(hash);
+            var entries   = MakeEntries();
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload   = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            var blobName = BlobPaths.FileTree(payload.Hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
-            var storageBytes = await FileTreeBlobSerializer.SerializeForStorageAsync(blob, s_enc);
+            var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             // Should not throw
-            await Should.NotThrowAsync(() => svc.WriteAsync(hash, blob));
+            await Should.NotThrowAsync(() => svc.WriteAsync(payload));
 
             // Disk file should still be written
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
             File.Exists(diskPath).ShouldBeTrue();
         }
         finally
         {
             await CleanupAsync(cacheDir, snapshotsDir);
         }
+    }
+
+    [Test]
+    public async Task EnsureStoredAsync_PayloadOverload_WritesMissingTree()
+    {
+        var blobs = new FakeRecordingBlobContainerService();
+        var account = $"acc-{Guid.NewGuid():N}";
+        var container = $"con-{Guid.NewGuid():N}";
+        var encryption = new PlaintextPassthroughService();
+        var chunkIndex = new ChunkIndexService(blobs, encryption, account, container);
+        var service = new FileTreeService(blobs, encryption, chunkIndex, account, container);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(account, container);
+        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(account, container);
+        try
+        {
+            await service.ValidateAsync();
+            IReadOnlyList<FileTreeEntry> entries =
+            [
+                new FileEntry
+                {
+                    Name = "readme.txt",
+                    ContentHash = ContentHash.Parse(new string('c', 64)),
+                    Created = DateTimeOffset.UnixEpoch,
+                    Modified = DateTimeOffset.UnixEpoch
+                }
+            ];
+
+            var plaintext = FileTreeSerializer.Serialize(entries);
+            var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+            await service.EnsureStoredAsync(payload);
+
+            blobs.Uploaded.ShouldContain(BlobPaths.FileTree(payload.Hash));
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, string blobName)
+    {
+        await using var stream = await blobs.DownloadAsync(blobName);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        return ms.ToArray();
+    }
+
+    private static async Task<byte[]> SerializeStorageBytesAsync(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
+    {
+        var plaintext = FileTreeSerializer.Serialize(entries);
+        var ms = new MemoryStream();
+
+        await using (var encStream = encryption.WrapForEncryption(ms))
+        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzipStream.WriteAsync(plaintext);
+        }
+
+        return ms.ToArray();
     }
 
     // ── 7.5  ValidateAsync — snapshot match — no filetrees listing ────────────
@@ -312,7 +525,7 @@ public class FileTreeServiceTests
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = FileTreeService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
@@ -362,8 +575,8 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Empty marker files created for remote filetrees
-            File.Exists(Path.Combine(cacheDir, firstRemoteHash.ToString())).ShouldBeTrue();
-            File.Exists(Path.Combine(cacheDir, secondRemoteHash.ToString())).ShouldBeTrue();
+            File.Exists(FileTreePaths.GetCachePath(cacheDir, firstRemoteHash)).ShouldBeTrue();
+            File.Exists(FileTreePaths.GetCachePath(cacheDir, secondRemoteHash)).ShouldBeTrue();
 
             // L2 dummy file deleted
             File.Exists(dummyL2File).ShouldBeFalse();
@@ -394,7 +607,7 @@ public class FileTreeServiceTests
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
-            var diskPath = Path.Combine(cacheDir, existingHash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, existingHash);
             await File.WriteAllBytesAsync(diskPath, existingContent);
 
             blobs.SeedBlob(BlobPaths.FileTree(existingHash), [], contentType: null);
@@ -433,7 +646,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Slow path should create marker for remote blob
-            File.Exists(Path.Combine(cacheDir, remoteHash.ToString())).ShouldBeTrue();
+            File.Exists(FileTreePaths.GetCachePath(cacheDir, remoteHash)).ShouldBeTrue();
         }
         finally
         {
@@ -473,7 +686,7 @@ public class FileTreeServiceTests
         {
             await svc.ValidateAsync();
             var hash = FakeFileTreeHash('a');
-            var diskPath = Path.Combine(cacheDir, hash.ToString());
+            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
             await File.WriteAllBytesAsync(diskPath, []);
 
             svc.ExistsInRemote(hash).ShouldBeTrue();

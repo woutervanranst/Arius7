@@ -1,11 +1,12 @@
 name: 📊 Representative Benchmark
 
 on:
-  push:
-    branches: ["**"]
-    paths:
-      - "src/Arius.Core/**"
-      - "src/Arius.Benchmarks/**"
+  # push:
+  #   branches: ["**"]
+  #   paths:
+  #     - "src/Arius.Core/**"
+  #     - "src/Arius.Benchmarks/**"
+  workflow_dispatch:
 
 permissions:
   contents: write

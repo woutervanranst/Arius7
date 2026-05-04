@@ -31,9 +31,8 @@ public sealed class PlaintextPassthroughService : IEncryptionService
     }
 
     /// <inheritdoc/>
-    public ContentHash ComputeHash(byte[] data)
+    public ContentHash ComputeHash(ReadOnlySpan<byte> data)
     {
-        ArgumentNullException.ThrowIfNull(data);
         return ContentHash.FromDigest(SHA256.HashData(data));
     }
 
