@@ -69,6 +69,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
                 if (segment.Contains('\\'))
                     throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
+
+                if (segment.IndexOfAny(['\r', '\n', '\0']) >= 0)
+                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
             }
         }
     }
