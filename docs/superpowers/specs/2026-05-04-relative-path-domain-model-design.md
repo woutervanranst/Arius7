@@ -18,6 +18,7 @@ The goal of this design is to replace the scattered stringly path model with a s
 - Replace repeated string validation and normalization helpers with typed parsing at boundaries.
 - Represent repository root explicitly in the type system rather than as raw `""` at API boundaries.
 - Keep repository path identity separate from host operating-system path syntax.
+- Keep repository path equality and hashing stable across machines.
 - Keep path identity kind-neutral: file vs directory is metadata on the node at that path, not part of the path value itself.
 - Move archive, list, restore, filetree, and relevant test helpers toward typed repository paths.
 
@@ -28,6 +29,8 @@ The goal of this design is to replace the scattered stringly path model with a s
 - Do not introduce `FilePath` and `DirectoryPath` in the first step.
 - Do not require all path-related code in the repository to migrate in one change.
 - Do not collapse prefix-filter semantics into the core path type unless the semantics are made explicit.
+- Do not let `RelativePath` inherit comparison semantics from the current host operating system.
+- Do not move local path-joining or root-containment rules into `RelativePath`.
 
 ## Core Model
 
@@ -64,6 +67,8 @@ Identity rules:
 - no trailing slash in identity form
 - root is represented explicitly as `RelativePath.Root`
 - root is not represented as a raw empty string outside narrow compatibility boundaries
+- equality and hashing are ordinal and case-sensitive
+- the path preserves original casing instead of normalizing case
 
 Responsibilities:
 
@@ -71,6 +76,13 @@ Responsibilities:
 - represent root explicitly
 - expose path structure rather than forcing callers to split strings repeatedly
 - provide composition and traversal operations
+
+Comparison semantics:
+
+- `RelativePath` defines stable repository-path identity, not host-filesystem identity
+- two paths compare equal only when their canonical segment strings match exactly with ordinal, case-sensitive comparison
+- dictionary and set behavior must therefore remain stable across Windows and Linux
+- host-filesystem case-insensitive matching, when needed, is an explicit boundary concern outside `RelativePath`
 
 Suggested operations:
 
@@ -85,6 +97,13 @@ Suggested operations:
 - optional `/` operator between `RelativePath` and `PathSegment`
 - `Parse` / `TryParse`
 - canonical `ToString()`
+
+Non-responsibilities:
+
+- display syntax such as `photos/` for directories
+- loose selector normalization for user-facing prefix inputs
+- local filesystem path joining
+- local root-containment checks
 
 ## Domain Boundaries
 
@@ -121,7 +140,7 @@ This design keeps that as a separate concern. Two plausible future directions ar
 - accept canonical `RelativePath` only for prefix filters
 - introduce a separate `RelativePathPrefix` type if the selector semantics intentionally differ
 
-This decision is deferred. The first path-domain slice should not blur the distinction.
+This decision is deferred. The first path-domain slice should not blur the distinction. `RelativePath` should not absorb loose selector normalization just because both operate on slash-separated text.
 
 ### Local filesystem paths
 
@@ -132,6 +151,8 @@ Boundary code is responsible for:
 - converting local OS paths into `RelativePath` during archive enumeration
 - converting `RelativePath` back to OS paths during restore and fixture materialization
 - performing safe root-containment checks when joining local disk roots with repository-relative paths
+
+Local path joining and containment stay here deliberately. They depend on host filesystem rules and should not become responsibilities of `RelativePath`.
 
 The important rule is that once a path enters the Arius repository domain, it should stop being a raw string and become `RelativePath`.
 
@@ -171,6 +192,8 @@ Recommendation:
 - keep `Parse` and `TryParse` as the primary boundary entry points
 
 The design should favor correctness over cute syntax. The operator is a convenience, not the foundation.
+
+If `/` support is added, it should compose canonical repository paths only. It should not imply OS-path joining semantics.
 
 ## Migration Shape
 
@@ -214,6 +237,7 @@ This model should remove or shrink many current helpers, including:
 - repeated `Split('/')` and `string.Join('/', ...)` logic in domain code
 - raw `""` root sentinel handling in high-level APIs
 - serializer-adjacent directory-name string conventions in in-memory models
+- accidental host-OS-dependent comparison behavior in repository path dictionaries and sets
 
 What should remain as boundary concerns:
 
@@ -236,12 +260,14 @@ The design is being followed when:
 - root is represented as `RelativePath.Root` rather than raw `""` in public or internal domain APIs
 - archive, list, restore, and filetree logic perform structural path operations on typed values rather than on raw strings
 - local OS path handling remains clearly separated at infrastructure boundaries
+- `RelativePath` equality and hashing remain ordinal and case-sensitive on every supported host OS
 
 The design is not being followed when:
 
 - new canonical-path string helpers appear in core domain code
 - directory identity still depends on trailing slash in in-memory models
 - repository path parsing and normalization continue to happen repeatedly after the initial boundary
+- repository path equality changes with the current machine's filesystem rules
 
 ## Open Follow-Up Decisions
 

@@ -18,6 +18,7 @@ The question for this ADR is how Arius should represent repository-internal path
 * archive, list, restore, and filetree workflows should operate on canonical relative paths as early as possible
 * the same logical path should not need repeated normalization and validation throughout the codebase
 * local operating-system paths and repository-internal paths have different semantics and should not be conflated
+* repository path identity must remain stable across machines and must not inherit host filesystem comparison rules
 * directory display conventions such as a trailing slash should not redefine the identity of the underlying path
 * the model should remove illegal states while remaining practical to migrate incrementally
 
@@ -33,9 +34,13 @@ Chosen option: "Introduce a kind-neutral path domain with `PathSegment` and `Rel
 
 `RelativePath` becomes the primary repository-internal path value object. It represents a canonical path inside the archived repository tree, not a host operating-system path. Its identity is kind-neutral: the path value does not itself mean file or directory. Root is represented explicitly as `RelativePath.Root`, not as a raw empty string at API boundaries.
 
+`RelativePath` uses stable repository-path identity rules: it is case-preserving and uses ordinal, case-sensitive equality and hashing. Arius must not inherit comparison behavior from the current host operating system. Windows- or Linux-specific filesystem matching remains an explicit boundary concern where Arius crosses into the local filesystem.
+
 `PathSegment` becomes the primitive value object for one canonical segment. A segment is non-empty, not whitespace-only, contains no separators, and rejects `.` and `..`.
 
 Directory-vs-file meaning remains metadata on repository entries and filetree nodes, not part of the `RelativePath` identity. A trailing slash remains a serializer or display convention for directory entries, not part of the path value object.
+
+`RelativePath` also does not own loose selector normalization or local filesystem path-joining and containment rules. Those remain boundary-specific behaviors layered around the core path value object.
 
 This decision does not require Arius to introduce `FilePath` and `DirectoryPath` immediately. Those may be added later if concrete APIs show a strong need for kind-specific compile-time constraints, but the base path model is intentionally kind-neutral.
 
@@ -43,6 +48,7 @@ This decision does not require Arius to introduce `FilePath` and `DirectoryPath`
 
 * Good, because archive, list, restore, filetree, and test infrastructure can share one canonical repository-path model instead of repeating validation and normalization logic.
 * Good, because local disk paths and repository-internal paths become clearly separated concepts.
+* Good, because repository path equality and hashing stay stable across machines instead of drifting with host filesystem behavior.
 * Good, because root, parent/child composition, and segment rules can be expressed once on the type instead of reimplemented ad hoc.
 * Good, because directory display rules such as `photos/` stay boundary-specific rather than leaking into the domain identity of `photos`.
 * Bad, because adopting `RelativePath` broadly will require a large signature migration across models, handlers, tests, and serializers.
@@ -57,8 +63,10 @@ The decision is not being followed when new code introduces fresh canonical-path
 Code review should check that:
 
 * canonical repository paths are parsed at boundaries and then carried as `RelativePath`
+* `RelativePath` equality and hashing remain ordinal and case-sensitive regardless of host OS
 * local operating-system paths stay outside the domain model
 * filetree and listing code do not use trailing slash as path identity
+* selector normalization and local path-joining logic remain in boundary-specific APIs rather than on `RelativePath`
 * new string helpers are not added where a path operation belongs on `RelativePath` or `PathSegment`
 
 Tests should verify canonical parsing, root handling, path composition, parent/name semantics, prefix semantics where applicable, and formatting behavior at serializer or UI boundaries.
@@ -81,6 +89,7 @@ This is the chosen design.
 
 * Good, because it models the true Arius repository-path identity directly.
 * Good, because it separates path identity from file-vs-directory interpretation and from display syntax.
+* Good, because it fixes equality and hashing semantics to stable ordinal behavior across machines.
 * Good, because it gives one central home for validation, composition, and root semantics.
 * Good, because it can be adopted incrementally while still aiming at a cleaner final model.
 * Bad, because the initial migration touches many core types and tests.
@@ -110,6 +119,7 @@ Likely future operations on `RelativePath`:
 * `IsRoot`
 * `Parent`
 * `Name`
+* ordinal, case-sensitive equality and hashing
 * path composition, potentially including `/` operator support
 * canonical parsing and formatting
 
