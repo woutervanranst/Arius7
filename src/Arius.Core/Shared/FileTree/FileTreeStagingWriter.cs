@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -31,7 +32,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         try
         {
-            RepositoryRelativePath.ValidateCanonical(filePath);
+            _ = RelativePath.Parse(filePath);
         }
         catch (ArgumentException) when (!string.IsNullOrEmpty(filePath))
         {

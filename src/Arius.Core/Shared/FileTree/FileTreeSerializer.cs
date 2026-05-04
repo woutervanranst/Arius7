@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -201,7 +202,7 @@ public static class FileTreeSerializer
 
         try
         {
-            RepositoryRelativePath.ValidateCanonical(trimmedName);
+            _ = RelativePath.Parse(trimmedName);
         }
         catch (ArgumentException ex)
         {

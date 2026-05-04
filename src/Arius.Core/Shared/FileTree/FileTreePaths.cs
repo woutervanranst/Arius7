@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -37,7 +38,7 @@ internal static class FileTreePaths
     /// </summary>
     public static string GetStagingDirectoryId(string directoryPath)
     {
-        RepositoryRelativePath.ValidateCanonical(directoryPath, allowEmpty: true);
+        _ = RelativePath.Parse(directoryPath, allowEmpty: true);
 
         var canonicalPath = directoryPath;
         return HashCodec.ToLowerHex(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalPath)));
