@@ -1,6 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
