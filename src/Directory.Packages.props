@@ -33,6 +33,6 @@
     <PackageVersion Include="System.CommandLine" Version="3.0.0-preview.3.26207.106" />
     <PackageVersion Include="Testcontainers.Azurite" Version="4.11.0" />
     <PackageVersion Include="TngTech.ArchUnitNET" Version="0.13.3" />
-    <PackageVersion Include="TUnit" Version="1.40.10" />
+    <PackageVersion Include="TUnit" Version="1.43.11" />
   </ItemGroup>
 </Project>
