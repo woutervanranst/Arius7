@@ -2,8 +2,6 @@ namespace Arius.Core.Shared.Paths;
 
 public readonly record struct PathSegment
 {
-    private readonly string? _value;
-
     private PathSegment(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -21,10 +19,10 @@ public readonly record struct PathSegment
             throw new ArgumentException("Path segment must be canonical.", nameof(value));
         }
 
-        _value = value;
+        Value = value;
     }
 
-    private string Value => _value ?? throw new InvalidOperationException("PathSegment is uninitialized.");
+    private string Value => field ?? throw new InvalidOperationException("PathSegment is uninitialized.");
 
     public static PathSegment Parse(string value) => new(value);
 

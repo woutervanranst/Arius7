@@ -2,16 +2,14 @@ namespace Arius.Core.Shared.Paths;
 
 public readonly record struct RelativePath
 {
-    private readonly string? _value;
-
     private RelativePath(string value)
     {
-        _value = value;
+        Value = value;
     }
 
     public static RelativePath Root { get; } = new(string.Empty);
 
-    private string Value => _value ?? throw new InvalidOperationException("RelativePath is uninitialized.");
+    private string Value => field ?? throw new InvalidOperationException("RelativePath is uninitialized.");
 
     public bool IsRoot => Value.Length == 0;
 
@@ -101,6 +99,7 @@ public readonly record struct RelativePath
         return Path.Combine(rootDirectory, Value.Replace('/', Path.DirectorySeparatorChar));
     }
 
+
     public bool StartsWith(RelativePath other)
     {
         if (other.IsRoot)
@@ -114,7 +113,7 @@ public readonly record struct RelativePath
             : Value.StartsWith(other.Value, StringComparison.Ordinal) && Value[other.Value.Length] == '/';
     }
 
-    public RelativePath Append(PathSegment segment)
+    private RelativePath Append(PathSegment segment)
     {
         return IsRoot
             ? new RelativePath(segment.ToString())
