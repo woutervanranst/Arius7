@@ -256,6 +256,7 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    [Arguments("photos//")]
     [Arguments("photos\\")]
     [Arguments("photos/2024/")]
     public void ParsePersistedNodeEntryLine_MalformedDirectoryName_ThrowsFormatException(string directoryName)

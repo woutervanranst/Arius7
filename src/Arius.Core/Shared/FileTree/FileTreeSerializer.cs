@@ -107,20 +107,10 @@ public static class FileTreeSerializer
             if (!FileTreeHash.TryParse(hash, out var fileTreeHash))
                 throw new FormatException($"Invalid directory entry (invalid tree hash): '{line}'");
 
-            PathSegment name;
-            try
-            {
-                name = PathSegment.Parse(afterType.TrimEnd('/'));
-            }
-            catch (ArgumentException ex)
-            {
-                throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'", ex);
-            }
-
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name         = name
+                Name         = ParsePersistedDirectoryEntryName(afterType, line)
             };
         }
 
@@ -198,6 +188,25 @@ public static class FileTreeSerializer
             DirectoryNameHash = normalizedDirectoryNameHash,
             Name              = PathSegment.Parse(name.TrimEnd('/'))
         };
+    }
+
+    private static PathSegment ParsePersistedDirectoryEntryName(string name, string line)
+    {
+        if (!name.EndsWith("/", StringComparison.Ordinal) || name.Length == 1)
+            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'");
+
+        var trimmedName = name[..^1];
+        if (trimmedName.Contains('/', StringComparison.Ordinal))
+            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'");
+
+        try
+        {
+            return PathSegment.Parse(trimmedName);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'", ex);
+        }
     }
 
     private static void ValidateCanonicalDirectoryEntryName(string name, string line)
