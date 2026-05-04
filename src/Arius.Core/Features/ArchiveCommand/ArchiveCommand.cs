@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
@@ -15,7 +16,7 @@ public sealed record ArchiveCommand(ArchiveCommandOptions CommandOptions) : ICom
 public sealed record ArchiveCommandOptions
 {
     /// <summary>Root directory to archive.</summary>
-    public required string RootDirectory { get; init; }
+    public required LocalRootPath RootDirectory { get; init; }
 
     /// <summary>
     /// Files smaller than this threshold are bundled into tar archives.

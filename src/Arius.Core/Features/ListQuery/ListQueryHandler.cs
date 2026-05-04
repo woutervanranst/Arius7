@@ -53,7 +53,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             opts.Prefix?.ToString() ?? "(none)",
             opts.Filter ?? "(none)",
             opts.Recursive,
-            opts.LocalPath ?? "(none)");
+            opts.LocalPath?.ToString() ?? "(none)");
 
         var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
@@ -64,7 +64,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     : $"Snapshot '{opts.Version}' not found.");
         }
 
-        var localRoot = NormalizeLocalRoot(opts.LocalPath);
+        var localRoot = opts.LocalPath;
         var (treeHash, localDir, relativeDirectory) = await ResolveStartingPointAsync(
             snapshot.RootHash,
             localRoot,
@@ -231,13 +231,13 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private async Task<(FileTreeHash? TreeHash, string? LocalDirectory, RelativePath RelativeDirectory)> ResolveStartingPointAsync(
         FileTreeHash rootHash,
-        string? localRoot,
+        LocalRootPath? localRoot,
         RelativePath? prefix,
         CancellationToken cancellationToken)
     {
         if (prefix is null)
         {
-            return (rootHash, localRoot, RelativePath.Root);
+            return (rootHash, localRoot?.ToString(), RelativePath.Root);
         }
 
         FileTreeHash? currentHash = rootHash;
@@ -258,7 +258,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             currentHash = nextDirectory?.FileTreeHash;
         }
 
-        var localDirectory = localRoot;
+        var localDirectory = localRoot?.ToString();
         foreach (var segment in prefix.Value.Segments)
         {
             if (localDirectory is null)
@@ -362,9 +362,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             return null;
         }
     }
-
-    private static string? NormalizeLocalRoot(string? path) =>
-        string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
 
     private static bool MatchesFilter(string fileName, string? filter) =>
         filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);

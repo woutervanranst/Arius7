@@ -1,7 +1,9 @@
 using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.ListQuery;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
+using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.Cli.Tests.Commands.Ls;
 
@@ -34,7 +36,7 @@ public class ListQueryParsingTests
         var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBe("2026-01-01");
-        cmd.Options.Prefix.ShouldBe("docs/");
+        cmd.Options.Prefix.ShouldBe(PathOf("docs"));
         cmd.Options.Filter.ShouldBe(".pdf");
     }
 
@@ -63,7 +65,7 @@ public class ListQueryParsingTests
 
         var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd = (ListQuery)call.GetArguments()[0]!;
-        cmd.Options.Prefix.ShouldBe("photos/");
+        cmd.Options.Prefix.ShouldBe(PathOf("photos"));
         cmd.Options.Filter.ShouldBe(".jpg");
     }
 }

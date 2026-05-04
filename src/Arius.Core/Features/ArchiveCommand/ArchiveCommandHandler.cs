@@ -209,7 +209,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 try
                 {
                     var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
-                    var  pairs      = enumerator.Enumerate(opts.RootDirectory);
+                    var  pairs      = enumerator.Enumerate(opts.RootDirectory.ToString());
                     long count      = 0;
                     long totalBytes = 0;
 
@@ -217,7 +217,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         count++;
                         var relativePathText = pair.RelativePath.ToString();
-                        var fullPath = pair.BinaryExists ? pair.RelativePath.ToPlatformPath(opts.RootDirectory) : null;
+                        var fullPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
                         var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
                         totalBytes += fileSize;
                         await _mediator.Publish(new FileScannedEvent(relativePathText, fileSize), cancellationToken);
@@ -242,7 +242,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     async (pair, ct) =>
                     {
                         var relativePathText = pair.RelativePath.ToString();
-                        var fullBinaryPath = pair.BinaryExists ? pair.RelativePath.ToPlatformPath(opts.RootDirectory) : null;
+                        var fullBinaryPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
                         var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
 
                         await _mediator.Publish(new FileHashingEvent(relativePathText, fileSize), ct);
@@ -348,7 +348,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
-                    var fullPath = upload.HashedPair.FilePair.RelativePath.ToPlatformPath(opts.RootDirectory);
+                    var fullPath = (opts.RootDirectory / upload.HashedPair.FilePair.RelativePath).FullPath;
 
                     await using var fs             = File.OpenRead(fullPath);
                     var             uploadProgress = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
@@ -426,7 +426,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
 
-                        var fullPath = upload.HashedPair.FilePair.RelativePath.ToPlatformPath(opts.RootDirectory);
+                        var fullPath = (opts.RootDirectory / upload.HashedPair.FilePair.RelativePath).FullPath;
 
                         // Write entry named by content-hash (not original path)
                         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
@@ -557,7 +557,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (relativePath, hash) = item;
-                    var fullPath = relativePath.ToPlatformPath(opts.RootDirectory);
+                    var fullPath = (opts.RootDirectory / relativePath).FullPath;
                     var pointerPath = fullPath + ".pointer.arius";
                     await File.WriteAllTextAsync(pointerPath, hash.ToString(), ct);
                 });
@@ -569,7 +569,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 foreach (var relativePath in pendingDeletes)
                 {
-                    var path = relativePath.ToPlatformPath(opts.RootDirectory);
+                    var path = (opts.RootDirectory / relativePath).FullPath;
                     try
                     {
                         File.Delete(path);
@@ -615,7 +615,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task WriteFileTreeEntry(HashedFilePair hashed, string rootDirectory, FileTreeStagingWriter writer, CancellationToken ct)
+    private static async Task WriteFileTreeEntry(HashedFilePair hashed, LocalRootPath rootDirectory, FileTreeStagingWriter writer, CancellationToken ct)
     {
         var pair = hashed.FilePair;
 
@@ -623,7 +623,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         DateTimeOffset created, modified;
         if (pair.BinaryExists)
         {
-            var fullPath = pair.RelativePath.ToPlatformPath(rootDirectory);
+            var fullPath = (rootDirectory / pair.RelativePath).FullPath;
             var fi       = new FileInfo(fullPath);
             created  = new DateTimeOffset(fi.CreationTimeUtc,  TimeSpan.Zero);
             modified = new DateTimeOffset(fi.LastWriteTimeUtc, TimeSpan.Zero);

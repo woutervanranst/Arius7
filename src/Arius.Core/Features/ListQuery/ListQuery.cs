@@ -37,7 +37,7 @@ public sealed record ListQueryOptions
     /// <summary>
     /// Optional local directory used to merge local filesystem state with cloud state.
     /// </summary>
-    public string? LocalPath { get; init; }
+    public LocalRootPath? LocalPath { get; init; }
 }
 
 

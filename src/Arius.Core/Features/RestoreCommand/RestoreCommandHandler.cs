@@ -129,7 +129,7 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in files)
             {
-                var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
+                var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
 
                 if (File.Exists(localPath))
                 {
@@ -558,7 +558,7 @@ public sealed class RestoreCommandHandler
         long           compressedSize,
         CancellationToken cancellationToken)
     {
-        var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
+        var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
 
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
@@ -625,7 +625,7 @@ public sealed class RestoreCommandHandler
             for (var i = 0; i < filesForHash.Count; i++)
             {
                 var file = filesForHash[i];
-                var localPath = file.RelativePath.ToPlatformPath(opts.RootDirectory);
+                var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
 
                 Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 

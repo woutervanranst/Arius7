@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -159,8 +160,8 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRoot,
-                UploadTier = _defaultTier,
+                RootDirectory = LocalRootPath.Parse(LocalRoot),
+                UploadTier    = _defaultTier,
             }),
             ct).AsTask();
 
@@ -168,8 +169,8 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RestoreRoot,
-                Overwrite = true,
+                RootDirectory = LocalRootPath.Parse(RestoreRoot),
+                Overwrite     = true,
             }),
             ct).AsTask();
 

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -124,7 +125,7 @@ internal static class ArchiveVerb
 
                 var opts = new ArchiveCommandOptions
                 {
-                    RootDirectory      = Path.GetFullPath(path),
+                    RootDirectory      = LocalRootPath.Parse(Path.GetFullPath(path)),
                     UploadTier         = tier,
                     RemoveLocal        = removeLocal,
                     NoPointers         = noPointers,

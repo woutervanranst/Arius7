@@ -85,6 +85,8 @@ public readonly record struct LocalRootPath
 
     public override int GetHashCode() => Comparer.GetHashCode(Value);
 
+    public static RootedPath operator /(LocalRootPath left, RelativePath right) => new(left, right);
+
     public override string ToString() => Value;
 
     private static StringComparer Comparer =>

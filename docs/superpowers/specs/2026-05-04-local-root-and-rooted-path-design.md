@@ -106,7 +106,15 @@ Suggested operations:
 
 - `FullPath`
 - `Name` forwarding to `RelativePath.Name` if that proves useful
-- child composition only if a concrete call site needs it
+- `LocalRootPath / RelativePath -> RootedPath` as a convenience alias for one-step rooting
+
+The approved production composition surface is intentionally narrow:
+
+- allow `relativePath.RootedAt(localRoot)`
+- allow `localRoot / relativePath`
+- do not add `LocalRootPath / PathSegment`
+
+This keeps `RelativePath` as the repository-relative composition type and keeps `LocalRootPath` from turning into a general partial-path builder.
 
 ### `RelativePath`
 
@@ -165,6 +173,7 @@ These local-path types must not be treated as cross-machine persistent identity.
 Allowed construction shapes:
 
 - `relativePath.RootedAt(localRoot)`
+- `localRoot / relativePath`
 - `RootedPath.Create(localRoot, relativePath)` if a factory is needed
 - construction paths that always carry an explicit `LocalRootPath`
 
@@ -290,6 +299,7 @@ Coverage should include:
 - no existence requirement for `LocalRootPath`
 - host-path equality expectations for `LocalRootPath` and `RootedPath`
 - `RelativePath.RootedAt(...)` composition
+- `LocalRootPath / RelativePath` composition
 - `LocalRootPath.GetRelativePath(...)` containment and rejection behavior
 - round-tripping between `RelativePath`, `LocalRootPath`, and `RootedPath`
 - archive, list, and restore flows updated to use typed local-root boundaries

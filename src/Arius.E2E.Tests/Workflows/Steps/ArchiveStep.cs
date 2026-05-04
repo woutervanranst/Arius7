@@ -1,4 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -19,7 +20,7 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 
         var options = new ArchiveCommandOptions
         {
-            RootDirectory = state.Fixture.LocalRoot,
+            RootDirectory = LocalRootPath.Parse(state.Fixture.LocalRoot),
             UploadTier    = UploadTier,
             NoPointers    = NoPointers,
             RemoveLocal   = RemoveLocal,

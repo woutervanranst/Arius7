@@ -1,6 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -15,9 +16,9 @@ internal static class Helpers
     {
         var options = new RestoreOptions
         {
-            RootDirectory = fixture.RestoreRoot,
-            Overwrite = overwrite,
-            Version = version,
+            RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
+            Overwrite     = overwrite,
+            Version       = version,
         };
 
         return fixture.CreateRestoreHandler().Handle(new RestoreCommand(options), cancellationToken).AsTask();

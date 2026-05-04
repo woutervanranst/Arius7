@@ -3,6 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
@@ -105,7 +106,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new ArchiveCommandOptions
         {
-            RootDirectory = LocalRoot,
+            RootDirectory = LocalRootPath.Parse(LocalRoot),
             UploadTier    = BlobTier.Hot,
         };
         return CreateArchiveHandler().Handle(new ArchiveCommand(opts), ct).AsTask();
@@ -118,7 +119,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new RestoreOptions
         {
-            RootDirectory = RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(RestoreRoot),
             Overwrite     = true,
         };
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();

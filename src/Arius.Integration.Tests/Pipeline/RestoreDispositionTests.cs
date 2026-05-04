@@ -34,7 +34,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = false,
         });
 
@@ -67,7 +67,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = false,
         });
 
@@ -102,7 +102,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore once to get the correct file in place
         var r1 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = true,
         });
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
@@ -112,7 +112,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         fix.Mediator.ClearReceivedCalls();
         var r2 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = false,
         });
 
@@ -136,7 +136,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore to empty dir (no local file) → should restore
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = false,
         });
 
@@ -165,7 +165,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore WITH --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = LocalRootPath.Parse(fix.RestoreRoot),
             Overwrite     = true,
         });
 

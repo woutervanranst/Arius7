@@ -143,7 +143,7 @@ public class ListQueryHandlerTests
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = LocalRootPath.Parse(tempRoot), Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -296,7 +296,7 @@ public class ListQueryHandlerTests
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
             var handler = fixture.CreateListQueryHandler();
 
-            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
+            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = LocalRootPath.Parse(tempRoot) }), CancellationToken.None)
                 .OfType<RepositoryDirectoryEntry>()
                 .ToListAsync();
 

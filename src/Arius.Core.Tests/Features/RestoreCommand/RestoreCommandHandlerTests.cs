@@ -44,7 +44,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = fixture.LocalRoot,
+                RootDirectory      = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024,
             }),
@@ -56,7 +56,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
                 CreateDownloadProgress = (identifier, _, _) =>
                 {
@@ -87,7 +87,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fixture.LocalRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -97,7 +97,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
                 TargetPath    = PathOf("docs"),
             }),
@@ -121,7 +121,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fixture.LocalRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -131,7 +131,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
                 TargetPath    = PathOf("file-a.txt"),
             }),
@@ -159,7 +159,7 @@ public class RestoreCommandHandlerTests
         var result = await handler.Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
                 {
-                    RootDirectory = Path.GetTempPath()
+                    RootDirectory = LocalRootPath.Parse(Path.GetFullPath(Path.GetTempPath()))
                 }),
             CancellationToken.None);
 
@@ -184,7 +184,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fixture.LocalRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -194,7 +194,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -226,7 +226,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = fixture.LocalRoot,
+                RootDirectory      = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024 * 1024,
             }),
@@ -237,7 +237,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -286,7 +286,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = fixture.LocalRoot,
+                RootDirectory      = LocalRootPath.Parse(fixture.LocalRoot),
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024 * 1024,
             }),
@@ -297,7 +297,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fixture.RestoreRoot,
+                RootDirectory = LocalRootPath.Parse(fixture.RestoreRoot),
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -366,7 +366,7 @@ public class RestoreCommandHandlerTests
 
             var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
-            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }), CancellationToken.None);
+            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = LocalRootPath.Parse(restoreRoot), Overwrite = true }), CancellationToken.None);
 
             result.Success.ShouldBeFalse();
             result.FilesRestored.ShouldBe(0);

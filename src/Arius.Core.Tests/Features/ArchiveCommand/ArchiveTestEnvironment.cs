@@ -5,6 +5,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
@@ -72,8 +73,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = _rootDirectory,
-                UploadTier = uploadTier,
+                RootDirectory = LocalRootPath.Parse(_rootDirectory),
+                UploadTier    = uploadTier,
             }),
             cancellationToken);
     }

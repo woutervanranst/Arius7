@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
@@ -55,7 +56,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         {
             File.WriteAllText(Path.Combine(tempRoot, "hello.txt"), "hello");
 
-            var opts   = new ArchiveCommandOptions { RootDirectory = tempRoot, UploadTier = BlobTier.Hot };
+            var opts   = new ArchiveCommandOptions { RootDirectory = LocalRootPath.Parse(tempRoot), UploadTier = BlobTier.Hot };
             var result = await handler.Handle(new ArchiveCommand(opts), CancellationToken.None);
 
             result.Success.ShouldBeTrue(result.ErrorMessage);

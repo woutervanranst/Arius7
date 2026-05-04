@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Paths;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;
@@ -96,7 +97,7 @@ public class ArchiveStepBenchmarks
             .Handle(
                 new ArchiveCommand(new ArchiveCommandOptions
                 {
-                    RootDirectory = _fixture.LocalRoot,
+                    RootDirectory = LocalRootPath.Parse(_fixture.LocalRoot),
                 }),
                 CancellationToken.None)
             .AsTask();

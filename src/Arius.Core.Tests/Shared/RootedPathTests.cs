@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Paths;
+using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.Core.Tests.Shared;
 
@@ -15,6 +16,18 @@ public class RootedPathTests
         rooted.Root.ShouldBe(root);
         rooted.RelativePath.ShouldBe(path);
         rooted.FullPath.ShouldBe(Path.Combine(root.ToString(), "photos", "2024", "a.jpg"));
+    }
+
+    [Test]
+    public void SlashOperator_ComposesRootAndRelativePath()
+    {
+        var root = RootOf(Path.GetFullPath(Path.Combine(Path.GetTempPath(), "arius-rooted-operator")));
+        var path = PathOf("docs/readme.txt");
+
+        var rooted = root / path;
+
+        rooted.ShouldBe(new RootedPath(root, path));
+        rooted.FullPath.ShouldBe(Path.Combine(root.ToString(), "docs", "readme.txt"));
     }
 
     [Test]

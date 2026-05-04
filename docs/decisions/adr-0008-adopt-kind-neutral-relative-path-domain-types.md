@@ -50,6 +50,8 @@ The base repository-path model remains kind-neutral. File-vs-directory meaning s
 
 Owning boundary APIs for repository-path and local-root conversion live in `Arius.Core.Shared.Paths`. Rooted local joining should move toward `LocalRootPath` and `RootedPath` ownership. `RelativePath` may expose `RootedAt(LocalRootPath root)` because that preserves the explicit composition of repository-relative identity plus local root, but rooted local-path formatting should not remain a generic `RelativePath` responsibility.
 
+For ergonomics, Arius may also expose `LocalRootPath / RelativePath -> RootedPath` as a narrow alias for one-step rooting. It should not broaden that operator surface into `LocalRootPath / PathSegment` or other partial local-path-building APIs unless a concrete need appears later.
+
 Equality and hashing semantics are intentionally split:
 
 * `RelativePath` equality and hashing are repository-stable and OS-independent

@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -63,12 +64,12 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         // does not restore the chosen target while the chunk is still archived.
         var firstEstimateCaptured = false;
         var initialRestoreHandler = CreateArchiveTierRestoreHandler(state.Fixture, state.Context, azureBlobContainer);
-        var initialResult = await initialRestoreHandler
+            var initialResult = await initialRestoreHandler
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = state.Fixture.RestoreRoot,
-                TargetPath = targetChunk.TargetRelativePath,
-                Overwrite = true,
+                RootDirectory = LocalRootPath.Parse(state.Fixture.RestoreRoot),
+                TargetPath    = RelativePath.Parse(targetChunk.TargetRelativePath),
+                Overwrite     = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
                     firstEstimateCaptured = true;
@@ -102,9 +103,9 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             // and that it cleans up the temporary rehydrated blob afterward.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = readyRestoreRoot,
-                TargetPath = targetChunk.TargetRelativePath,
-                Overwrite = true,
+                RootDirectory  = LocalRootPath.Parse(readyRestoreRoot),
+                TargetPath     = RelativePath.Parse(targetChunk.TargetRelativePath),
+                Overwrite      = true,
                 ConfirmCleanup = (count, _, _) =>
                 {
                     cleanupDeletedChunks = count;

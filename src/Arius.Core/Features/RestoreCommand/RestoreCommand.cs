@@ -12,7 +12,7 @@ namespace Arius.Core.Features.RestoreCommand;
 public sealed record RestoreOptions
 {
     /// <summary>Local directory to restore files into.</summary>
-    public required string RootDirectory { get; init; }
+    public required LocalRootPath RootDirectory { get; init; }
 
     /// <summary>
     /// Snapshot version string (partial match). <c>null</c> = latest snapshot.

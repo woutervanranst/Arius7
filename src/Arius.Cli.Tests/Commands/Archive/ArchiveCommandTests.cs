@@ -1,5 +1,6 @@
 using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 
@@ -58,6 +59,6 @@ public class ArchiveCommandTests
 
         var call = harness.ArchiveHandler.ReceivedCalls().Single();
         var cmd = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.CommandOptions.RootDirectory.ShouldEndWith("tmp");
+        cmd.CommandOptions.RootDirectory.ShouldBe(LocalRootPath.Parse(Path.GetFullPath("/tmp")));
     }
 }
