@@ -29,22 +29,15 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var filePathText = filePath.ToString();
-
-        var segments = filePathText.Split('/');
-        if (segments.Length == 0)
-            throw new ArgumentException("File path must include a file name.", nameof(filePath));
-
-        var fileName = segments[^1];
-        if (string.IsNullOrWhiteSpace(fileName))
-            throw new ArgumentException("File path must include a non-empty file name.", nameof(filePath));
+        var fileName = filePath.Name
+            ?? throw new ArgumentException("File path must include a file name.", nameof(filePath));
 
         var parentPath = filePath.Parent ?? RelativePath.Root;
 
-        await AppendDirectoryEntriesAsync(segments, cancellationToken);
+        await AppendDirectoryEntriesAsync(parentPath, cancellationToken);
         await AppendFileEntryAsync(parentPath, new FileEntry
         {
-            Name        = PathSegment.Parse(fileName),
+            Name        = fileName,
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified
@@ -58,20 +51,20 @@ internal sealed class FileTreeStagingWriter : IDisposable
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
-    private async Task AppendDirectoryEntriesAsync(string[] segments, CancellationToken cancellationToken)
+    private async Task AppendDirectoryEntriesAsync(RelativePath directoryPath, CancellationToken cancellationToken)
     {
-        for (var depth = 0; depth < segments.Length - 1; depth++)
-        {
-            var parentPath = depth == 0
-                ? RelativePath.Root
-                : RelativePath.Parse(string.Join('/', segments, 0, depth));
-            var directoryPath = RelativePath.Parse(string.Join('/', segments, 0, depth + 1));
-            var directoryName = PathSegment.Parse(segments[depth]);
-            var directoryId   = FileTreePaths.GetStagingDirectoryId(directoryPath);
-            var nodePath      = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
+        if (directoryPath.IsRoot)
+            return;
 
-            await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
-        }
+        var parentPath = directoryPath.Parent ?? RelativePath.Root;
+        await AppendDirectoryEntriesAsync(parentPath, cancellationToken);
+
+        var directoryName = directoryPath.Name
+            ?? throw new InvalidOperationException("Directory path must include a directory name.");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
+        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
+
+        await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
     }
 
     private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)

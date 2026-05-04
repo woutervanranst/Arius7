@@ -187,7 +187,9 @@ public class FileTreeStagingWriterTests
             var photosEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId));
 
             rootEntries.ShouldContain($"{photosId} D photos");
+            rootEntries.ShouldNotContain($"{photosId} D photos/");
             photosEntries.ShouldContain($"{photos2024Id} D 2024");
+            photosEntries.ShouldNotContain($"{photos2024Id} D 2024/");
         }
         finally
         {
@@ -333,6 +335,29 @@ public class FileTreeStagingWriterTests
             exception.ShouldNotBeNull();
             exception.Message.ShouldStartWith("Path segment must be canonical.");
             exception.ParamName.ShouldBe("value");
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task AppendFileEntryAsync_RootPath_ThrowsFileNameRequiredMessage()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await writer.AppendFileEntryAsync(RelativePath.Root, TestHash, TestTimestamp, TestTimestamp));
+
+            exception.ShouldNotBeNull();
+            exception.Message.ShouldStartWith("File path must include a file name.");
+            exception.ParamName.ShouldBe("filePath");
         }
         finally
         {
