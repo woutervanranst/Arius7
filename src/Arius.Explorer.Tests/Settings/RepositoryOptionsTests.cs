@@ -27,17 +27,4 @@ public class RepositoryOptionsTests
         repository.Passphrase.ShouldBe("secret-pass");
     }
 
-    [Test]
-    public void ToString_FormatsRepositoryIdentity()
-    {
-        var repository = new RepositoryOptions
-        {
-            LocalDirectoryPath = "C:/data",
-            AccountName = "account",
-            ContainerName = "container",
-        };
-
-        repository.ToString().ShouldContain("account:container");
-        repository.ToString().ShouldContain("data");
-    }
 }

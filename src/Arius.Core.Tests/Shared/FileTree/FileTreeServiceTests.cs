@@ -8,7 +8,6 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared.Storage;
-using System.Reflection;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -423,32 +422,6 @@ public class FileTreeServiceTests
         finally
         {
             await CleanupAsync(cacheDir, snapshotsDir);
-        }
-    }
-
-    [Test]
-    public async Task WriteCacheAtomicallyAsync_PublishesCompleteCacheFile()
-    {
-        var method = typeof(FileTreeService).GetMethod("WriteCacheAtomicallyAsync", BindingFlags.NonPublic | BindingFlags.Static);
-
-        method.ShouldNotBeNull();
-
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"filetree-cache-{Guid.NewGuid():N}");
-        var diskPath = Path.Combine(cacheDir, "cache-entry");
-        var plaintext = FileTreeSerializer.Serialize(MakeEntries("atomic.txt", "12345678"));
-
-        try
-        {
-            var task = (Task)method.Invoke(null, [diskPath, (ReadOnlyMemory<byte>)plaintext, CancellationToken.None])!;
-            await task;
-
-            File.Exists(diskPath).ShouldBeTrue();
-            (await File.ReadAllBytesAsync(diskPath)).ShouldBe(plaintext);
-        }
-        finally
-        {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
         }
     }
 

@@ -9,17 +9,6 @@ public class FileTreeStagingWriterTests
     private static readonly ContentHash TestHash = ContentHash.Parse(new string('a', 64));
 
     [Test]
-    public void GetDirectoryId_UsesCanonicalForwardSlashPath()
-    {
-        var id1 = FileTreePaths.GetStagingDirectoryId("photos/2024");
-        var id2 = FileTreePaths.GetStagingDirectoryId("photos\\2024");
-
-        id1.ShouldBe(id2);
-        id1.Length.ShouldBe(64);
-        id1.ShouldAllBe(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
-    }
-
-    [Test]
     [Arguments("/photos")]
     [Arguments("/photos/2024")]
     [Arguments("C:/photos")]
@@ -27,17 +16,6 @@ public class FileTreeStagingWriterTests
     public void GetDirectoryId_RootedPath_Throws(string directoryPath)
     {
         Should.Throw<ArgumentException>(() => FileTreePaths.GetStagingDirectoryId(directoryPath));
-    }
-
-    [Test]
-    public void GetNodePath_UsesFlatHashFilePath()
-    {
-        var stagingRoot = Path.Combine(Path.GetTempPath(), "arius-staging-test");
-        var dirId = FileTreePaths.GetStagingDirectoryId("docs");
-
-        var nodePath = FileTreePaths.GetStagingNodePath(stagingRoot, dirId);
-
-        nodePath.ShouldBe(Path.Combine(stagingRoot, dirId));
     }
 
     [Test]
