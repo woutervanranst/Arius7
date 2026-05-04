@@ -52,7 +52,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         static void ValidateCanonicalRelativePath(string path)
         {
-            if (path.StartsWith('/') || Path.IsPathRooted(path))
+            if (path.StartsWith('/')
+                || Path.IsPathRooted(path)
+                || (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '/'))
                 throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
 
             var segments = path.Split('/');
