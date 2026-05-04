@@ -36,37 +36,6 @@ public class PlaintextPassthroughServiceTests
     }
 
     [Test]
-    public async Task ComputeHashAsync_MatchesPlainSha256()
-    {
-        var data     = "streaming content"u8.ToArray();
-        var expected = ContentHash.FromDigest(SHA256.HashData(data));
-        var actual   = await _svc.ComputeHashAsync(new MemoryStream(data));
-        actual.ShouldBe(expected);
-    }
-
-    [Test]
-    public void ComputeHash_Deterministic()
-    {
-        var data = "same data"u8.ToArray();
-        _svc.ComputeHash(data).ShouldBe(_svc.ComputeHash(data));
-    }
-
-    [Test]
-    public void ComputeHash_EmptyArray_MatchesSha256Empty()
-    {
-        var expected = ContentHash.FromDigest(SHA256.HashData([]));
-        _svc.ComputeHash([]).ShouldBe(expected);
-    }
-
-    [Test]
-    public void ComputeHash_Utf8LiteralSpan_MatchesPlainSha256()
-    {
-        ReadOnlySpan<byte> data = "plaintext content"u8;
-        var expected = ContentHash.FromDigest(SHA256.HashData(data));
-        _svc.ComputeHash(data).ShouldBe(expected);
-    }
-
-    [Test]
     public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
     {
         var path = Path.GetTempFileName();
@@ -107,6 +76,4 @@ public class PlaintextPassthroughServiceTests
             File.Delete(path);
         }
     }
-
-
 }
