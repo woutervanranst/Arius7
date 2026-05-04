@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
@@ -6,7 +7,6 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
