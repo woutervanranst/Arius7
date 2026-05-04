@@ -82,18 +82,19 @@ public sealed class LocalFileEnumerator
     /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
     /// No dictionaries or state-tracking collections are used.
     /// </summary>
-    public IEnumerable<FilePair> Enumerate(string rootDirectory)
+    public IEnumerable<FilePair> Enumerate(LocalRootPath rootDirectory)
     {
-        foreach (var file in EnumerateFilesDepthFirst(rootDirectory))
+        foreach (var file in EnumerateFilesDepthFirst(rootDirectory.ToString()))
         {
-            var relativeName = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
+            var relativePath = rootDirectory.GetRelativePath(file.FullName);
+            var relativeName = relativePath.ToString();
 
             if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
                 var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
                 var binaryFileRelativePath = RelativePath.Parse(binaryFileRelativeName);
-                var binaryFileFullPath = Path.Combine(rootDirectory, binaryFileRelativeName.Replace('/', Path.DirectorySeparatorChar));
+                var binaryFileFullPath = binaryFileRelativePath.RootedAt(rootDirectory).FullPath;
 
                 if (File.Exists(binaryFileFullPath))
                     continue; // binary was/will be emitted as part of the binary's FilePair
@@ -114,9 +115,8 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var relativePath = RelativePath.Parse(relativeName);
                 var pointerRel  = relativeName + PointerSuffix;
-                var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
+                var pointerPath = RelativePath.Parse(pointerRel).RootedAt(rootDirectory).FullPath;
                 var hasPointer  = File.Exists(pointerPath);
                 ContentHash? pointerHash = null;
 

@@ -9,12 +9,14 @@ namespace Arius.Core.Tests.Shared.LocalFile;
 public class LocalFileEnumeratorTests : IDisposable
 {
     private readonly string _root;
+    private readonly LocalRootPath _localRoot;
     private readonly LocalFileEnumerator _enumerator = new();
 
     public LocalFileEnumeratorTests()
     {
         _root = Path.Combine(Path.GetTempPath(), $"arius-enum-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
+        _localRoot = RootOf(_root);
     }
 
     public void Dispose()
@@ -39,7 +41,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.pointer.arius", "aabbccdd1122334455667788aabbccdd1122334455667788aabbccdd11223344");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         var pair = pairs[0];
@@ -57,7 +59,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("documents/report.pdf");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("documents/report.pdf"));
@@ -74,7 +76,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var hash = new string('a', 64);
         CreateFile("music/song.mp3.pointer.arius", hash);
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].BinaryExists.ShouldBeFalse();
@@ -88,7 +90,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("music/song.mp3.pointer.arius", new string('a', 64));
 
-        var pair = _enumerator.Enumerate(_root).Single();
+        var pair = _enumerator.Enumerate(_localRoot).Single();
 
         pair.RelativePath.ShouldBe(RelativePath.Parse("music/song.mp3"));
     }
@@ -98,7 +100,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("docs/readme.txt");
 
-        var pair = _enumerator.Enumerate(_root).Single();
+        var pair = _enumerator.Enumerate(_localRoot).Single();
 
         pair.RelativePath.ShouldBe(RelativePath.Parse("docs/readme.txt"));
     }
@@ -111,7 +113,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("docs/file.pdf");
         CreateFile("docs/file.pdf.pointer.arius", "not-a-valid-hex-hash!!");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].PointerExists.ShouldBeTrue();
@@ -127,7 +129,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var oldHash = new string('1', 64); // will differ from computed hash
         CreateFile("img/photo.png.pointer.arius", oldHash);
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].BinaryExists.ShouldBeTrue();
@@ -143,7 +145,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/b.jpg");
         CreateFile("photos/2024/c.jpg");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(3);
         pairs.Select(p => p.RelativePath).ShouldContain(RelativePath.Parse("a.txt"));
@@ -158,7 +160,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("data.bin", "hello world");
 
-        var pair = _enumerator.Enumerate(_root).Single();
+        var pair = _enumerator.Enumerate(_localRoot).Single();
 
         pair.FileSize.ShouldBe(11); // "hello world" = 11 bytes
         pair.Created.ShouldNotBeNull();
@@ -200,7 +202,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("données/résumé.pdf");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("données/résumé.pdf"));
@@ -211,7 +213,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("my files/my document.pdf");
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("my files/my document.pdf"));
@@ -222,7 +224,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         Directory.CreateDirectory(Path.Combine(_root, "empty-dir"));
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.ShouldBeEmpty();
     }
@@ -241,7 +243,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.pointer.arius", new string('a', 64));
 
-        var pairs = _enumerator.Enumerate(_root).ToList();
+        var pairs = _enumerator.Enumerate(_localRoot).ToList();
 
         pairs.Count.ShouldBe(1, "pointer-with-binary must not produce an extra pair");
         pairs[0].BinaryExists.ShouldBeTrue();
@@ -265,7 +267,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var firstYielded  = false;
         var countConsumed = 0;
 
-        foreach (var _ in _enumerator.Enumerate(_root))
+        foreach (var _ in _enumerator.Enumerate(_localRoot))
         {
             if (!firstYielded)
             {

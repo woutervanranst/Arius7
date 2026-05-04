@@ -209,7 +209,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 try
                 {
                     var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
-                    var  pairs      = enumerator.Enumerate(opts.RootDirectory.ToString());
+                    var  pairs      = enumerator.Enumerate(opts.RootDirectory);
                     long count      = 0;
                     long totalBytes = 0;
 
