@@ -38,7 +38,7 @@ public partial class FileItemViewModel : ObservableObject
     {
         File = file;
 
-        Name = Path.GetFileName(file.RelativePath);
+        Name = Path.GetFileName(file.RelativePath.ToString());
 
         PointerFileStateColor      = file.HasPointerFile == true ? Brushes.Black : Brushes.Transparent;
         BinaryFileStateColor       = file.BinaryExists == true ? Brushes.Blue : Brushes.White;

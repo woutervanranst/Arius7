@@ -11,6 +11,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Paths;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Services;
@@ -200,8 +201,8 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                     switch (result)
                     {
                         case RepositoryDirectoryEntry directory:
-                            var dirName = ExtractDirectoryName(directory.RelativePath);
-                            var childNode = new TreeNodeViewModel(directory.RelativePath, OnNodeSelected)
+                            var dirName = ExtractDirectoryName(directory.RelativePath.ToString());
+                            var childNode = new TreeNodeViewModel(directory.RelativePath.ToString(), OnNodeSelected)
                             {
                                 Name = dirName
                             };
@@ -274,8 +275,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             var lookup = node.Items.ToDictionary(
                 item => item.File.RelativePath,
-                item => item,
-                StringComparer.OrdinalIgnoreCase);
+                item => item);
 
             await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(cloudFiles), cancellationToken))
             {
@@ -429,7 +429,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
                 var command = new RestoreCommand(new RestoreOptions
                 {
                     RootDirectory = Repository.LocalDirectoryPath,
-                    TargetPath = selectedFile.File.RelativePath,
+                    TargetPath = selectedFile.File.RelativePath.ToString(),
                     Overwrite = true,
                     NoPointers = false,
                 });
@@ -471,7 +471,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (unresolved.Count == 0)
             return;
 
-        var lookup = items.ToDictionary(item => item.File.RelativePath, item => item, StringComparer.OrdinalIgnoreCase);
+        var lookup = items.ToDictionary(item => item.File.RelativePath, item => item);
 
         await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(unresolved), cancellationToken))
         {

@@ -1,5 +1,6 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
@@ -32,7 +33,7 @@ public class TrackedDownloadLifecycleTests
 
         // FileRestoredHandler should remove the TrackedDownload by direct key lookup on RelativePath
         var handler = new FileRestoredHandler(state);
-        await handler.Handle(new FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("photos/sunset.jpg"), 50_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
         state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
@@ -84,7 +85,7 @@ public class TrackedDownloadLifecycleTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("some/file.txt"), 1024L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(1024L);

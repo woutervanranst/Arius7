@@ -1,5 +1,6 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
@@ -26,7 +27,7 @@ public class RestoreProgressHandlerTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new FileRestoredEvent("dir/file.txt", 500L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("dir/file.txt"), 500L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(500L);
@@ -38,7 +39,7 @@ public class RestoreProgressHandlerTests
         var state   = new ProgressState();
         var handler = new FileSkippedHandler(state);
 
-        await handler.Handle(new FileSkippedEvent("dir/existing.txt", 300L), CancellationToken.None);
+        await handler.Handle(new FileSkippedEvent(RelativePath.Parse("dir/existing.txt"), 300L), CancellationToken.None);
 
         state.FilesSkipped.ShouldBe(1L);
         state.BytesSkipped.ShouldBe(300L);

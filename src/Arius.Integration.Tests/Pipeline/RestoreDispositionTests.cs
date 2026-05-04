@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 
@@ -75,13 +76,13 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Verify FileDispositionEvent with KeepLocalDiffers was published
         await fix.Mediator.Received().Publish(
             Arg.Is<FileDispositionEvent>(e =>
-                e.RelativePath == "test.txt" &&
+                e.RelativePath == RelativePath.Parse("test.txt") &&
                 e.Disposition == RestoreDisposition.KeepLocalDiffers),
             Arg.Any<CancellationToken>());
 
         // Verify exactly 1 FileSkippedEvent was published with the file's size
         await fix.Mediator.Received(1).Publish(
-            Arg.Is<FileSkippedEvent>(e => e.RelativePath == "test.txt" && e.FileSize > 0),
+            Arg.Is<FileSkippedEvent>(e => e.RelativePath == RelativePath.Parse("test.txt") && e.FileSize > 0),
             Arg.Any<CancellationToken>());
     }
 

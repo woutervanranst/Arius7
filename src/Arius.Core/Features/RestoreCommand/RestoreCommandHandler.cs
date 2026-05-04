@@ -143,29 +143,29 @@ public sealed class RestoreCommandHandler
                         {
                             _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
-                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
                             continue;
                         }
 
                         // File exists with different hash, no --overwrite → keep local
                         _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
                         skipped++;
-                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
                         continue;
                     }
                     else
                     {
                         _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
                         var fi = new FileInfo(localPath);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.Overwrite, fi.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
                     }
                 }
                 else
                 {
                     _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath);
-                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.New, 0), cancellationToken);
+                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.New, 0), cancellationToken);
                 }
 
                 toRestore.Add(file);
@@ -372,7 +372,7 @@ public sealed class RestoreCommandHandler
                         {
                             await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
                             Interlocked.Increment(ref filesRestoredLong);
-                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), indexEntry.OriginalSize), ct);
+                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
                         }
                     }
                     else
@@ -671,7 +671,7 @@ public sealed class RestoreCommandHandler
                     File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), new FileInfo(localPath).Length), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath).Length), cancellationToken);
                 restored++;
             }
         }

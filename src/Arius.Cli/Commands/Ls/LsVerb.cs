@@ -131,7 +131,7 @@ internal static class LsVerb
                             ? file.OriginalSize.Value.Bytes().Humanize()
                             : "?";
                         table.AddRow(
-                            Markup.Escape(file.RelativePath),
+                            Markup.Escape(file.RelativePath.ToString()),
                             size,
                             file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-",
                             file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-");

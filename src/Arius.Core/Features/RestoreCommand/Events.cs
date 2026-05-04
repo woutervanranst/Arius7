@@ -1,4 +1,5 @@
 ﻿using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Mediator;
 
 namespace Arius.Core.Features.RestoreCommand;
@@ -9,10 +10,10 @@ namespace Arius.Core.Features.RestoreCommand;
 public sealed record RestoreStartedEvent(int TotalFiles) : INotification;
 
 /// <summary>Emitted when a single file has been restored to disk.</summary>
-public sealed record FileRestoredEvent(string RelativePath, long FileSize) : INotification;
+public sealed record FileRestoredEvent(RelativePath RelativePath, long FileSize) : INotification;
 
 /// <summary>Emitted when a file was skipped (already present with matching hash).</summary>
-public sealed record FileSkippedEvent(string RelativePath, long FileSize) : INotification;
+public sealed record FileSkippedEvent(RelativePath RelativePath, long FileSize) : INotification;
 
 /// <summary>Emitted when rehydration has been kicked off for some chunks.</summary>
 public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : INotification;
@@ -30,7 +31,7 @@ public sealed record TreeTraversalProgressEvent(int FilesFound) : INotification;
 public enum RestoreDisposition { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 
 /// <summary>Emitted for each file's disposition decision during restore.</summary>
-public sealed record FileDispositionEvent(string RelativePath, RestoreDisposition Disposition, long FileSize) : INotification;
+public sealed record FileDispositionEvent(RelativePath RelativePath, RestoreDisposition Disposition, long FileSize) : INotification;
 
 /// <summary>Emitted after chunk index lookups complete.</summary>
 public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;

@@ -1,6 +1,7 @@
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,9 +76,9 @@ public class MediatorEventRoutingIntegrationTests
         var state    = sp.GetRequiredService<ProgressState>();
 
         await mediator.Publish(new RestoreStartedEvent(10));
-        await mediator.Publish(new FileRestoredEvent("a.txt", 1000L));
-        await mediator.Publish(new FileRestoredEvent("b.txt", 2000L));
-        await mediator.Publish(new FileSkippedEvent("c.txt", 500L));
+        await mediator.Publish(new FileRestoredEvent(RelativePath.Parse("a.txt"), 1000L));
+        await mediator.Publish(new FileRestoredEvent(RelativePath.Parse("b.txt"), 2000L));
+        await mediator.Publish(new FileSkippedEvent(RelativePath.Parse("c.txt"), 500L));
         await mediator.Publish(new RehydrationStartedEvent(4, 2048));
 
         state.RestoreTotalFiles.ShouldBe(10);

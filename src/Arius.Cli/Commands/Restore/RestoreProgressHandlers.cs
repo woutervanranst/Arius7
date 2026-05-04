@@ -26,11 +26,13 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
     public ValueTask Handle(FileRestoredEvent notification, CancellationToken cancellationToken)
     {
         state.IncrementFilesRestored(notification.FileSize);
-        state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: false);
+        state.AddRestoreEvent(notification.RelativePath.ToString(), notification.FileSize, skipped: false);
 
-        if (state.TrackedDownloads.TryGetValue(notification.RelativePath, out var td)
+        var relativePath = notification.RelativePath.ToString();
+
+        if (state.TrackedDownloads.TryGetValue(relativePath, out var td)
             && td.Kind == DownloadKind.LargeFile
-            && state.TrackedDownloads.TryRemove(notification.RelativePath, out var removed))
+            && state.TrackedDownloads.TryRemove(relativePath, out var removed))
         {
             state.AddRestoreBytesDownloaded(removed.CompressedSize);
         }
@@ -47,7 +49,7 @@ public sealed class FileSkippedHandler(ProgressState state) : INotificationHandl
     public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
     {
         state.IncrementFilesSkipped(notification.FileSize);
-        state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: true);
+        state.AddRestoreEvent(notification.RelativePath.ToString(), notification.FileSize, skipped: true);
         return ValueTask.CompletedTask;
     }
 }

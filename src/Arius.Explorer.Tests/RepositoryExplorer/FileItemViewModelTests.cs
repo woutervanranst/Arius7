@@ -1,6 +1,7 @@
 using System.Windows.Media;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Paths;
 using Arius.Explorer.RepositoryExplorer;
 
 namespace Arius.Explorer.Tests.RepositoryExplorer;
@@ -13,7 +14,7 @@ public class FileItemViewModelTests
     public void HydrationStatus_WhenChanged_UpdatesChunkStateColorAndTooltip()
     {
         var file = new RepositoryFileEntry(
-            RelativePath: "file.txt",
+            RelativePath: RelativePath.Parse("file.txt"),
             ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,

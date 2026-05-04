@@ -3,6 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using ChunkHydrationStatus = Arius.Core.Shared.ChunkStorage.ChunkHydrationStatus;
@@ -11,7 +12,7 @@ namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 
 public sealed record ChunkHydrationStatusQuery(IReadOnlyList<RepositoryFileEntry> Files) : IStreamQuery<ChunkHydrationStatusResult>;
 
-public sealed record ChunkHydrationStatusResult(string RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
+public sealed record ChunkHydrationStatusResult(RelativePath RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
 
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
@@ -57,7 +58,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
             if (!indexEntries.TryGetValue(contentHash, out var entry))
             {
                 _logger.LogWarning("Content hash not found in chunk index while resolving hydration status: {ContentHash}", file.ContentHash);
-                yield return new ChunkHydrationStatusResult(file.RelativePath.ToString(), file.ContentHash, ChunkHydrationStatus.Unknown);
+                yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, ChunkHydrationStatus.Unknown);
                 continue;
             }
 
@@ -67,7 +68,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
                 statusByChunkHash[entry.ChunkHash] = status;
             }
 
-            yield return new ChunkHydrationStatusResult(file.RelativePath.ToString(), file.ContentHash, status);
+            yield return new ChunkHydrationStatusResult(file.RelativePath, file.ContentHash, status);
         }
     }
 }

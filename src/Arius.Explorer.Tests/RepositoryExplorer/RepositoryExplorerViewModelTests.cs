@@ -12,6 +12,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Paths;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.RepositoryExplorer;
 using Arius.Explorer.Settings;
@@ -73,12 +74,12 @@ public class RepositoryExplorerViewModelTests
         var mediator = Substitute.For<IMediator>();
         mediator.CreateStream(Arg.Any<ListQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => ToAsyncEnumerable<RepositoryEntry>(
-                new RepositoryDirectoryEntry("/folder1/folder2/", TreeHashD, true, true),
-                new RepositoryFileEntry("/folder1/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, null),
-                new RepositoryFileEntry("/folder1/file-b.txt", null, 2048, null, null, false, true, false, true, null)));
+                new RepositoryDirectoryEntry(RelativePath.Parse("folder1/folder2"), TreeHashD, true, true),
+                new RepositoryFileEntry(RelativePath.Parse("folder1/file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, null),
+                new RepositoryFileEntry(RelativePath.Parse("folder1/file-b.txt"), null, 2048, null, null, false, true, false, true, null)));
         mediator.CreateStream(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => ToAsyncEnumerable(
-                new ChunkHydrationStatusResult("/folder1/file-a.txt", ContentHashA, ChunkHydrationStatus.Available)));
+                new ChunkHydrationStatusResult(RelativePath.Parse("folder1/file-a.txt"), ContentHashA, ChunkHydrationStatus.Available)));
 
         var dialogService = Substitute.For<IDialogService>();
         using var repositorySession = new FakeRepositorySession { Mediator = mediator };
@@ -175,8 +176,8 @@ public class RepositoryExplorerViewModelTests
         var logger = new FakeLogger<RepositoryExplorerViewModel>();
 
         var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger);
-        var fileA = new FileItemViewModel(new RepositoryFileEntry("/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, true));
-        var fileB = new FileItemViewModel(new RepositoryFileEntry("/file-b.txt", ContentHashB, 2048, null, null, true, true, true, true, true));
+        var fileA = new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true));
+        var fileB = new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("file-b.txt"), ContentHashB, 2048, null, null, true, true, true, true, true));
         var selectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
         {
             Items = new ObservableCollection<FileItemViewModel> { fileA, fileB }
@@ -235,7 +236,7 @@ public class RepositoryExplorerViewModelTests
             SelectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
         };
 
-        viewModel.SelectedFiles.Add(new FileItemViewModel(new RepositoryFileEntry("/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, true)));
+        viewModel.SelectedFiles.Add(new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true)));
         RepositoryExplorerViewModel.ShowMessageBox = static (_, _, _, _) => MessageBoxResult.No;
 
         await viewModel.RestoreCommand.ExecuteAsync(null);
@@ -254,7 +255,7 @@ public class RepositoryExplorerViewModelTests
 
         mediator.CreateStream(Arg.Any<ListQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => ToAsyncEnumerable<RepositoryEntry>(
-                new RepositoryFileEntry("/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, true)));
+                new RepositoryFileEntry(RelativePath.Parse("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true)));
         mediator.CreateStream(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => EmptyAsyncEnumerable<ChunkHydrationStatusResult>());
         mediator.Send(Arg.Any<RestoreCommand>(), Arg.Any<CancellationToken>())
@@ -271,7 +272,7 @@ public class RepositoryExplorerViewModelTests
         {
             Items = new ObservableCollection<FileItemViewModel>
             {
-                new(new RepositoryFileEntry("/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, true))
+                new(new RepositoryFileEntry(RelativePath.Parse("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true))
             }
         };
 
@@ -285,7 +286,7 @@ public class RepositoryExplorerViewModelTests
         await mediator.Received(1).Send(
             Arg.Is<RestoreCommand>(command =>
                 command.Options.RootDirectory == "C:/data" &&
-                command.Options.TargetPath == "/file-a.txt" &&
+                command.Options.TargetPath == "file-a.txt" &&
                 command.Options.Overwrite &&
                 command.Options.NoPointers == false),
             Arg.Any<CancellationToken>());
@@ -314,7 +315,7 @@ public class RepositoryExplorerViewModelTests
             SelectedTreeNode = new TreeNodeViewModel("/", showPlaceholder: false)
         };
 
-        var selectedFile = new FileItemViewModel(new RepositoryFileEntry("/file-a.txt", ContentHashA, 1024, null, null, true, true, true, true, true));
+        var selectedFile = new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("file-a.txt"), ContentHashA, 1024, null, null, true, true, true, true, true));
         viewModel.SelectedFiles.Add(selectedFile);
 
         string shownMessage = string.Empty;
