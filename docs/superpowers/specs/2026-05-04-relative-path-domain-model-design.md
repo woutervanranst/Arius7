@@ -12,6 +12,13 @@ That creates three recurring problems:
 
 The goal of this design is to replace the scattered stringly path model with a strong kind-neutral path domain centered on `PathSegment` and `RelativePath`.
 
+The typed path model should live in a dedicated folder and namespace:
+
+- folder: `src/Arius.Core/Shared/Paths/`
+- namespace: `Arius.Core.Shared.Paths`
+
+This keeps path-domain concepts cohesive and avoids further crowding the broad `Arius.Core.Shared` namespace.
+
 ## Goals
 
 - Make repository-internal relative paths first-class domain value objects.
