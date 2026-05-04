@@ -18,8 +18,8 @@ public class RelativePathTests
 
         path.IsRoot.ShouldBeFalse();
         path.SegmentCount.ShouldBe(3);
-        path.Segments.ShouldBe([PathSegment.Parse("photos"), PathSegment.Parse("2024"), PathSegment.Parse("a.jpg")]);
-        path.Name.ShouldBe(PathSegment.Parse("a.jpg"));
+        path.Segments.ShouldBe([SegmentOf("photos"), SegmentOf("2024"), SegmentOf("a.jpg")]);
+        path.Name.ShouldBe(SegmentOf("a.jpg"));
         path.Parent.ShouldBe(RelativePath.Parse("photos/2024"));
         path.ToString().ShouldBe("photos/2024/a.jpg");
     }
@@ -42,7 +42,7 @@ public class RelativePathTests
     [Test]
     public void Append_ComposesPaths()
     {
-        var path = RelativePath.Root / PathSegment.Parse("photos") / PathSegment.Parse("a.jpg");
+        var path = RelativePath.Root / SegmentOf("photos") / SegmentOf("a.jpg");
 
         path.ToString().ShouldBe("photos/a.jpg");
     }

@@ -10,7 +10,7 @@ public class PathSegmentTests
     [Arguments(" report.pdf ")]
     public void Parse_ValidSegment_RoundTrips(string value)
     {
-        var segment = PathSegment.Parse(value);
+        var segment = SegmentOf(value);
 
         segment.ToString().ShouldBe(value);
     }
@@ -27,22 +27,33 @@ public class PathSegmentTests
     [Arguments("photos\0")]
     public void Parse_InvalidSegment_ThrowsArgumentException(string value)
     {
-        Should.Throw<ArgumentException>(() => PathSegment.Parse(value));
+        Should.Throw<ArgumentException>(() => SegmentOf(value));
     }
 
     [Test]
     public void Parse_NullSegment_ThrowsArgumentNullException()
     {
-        Should.Throw<ArgumentNullException>(() => PathSegment.Parse(null!));
+        Should.Throw<ArgumentNullException>(() => SegmentOf(null!));
     }
 
     [Test]
     public void Equals_WithStringComparison_SupportsOrdinalIgnoreCase()
     {
-        var lower = PathSegment.Parse("docs");
-        var upper = PathSegment.Parse("Docs");
+        var lower = SegmentOf("docs");
+        var upper = SegmentOf("Docs");
 
         lower.Equals(upper, StringComparison.OrdinalIgnoreCase).ShouldBeTrue();
         lower.Equals(upper, StringComparison.Ordinal).ShouldBeFalse();
+    }
+
+    [Test]
+    public void OrdinalIgnoreCaseComparer_TreatsDifferingCasingAsSameElement()
+    {
+        var segments = new HashSet<PathSegment>(PathSegment.OrdinalIgnoreCaseComparer)
+        {
+            SegmentOf("docs")
+        };
+
+        segments.Add(SegmentOf("Docs")).ShouldBeFalse();
     }
 }

@@ -2,6 +2,8 @@ namespace Arius.Core.Shared.Paths;
 
 public readonly record struct PathSegment
 {
+    public static IEqualityComparer<PathSegment> OrdinalIgnoreCaseComparer { get; } = new OrdinalIgnoreCasePathSegmentComparer();
+
     private PathSegment(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -50,4 +52,11 @@ public readonly record struct PathSegment
         string.Equals(Value, other.Value, comparison);
 
     public override string ToString() => Value;
+
+    private sealed class OrdinalIgnoreCasePathSegmentComparer : IEqualityComparer<PathSegment>
+    {
+        public bool Equals(PathSegment x, PathSegment y) => x.Equals(y, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode(PathSegment obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Value);
+    }
 }

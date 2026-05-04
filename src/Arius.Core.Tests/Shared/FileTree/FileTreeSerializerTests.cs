@@ -76,7 +76,7 @@ public class FileTreeSerializerTests
     {
         var entry = new DirectoryEntry { Name = "photos/", FileTreeHash = FakeFileTreeHash('d') };
 
-        entry.GetDirectoryName().ShouldBe(PathSegment.Parse("photos"));
+        entry.GetDirectoryName().ShouldBe(SegmentOf("photos"));
     }
 
     [Test]

@@ -102,7 +102,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         var localSnapshot = BuildLocalDirectorySnapshot(localDir, currentRelativeDirectory);
         var cloudEntries = treeEntries ?? [];
 
-        var yieldedDirectoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var yieldedDirectoryNames = new HashSet<PathSegment>(PathSegment.OrdinalIgnoreCaseComparer);
         var yieldedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var recursionTargets = new List<RecursionTarget>();
 
@@ -112,7 +112,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             var directoryName    = directorySegment.ToString();
             var existsLocally    = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
 
-            yieldedDirectoryNames.Add(directoryName);
+            yieldedDirectoryNames.Add(directorySegment);
             var relativePath = currentRelativeDirectory / directorySegment;
             yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
@@ -124,12 +124,14 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var localDirectory in localSnapshot.Directories.Values)
         {
-            if (!yieldedDirectoryNames.Add(localDirectory.Name))
+            var localDirectorySegment = PathSegment.Parse(localDirectory.Name);
+
+            if (!yieldedDirectoryNames.Add(localDirectorySegment))
             {
                 continue;
             }
 
-            var relativePath = currentRelativeDirectory / PathSegment.Parse(localDirectory.Name);
+            var relativePath = currentRelativeDirectory / localDirectorySegment;
             yield return new RepositoryDirectoryEntry(relativePath, TreeHash: null, ExistsInCloud: false, ExistsLocally: true);
 
             if (recursive)
