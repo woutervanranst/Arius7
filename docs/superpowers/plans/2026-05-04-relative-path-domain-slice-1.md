@@ -108,7 +108,7 @@ internal static class RepositoryRelativePath
 **Files:**
 - Create: `src/Arius.Core.Tests/Shared/PathSegmentTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using Arius.Core.Shared;
@@ -152,7 +152,7 @@ public class PathSegmentTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 ```bash
@@ -177,7 +177,7 @@ git commit -m "test: define path segment rules"
 - Create: `src/Arius.Core/Shared/Paths/PathSegment.cs`
 - Test: `src/Arius.Core.Tests/Shared/PathSegmentTests.cs`
 
-- [ ] **Step 1: Write minimal implementation**
+- [x] **Step 1: Write minimal implementation**
 
 ```csharp
 namespace Arius.Core.Shared.Paths;
@@ -232,7 +232,7 @@ public readonly record struct PathSegment
 }
 ```
 
-- [ ] **Step 2: Run tests to verify GREEN**
+- [x] **Step 2: Run tests to verify GREEN**
 
 Run:
 ```bash
@@ -256,7 +256,7 @@ git commit -m "feat: add typed path segment"
 **Files:**
 - Create: `src/Arius.Core.Tests/Shared/RelativePathTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using Arius.Core.Shared;
@@ -324,7 +324,7 @@ public class RelativePathTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 ```bash
@@ -349,7 +349,7 @@ git commit -m "test: define relative path rules"
 - Create: `src/Arius.Core/Shared/Paths/RelativePath.cs`
 - Test: `src/Arius.Core.Tests/Shared/RelativePathTests.cs`
 
-- [ ] **Step 1: Write minimal implementation**
+- [x] **Step 1: Write minimal implementation**
 
 ```csharp
 namespace Arius.Core.Shared.Paths;
@@ -439,7 +439,7 @@ public readonly record struct RelativePath
 }
 ```
 
-- [ ] **Step 2: Run tests to verify GREEN**
+- [x] **Step 2: Run tests to verify GREEN**
 
 Run:
 ```bash
@@ -464,11 +464,11 @@ git commit -m "feat: add typed relative path foundation"
 - Modify: `src/Arius.Core/Shared/RepositoryRelativePath.cs`
 - Modify: `src/Arius.Core.Tests/Shared/RepositoryRelativePathTests.cs`
 
-- [ ] **Step 1: Add failing compatibility tests for root-returning parse bridge if needed**
+- [x] **Step 1: Add failing compatibility tests for root-returning parse bridge if needed**
 
 If the current tests are sufficient, keep them and use them as the failing compatibility suite.
 
-- [ ] **Step 2: Change the helper to delegate to `RelativePath.Parse`**
+- [x] **Step 2: Change the helper to delegate to `RelativePath.Parse`**
 
 Implementation shape:
 
@@ -482,7 +482,7 @@ internal static class RepositoryRelativePath
 }
 ```
 
-- [ ] **Step 3: Run compatibility tests**
+- [x] **Step 3: Run compatibility tests**
 
 Run:
 ```bash
@@ -509,7 +509,7 @@ git commit -m "refactor: rebase canonical path helper on relative path"
   - `src/Arius.Core/Shared/FileTree/FileTreeStagingWriter.cs`
   - `src/Arius.Core/Shared/FileTree/FileTreeSerializer.cs`
 
-- [ ] **Step 1: Run focused existing suites without changing production integration**
+- [x] **Step 1: Run focused existing suites without changing production integration**
 
 Run:
 ```bash
@@ -539,7 +539,7 @@ If no new code or tests changed in this step, do not create an empty commit.
   - `src/Arius.Core/Shared/RepositoryRelativePath.cs`
   - related tests
 
-- [ ] **Step 1: Run the focused slice verification**
+- [x] **Step 1: Run the focused slice verification**
 
 Run:
 ```bash
@@ -549,7 +549,7 @@ dotnet test --project "src/Arius.Core.Tests/Arius.Core.Tests.csproj" --treenode-
 Expected:
 - PASS
 
-- [ ] **Step 2: Run the full core test project**
+- [x] **Step 2: Run the full core test project**
 
 Run:
 ```bash
@@ -559,7 +559,7 @@ dotnet test --project "src/Arius.Core.Tests/Arius.Core.Tests.csproj"
 Expected:
 - PASS
 
-- [ ] **Step 3: Run slopwatch**
+- [x] **Step 3: Run slopwatch**
 
 Run:
 ```bash
