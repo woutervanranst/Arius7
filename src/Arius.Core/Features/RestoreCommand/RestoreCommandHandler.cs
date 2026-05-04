@@ -129,14 +129,14 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in files)
             {
-                var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
+                var localPath = opts.RootDirectory / file.RelativePath;
 
-                if (File.Exists(localPath))
+                if (File.Exists(localPath.FullPath))
                 {
                     if (!opts.Overwrite)
                     {
                         // Hash local file to check if already correct
-                        await using var fs = File.OpenRead(localPath);
+                        await using var fs = File.OpenRead(localPath.FullPath);
                         var localHash = await _encryption.ComputeHashAsync(fs, cancellationToken);
 
                         if (localHash == file.ContentHash)
@@ -158,7 +158,7 @@ public sealed class RestoreCommandHandler
                     else
                     {
                         _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
-                        var fi = new FileInfo(localPath);
+                        var fi = new FileInfo(localPath.FullPath);
                         await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
                     }
                 }
@@ -558,26 +558,26 @@ public sealed class RestoreCommandHandler
         long           compressedSize,
         CancellationToken cancellationToken)
     {
-        var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
+        var localPath = opts.RootDirectory / file.RelativePath;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(localPath.FullPath)!);
 
         {
             var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+            await using var fileStream   = new FileStream(localPath.FullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
         // Set file timestamps from tree metadata (after stream is closed)
-        File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-        File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+        File.SetCreationTimeUtc(localPath.FullPath,  file.Created.UtcDateTime);
+        File.SetLastWriteTimeUtc(localPath.FullPath, file.Modified.UtcDateTime);
 
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
         {
-            var pointerPath = localPath + ".pointer.arius";
+            var pointerPath = localPath.FullPath + ".pointer.arius";
             await File.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
             File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
             File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
@@ -625,41 +625,41 @@ public sealed class RestoreCommandHandler
             for (var i = 0; i < filesForHash.Count; i++)
             {
                 var file = filesForHash[i];
-                var localPath = (opts.RootDirectory / file.RelativePath).FullPath;
+                var localPath = opts.RootDirectory / file.RelativePath;
 
-                Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(localPath.FullPath)!);
 
                 if (tarEntry.DataStream is null)
                 {
                     // create an empty file
-                    await using var _ = File.Create(localPath);
+                    await using var _ = File.Create(localPath.FullPath);
                 }
                 else if (i == 0)
                 {
-                    await using var output = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                    await using var output = new FileStream(localPath.FullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
                     await tarEntry.DataStream.CopyToAsync(output, cancellationToken);
-                    sourcePath = localPath;
+                    sourcePath = localPath.FullPath;
                 }
                 else
                 {
                     // TODO: investigate Async copy? Ref https://github.com/dotnet/runtime/issues/20697, https://github.com/dotnet/runtime/issues/20695
-                    File.Copy(sourcePath!, localPath, overwrite: true);
+                    File.Copy(sourcePath!, localPath.FullPath, overwrite: true);
                 }
 
                 // Set timestamps
-                File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-                File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+                File.SetCreationTimeUtc(localPath.FullPath,  file.Created.UtcDateTime);
+                File.SetLastWriteTimeUtc(localPath.FullPath, file.Modified.UtcDateTime);
 
                 // Create pointer file
                 if (!opts.NoPointers)
                 {
-                    var pointerPath = localPath + ".pointer.arius";
+                    var pointerPath = localPath.FullPath + ".pointer.arius";
                     await File.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
                     File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
                     File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath).Length), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath.FullPath).Length), cancellationToken);
                 restored++;
             }
         }
