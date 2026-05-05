@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
 
 namespace Arius.Core.Tests.Shared.Encryption;
@@ -117,12 +118,13 @@ public class PassphraseEncryptionServiceTests
     public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
-        var path = Path.GetTempFileName();
-        await File.WriteAllBytesAsync(path, "streaming determinism"u8.ToArray());
+        var root = LocalRootPath.Parse(Path.GetTempPath());
+        var path = root / RelativePath.Parse($"passphrase-{Guid.NewGuid():N}.bin");
+        await path.WriteAllBytesAsync("streaming determinism"u8.ToArray());
 
         try
         {
-            await using var stream = File.OpenRead(path);
+            await using var stream = path.OpenRead();
 
             var fromPath   = await svc.ComputeHashAsync(path);
             var fromStream = await svc.ComputeHashAsync(stream);
@@ -131,7 +133,7 @@ public class PassphraseEncryptionServiceTests
         }
         finally
         {
-            File.Delete(path);
+            path.DeleteFile();
         }
     }
 

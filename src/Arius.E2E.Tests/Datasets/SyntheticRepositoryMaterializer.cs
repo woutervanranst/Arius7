@@ -30,7 +30,7 @@ internal static class SyntheticRepositoryMaterializer
             var relativePath = RelativePath.Parse(file.Path);
             await WriteFileAsync(rootPath, relativePath, CreateBytes(seed, file.ContentId ?? file.Path, file.SizeBytes));
 
-            await using var stream = File.OpenRead(relativePath.RootedAt(rootPath).FullPath);
+            await using var stream = relativePath.RootedAt(rootPath).OpenRead();
             files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 

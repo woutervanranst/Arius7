@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Integration.Tests.Pipeline.Fakes;
 
@@ -26,6 +27,6 @@ internal sealed class CbcEncryptionServiceAdapter(string passphrase) : IEncrypti
     public Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
         _inner.ComputeHashAsync(data, ct);
 
-    public Task<ContentHash> ComputeHashAsync(string filePath, IProgress<long>? progress = null, CancellationToken ct = default) =>
+    public Task<ContentHash> ComputeHashAsync(RootedPath filePath, IProgress<long>? progress = null, CancellationToken ct = default) =>
         _inner.ComputeHashAsync(filePath, progress, ct);
 }

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Tests.Shared.Streaming;
 
 namespace Arius.Core.Tests.Shared.Encryption;
@@ -38,12 +39,13 @@ public class PlaintextPassthroughServiceTests
     [Test]
     public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
     {
-        var path = Path.GetTempFileName();
-        await File.WriteAllBytesAsync(path, "streaming determinism"u8.ToArray());
+        var root = LocalRootPath.Parse(Path.GetTempPath());
+        var path = root / RelativePath.Parse($"plaintext-{Guid.NewGuid():N}.bin");
+        await path.WriteAllBytesAsync("streaming determinism"u8.ToArray());
 
         try
         {
-            await using var stream = File.OpenRead(path);
+            await using var stream = path.OpenRead();
 
             var fromPath   = await _svc.ComputeHashAsync(path);
             var fromStream = await _svc.ComputeHashAsync(stream);
@@ -52,15 +54,16 @@ public class PlaintextPassthroughServiceTests
         }
         finally
         {
-            File.Delete(path);
+            path.DeleteFile();
         }
     }
 
     [Test]
     public async Task ComputeHashAsync_FilePath_ReportsProgress()
     {
-        var path = Path.GetTempFileName();
-        await File.WriteAllBytesAsync(path, new byte[4096]);
+        var root = LocalRootPath.Parse(Path.GetTempPath());
+        var path = root / RelativePath.Parse($"plaintext-progress-{Guid.NewGuid():N}.bin");
+        await path.WriteAllBytesAsync(new byte[4096]);
 
         try
         {
@@ -73,7 +76,7 @@ public class PlaintextPassthroughServiceTests
         }
         finally
         {
-            File.Delete(path);
+            path.DeleteFile();
         }
     }
 }

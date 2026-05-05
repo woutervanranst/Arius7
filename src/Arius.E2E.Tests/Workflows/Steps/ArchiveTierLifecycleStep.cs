@@ -42,7 +42,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
-        if (!Directory.Exists(sourceState.RootPath.ToString()) && sourceVersion == SyntheticRepositoryVersion.V2)
+        if (!sourceState.RootPath.ExistsDirectory && sourceVersion == SyntheticRepositoryVersion.V2)
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
             var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V2));
@@ -94,8 +94,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         var cleanupDeletedChunks = 0;
         var workflowRoot = Path.GetDirectoryName(state.VersionedSourceRoot.ToString())
             ?? throw new InvalidOperationException($"{Name}: representative workflow root is not available.");
-        var readyRestoreRoot = Path.Combine(workflowRoot, "archive-tier-ready");
-        Directory.CreateDirectory(readyRestoreRoot);
+        var readyRestoreRoot = LocalRootPath.Parse(Path.Combine(workflowRoot, "archive-tier-ready"));
+        readyRestoreRoot.CreateDirectory();
 
         try
         {
@@ -103,7 +103,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             // and that it cleans up the temporary rehydrated blob afterward.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory  = RootOf(readyRestoreRoot),
+                RootDirectory  = readyRestoreRoot,
                 TargetPath     = targetChunk.TargetRelativePath,
                 Overwrite      = true,
                 ConfirmCleanup = (count, _, _) =>
@@ -136,8 +136,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
         finally
         {
-            if (Directory.Exists(readyRestoreRoot))
-                Directory.Delete(readyRestoreRoot, recursive: true);
+            if (readyRestoreRoot.ExistsDirectory)
+                readyRestoreRoot.DeleteDirectory(recursive: true);
         }
 
         static RestoreCommandHandler CreateArchiveTierRestoreHandler(E2EFixture fixture, E2EStorageBackendContext context, IBlobContainerService blobContainer)
@@ -211,18 +211,17 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken) 
             => await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
 
-        static async Task AssertArchiveTierRestoreOutcomeAsync(ArchiveTierTargetChunk targetChunk, IEncryptionService encryption, string readyRestoreRoot)
+        static async Task AssertArchiveTierRestoreOutcomeAsync(ArchiveTierTargetChunk targetChunk, IEncryptionService encryption, LocalRootPath readyRestoreRoot)
         {
-            var restoreRoot = RootOf(readyRestoreRoot);
-            var restoredPath = (restoreRoot / targetChunk.TargetRelativePath).FullPath;
-            File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
+            var restoredPath = readyRestoreRoot / targetChunk.TargetRelativePath;
+            restoredPath.ExistsFile.ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
 
-            await using var stream = File.OpenRead(restoredPath);
+            await using var stream = restoredPath.OpenRead();
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            var pointerPath = (restoreRoot / RelativePath.Parse(targetChunk.TargetRelativePath + ".pointer.arius")).FullPath;
-            File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
+            var pointerPath = readyRestoreRoot / RelativePath.Parse(targetChunk.TargetRelativePath + ".pointer.arius");
+            pointerPath.ExistsFile.ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }
 

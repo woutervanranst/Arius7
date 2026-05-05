@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.Encryption;
@@ -124,13 +125,11 @@ public sealed class PassphraseEncryptionService : IEncryptionService
 
     /// <inheritdoc/>
     public async Task<ContentHash> ComputeHashAsync(
-        string filePath,
+        RootedPath filePath,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(filePath);
-
-        await using var file = File.OpenRead(filePath);
+        await using var file = filePath.OpenRead();
         if (progress is null)
             return await ComputeHashAsync(file, cancellationToken);
 

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.Encryption;
 
@@ -47,7 +48,7 @@ public interface IEncryptionService
     /// Opens the file for reading and optionally reports cumulative bytes read.
     /// </summary>
     Task<ContentHash> ComputeHashAsync(
-        string filePath,
+        RootedPath filePath,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default);
 }

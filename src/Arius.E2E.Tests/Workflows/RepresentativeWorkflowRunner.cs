@@ -7,7 +7,7 @@ namespace Arius.E2E.Tests.Workflows;
 
 internal sealed class RepresentativeWorkflowRunnerDependencies
 {
-    public Func<E2EStorageBackendContext, string, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
+    public Func<E2EStorageBackendContext, LocalRootPath, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
         static (context, workflowRoot, cancellationToken) => RepresentativeWorkflowRunner.CreateFixtureAsync(context, workflowRoot, cancellationToken);
 }
 
@@ -18,16 +18,16 @@ internal static class RepresentativeWorkflowRunner
         return await E2EFixture.CreateAsync(context.BlobContainer, context.AccountName, context.ContainerName, BlobTier.Cool, cancellationToken: cancellationToken);
     }
 
-    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, string workflowRoot, CancellationToken cancellationToken)
+    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, LocalRootPath workflowRoot, CancellationToken cancellationToken)
     {
-        var fixtureRoot = Path.Combine(workflowRoot, "fixture");
+        var fixtureRoot = workflowRoot / PathOf("fixture");
 
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
             context.AccountName,
             context.ContainerName,
             BlobTier.Cool,
-            tempRoot: fixtureRoot,
+            tempRoot: fixtureRoot.FullPath,
             deleteTempRoot: static _ => { },
             cancellationToken: cancellationToken);
     }
@@ -43,18 +43,18 @@ internal static class RepresentativeWorkflowRunner
         dependencies ??= new RepresentativeWorkflowRunnerDependencies();
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
-        var workflowRoot = Path.Combine(Path.GetTempPath(), "arius", $"arius-test-{Guid.NewGuid():N}");
+        var workflowRoot = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius", $"arius-test-{Guid.NewGuid():N}"));
         E2EFixture? fixture = null;
         RepresentativeWorkflowState? state = null;
 
-        Directory.CreateDirectory(workflowRoot);
+        workflowRoot.CreateDirectory();
 
         try
         {
             fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
 
-            var versionedSourceRoot = Path.Combine(workflowRoot, "representative-source");
-            Directory.CreateDirectory(versionedSourceRoot);
+            var versionedSourceRoot = LocalRootPath.Parse((workflowRoot / PathOf("representative-source")).FullPath);
+            versionedSourceRoot.CreateDirectory();
 
             state = new RepresentativeWorkflowState
             {
@@ -63,7 +63,7 @@ internal static class RepresentativeWorkflowRunner
                 Fixture            = fixture,
                 Definition         = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
                 Seed               = workflow.Seed,
-                VersionedSourceRoot = LocalRootPath.Parse(versionedSourceRoot),
+                VersionedSourceRoot = versionedSourceRoot,
             };
 
             foreach (var step in workflow.Steps)
@@ -89,8 +89,8 @@ internal static class RepresentativeWorkflowRunner
                 System.Diagnostics.Debug.WriteLine(ex);
             }
 
-            if (Directory.Exists(workflowRoot))
-                Directory.Delete(workflowRoot, recursive: true);
+            if (workflowRoot.ExistsDirectory)
+                workflowRoot.DeleteDirectory(recursive: true);
         }
     }
 }
