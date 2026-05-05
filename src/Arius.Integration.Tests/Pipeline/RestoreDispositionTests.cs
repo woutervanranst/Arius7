@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 
@@ -26,21 +27,22 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         // Place a DIFFERENT file at the restore path (simulating local modification)
         var localContent = new byte[] { 99, 98, 97, 96, 95 };
-        var restoredPath = Path.Combine(fix.RestoreRoot, "test.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, localContent);
+        var restoredPath = fix.RestoreRoot / PathOf("test.txt");
+        if (restoredPath.RelativePath.Parent is { } parent)
+            (fix.RestoreRoot / parent).CreateDirectory();
+        restoredPath.WriteAllBytes(localContent);
 
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = false,
         });
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
         // The local file should NOT have been overwritten
-        File.ReadAllBytes(restoredPath).ShouldBe(localContent);
+        restoredPath.ReadAllBytes().ShouldBe(localContent);
         restoreResult.FilesRestored.ShouldBe(0);
         restoreResult.FilesSkipped.ShouldBe(1, "KeepLocalDiffers files should be counted as skipped");
     }
@@ -56,9 +58,10 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Place a DIFFERENT file at the restore path
-        var restoredPath = Path.Combine(fix.RestoreRoot, "test.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, new byte[] { 99, 98, 97 });
+        var restoredPath = fix.RestoreRoot / PathOf("test.txt");
+        if (restoredPath.RelativePath.Parent is { } parent)
+            (fix.RestoreRoot / parent).CreateDirectory();
+        restoredPath.WriteAllBytes([99, 98, 97]);
 
         // Clear any previous mediator calls
         fix.Mediator.ClearReceivedCalls();
@@ -66,7 +69,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = false,
         });
 
@@ -101,7 +104,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore once to get the correct file in place
         var r1 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = true,
         });
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
@@ -111,7 +114,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         fix.Mediator.ClearReceivedCalls();
         var r2 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = false,
         });
 
@@ -135,7 +138,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore to empty dir (no local file) → should restore
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = false,
         });
 
@@ -157,14 +160,15 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Place a different file at the restore path
-        var restoredPath = Path.Combine(fix.RestoreRoot, "overwrite.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, new byte[] { 99, 98, 97 });
+        var restoredPath = fix.RestoreRoot / PathOf("overwrite.txt");
+        if (restoredPath.RelativePath.Parent is { } parent)
+            (fix.RestoreRoot / parent).CreateDirectory();
+        restoredPath.WriteAllBytes([99, 98, 97]);
 
         // Restore WITH --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRoot,
             Overwrite     = true,
         });
 

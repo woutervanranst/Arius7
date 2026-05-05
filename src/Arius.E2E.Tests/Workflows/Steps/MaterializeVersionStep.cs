@@ -1,4 +1,5 @@
 using Arius.E2E.Tests.Datasets;
+using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.IO;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
@@ -9,7 +10,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var versionState = state.VersionedSourceStates.TryGetValue(Version, out var existingState) && Directory.Exists(existingState.RootPath.ToString())
+        var versionState = state.VersionedSourceStates.TryGetValue(Version, out var existingState) && existingState.RootPath.ExistsDirectory
             ? existingState
             : await MaterializeVersionAsync(state, cancellationToken);
 
@@ -34,7 +35,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
                 if (!state.VersionedSourceStates.TryGetValue(SyntheticRepositoryVersion.V1, out var v1State))
                     throw new InvalidOperationException("V1 source state must exist before materializing V2.");
 
-                if (!Directory.Exists(v1State.RootPath.ToString()))
+                if (!v1State.RootPath.ExistsDirectory)
                     v1State = await RematerializeV1Async(state, cancellationToken);
 
                 var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V2));

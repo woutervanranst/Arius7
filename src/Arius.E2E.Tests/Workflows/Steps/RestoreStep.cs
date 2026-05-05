@@ -1,4 +1,5 @@
 using Arius.E2E.Tests.Datasets;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
@@ -12,10 +13,10 @@ internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, Sy
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        if (Directory.Exists(state.Fixture.RestoreRoot.ToString()))
-            Directory.Delete(state.Fixture.RestoreRoot.ToString(), recursive: true);
+        if (state.Fixture.RestoreRoot.ExistsDirectory)
+            state.Fixture.RestoreRoot.DeleteDirectory(recursive: true);
 
-        Directory.CreateDirectory(state.Fixture.RestoreRoot.ToString());
+        state.Fixture.RestoreRoot.CreateDirectory();
 
         var version = Helpers.ResolveVersion(state, Target);
 

@@ -18,12 +18,10 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var rootPathText = rootPath.ToString();
+        if (rootPath.ExistsDirectory)
+            rootPath.DeleteDirectory(recursive: true);
 
-        if (Directory.Exists(rootPathText))
-            Directory.Delete(rootPathText, recursive: true);
-
-        Directory.CreateDirectory(rootPathText);
+        rootPath.CreateDirectory();
 
         var files = new Dictionary<RelativePath, ContentHash>();
 
@@ -98,7 +96,7 @@ internal static class SyntheticRepositoryMaterializer
             switch (mutation.Kind)
             {
                 case SyntheticFileMutationKind.Delete:
-                    File.Delete(relativePath.RootedAt(rootPath).FullPath);
+                    relativePath.RootedAt(rootPath).DeleteFile();
                     files.Remove(relativePath);
                     break;
 
@@ -106,7 +104,9 @@ internal static class SyntheticRepositoryMaterializer
                     var targetRelativePath = RelativePath.Parse(mutation.TargetPath!);
                     var sourcePath = relativePath.RootedAt(rootPath);
                     var targetPath = targetRelativePath.RootedAt(rootPath);
-                    Directory.CreateDirectory(Path.GetDirectoryName(targetPath.FullPath)!);
+                    if (targetRelativePath.Parent is { } parent)
+                        (rootPath / parent).CreateDirectory();
+
                     File.Move(sourcePath.FullPath, targetPath.FullPath);
 
                     var existingHash = files[relativePath];
@@ -129,8 +129,10 @@ internal static class SyntheticRepositoryMaterializer
 
     static async Task WriteFileAsync(LocalRootPath rootPath, RelativePath relativePath, byte[] bytes)
     {
-        var fullPath = relativePath.RootedAt(rootPath).FullPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        await File.WriteAllBytesAsync(fullPath, bytes);
+        var fullPath = relativePath.RootedAt(rootPath);
+        if (relativePath.Parent is { } parent)
+            (rootPath / parent).CreateDirectory();
+
+        await fullPath.WriteAllBytesAsync(bytes);
     }
 }

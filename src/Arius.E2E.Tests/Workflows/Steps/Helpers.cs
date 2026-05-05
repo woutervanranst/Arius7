@@ -35,11 +35,11 @@ internal static class Helpers
         if (preserveConflictBytes)
         {
             var conflictPath = GetConflictPath(state.Definition, expectedVersion);
-            var restoredPath = (fixture.RestoreRoot / PathOf(conflictPath)).FullPath;
+            var restoredPath = fixture.RestoreRoot / PathOf(conflictPath);
             var expectedConflictBytes = CreateConflictBytes(state.Seed, conflictPath);
 
             restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
-            (await File.ReadAllBytesAsync(restoredPath)).ShouldBe(expectedConflictBytes);
+            (await restoredPath.ReadAllBytesAsync()).ShouldBe(expectedConflictBytes);
             return;
         }
 
@@ -52,9 +52,9 @@ internal static class Helpers
         {
             foreach (var relativePath in expectedState.Files.Keys)
             {
-                var pointerPath = (fixture.RestoreRoot / RelativePath.Parse(relativePath + ".pointer.arius")).FullPath;
+                var pointerPath = fixture.RestoreRoot / RelativePath.Parse(relativePath + ".pointer.arius");
 
-                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
+                pointerPath.ExistsFile.ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
         }
     }
@@ -62,11 +62,12 @@ internal static class Helpers
     public static async Task WriteRestoreConflictAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed)
     {
         var conflictPath = GetConflictPath(definition, expectedVersion);
-        var fullPath = (fixture.RestoreRoot / PathOf(conflictPath)).FullPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var fullPath = fixture.RestoreRoot / PathOf(conflictPath);
+        if (fullPath.RelativePath.Parent is { } parent)
+            (fixture.RestoreRoot / parent).CreateDirectory();
 
         var conflictBytes = CreateConflictBytes(seed, conflictPath);
-        await File.WriteAllBytesAsync(fullPath, conflictBytes);
+        await fullPath.WriteAllBytesAsync(conflictBytes);
     }
 
     public static string? ResolveVersion(RepresentativeWorkflowState state, WorkflowRestoreTarget target) =>
@@ -145,8 +146,8 @@ internal static class Helpers
 
     static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
     {
-        var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, PathOf(relativePath)).FullPath;
-        await using var f        = File.OpenRead(fullPath);
+        var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, PathOf(relativePath));
+        await using var f        = fullPath.OpenRead();
         return await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken);
     }
 }

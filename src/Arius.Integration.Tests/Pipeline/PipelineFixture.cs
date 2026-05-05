@@ -37,10 +37,8 @@ public sealed class PipelineFixture : IAsyncDisposable
     public Arius.Core.Shared.FileTree.FileTreeService FileTreeService => _repository.FileTreeService;
     public Arius.Core.Shared.Snapshot.SnapshotService Snapshot => _repository.Snapshot;
     public Mediator.IMediator Mediator => _repository.Mediator;
-    public string LocalRoot => LocalRootPath.ToString();
-    public LocalRootPath LocalRootPath => _repository.LocalRootPath;
-    public string RestoreRoot => RestoreRootPath.ToString();
-    public LocalRootPath RestoreRootPath => _repository.RestoreRootPath;
+    public LocalRootPath LocalRoot => _repository.LocalRoot;
+    public LocalRootPath RestoreRoot => _repository.RestoreRoot;
 
     /// <summary>Creates a fully initialised fixture with unique container and temp dirs.</summary>
     public static async Task<PipelineFixture> CreateAsync(
@@ -108,7 +106,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new ArchiveCommandOptions
         {
-            RootDirectory = LocalRootPath,
+            RootDirectory = LocalRoot,
             UploadTier    = BlobTier.Hot,
         };
         return CreateArchiveHandler().Handle(new ArchiveCommand(opts), ct).AsTask();
@@ -121,7 +119,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new RestoreOptions
         {
-            RootDirectory = RestoreRootPath,
+            RootDirectory = RestoreRoot,
             Overwrite     = true,
         };
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();

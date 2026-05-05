@@ -56,9 +56,15 @@ public static class RootedPathFileSystemExtensions
 
         public string ReadAllText() => File.ReadAllText(path.FullPath);
 
+        public byte[] ReadAllBytes() => File.ReadAllBytes(path.FullPath);
+
         public Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default) => File.ReadAllTextAsync(path.FullPath, cancellationToken);
 
         public Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default) => File.ReadAllBytesAsync(path.FullPath, cancellationToken);
+
+        public void WriteAllBytes(ReadOnlySpan<byte> bytes) => File.WriteAllBytes(path.FullPath, bytes);
+
+        public Task WriteAllBytesAsync(byte[] bytes, CancellationToken cancellationToken = default) => File.WriteAllBytesAsync(path.FullPath, bytes, cancellationToken);
 
         public Task WriteAllTextAsync(string content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(path.FullPath, content, cancellationToken);
 

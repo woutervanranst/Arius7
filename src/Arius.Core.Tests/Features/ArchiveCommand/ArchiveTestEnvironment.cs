@@ -49,9 +49,11 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     {
         var content = new byte[sizeBytes];
         Random.Shared.NextBytes(content);
-        var fullPath = (_rootDirectory / RelativePath.FromPlatformRelativePath(relativePath)).FullPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        File.WriteAllBytes(fullPath, content);
+        var filePath = _rootDirectory / RelativePath.FromPlatformRelativePath(relativePath);
+        if (filePath.RelativePath.Parent is { } parent)
+            (_rootDirectory / parent).CreateDirectory();
+
+        filePath.WriteAllBytes(content);
         return content;
     }
 

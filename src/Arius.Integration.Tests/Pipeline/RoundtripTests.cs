@@ -182,7 +182,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult1 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fix.RestoreRoot + "/v1"),
+                RootDirectory = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1")),
                 Version       = snapshot1,
                 Overwrite     = true,
             }), default);
@@ -190,24 +190,24 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult1.Success.ShouldBeTrue(restoreResult1.ErrorMessage);
         restoreResult1.FilesRestored.ShouldBe(1);
 
-        var v1Dir = fix.RestoreRoot + "/v1";
-        File.Exists(Path.Combine(v1Dir, "file-a.bin")).ShouldBeTrue();
-        File.Exists(Path.Combine(v1Dir, "file-b.bin")).ShouldBeFalse();
-        File.ReadAllBytes(Path.Combine(v1Dir, "file-a.bin")).ShouldBe(contentA);
+        var v1Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1"));
+        (PathOf("file-a.bin").RootedAt(v1Dir)).ExistsFile.ShouldBeTrue();
+        (PathOf("file-b.bin").RootedAt(v1Dir)).ExistsFile.ShouldBeFalse();
+        (PathOf("file-a.bin").RootedAt(v1Dir)).ReadAllBytes().ShouldBe(contentA);
 
         // ── Restore latest snapshot → both files ──────────────────────────────
-        var v2Dir = fix.RestoreRoot + "/v2";
+        var v2Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v2"));
         var restoreResult2 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(v2Dir),
+                RootDirectory = v2Dir,
                 Overwrite     = true,
             }), default);
 
         restoreResult2.Success.ShouldBeTrue(restoreResult2.ErrorMessage);
         restoreResult2.FilesRestored.ShouldBe(2);
-        File.ReadAllBytes(Path.Combine(v2Dir, "file-a.bin")).ShouldBe(contentA);
-        File.ReadAllBytes(Path.Combine(v2Dir, "file-b.bin")).ShouldBe(contentB);
+        PathOf("file-a.bin").RootedAt(v2Dir).ReadAllBytes().ShouldBe(contentA);
+        PathOf("file-b.bin").RootedAt(v2Dir).ReadAllBytes().ShouldBe(contentB);
     }
 
     [Test]
@@ -241,7 +241,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
-        File.Exists(Path.Combine(fix.LocalRoot, "file.bin.pointer.arius")).ShouldBeTrue();
+        (fix.LocalRoot / PathOf("file.bin.pointer.arius")).ExistsFile.ShouldBeTrue();
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
@@ -291,7 +291,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fix.LocalRoot),
+                RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
             }), default);
@@ -299,14 +299,14 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Binary should be gone, pointer should exist
-        File.Exists(Path.Combine(fix.LocalRoot, "data.bin")).ShouldBeFalse();
-        File.Exists(Path.Combine(fix.LocalRoot, "data.bin.pointer.arius")).ShouldBeTrue();
+        (fix.LocalRoot / PathOf("data.bin")).ExistsFile.ShouldBeFalse();
+        (fix.LocalRoot / PathOf("data.bin.pointer.arius")).ExistsFile.ShouldBeTrue();
 
         // Second archive: only pointer file present (thin archive)
         var r2 = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fix.LocalRoot),
+                RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
             }), default);
 
@@ -367,8 +367,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         await Task.Delay(1100);
 
         // Rename: delete original, create renamed
-        File.Delete(Path.Combine(fix.LocalRoot, "original.bin"));
-        File.Delete(Path.Combine(fix.LocalRoot, "original.bin.pointer.arius"));
+        (fix.LocalRoot / PathOf("original.bin")).DeleteFile();
+        (fix.LocalRoot / PathOf("original.bin.pointer.arius")).DeleteFile();
         fix.WriteFile(PathOf("renamed.bin"), content);
 
         var r2 = await fix.ArchiveAsync();
@@ -403,28 +403,28 @@ public class RoundtripTests(AzuriteFixture azurite)
         await Task.Delay(1100);
 
         // Delete one file and its pointer
-        File.Delete(Path.Combine(fix.LocalRoot, "delete.bin"));
-        File.Delete(Path.Combine(fix.LocalRoot, "delete.bin.pointer.arius"));
+        (fix.LocalRoot / PathOf("delete.bin")).DeleteFile();
+        (fix.LocalRoot / PathOf("delete.bin.pointer.arius")).DeleteFile();
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
 
         // Restore latest: keep.bin only
-        var latestDir = Path.Combine(fix.RestoreRoot, "latest");
+        var latestDir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "latest"));
         var rl = await fix.CreateRestoreHandler().Handle(
-            new RestoreCommand(new RestoreOptions { RootDirectory = RootOf(latestDir), Overwrite = true }), default);
+            new RestoreCommand(new RestoreOptions { RootDirectory = latestDir, Overwrite = true }), default);
         rl.Success.ShouldBeTrue();
         rl.FilesRestored.ShouldBe(1);
-        File.Exists(Path.Combine(latestDir, "keep.bin")).ShouldBeTrue();
-        File.Exists(Path.Combine(latestDir, "delete.bin")).ShouldBeFalse();
+        PathOf("keep.bin").RootedAt(latestDir).ExistsFile.ShouldBeTrue();
+        PathOf("delete.bin").RootedAt(latestDir).ExistsFile.ShouldBeFalse();
 
         // Restore snapshot 1: both files
-        var v1Dir = Path.Combine(fix.RestoreRoot, "v1");
+        var v1Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1"));
         var rv1 = await fix.CreateRestoreHandler().Handle(
-            new RestoreCommand(new RestoreOptions { RootDirectory = RootOf(v1Dir), Version = snapshot1, Overwrite = true }), default);
+            new RestoreCommand(new RestoreOptions { RootDirectory = v1Dir, Version = snapshot1, Overwrite = true }), default);
         rv1.Success.ShouldBeTrue();
         rv1.FilesRestored.ShouldBe(2);
-        File.Exists(Path.Combine(v1Dir, "delete.bin")).ShouldBeTrue();
+        PathOf("delete.bin").RootedAt(v1Dir).ExistsFile.ShouldBeTrue();
     }
 
     // ── 14.5: Special characters in filenames ────────────────────────────────
@@ -498,7 +498,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = RootOf(fix.LocalRoot),
+                RootDirectory      = fix.LocalRoot,
                 UploadTier         = BlobTier.Hot,
                 SmallFileThreshold = 1024 * 1024, // = file size → routes to large
             }), default);
@@ -529,8 +529,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Now manufacture an orphan pointer that references a hash that does NOT exist in the index.
         // Write a fake 64-char hex hash into a .pointer.arius file with no corresponding binary.
         var fakeHash = new string('a', 64); // valid hex but no chunk exists for this hash
-        var pointerPath = Path.Combine(fix.LocalRoot, "ghost.bin.pointer.arius");
-        await File.WriteAllTextAsync(pointerPath, fakeHash);
+        var pointerPath = fix.LocalRoot / PathOf("ghost.bin.pointer.arius");
+        await pointerPath.WriteAllTextAsync(fakeHash);
 
         await Task.Delay(1100); // distinct snapshot timestamp
 
@@ -589,7 +589,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fix.LocalRoot),
+                RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
                 NoPointers    = true,
             }), default);
@@ -597,7 +597,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // No pointer file should have been created
-        File.Exists(Path.Combine(fix.LocalRoot, "data.bin.pointer.arius")).ShouldBeFalse();
+        (fix.LocalRoot / PathOf("data.bin.pointer.arius")).ExistsFile.ShouldBeFalse();
     }
 
     // ── 14.10: --remove-local + --no-pointers: should be rejected ────────────
@@ -612,7 +612,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fix.LocalRoot),
+                RootDirectory = fix.LocalRoot,
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
                 NoPointers    = true,

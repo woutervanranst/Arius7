@@ -199,11 +199,11 @@ public sealed class ChunkIndexService : IDisposable
 
         // L2 hit?
         var l2Path = _l2Dir / RelativePath.Parse(prefix);
-        if (File.Exists(l2Path.FullPath))
+        if (l2Path.ExistsFile)
         {
             try
             {
-                var bytes = await File.ReadAllBytesAsync(l2Path.FullPath, cancellationToken);
+                var bytes = await l2Path.ReadAllBytesAsync(cancellationToken);
                 var shard = ShardSerializer.DeserializeLocal(bytes);
                 PromoteToL1(prefix, shard, bytes.Length);
                 return shard;
@@ -211,7 +211,7 @@ public sealed class ChunkIndexService : IDisposable
             catch
             {
                 // Stale or corrupt L2 file (e.g. old encrypted format) — treat as cache miss and fall through to L3.
-                File.Delete(l2Path.FullPath);
+                l2Path.DeleteFile();
             }
         }
 
@@ -273,7 +273,7 @@ public sealed class ChunkIndexService : IDisposable
     {
         var path  = _l2Dir / RelativePath.Parse(prefix);
         var bytes = ShardSerializer.SerializeLocal(shard);
-        File.WriteAllBytes(path.FullPath, bytes);
+        path.WriteAllBytes(bytes);
     }
 
     public void Dispose()

@@ -65,7 +65,7 @@ public class FileTreeServiceTests
 
             // Pre-populate disk cache with plaintext
             var plaintext = FileTreeSerializer.Serialize(entries);
-            await File.WriteAllBytesAsync(diskPath, plaintext);
+            await diskPath.WriteAllBytesAsync(plaintext);
 
             var result = await svc.ReadAsync(hash);
 
@@ -108,8 +108,8 @@ public class FileTreeServiceTests
 
             // Disk file was written (write-through)
             var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
-            File.Exists(diskPath).ShouldBeTrue();
-            (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+            diskPath.ExistsFile.ShouldBeTrue();
+            (await diskPath.ReadAllBytesAsync()).Length.ShouldBeGreaterThan(0);
         }
         finally
         {
@@ -148,8 +148,8 @@ public class FileTreeServiceTests
 
             // Disk file must exist and have content (not empty / corrupt)
             var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
-            File.Exists(diskPath).ShouldBeTrue();
-            (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+            diskPath.ExistsFile.ShouldBeTrue();
+            (await diskPath.ReadAllBytesAsync()).Length.ShouldBeGreaterThan(0);
 
             // Azure should have been called at most once (concurrent reads should coalesce
             // around the first download; a second download would indicate missing deduplication)
@@ -191,8 +191,8 @@ public class FileTreeServiceTests
             results.SelectMany(result => result).All(entry => entry.Name == SegmentOf("partial.txt")).ShouldBeTrue();
 
             var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
-            File.Exists(diskPath).ShouldBeTrue();
-            FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe(SegmentOf("partial.txt"));
+            diskPath.ExistsFile.ShouldBeTrue();
+            FileTreeSerializer.Deserialize(await diskPath.ReadAllBytesAsync())[0].Name.ShouldBe(SegmentOf("partial.txt"));
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
         }
         finally
@@ -248,8 +248,8 @@ public class FileTreeServiceTests
 
             // Disk file was written
             var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
-            File.Exists(diskPath).ShouldBeTrue();
-            (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
+            diskPath.ExistsFile.ShouldBeTrue();
+            (await diskPath.ReadAllBytesAsync()).Length.ShouldBeGreaterThan(0);
         }
         finally
         {
@@ -284,7 +284,7 @@ public class FileTreeServiceTests
             await svc.WriteAsync(payload);
 
             var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
-            (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
+            (await diskPath.ReadAllBytesAsync()).ShouldBe(expectedPlaintext);
 
             var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTree(payload.Hash));
             await using var gzipStream = new System.IO.Compression.GZipStream(new MemoryStream(blobBytes), System.IO.Compression.CompressionMode.Decompress);
@@ -409,7 +409,7 @@ public class FileTreeServiceTests
 
             // Disk file should still be written
             var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
-            File.Exists(diskPath).ShouldBeTrue();
+            diskPath.ExistsFile.ShouldBeTrue();
         }
         finally
         {
@@ -488,7 +488,7 @@ public class FileTreeServiceTests
             var timestamp = "2024-06-15T100000.000Z";
 
             // Write a local snapshot marker
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), timestamp), []);
+            await (snapshotsDir / RelativePath.Parse(timestamp)).WriteAllBytesAsync([]);
 
             // Seed a remote snapshot with the same timestamp
             blobs.SeedBlob(BlobPaths.Snapshot(timestamp), [], contentType: null);
@@ -523,7 +523,7 @@ public class FileTreeServiceTests
 
         try
         {
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-06-15T100000.000Z"), []);
+            await (snapshotsDir / RelativePath.Parse("2024-06-15T100000.000Z")).WriteAllBytesAsync([]);
 
             await svc.ValidateAsync();
 
@@ -547,7 +547,7 @@ public class FileTreeServiceTests
         var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(acct, cont);
         chunkL2Dir.CreateDirectory();
         var dummyL2Path = chunkL2Dir / RelativePath.Parse("dummy-shard.dat");
-        await File.WriteAllTextAsync(dummyL2Path.FullPath, "stale");
+        await dummyL2Path.WriteAllTextAsync("stale");
 
         try
         {
@@ -556,7 +556,7 @@ public class FileTreeServiceTests
 
             // Local marker: old snapshot
             var localSnapshotMarkerPath = snapshotsDir / RelativePath.Parse("2024-01-01T000000.000Z");
-            await File.WriteAllBytesAsync(localSnapshotMarkerPath.FullPath, []);
+            await localSnapshotMarkerPath.WriteAllBytesAsync([]);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
@@ -570,11 +570,11 @@ public class FileTreeServiceTests
             // Empty marker files created for remote filetrees
             var firstMarkerPath = cacheDir / RelativePath.Parse(firstRemoteHash.ToString());
             var secondMarkerPath = cacheDir / RelativePath.Parse(secondRemoteHash.ToString());
-            File.Exists(firstMarkerPath.FullPath).ShouldBeTrue();
-            File.Exists(secondMarkerPath.FullPath).ShouldBeTrue();
+            firstMarkerPath.ExistsFile.ShouldBeTrue();
+            secondMarkerPath.ExistsFile.ShouldBeTrue();
 
             // L2 dummy file deleted
-            File.Exists(dummyL2Path.FullPath).ShouldBeFalse();
+            dummyL2Path.ExistsFile.ShouldBeFalse();
         }
         finally
         {
@@ -595,7 +595,7 @@ public class FileTreeServiceTests
             var existingHash = FakeFileTreeHash('3');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
+            await (snapshotsDir / RelativePath.Parse("2024-01-01T000000.000Z")).WriteAllBytesAsync([]);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
@@ -603,14 +603,14 @@ public class FileTreeServiceTests
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
             var diskPath = FileTreePaths.GetCachePath(cacheDir, existingHash);
-            await File.WriteAllBytesAsync(diskPath, existingContent);
+            await diskPath.WriteAllBytesAsync(existingContent);
 
             blobs.SeedBlob(BlobPaths.FileTree(existingHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
             // Existing file content must be preserved (not overwritten with empty marker)
-            var after = await File.ReadAllBytesAsync(diskPath);
+            var after = await diskPath.ReadAllBytesAsync();
             after.ShouldBe(existingContent);
         }
         finally
@@ -641,7 +641,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Slow path should create marker for remote blob
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, remoteHash)).ShouldBeTrue();
+            FileTreePaths.GetCachePath(cacheDir, remoteHash).ExistsFile.ShouldBeTrue();
         }
         finally
         {
@@ -682,7 +682,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
             var hash = FakeFileTreeHash('a');
             var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
-            await File.WriteAllBytesAsync(diskPath, []);
+            await diskPath.WriteAllBytesAsync([]);
 
             svc.ExistsInRemote(hash).ShouldBeTrue();
         }
@@ -746,10 +746,10 @@ public class FileTreeServiceTests
             var localPath        = snapshotsDir / RelativePath.Parse(expectedFileName);
 
             // Disk file exists and is valid JSON
-            File.Exists(localPath.FullPath).ShouldBeTrue();
+            localPath.ExistsFile.ShouldBeTrue();
             localPath.Root.ShouldBe(snapshotsDir);
             localPath.RelativePath.ShouldBe(RelativePath.Parse(expectedFileName));
-            var json = await File.ReadAllTextAsync(localPath.FullPath);
+            var json = await localPath.ReadAllTextAsync();
             json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded

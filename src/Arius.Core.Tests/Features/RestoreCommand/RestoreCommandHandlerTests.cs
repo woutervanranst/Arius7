@@ -5,6 +5,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -43,7 +44,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = RootOf(fixture.LocalRoot),
+                RootDirectory      = fixture.LocalRoot,
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024,
             }),
@@ -55,7 +56,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
                 CreateDownloadProgress = (identifier, _, _) =>
                 {
@@ -69,9 +70,9 @@ public class RestoreCommandHandlerTests
         progressIdentifiers.ShouldContain("docs/readme.txt");
         progressIdentifiers.ShouldNotContain(identifier => identifier.Contains('\\'));
 
-        var restoredPath = RootedOf(fixture.RestoreRoot, "docs/readme.txt").FullPath;
-        File.Exists(restoredPath).ShouldBeTrue();
-        File.ReadAllBytes(restoredPath).ShouldBe(content);
+        var restoredPath = fixture.RestoreRoot / PathOf("docs/readme.txt");
+        restoredPath.ExistsFile.ShouldBeTrue();
+        restoredPath.ReadAllBytes().ShouldBe(content);
     }
 
     [Test]
@@ -86,7 +87,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fixture.LocalRoot),
+                RootDirectory = fixture.LocalRoot,
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -96,7 +97,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
                 TargetPath    = PathOf("docs"),
             }),
@@ -120,7 +121,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fixture.LocalRoot),
+                RootDirectory = fixture.LocalRoot,
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -130,7 +131,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
                 TargetPath    = PathOf("file-a.txt"),
             }),
@@ -183,7 +184,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(fixture.LocalRoot),
+                RootDirectory = fixture.LocalRoot,
                 UploadTier    = BlobTier.Cool,
             }),
             CancellationToken.None);
@@ -193,7 +194,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -225,7 +226,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = RootOf(fixture.LocalRoot),
+                RootDirectory      = fixture.LocalRoot,
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024 * 1024,
             }),
@@ -236,7 +237,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -249,20 +250,20 @@ public class RestoreCommandHandlerTests
 
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
-            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = restoredPath + ".pointer.arius";
+            var restoredPath = fixture.RestoreRoot / RelativePath.FromPlatformRelativePath(relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath + ".pointer.arius");
 
-            File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
-            File.Exists(pointerPath).ShouldBeTrue($"Pointer file should exist for {relativePath}");
+            restoredPath.ReadAllBytes().ShouldBe(expectedContent);
+            pointerPath.ExistsFile.ShouldBeTrue($"Pointer file should exist for {relativePath}");
 
             if (!OperatingSystem.IsLinux())
             {
-                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
-                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
+                restoredPath.CreationTimeUtc.ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
+                pointerPath.CreationTimeUtc.ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
             }
 
-            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
-            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
+            restoredPath.LastWriteTimeUtc.ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
+            pointerPath.LastWriteTimeUtc.ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
         }
 
     }
@@ -285,7 +286,7 @@ public class RestoreCommandHandlerTests
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = RootOf(fixture.LocalRoot),
+                RootDirectory      = fixture.LocalRoot,
                 UploadTier         = BlobTier.Cool,
                 SmallFileThreshold = 1024 * 1024,
             }),
@@ -296,7 +297,7 @@ public class RestoreCommandHandlerTests
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(fixture.RestoreRoot),
+                RootDirectory = fixture.RestoreRoot,
                 Overwrite     = true,
             }),
             CancellationToken.None);
@@ -309,20 +310,20 @@ public class RestoreCommandHandlerTests
 
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
-            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = restoredPath + ".pointer.arius";
+            var restoredPath = fixture.RestoreRoot / RelativePath.FromPlatformRelativePath(relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath + ".pointer.arius");
 
-            File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
-            File.Exists(pointerPath).ShouldBeTrue($"Pointer file should exist for {relativePath}");
+            restoredPath.ReadAllBytes().ShouldBe(expectedContent);
+            pointerPath.ExistsFile.ShouldBeTrue($"Pointer file should exist for {relativePath}");
 
             if (!OperatingSystem.IsLinux())
             {
-                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
-                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
+                restoredPath.CreationTimeUtc.ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
+                pointerPath.CreationTimeUtc.ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
             }
 
-            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
-            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
+            restoredPath.LastWriteTimeUtc.ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
+            pointerPath.LastWriteTimeUtc.ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
         }
     }
 

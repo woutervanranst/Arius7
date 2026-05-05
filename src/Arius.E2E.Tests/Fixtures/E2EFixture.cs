@@ -23,7 +23,7 @@ public sealed class E2EFixture : IAsyncDisposable
 {
     private static readonly Lock RepositoryCacheLeaseLock = new();
     private static readonly Dictionary<string, RepositoryCacheLease> RepositoryCacheLeases = new(StringComparer.Ordinal);
-    private readonly string _tempRoot;
+    private readonly LocalRootPath _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
@@ -37,7 +37,7 @@ public sealed class E2EFixture : IAsyncDisposable
         IChunkStorageService chunkStorage,
         FileTreeService fileTreeService,
         SnapshotService snapshot,
-        string tempRoot,
+        LocalRootPath tempRoot,
         LocalRootPath localRoot,
         LocalRootPath restoreRoot,
         string account,
@@ -81,7 +81,7 @@ public sealed class E2EFixture : IAsyncDisposable
     {
         var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
 
-        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRootPath, repository.RestoreRootPath, accountName, containerName, defaultTier, repository);
+        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
     }
 
     public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)

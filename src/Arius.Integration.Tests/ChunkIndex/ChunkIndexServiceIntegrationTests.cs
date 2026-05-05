@@ -108,7 +108,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var prefix = Shard.PrefixOf(contentHash);
         var l2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(Account, containerName);
         var l2Path = l2Dir / RelativePath.Parse(prefix);
-        await File.WriteAllBytesAsync(l2Path.FullPath, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
+        await l2Path.WriteAllBytesAsync([0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
         var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
@@ -119,10 +119,10 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         result.ChunkHash.ShouldBe(chunkHash);
 
         // And L2 must now be in plaintext format (re-cached by the service)
-        File.Exists(l2Path.FullPath).ShouldBeTrue();
+        l2Path.ExistsFile.ShouldBeTrue();
         l2Path.Root.ShouldBe(l2Dir);
         l2Path.RelativePath.ShouldBe(RelativePath.Parse(prefix));
-        var text = await File.ReadAllTextAsync(l2Path.FullPath);
+        var text = await l2Path.ReadAllTextAsync();
         text.ShouldContain(contentHash.ToString());
     }
 }
