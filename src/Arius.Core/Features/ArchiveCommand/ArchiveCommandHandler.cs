@@ -216,8 +216,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     foreach (var pair in pairs)
                     {
                         count++;
-                        var fullPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
-                        var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
+                        var fullPath = pair.BinaryExists ? opts.RootDirectory / pair.RelativePath : default(RootedPath?);
+                        var fileSize = fullPath is { } path && path.ExistsFile ? path.Length : 0L;
                         totalBytes += fileSize;
                         await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
@@ -241,8 +241,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     async (pair, ct) =>
                     {
                         var relativePathText = pair.RelativePath.ToString();
-                        var fullBinaryPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
-                        var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
+                        var fullBinaryPath = pair.BinaryExists ? opts.RootDirectory / pair.RelativePath : default(RootedPath?);
+                        var fileSize = fullBinaryPath is { } path ? path.Length : 0L;
 
                         await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
@@ -254,7 +254,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         }
                         else if (pair.BinaryExists)
                         {
-                            await using var fs           = File.OpenRead(fullBinaryPath!);
+                            await using var fs           = fullBinaryPath!.Value.OpenRead();
                             var             hashProgress = opts.CreateHashProgress?.Invoke(relativePathText, fileSize) ?? new Progress<long>();
                             await using var ps           = new ProgressStream(fs, hashProgress);
                             contentHash = await _encryption.ComputeHashAsync(ps, ct);
@@ -347,9 +347,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
-                    var fullPath = (opts.RootDirectory / upload.HashedPair.FilePair.RelativePath).FullPath;
+                    var fullPath = opts.RootDirectory / upload.HashedPair.FilePair.RelativePath;
 
-                    await using var fs             = File.OpenRead(fullPath);
+                    await using var fs             = fullPath.OpenRead();
                     var             uploadProgress = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
                     var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, fs, upload.FileSize, opts.UploadTier, uploadProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
@@ -425,11 +425,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
 
-                        var fullPath = (opts.RootDirectory / upload.HashedPair.FilePair.RelativePath).FullPath;
+                        var fullPath = opts.RootDirectory / upload.HashedPair.FilePair.RelativePath;
 
                         // Write entry named by content-hash (not original path)
                         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
-                        await using (var fs = File.OpenRead(fullPath))
+                        await using (var fs = fullPath.OpenRead())
                         {
                             tarEntry.DataStream = fs;
                             await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
@@ -556,9 +556,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (relativePath, hash) = item;
-                    var fullPath = (opts.RootDirectory / relativePath).FullPath;
-                    var pointerPath = fullPath + ".pointer.arius";
-                    await File.WriteAllTextAsync(pointerPath, hash.ToString(), ct);
+                    var pointerPath = opts.RootDirectory / RelativePath.Parse(relativePath + ".pointer.arius");
+                    await pointerPath.WriteAllTextAsync(hash.ToString(), ct);
                 });
             }
 
@@ -568,10 +567,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 foreach (var relativePath in pendingDeletes)
                 {
-                    var path = (opts.RootDirectory / relativePath).FullPath;
+                    var path = opts.RootDirectory / relativePath;
                     try
                     {
-                        File.Delete(path);
+                        path.DeleteFile();
                     }
                     catch (Exception ex)
                     {
@@ -622,10 +621,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         DateTimeOffset created, modified;
         if (pair.BinaryExists)
         {
-            var fullPath = (rootDirectory / pair.RelativePath).FullPath;
-            var fi       = new FileInfo(fullPath);
-            created  = new DateTimeOffset(fi.CreationTimeUtc,  TimeSpan.Zero);
-            modified = new DateTimeOffset(fi.LastWriteTimeUtc, TimeSpan.Zero);
+            var fullPath = rootDirectory / pair.RelativePath;
+            created  = new DateTimeOffset(fullPath.CreationTimeUtc,  TimeSpan.Zero);
+            modified = new DateTimeOffset(fullPath.LastWriteTimeUtc, TimeSpan.Zero);
         }
         else
         {
