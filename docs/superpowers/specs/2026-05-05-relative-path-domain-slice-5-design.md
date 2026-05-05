@@ -35,6 +35,7 @@ Slice 5 should finish the path-domain migration by broadly retyping shared test,
 - Replace string-based repository-path helper APIs in tests and fixtures with typed `RelativePath` / `PathSegment` boundaries.
 - Replace string-based local-root helper APIs in tests and fixtures with typed `LocalRootPath` / `RootedPath` boundaries where those helpers own local-path semantics.
 - Reduce repeated `RelativePath.Parse(...)`, `PathSegment.Parse(...)`, slash replacement, and slash trimming in shared test infrastructure.
+- Prefer reusing and extending `src/Arius.Tests.Shared/Paths/PathsHelper.cs` for test-only path construction helpers instead of introducing new scattered path helper methods.
 - Keep persisted dataset definitions and other intentionally textual test inputs as strings only until they cross into a semantic path boundary.
 - Preserve safe local join and root-containment behavior at the local-path boundary.
 
@@ -53,6 +54,12 @@ The key rule is:
 
 - if a helper or fixture owns a semantic path boundary, its API should become typed
 - if a helper is only a pure OS/file API boundary, it may remain string-based
+
+For test-only construction ergonomics, the preferred shared home is:
+
+- `src/Arius.Tests.Shared/Paths/PathsHelper.cs`
+
+Slice 5 should reuse existing helpers there first and add new focused helpers there when repeated typed test construction would otherwise be reimplemented locally.
 
 This means the slice is not merely an internal cleanup pass. It is an API cleanup pass for test infrastructure.
 
@@ -113,6 +120,29 @@ Examples:
 - helper-local `RelativePath.Parse(...)` / `PathSegment.Parse(...)` calls should move outward to the helper boundary where feasible
 
 The goal is not to eliminate all parsing in tests. The goal is to stop repeatedly reparsing the same semantic value inside helper internals.
+
+### 5. Shared Path Helper Ownership
+
+`src/Arius.Tests.Shared/Paths/PathsHelper.cs` should be the default shared home for test-only path construction helpers.
+
+Existing helpers there already establish the direction:
+
+- `PathOf(...)`
+- `RootOf(...)`
+- `SegmentOf(...)`
+
+If slice 5 needs more test-only construction ergonomics, prefer adding them there rather than introducing feature-local helpers inside individual test classes or fixtures.
+
+Examples of acceptable additions if repeated usage justifies them:
+
+- focused helpers that build typed repository-relative test values
+- focused helpers that make typed local-root test setup less repetitive
+
+Examples of what to avoid:
+
+- per-test-class wrappers that just call `RelativePath.Parse(...)`
+- feature-local helpers that duplicate `PathOf(...)`, `RootOf(...)`, or `SegmentOf(...)`
+- helper methods that hide path semantics behind vague string names
 
 ## Scope
 
@@ -184,6 +214,8 @@ Test-only construction helpers such as:
 
 remain appropriate at textual test-input boundaries, but slice 5 should prefer typed helper signatures after that point rather than repeatedly calling them inside lower-level helper implementations.
 
+When additional test-only path helpers are warranted, add them to `PathsHelper.cs` rather than scattering new helpers across the test tree.
+
 ## Migration Shape
 
 Slice 5 should proceed in broad but explicit steps:
@@ -199,6 +231,7 @@ This slice is complete when:
 
 - shared test and E2E helper APIs accept typed paths where the values have real path semantics
 - repeated parsing and slash normalization in shared test infrastructure is significantly reduced
+- shared test-only path helper ergonomics are centralized in `src/Arius.Tests.Shared/Paths/PathsHelper.cs` rather than duplicated locally
 - repository-relative values remain typed through fixture and materializer flows
 - local-root values remain typed until true OS boundaries
 - remaining raw strings in tests are clearly textual boundary values, not hidden domain state
