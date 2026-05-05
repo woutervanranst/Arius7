@@ -66,7 +66,7 @@ public class ArchiveStepBenchmarks
         if (Directory.Exists(_fixture.LocalRootPath.ToString()))
             Directory.Delete(_fixture.LocalRootPath.ToString(), recursive: true);
 
-        FileSystemHelper.CopyDirectory(_preparedSourceRoot.Value.ToString(), _fixture.LocalRootPath.ToString());
+        await FileSystemHelper.CopyDirectoryAsync(_preparedSourceRoot.Value, _fixture.LocalRootPath);
     }
 
     [IterationCleanup]

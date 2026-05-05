@@ -51,7 +51,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
 
         // 1. Reuse the existing archived source content from the canonical workflow.
-        FileSystemHelper.CopyDirectory(sourceState.RootPath.ToString(), state.Fixture.LocalRoot.ToString());
+        await FileSystemHelper.CopyDirectoryAsync(sourceState.RootPath, state.Fixture.LocalRoot, cancellationToken);
 
         // 2. Pick one representative tar-backed file under the target subtree and preserve the
         // exact existing chunk blob so we can later stage it as a ready rehydrated blob.

@@ -13,7 +13,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
             ? existingState
             : await MaterializeVersionAsync(state, cancellationToken);
 
-        FileSystemHelper.CopyDirectory(versionState.RootPath.ToString(), state.Fixture.LocalRoot.ToString());
+        await FileSystemHelper.CopyDirectoryAsync(versionState.RootPath, state.Fixture.LocalRoot, cancellationToken);
 
         state.CurrentSyntheticRepositoryState = versionState;
         state.VersionedSourceStates[Version]  = versionState;

@@ -49,13 +49,9 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var sourceRootPathText = sourceRootPath.ToString();
         var targetRootPathText = targetRootPath.ToString();
 
-        if (Directory.Exists(targetRootPathText))
-            Directory.Delete(targetRootPathText, recursive: true);
-
-        FileSystemHelper.CopyDirectory(sourceRootPathText, targetRootPathText);
+        await FileSystemHelper.CopyDirectoryAsync(sourceRootPath, targetRootPath);
 
         var files = new Dictionary<RelativePath, ContentHash>();
         foreach (var filePath in Directory.EnumerateFiles(targetRootPathText, "*", SearchOption.AllDirectories))
