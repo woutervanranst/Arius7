@@ -10,10 +10,8 @@ namespace Arius.Core.Shared.FileTree;
 /// </summary>
 internal static class FileTreePaths
 {
-    private const string StagingDirectoryName   = ".staging";
-    private const string LockFileName           = ".staging.lock";
-    private static readonly RelativePath StagingDirectoryRelativePath = RelativePath.Parse(StagingDirectoryName);
-    private static readonly RelativePath StagingLockRelativePath = RelativePath.Parse(LockFileName);
+    private static readonly RelativePath StagingDirectoryRelativePath = RelativePath.Parse(".staging");
+    private static readonly RelativePath StagingLockRelativePath      = RelativePath.Parse(".staging.lock");
 
     // -- FileTree Cache Paths ---
 
