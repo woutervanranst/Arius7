@@ -264,7 +264,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             if (currentLocalDirectory is not null)
             {
                 var candidate = currentRelativeDirectory.RootedAt(currentLocalDirectory.Value.Root);
-                currentLocalDirectory = Directory.Exists(candidate.FullPath) ? candidate : null;
+                currentLocalDirectory = candidate.ExistsDirectory ? candidate : null;
             }
         }
 
@@ -273,7 +273,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private LocalDirectorySnapshot BuildLocalDirectorySnapshot(RootedPath? localDir, RelativePath currentRelativeDirectory)
     {
-        if (localDir is null || !Directory.Exists(localDir.Value.FullPath))
+        if (localDir is null || !localDir.Value.ExistsDirectory)
         {
             return LocalDirectorySnapshot.Empty;
         }
@@ -309,8 +309,8 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             if (file.Name.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
             {
                 var binaryName = file.Name[..^PointerSuffix.Length];
-                var binaryPath = Path.Combine(localDir.Value.FullPath, binaryName);
-                if (File.Exists(binaryPath))
+                var binaryPath = (currentRelativeDirectory / PathSegment.Parse(binaryName)).RootedAt(localDir.Value.Root);
+                if (binaryPath.ExistsFile)
                 {
                     continue;
                 }
@@ -328,15 +328,15 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             }
             else
             {
-                var pointerPath = file.FullName + PointerSuffix;
-                var hasPointer = File.Exists(pointerPath);
+                var pointerPath = (currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix)).RootedAt(localDir.Value.Root);
+                var hasPointer = pointerPath.ExistsFile;
                 files[file.Name] = new LocalFileState(
                     Name: file.Name,
                     BinaryExists: true,
                     PointerExists: hasPointer,
                     PointerHash: hasPointer
                         ? ReadPointerHash(
-                            (currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix)).RootedAt(localDir.Value.Root),
+                            pointerPath,
                             currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix))
                         : null,
                     FileSize: file.Length,
@@ -352,7 +352,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     {
         try
         {
-            var content = File.ReadAllText(fullPath.FullPath).Trim();
+            var content = fullPath.ReadAllText().Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);

@@ -94,9 +94,9 @@ public sealed class LocalFileEnumerator
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
                 var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
                 var binaryFileRelativePath = RelativePath.Parse(binaryFileRelativeName);
-                var binaryFileFullPath = binaryFileRelativePath.RootedAt(rootDirectory).FullPath;
+                var binaryFilePath = binaryFileRelativePath.RootedAt(rootDirectory);
 
-                if (File.Exists(binaryFileFullPath))
+                if (binaryFilePath.ExistsFile)
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
@@ -117,7 +117,7 @@ public sealed class LocalFileEnumerator
                 // Binary file: check for pointer via File.Exists
                 var pointerRel  = RelativePath.Parse(relativeName + PointerSuffix);
                 var pointerPath = pointerRel.RootedAt(rootDirectory);
-                var hasPointer  = File.Exists(pointerPath.FullPath);
+                var hasPointer  = pointerPath.ExistsFile;
                 ContentHash? pointerHash = null;
 
                 if (hasPointer)
@@ -144,7 +144,7 @@ public sealed class LocalFileEnumerator
     {
         try
         {
-            var content = File.ReadAllText(fullPath.FullPath).Trim();
+            var content = fullPath.ReadAllText().Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
