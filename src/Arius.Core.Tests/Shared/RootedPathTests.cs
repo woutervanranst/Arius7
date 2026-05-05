@@ -46,4 +46,60 @@ public class RootedPathTests
 
         root.GetRelativePath(fullPath).ShouldBe(RelativePath.Parse("docs/readme.txt"));
     }
+
+    [Test]
+    public async Task ExistsFile_ReadAllTextAsync_AndTimestampProperties_WorkAgainstFile()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-io-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var directory = root / PathOf("docs");
+            var path = root / PathOf("docs/readme.txt");
+
+            directory.CreateDirectory();
+            await path.WriteAllTextAsync("hello");
+
+            path.ExistsFile.ShouldBeTrue();
+            path.ReadAllText().ShouldBe("hello");
+            (await path.ReadAllTextAsync()).ShouldBe("hello");
+            path.Extension.ShouldBe(".txt");
+            path.Length.ShouldBe(5);
+
+            var modified = new DateTime(2024, 2, 3, 4, 5, 6, DateTimeKind.Utc);
+            path.LastWriteTimeUtc = modified;
+            path.LastWriteTimeUtc.ShouldBe(modified);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public void ExistsDirectory_And_CreateDirectory_WorkAgainstDirectory()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-dir-{Guid.NewGuid():N}");
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var path = root / PathOf("photos/2024");
+
+            path.ExistsDirectory.ShouldBeFalse();
+
+            path.CreateDirectory();
+
+            path.ExistsDirectory.ShouldBeTrue();
+            Directory.Exists(path.FullPath).ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

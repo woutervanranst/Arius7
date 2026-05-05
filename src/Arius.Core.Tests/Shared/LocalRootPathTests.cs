@@ -35,4 +35,27 @@ public class LocalRootPathTests
             lower.ShouldNotBe(upper);
         }
     }
+
+    [Test]
+    public void ExistsDirectory_And_CreateDirectory_WorkAgainstRootDirectory()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-local-root-io-{Guid.NewGuid():N}");
+
+        try
+        {
+            var root = LocalRootPath.Parse(tempRoot);
+
+            root.ExistsDirectory.ShouldBeFalse();
+
+            root.CreateDirectory();
+
+            root.ExistsDirectory.ShouldBeTrue();
+            Directory.Exists(tempRoot).ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

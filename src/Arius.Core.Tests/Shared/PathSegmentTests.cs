@@ -56,4 +56,12 @@ public class PathSegmentTests
 
         segments.Add(SegmentOf("Docs")).ShouldBeFalse();
     }
+
+    [Test]
+    public void Extension_ReturnsSuffixIncludingLeadingDot()
+    {
+        var segment = SegmentOf("report.tar.gz");
+
+        segment.Extension.ShouldBe(".gz");
+    }
 }

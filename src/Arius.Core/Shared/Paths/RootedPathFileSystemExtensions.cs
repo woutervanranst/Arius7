@@ -1,0 +1,82 @@
+namespace Arius.Core.Shared.Paths;
+
+public static class RootedPathFileSystemExtensions
+{
+    extension(RootedPath path)
+    {
+        public bool ExistsFile => File.Exists(path.FullPath);
+
+        public bool ExistsDirectory => Directory.Exists(path.FullPath);
+
+        public string Extension => Path.GetExtension(path.FullPath);
+
+        public long Length => path.ExistsFile
+            ? new FileInfo(path.FullPath).Length
+            : throw new FileNotFoundException($"File does not exist: {path.FullPath}", path.FullPath);
+
+        public DateTime CreationTimeUtc
+        {
+            get => path.ResolveExistingEntry(
+                static fullPath => File.GetCreationTimeUtc(fullPath),
+                static fullPath => Directory.GetCreationTimeUtc(fullPath));
+            set => path.ResolveExistingEntry(
+                fullPath =>
+                {
+                    File.SetCreationTimeUtc(fullPath, value);
+                    return 0;
+                },
+                fullPath =>
+                {
+                    Directory.SetCreationTimeUtc(fullPath, value);
+                    return 0;
+                });
+        }
+
+        public DateTime LastWriteTimeUtc
+        {
+            get => path.ResolveExistingEntry(
+                static fullPath => File.GetLastWriteTimeUtc(fullPath),
+                static fullPath => Directory.GetLastWriteTimeUtc(fullPath));
+            set => path.ResolveExistingEntry(
+                fullPath =>
+                {
+                    File.SetLastWriteTimeUtc(fullPath, value);
+                    return 0;
+                },
+                fullPath =>
+                {
+                    Directory.SetLastWriteTimeUtc(fullPath, value);
+                    return 0;
+                });
+        }
+
+        public FileStream OpenRead() => File.OpenRead(path.FullPath);
+
+        public FileStream OpenWrite() => File.Open(path.FullPath, FileMode.Create, FileAccess.Write, FileShare.None);
+
+        public string ReadAllText() => File.ReadAllText(path.FullPath);
+
+        public Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default) => File.ReadAllTextAsync(path.FullPath, cancellationToken);
+
+        public Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default) => File.ReadAllBytesAsync(path.FullPath, cancellationToken);
+
+        public Task WriteAllTextAsync(string content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(path.FullPath, content, cancellationToken);
+
+        public void DeleteFile() => File.Delete(path.FullPath);
+
+        public void CreateDirectory() => Directory.CreateDirectory(path.FullPath);
+
+        public void DeleteDirectory(bool recursive = false) => Directory.Delete(path.FullPath, recursive);
+
+        private TResult ResolveExistingEntry<TResult>(Func<string, TResult> forFile, Func<string, TResult> forDirectory)
+        {
+            if (path.ExistsFile)
+                return forFile(path.FullPath);
+
+            if (path.ExistsDirectory)
+                return forDirectory(path.FullPath);
+
+            throw new FileNotFoundException($"Filesystem entry does not exist: {path.FullPath}", path.FullPath);
+        }
+    }
+}
