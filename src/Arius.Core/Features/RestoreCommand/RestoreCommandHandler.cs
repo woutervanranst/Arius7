@@ -520,7 +520,7 @@ public sealed class RestoreCommandHandler
         {
             if (entry is DirectoryEntry directoryEntry)
             {
-                var dirPath = currentPath / directoryEntry.GetDirectoryName();
+                var dirPath = currentPath / directoryEntry.Name;
                 await WalkTreeAsync(directoryEntry.FileTreeHash, dirPath, targetPrefix, result, cancellationToken, onFileDiscovered);
             }
             else if (entry is FileEntry fileEntry)

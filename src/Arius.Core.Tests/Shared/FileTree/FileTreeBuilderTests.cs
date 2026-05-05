@@ -640,10 +640,10 @@ public class FileTreeBuilderTests
     }
 
     [Test]
-    [Arguments("child/grandchild/")]
+    [Arguments("child/grandchild")]
     [Arguments("child\\")]
-    [Arguments("./")]
-    [Arguments("../")]
+    [Arguments(".")]
+    [Arguments("..")]
     public void ParseStagedNodeEntryLine_RejectsNonCanonicalNames(string name)
     {
         var directoryId = new string('a', 64);

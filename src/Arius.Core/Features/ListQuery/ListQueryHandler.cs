@@ -108,7 +108,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
         {
-            var directorySegment = entry.GetDirectoryName();
+            var directorySegment = entry.Name;
             var directoryName    = directorySegment.ToString();
             var existsLocally    = localSnapshot.Directories.TryGetValue(directoryName, out var localDirectory);
 
@@ -256,7 +256,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
                 var nextDirectory = treeEntries
                     .OfType<DirectoryEntry>()
-                    .FirstOrDefault(e => e.GetDirectoryName().Equals(segment, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(e => e.Name.Equals(segment, StringComparison.OrdinalIgnoreCase));
 
                 currentHash = nextDirectory?.FileTreeHash;
             }
