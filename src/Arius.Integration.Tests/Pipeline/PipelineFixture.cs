@@ -37,9 +37,9 @@ public sealed class PipelineFixture : IAsyncDisposable
     public Arius.Core.Shared.FileTree.FileTreeService FileTreeService => _repository.FileTreeService;
     public Arius.Core.Shared.Snapshot.SnapshotService Snapshot => _repository.Snapshot;
     public Mediator.IMediator Mediator => _repository.Mediator;
-    public string LocalRoot => _repository.LocalRoot;
+    public string LocalRoot => LocalRootPath.ToString();
     public LocalRootPath LocalRootPath => _repository.LocalRootPath;
-    public string RestoreRoot => _repository.RestoreRoot;
+    public string RestoreRoot => RestoreRootPath.ToString();
     public LocalRootPath RestoreRootPath => _repository.RestoreRootPath;
 
     /// <summary>Creates a fully initialised fixture with unique container and temp dirs.</summary>

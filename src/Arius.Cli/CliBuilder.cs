@@ -156,7 +156,7 @@ public static class CliBuilder
         logDir.CreateDirectory();
 
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        var logFile   = Path.Combine(logDir.ToString(), $"{timestamp}_{commandName}.txt");
+        var logFile   = (logDir / RelativePath.Parse($"{timestamp}_{commandName}.txt")).FullPath;
 
         const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}{Exception}";
 

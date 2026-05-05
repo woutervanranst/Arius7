@@ -19,7 +19,7 @@ namespace Arius.Core.Tests.Features.ArchiveCommand;
 internal sealed class ArchiveTestEnvironment : IDisposable
 {
     private const    string                            AccountName = "test-account";
-    private readonly string                            _rootDirectory;
+    private readonly LocalRootPath                     _rootDirectory;
     private readonly string                            _containerName;
     private readonly ChunkIndexService                 _index;
     private readonly PlaintextPassthroughService       _encryption = new();
@@ -28,9 +28,9 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public ArchiveTestEnvironment()
     {
-        _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
+        _rootDirectory = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}"));
         _containerName = $"test-container-{Guid.NewGuid():N}";
-        Directory.CreateDirectory(_rootDirectory);
+        _rootDirectory.CreateDirectory();
         RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName).CreateDirectory();
         RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).CreateDirectory();
         Blobs  = new FakeInMemoryBlobContainerService();
@@ -41,7 +41,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).ToString();
+    public LocalRootPath FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
 
     public FakeLogCollector ArchiveLogs => _logger.Collector;
 
@@ -49,7 +49,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     {
         var content = new byte[sizeBytes];
         Random.Shared.NextBytes(content);
-        var fullPath = Path.Combine(_rootDirectory, relativePath);
+        var fullPath = (_rootDirectory / RelativePath.FromPlatformRelativePath(relativePath)).FullPath;
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         File.WriteAllBytes(fullPath, content);
         return content;
@@ -73,7 +73,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(_rootDirectory),
+                RootDirectory = _rootDirectory,
                 UploadTier    = uploadTier,
             }),
             cancellationToken);
@@ -84,8 +84,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_rootDirectory))
-            Directory.Delete(_rootDirectory, recursive: true);
+        if (_rootDirectory.ExistsDirectory)
+            _rootDirectory.DeleteDirectory(recursive: true);
 
         RepositoryTestFixture.ResetLocalCacheAsync(AccountName, _containerName).GetAwaiter().GetResult();
     }

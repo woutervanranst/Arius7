@@ -49,8 +49,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         FileTreeService fileTreeService,
         SnapshotService snapshot,
         string tempRoot,
-        string localRoot,
-        string restoreRoot,
+        LocalRootPath localRoot,
+        LocalRootPath restoreRoot,
         string account,
         string containerName,
         Action<string>? deleteTempRoot = null)
@@ -62,8 +62,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         FileTreeService = fileTreeService;
         Snapshot        = snapshot;
         _tempRoot       = tempRoot;
-        _localRoot      = LocalRootPath.Parse(localRoot);
-        _restoreRoot    = LocalRootPath.Parse(restoreRoot);
+        _localRoot      = localRoot;
+        _restoreRoot    = restoreRoot;
         LocalRoot       = _localRoot.ToString();
         RestoreRoot     = _restoreRoot.ToString();
         _account        = account;
@@ -275,7 +275,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             _deleteTempRoot(_tempRoot);
     }
 
-    private static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
+    private static (string TempRoot, LocalRootPath LocalRoot, LocalRootPath RestoreRoot) CreateTempRoots(string? tempRoot = null)
     {
         var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
         Directory.CreateDirectory(tempRootBase);
@@ -290,6 +290,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         Directory.CreateDirectory(resolvedTempRoot);
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
-        return (resolvedTempRoot, localRoot, restoreRoot);
+        return (resolvedTempRoot, LocalRootPath.Parse(localRoot), LocalRootPath.Parse(restoreRoot));
     }
 }
