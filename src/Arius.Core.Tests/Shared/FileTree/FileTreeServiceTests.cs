@@ -27,7 +27,7 @@ public class FileTreeServiceTests
 
     private static IReadOnlyList<FileTreeEntry> MakeEntries(string fileName = "a.txt", string hash = "aabbccdd") =>
     [
-        FileOf(fileName, hash, s_ts1, s_ts2)
+        FileEntryOf(fileName, hash, s_ts1, s_ts2)
     ];
 
     private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)

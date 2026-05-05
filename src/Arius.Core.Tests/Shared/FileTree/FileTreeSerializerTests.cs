@@ -18,15 +18,10 @@ public class FileTreeSerializerTests
     private static string NormalizeHash(string hash)
         => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
 
-    private static IReadOnlyList<FileTreeEntry> BuildEntries((string name, bool isDirectory, string hash)[] items)
-    {
-        var entries = new List<FileTreeEntry>(items.Length);
-        entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? DirOf(item.name, item.hash)
-            : FileOf(item.name, item.hash, s_created, s_modified))));
-
-        return entries;
-    }
+    private static IReadOnlyList<FileTreeEntry> BuildEntries((string name, bool isDirectory, string hash)[] items) =>
+        items.Select(item => (FileTreeEntry)(item.isDirectory
+            ? DirectoryEntryOf(item.name, item.hash)
+            : FileEntryOf(item.name, item.hash, s_created, s_modified))).ToArray();
 
     [Test]
     public void Deserialize_InvalidFileHash_Throws()
@@ -161,8 +156,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            DirOf("sub", "abc"),
-            FileOf("f.txt", "def", s_created, s_modified)
+            DirectoryEntryOf("sub", "abc"),
+            FileEntryOf("f.txt", "def", s_created, s_modified)
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
@@ -202,7 +197,7 @@ public class FileTreeSerializerTests
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
-        var entry = FileOf("file with spaces.txt", "abc", created, modified);
+        var entry = FileEntryOf("file with spaces.txt", "abc", created, modified);
 
         var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry);
         var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);
@@ -215,7 +210,7 @@ public class FileTreeSerializerTests
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
-        var entry = FileOf("file with spaces.txt", "abc", created, modified);
+        var entry = FileEntryOf("file with spaces.txt", "abc", created, modified);
 
         var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry) + "\r";
         var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);

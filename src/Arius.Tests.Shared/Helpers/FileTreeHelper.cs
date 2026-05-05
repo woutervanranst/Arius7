@@ -6,11 +6,8 @@ namespace Arius.Tests.Shared.Helpers;
 
 public static class FileTreeHelper
 {
-    public static FileEntry FileOf(string name, string hash, DateTimeOffset created, DateTimeOffset modified)
+    public static FileEntry FileEntryOf(string name, string hash, DateTimeOffset created, DateTimeOffset modified)
         => FileEntryOf(PathsHelper.SegmentOf(name), ContentHash.Parse(NormalizeHash(hash)), created, modified);
-
-    public static DirectoryEntry DirOf(string name, string hash)
-        => DirectoryEntryOf(PathsHelper.SegmentOf(name), FileTreeHash.Parse(NormalizeHash(hash)));
 
     public static FileEntry FileEntryOf(PathSegment name, ContentHash hash, DateTimeOffset created, DateTimeOffset modified) => new()
     {
@@ -20,11 +17,16 @@ public static class FileTreeHelper
         Modified = modified
     };
 
+
+    public static DirectoryEntry DirectoryEntryOf(string name, string hash)
+        => DirectoryEntryOf(PathsHelper.SegmentOf(name), FileTreeHash.Parse(NormalizeHash(hash)));
+
     public static DirectoryEntry DirectoryEntryOf(PathSegment name, FileTreeHash hash) => new()
     {
         Name = name,
         FileTreeHash = hash
     };
+
 
     private static string NormalizeHash(string hash)
         => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
