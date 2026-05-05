@@ -62,6 +62,25 @@ public static class RootedPathFileSystemExtensions
 
         public Task WriteAllTextAsync(string content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(path.FullPath, content, cancellationToken);
 
+        public async ValueTask CopyToAsync(RootedPath destination, bool overwrite = false, CancellationToken cancellationToken = default)
+        {
+            if (!overwrite && destination.ExistsFile)
+                throw new IOException($"Destination file already exists: {destination.FullPath}");
+
+            var destinationParent = destination.RelativePath.Parent;
+            if (destinationParent is not null)
+                (destination.Root / destinationParent.Value).CreateDirectory();
+
+            await using (var source = path.OpenRead())
+            await using (var target = File.Open(destination.FullPath, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await source.CopyToAsync(target, cancellationToken);
+            }
+
+            destination.CreationTimeUtc = path.CreationTimeUtc;
+            destination.LastWriteTimeUtc = path.LastWriteTimeUtc;
+        }
+
         public void DeleteFile() => File.Delete(path.FullPath);
 
         public void CreateDirectory() => Directory.CreateDirectory(path.FullPath);

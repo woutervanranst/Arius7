@@ -102,4 +102,38 @@ public class RootedPathTests
                 Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    [Test]
+    public async Task CopyToAsync_CopiesContent_And_Timestamps()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-copy-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var sourceDirectory = root / PathOf("source");
+            var targetDirectory = root / PathOf("target");
+            var source = root / PathOf("source/file.txt");
+            var destination = root / PathOf("target/file.txt");
+
+            sourceDirectory.CreateDirectory();
+            targetDirectory.CreateDirectory();
+            await source.WriteAllTextAsync("copy-me");
+
+            var modified = new DateTime(2024, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+            source.LastWriteTimeUtc = modified;
+
+            await source.CopyToAsync(destination, overwrite: true);
+
+            destination.ExistsFile.ShouldBeTrue();
+            destination.ReadAllText().ShouldBe("copy-me");
+            destination.LastWriteTimeUtc.ShouldBe(modified);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

@@ -1,32 +1,28 @@
+using Arius.Core.Shared.Paths;
+
 namespace Arius.Tests.Shared.IO;
 
 public static class FileSystemHelper
 {
-    public static void CopyDirectory(string sourceRootPath, string targetRootPath)
+    public static async Task CopyDirectoryAsync(LocalRootPath sourceRootPath, LocalRootPath targetRootPath, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRootPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetRootPath);
+        if (targetRootPath.ExistsDirectory)
+            targetRootPath.DeleteDirectory(recursive: true);
 
-        if (Directory.Exists(targetRootPath))
-            Directory.Delete(targetRootPath, recursive: true);
+        targetRootPath.CreateDirectory();
 
-        Directory.CreateDirectory(targetRootPath);
-
-        foreach (var directoryPath in Directory.EnumerateDirectories(sourceRootPath, "*", SearchOption.AllDirectories))
+        foreach (var directoryPath in Directory.EnumerateDirectories(sourceRootPath.ToString(), "*", SearchOption.AllDirectories))
         {
-            var relativePath = Path.GetRelativePath(sourceRootPath, directoryPath);
-            Directory.CreateDirectory(Path.Combine(targetRootPath, relativePath));
+            var relativePath = sourceRootPath.GetRelativePath(directoryPath);
+            (targetRootPath / relativePath).CreateDirectory();
         }
 
-        foreach (var filePath in Directory.EnumerateFiles(sourceRootPath, "*", SearchOption.AllDirectories))
+        foreach (var filePath in Directory.EnumerateFiles(sourceRootPath.ToString(), "*", SearchOption.AllDirectories))
         {
-            var relativePath = Path.GetRelativePath(sourceRootPath, filePath);
-            var targetPath = Path.Combine(targetRootPath, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            File.Copy(filePath, targetPath, overwrite: true);
-            File.SetCreationTimeUtc(targetPath, File.GetCreationTimeUtc(filePath));
-            File.SetLastWriteTimeUtc(targetPath, File.GetLastWriteTimeUtc(filePath));
+            var relativePath = sourceRootPath.GetRelativePath(filePath);
+            await relativePath.RootedAt(sourceRootPath).CopyToAsync(relativePath.RootedAt(targetRootPath), overwrite: true, cancellationToken);
         }
     }
 }
