@@ -50,9 +50,6 @@ internal static class FileTreePaths
     public static RootedPath GetStagingNodePath(LocalRootPath stagingRoot, string directoryId)
         => stagingRoot / RelativePath.Parse(directoryId);
 
-    public static string GetStagingNodePath(string stagingRoot, string directoryId)
-        => GetStagingNodePath(LocalRootPath.Parse(stagingRoot), directoryId).FullPath;
-
     /// <summary>
     /// Returns the root directory used by the active filetree staging session.
     /// Example: <c>~/.arius/<container>/filetrees/.staging/</c>
@@ -60,16 +57,10 @@ internal static class FileTreePaths
     public static LocalRootPath GetStagingRootDirectory(LocalRootPath fileTreeCacheDirectory)
         => LocalRootPath.Parse((fileTreeCacheDirectory / StagingDirectoryRelativePath).FullPath);
 
-    public static string GetStagingRootDirectory(string fileTreeCacheDirectory)
-        => GetStagingRootDirectory(LocalRootPath.Parse(fileTreeCacheDirectory)).ToString();
-
     /// <summary>
     /// Returns the process lock file path that guards a single active filetree staging session.
     /// Example: <c>~/.arius/<container>/filetrees/.staging.lock</c>
     /// </summary>
     public static RootedPath GetStagingLockPath(LocalRootPath fileTreeCacheDirectory)
         => fileTreeCacheDirectory / StagingLockRelativePath;
-
-    public static string GetStagingLockPath(string fileTreeCacheDirectory)
-        => GetStagingLockPath(LocalRootPath.Parse(fileTreeCacheDirectory)).FullPath;
 }

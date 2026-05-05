@@ -132,11 +132,11 @@ public sealed class FileTreeBuilder
 
         async IAsyncEnumerable<string> ReadNodeLinesAsync(string directoryId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
-            var path = FileTreePaths.GetStagingNodePath(stagingRoot.ToString(), directoryId);
-            if (!File.Exists(path))
+            var path = FileTreePaths.GetStagingNodePath(stagingRoot, directoryId);
+            if (!path.ExistsFile)
                 yield break; // empty directory
 
-            await foreach (var line in File.ReadLinesAsync(path, ct))
+            await foreach (var line in File.ReadLinesAsync(path.FullPath, ct))
                 yield return line;
         }
 

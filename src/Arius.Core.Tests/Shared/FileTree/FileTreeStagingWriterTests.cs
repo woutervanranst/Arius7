@@ -35,6 +35,9 @@ public class FileTreeStagingWriterTests
         var stagingRootMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingRootDirectory), [typeof(LocalRootPath)]);
         var stagingNodeMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingNodePath), [typeof(LocalRootPath), typeof(string)]);
         var stagingLockMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingLockPath), [typeof(LocalRootPath)]);
+        var stringStagingRootMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingRootDirectory), [typeof(string)]);
+        var stringStagingNodeMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingNodePath), [typeof(string), typeof(string)]);
+        var stringStagingLockMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingLockPath), [typeof(string)]);
 
         stagingRootMethod.ShouldNotBeNull();
         stagingRootMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
@@ -44,6 +47,10 @@ public class FileTreeStagingWriterTests
 
         stagingLockMethod.ShouldNotBeNull();
         stagingLockMethod.ReturnType.ShouldBe(typeof(RootedPath));
+
+        stringStagingRootMethod.ShouldBeNull();
+        stringStagingNodeMethod.ShouldBeNull();
+        stringStagingLockMethod.ShouldBeNull();
     }
 
     [Test]
