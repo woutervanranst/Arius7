@@ -77,14 +77,14 @@ public sealed class E2EFixture : IAsyncDisposable
     public LocalRootPath         LocalRoot       { get; }
     public LocalRootPath         RestoreRoot     { get; }
 
-    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
+    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalRootPath? tempRoot = null, Action<LocalRootPath>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
         var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
 
         return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
     }
 
-    public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)
+    public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, LocalRootPath? tempRoot = null, Action<LocalRootPath>? deleteTempRoot = null, CancellationToken ct = default)
     {
         return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, tempRoot, deleteTempRoot, ct);
     }

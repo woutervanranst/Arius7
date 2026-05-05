@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
+using Arius.Core.Shared.Paths;
 using Arius.Explorer.Shared.Extensions;
 
 namespace Arius.Explorer.Settings;
@@ -19,6 +20,9 @@ public record RepositoryOptions
 
     [JsonIgnore, XmlIgnore]
     public DirectoryInfo LocalDirectory => new(LocalDirectoryPath);
+
+    [JsonIgnore, XmlIgnore]
+    public LocalRootPath LocalRoot => LocalRootPath.Parse(LocalDirectoryPath);
 
     [JsonIgnore, XmlIgnore]
     public string AccountKey => string.IsNullOrEmpty(AccountKeyProtected) ? "" : AccountKeyProtected.Unprotect();

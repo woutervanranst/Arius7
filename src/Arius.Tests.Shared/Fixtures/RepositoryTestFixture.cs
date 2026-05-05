@@ -32,7 +32,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly LocalRootPath                     _localRoot;
     private readonly LocalRootPath                     _restoreRoot;
     private readonly IMediator                         _mediator;
-    private readonly Action<string>                    _deleteTempRoot;
+    private readonly Action<LocalRootPath>             _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
@@ -53,7 +53,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         LocalRootPath restoreRoot,
         string account,
         string containerName,
-        Action<string>? deleteTempRoot = null)
+        Action<LocalRootPath>? deleteTempRoot = null)
     {
         BlobContainer   = blobContainer;
         Encryption      = encryption;
@@ -66,7 +66,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         _restoreRoot    = restoreRoot;
         _account        = account;
         _container      = containerName;
-        _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
+        _deleteTempRoot = deleteTempRoot ?? (static path => path.DeleteDirectory(recursive: true));
         _mediator       = Substitute.For<IMediator>();
     }
 
@@ -127,8 +127,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string accountName,
         string containerName,
         string? passphrase = null,
-        string? tempRoot = null,
-        Action<string>? deleteTempRoot = null,
+        LocalRootPath? tempRoot = null,
+        Action<LocalRootPath>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
@@ -151,8 +151,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string accountName,
         string containerName,
         IEncryptionService encryption,
-        string? tempRoot = null,
-        Action<string>? deleteTempRoot = null,
+        LocalRootPath? tempRoot = null,
+        Action<LocalRootPath>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
@@ -267,24 +267,24 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         await ResetLocalCacheAsync(_account, _container);
 
         if (_tempRoot.ExistsDirectory)
-            _deleteTempRoot(_tempRoot.ToString());
+            _deleteTempRoot(_tempRoot);
     }
 
-    private static (LocalRootPath TempRoot, LocalRootPath LocalRoot, LocalRootPath RestoreRoot) CreateTempRoots(string? tempRoot = null)
+    private static (LocalRootPath TempRoot, LocalRootPath LocalRoot, LocalRootPath RestoreRoot) CreateTempRoots(LocalRootPath? tempRoot = null)
     {
-        var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
-        Directory.CreateDirectory(tempRootBase);
+        var tempRootBase = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), TempRootFolderName));
+        tempRootBase.CreateDirectory();
 
-        var resolvedTempRoot = tempRoot ?? Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
-        var localRoot        = Path.Combine(resolvedTempRoot, "source");
-        var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
+        var resolvedTempRoot = tempRoot ?? (tempRootBase / PathSegment.Parse($"arius-test-{Guid.NewGuid():N}"));
+        var localRoot = resolvedTempRoot / PathSegment.Parse("source");
+        var restoreRoot = resolvedTempRoot / PathSegment.Parse("restore");
 
-        if (Directory.Exists(resolvedTempRoot))
-            Directory.Delete(resolvedTempRoot, recursive: true);
+        if (resolvedTempRoot.ExistsDirectory)
+            resolvedTempRoot.DeleteDirectory(recursive: true);
 
-        Directory.CreateDirectory(resolvedTempRoot);
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
-        return (LocalRootPath.Parse(resolvedTempRoot), LocalRootPath.Parse(localRoot), LocalRootPath.Parse(restoreRoot));
+        resolvedTempRoot.CreateDirectory();
+        localRoot.CreateDirectory();
+        restoreRoot.CreateDirectory();
+        return (resolvedTempRoot, localRoot, restoreRoot);
     }
 }

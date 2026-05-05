@@ -178,7 +178,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             {
                 Prefix = node.Prefix,
                 Recursive = false,
-                LocalPath = LocalRootPath.Parse(Repository.LocalDirectoryPath),
+                LocalPath = Repository.LocalRoot,
             });
 
             // Initialize collections for streaming updates
@@ -423,7 +423,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             {
                 var command = new RestoreCommand(new RestoreOptions
                 {
-                    RootDirectory = LocalRootPath.Parse(Repository.LocalDirectoryPath),
+                    RootDirectory = Repository.LocalRoot,
                     TargetPath = selectedFile.File.RelativePath,
                     Overwrite = true,
                     NoPointers = false,

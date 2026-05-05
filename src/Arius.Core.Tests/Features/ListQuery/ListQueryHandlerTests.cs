@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -111,14 +112,14 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_WithLocalPath_MergesCloudAndLocalFilesInOneDirectory()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRoot);
+        var tempRoot = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), $"arius-ls-{Guid.NewGuid():N}"));
+        tempRoot.CreateDirectory();
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt"), "local-shared");
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt.pointer.arius"), FakeContentHash('2').ToString());
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "local-only.txt"), "local-only");
+            await (tempRoot / RelativePath.Parse("shared.txt")).WriteAllTextAsync("local-shared");
+            await (tempRoot / RelativePath.Parse("shared.txt.pointer.arius")).WriteAllTextAsync(FakeContentHash('2').ToString());
+            await (tempRoot / RelativePath.Parse("local-only.txt")).WriteAllTextAsync("local-only");
 
             var rootTree = Entries(
                 FileEntryOf(SegmentOf("cloud-only.txt"), ContentHashFor("cloud-only"), s_created, s_modified),
@@ -142,7 +143,7 @@ public class ListQueryHandlerTests
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = RootOf(tempRoot), Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -175,9 +176,9 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
+            if (tempRoot.ExistsDirectory)
             {
-                Directory.Delete(tempRoot, recursive: true);
+                tempRoot.DeleteDirectory(recursive: true);
             }
         }
     }
@@ -268,9 +269,9 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_DirectoryMerge_AllThreeKindsYieldedWithCorrectFlags()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-38-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(tempRoot, "cloud-local-dir"));
-        Directory.CreateDirectory(Path.Combine(tempRoot, "local-only-dir"));
+        var tempRoot = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), $"arius-ls-38-{Guid.NewGuid():N}"));
+        (tempRoot / RelativePath.Parse("cloud-local-dir")).CreateDirectory();
+        (tempRoot / RelativePath.Parse("local-only-dir")).CreateDirectory();
 
         try
         {
@@ -295,7 +296,7 @@ public class ListQueryHandlerTests
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
             var handler = fixture.CreateListQueryHandler();
 
-            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = RootOf(tempRoot) }), CancellationToken.None)
+            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
                 .OfType<RepositoryDirectoryEntry>()
                 .ToListAsync();
 
@@ -315,8 +316,8 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-                Directory.Delete(tempRoot, recursive: true);
+            if (tempRoot.ExistsDirectory)
+                tempRoot.DeleteDirectory(recursive: true);
         }
     }
 
