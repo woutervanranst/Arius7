@@ -28,4 +28,12 @@ public class RepositoryPathsTests
         ((LocalRootPath)snapshotDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
         ((LocalRootPath)logsDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "logs")));
     }
+
+    [Test]
+    public void TypedPathHelpers_DoNotExposeStringCompatibilityShortcuts()
+    {
+        typeof(LocalRootPath)
+            .GetMethod("op_Implicit", [typeof(LocalRootPath)])
+            .ShouldBeNull();
+    }
 }

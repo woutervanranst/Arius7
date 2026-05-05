@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -30,7 +31,7 @@ public class FileTreeServiceTests
         FileEntryOf(fileName, hash, s_ts1, s_ts2)
     ];
 
-    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
+    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, LocalRootPath cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)
     {
         var blobs        = new FakeInMemoryBlobContainerService();
@@ -42,9 +43,9 @@ public class FileTreeServiceTests
         return (svc, blobs, cacheDir, snapshotsDir);
     }
 
-    private static async Task CleanupAsync(string cacheDir, string snapshotsDir)
+    private static async Task CleanupAsync(LocalRootPath cacheDir, string snapshotsDir)
     {
-        if (Directory.Exists(cacheDir))    Directory.Delete(cacheDir,     recursive: true);
+        if (cacheDir.ExistsDirectory)       cacheDir.DeleteDirectory(recursive: true);
         if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
         await Task.CompletedTask;
     }
@@ -544,8 +545,8 @@ public class FileTreeServiceTests
 
         // Determine the L2 dir and pre-populate it with a dummy file
         var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(acct, cont);
-        Directory.CreateDirectory(chunkL2Dir);
-        var dummyL2File = Path.Combine(chunkL2Dir, "dummy-shard.dat");
+        chunkL2Dir.CreateDirectory();
+        var dummyL2File = Path.Combine(chunkL2Dir.ToString(), "dummy-shard.dat");
         await File.WriteAllTextAsync(dummyL2File, "stale");
 
         try
@@ -575,7 +576,7 @@ public class FileTreeServiceTests
         finally
         {
             await CleanupAsync(cacheDir, snapshotsDir);
-            if (Directory.Exists(chunkL2Dir)) Directory.Delete(chunkL2Dir, recursive: true);
+            if (chunkL2Dir.ExistsDirectory) chunkL2Dir.DeleteDirectory(recursive: true);
         }
     }
 
@@ -718,7 +719,7 @@ public class FileTreeServiceTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))    Directory.Delete(cacheDir,     recursive: true);
+            if (cacheDir.ExistsDirectory)       cacheDir.DeleteDirectory(recursive: true);
             if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
         }
     }

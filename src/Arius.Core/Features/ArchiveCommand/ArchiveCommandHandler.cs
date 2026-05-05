@@ -147,7 +147,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
-        var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheDirectory(_accountName, _containerName).ToString();
+        var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheDirectory(_accountName, _containerName);
         IFileTreeStagingSession stagingSession;
 
         FileTreeHash? snapshotRootHash = null;
@@ -156,7 +156,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         try
         {
             _logger.LogInformation("[phase] open-staging");
-            stagingSession = await _openStagingSession(stagingCacheDirectory, cancellationToken);
+            stagingSession = await _openStagingSession(stagingCacheDirectory.ToString(), cancellationToken);
         }
         catch (OperationCanceledException)
         {

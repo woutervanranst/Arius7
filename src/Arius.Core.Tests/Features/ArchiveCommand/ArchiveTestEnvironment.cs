@@ -5,6 +5,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
@@ -30,8 +31,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
         Directory.CreateDirectory(_rootDirectory);
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName).CreateDirectory();
+        RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).CreateDirectory();
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -40,7 +41,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).ToString();
 
     public FakeLogCollector ArchiveLogs => _logger.Collector;
 
@@ -59,8 +60,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         CancellationToken cancellationToken = default,
         Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName).CreateDirectory();
+        RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).CreateDirectory();
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);

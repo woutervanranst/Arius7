@@ -3,6 +3,7 @@ using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -30,9 +31,9 @@ public sealed class FileTreeService
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
     private readonly ChunkIndexService     _chunkIndex;
-    private readonly string                _diskCacheDir;
-    private readonly string                _snapshotsDir;
-    private readonly string                _chunkIndexL2Dir;
+    private readonly LocalRootPath         _diskCacheDir;
+    private readonly LocalRootPath         _snapshotsDir;
+    private readonly LocalRootPath         _chunkIndexL2Dir;
 
     /// <summary>
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
@@ -56,11 +57,11 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName).ToString();
-        _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
-        _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName).ToString();
+        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
+        _snapshotsDir    = RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
+        _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
-        Directory.CreateDirectory(_diskCacheDir);
+        _diskCacheDir.CreateDirectory();
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
     }
 
@@ -76,7 +77,7 @@ public sealed class FileTreeService
     public async Task<IReadOnlyList<FileTreeEntry>> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
     {
         var hashText = hash.ToString();
-        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
+        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir.ToString(), hashText);
 
         // Avoid race conditions between concurrent readers and writers for the same hash by
         // coordinating via a per-hash in-flight task.
@@ -191,7 +192,7 @@ public sealed class FileTreeService
         }
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
-        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
+        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir.ToString(), hashText);
         await WriteCacheAtomicallyAsync(diskPath, payload.Plaintext, cancellationToken);
     }
 
@@ -273,8 +274,8 @@ public sealed class FileTreeService
             return;
 
         // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
-        var latestLocal = Directory.Exists(_snapshotsDir)
-            ? Directory.EnumerateFiles(_snapshotsDir)
+        var latestLocal = _snapshotsDir.ExistsDirectory
+            ? Directory.EnumerateFiles(_snapshotsDir.ToString())
                 .Select(Path.GetFileName)
                 .Where(n => n is not null)
                 .OrderByDescending(n => n, StringComparer.Ordinal)
@@ -319,7 +320,7 @@ public sealed class FileTreeService
         {
             cancellationToken.ThrowIfCancellationRequested();
             var hash     = Path.GetFileName(blobName); // strip "filetrees/" prefix
-            var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hash);
+            var diskPath = FileTreePaths.GetCachePath(_diskCacheDir.ToString(), hash);
             if (!File.Exists(diskPath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
@@ -328,9 +329,9 @@ public sealed class FileTreeService
         }
 
         // Invalidate chunk-index L2 (another machine may have updated shards)
-        if (Directory.Exists(_chunkIndexL2Dir))
+        if (_chunkIndexL2Dir.ExistsDirectory)
         {
-            foreach (var file in Directory.EnumerateFiles(_chunkIndexL2Dir))
+            foreach (var file in Directory.EnumerateFiles(_chunkIndexL2Dir.ToString()))
             {
                 try { File.Delete(file); } catch { /* ignore individual failures */ }
             }
@@ -356,6 +357,6 @@ public sealed class FileTreeService
         if (!_validated)
             throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
-        return File.Exists(FileTreePaths.GetCachePath(_diskCacheDir, hash));
+        return File.Exists(FileTreePaths.GetCachePath(_diskCacheDir.ToString(), hash));
     }
 }

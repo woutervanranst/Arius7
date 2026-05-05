@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;
@@ -109,7 +110,7 @@ public sealed class SnapshotService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
-    private readonly string                _diskCacheDir;
+    private readonly LocalRootPath         _diskCacheDir;
 
     /// <summary>
     /// Timestamp format used for snapshot blob names and local cache filenames.
@@ -135,8 +136,8 @@ public sealed class SnapshotService
     {
         _blobs        = blobs;
         _encryption   = encryption;
-        _diskCacheDir = GetDiskCacheDirectory(accountName, containerName);
-        Directory.CreateDirectory(_diskCacheDir);
+        _diskCacheDir = RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
+        _diskCacheDir.CreateDirectory();
     }
 
     // ── Directory helper ──────────────────────────────────────────────────────
@@ -252,7 +253,7 @@ public sealed class SnapshotService
 
         // Disk-first: check local plain-JSON cache
         var localName = blobName.StartsWith(BlobPaths.Snapshots) ? blobName[BlobPaths.Snapshots.Length..] : blobName;
-        var localPath = Path.Combine(_diskCacheDir, localName);
+        var localPath = (_diskCacheDir / RelativePath.Parse(localName)).FullPath;
         if (File.Exists(localPath))
         {
             var json = await File.ReadAllBytesAsync(localPath, cancellationToken);
@@ -271,7 +272,7 @@ public sealed class SnapshotService
     private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
     {
         var fileName = manifest.Timestamp.UtcDateTime.ToString(TimestampFormat);
-        var path     = Path.Combine(_diskCacheDir, fileName);
+        var path     = (_diskCacheDir / RelativePath.Parse(fileName)).FullPath;
         var json     = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
         await File.WriteAllBytesAsync(path, json, cancellationToken);
     }

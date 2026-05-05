@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.ChunkIndex;
@@ -25,7 +26,7 @@ public sealed class ChunkIndexService : IDisposable
 
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
-    private readonly string              _l2Dir;
+    private readonly LocalRootPath       _l2Dir;
 
     // ── L1 LRU cache ──────────────────────────────────────────────────────────
 
@@ -70,9 +71,9 @@ public sealed class ChunkIndexService : IDisposable
         _blobs         = blobs;
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
-        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName).ToString();
+        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
 
-        Directory.CreateDirectory(_l2Dir);
+        _l2Dir.CreateDirectory();
     }
 
     // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────
@@ -197,7 +198,7 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         // L2 hit?
-        var l2Path = Path.Combine(_l2Dir, prefix);
+        var l2Path = (_l2Dir / RelativePath.Parse(prefix)).FullPath;
         if (File.Exists(l2Path))
         {
             try
@@ -270,7 +271,7 @@ public sealed class ChunkIndexService : IDisposable
 
     private void SaveToL2(string prefix, Shard shard)
     {
-        var path  = Path.Combine(_l2Dir, prefix);
+        var path  = (_l2Dir / RelativePath.Parse(prefix)).FullPath;
         var bytes = ShardSerializer.SerializeLocal(shard);
         File.WriteAllBytes(path, bytes);
     }

@@ -19,11 +19,14 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
     public LocalRootPath StagingRoot { get; }
 
+    public static Task<FileTreeStagingSession> OpenAsync(LocalRootPath fileTreeCacheDirectory, CancellationToken cancellationToken = default)
+        => OpenAsync(fileTreeCacheDirectory.ToString(), cancellationToken);
+
     public static Task<FileTreeStagingSession> OpenAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
         cancellationToken.ThrowIfCancellationRequested();
 
+        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
         var cacheDirectory = LocalRootPath.Parse(fileTreeCacheDirectory);
         cacheDirectory.CreateDirectory();
 
