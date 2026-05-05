@@ -2,6 +2,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Paths;
+using Arius.Tests.Shared.FileTree;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -21,8 +22,8 @@ public class FileTreeSerializerTests
     {
         var entries = new List<FileTreeEntry>(items.Length);
         entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? new DirectoryEntry { Name = SegmentOf(item.name), FileTreeHash = FileTreeHash.Parse(NormalizeHash(item.hash)) }
-            : new FileEntry { Name      = SegmentOf(item.name), ContentHash  = ContentHash.Parse(NormalizeHash(item.hash)), Created = s_created, Modified = s_modified })));
+            ? FileTreeEntryHelper.DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
+            : FileTreeEntryHelper.FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
 
         return entries;
     }
@@ -74,7 +75,7 @@ public class FileTreeSerializerTests
     [Test]
     public void DirectoryEntry_Name_UsesPathSegmentInMemory()
     {
-        var entry = new DirectoryEntry { Name = SegmentOf("photos"), FileTreeHash = FakeFileTreeHash('d') };
+        var entry = FileTreeEntryHelper.DirectoryEntryOf(SegmentOf("photos"), FakeFileTreeHash('d'));
 
         entry.Name.ShouldBe(SegmentOf("photos"));
     }
@@ -160,8 +161,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            new DirectoryEntry { Name = SegmentOf("sub"), FileTreeHash = FileTreeHash.Parse(NormalizeHash("abc")) },
-            new FileEntry { Name = SegmentOf("f.txt"), ContentHash = ContentHash.Parse(NormalizeHash("def")), Created = s_created, Modified = s_modified }
+            FileTreeEntryHelper.DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
+            FileTreeEntryHelper.FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
