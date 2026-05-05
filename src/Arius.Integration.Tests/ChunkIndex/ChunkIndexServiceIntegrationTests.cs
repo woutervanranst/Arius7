@@ -1,6 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.ChunkIndex;
@@ -121,5 +122,22 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         File.Exists(l2Path).ShouldBeTrue();
         var text = await File.ReadAllTextAsync(l2Path);
         text.ShouldContain(contentHash.ToString());
+    }
+
+    [Test]
+    public void ChunkIndexService_CarriesTypedCacheRootUntilFileSystemBoundary()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var source = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "ChunkIndex", "ChunkIndexService.cs"));
+
+        source.ShouldNotContain("var l2Path = (_l2Dir / RelativePath.Parse(prefix)).FullPath;");
+        source.ShouldNotContain("var path  = (_l2Dir / RelativePath.Parse(prefix)).FullPath;");
+        source.ShouldContain("var l2Path = _l2Dir / RelativePath.Parse(prefix);");
+        source.ShouldContain("var path  = _l2Dir / RelativePath.Parse(prefix);");
+
+        typeof(ChunkIndexService)
+            .GetField("_l2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .FieldType
+            .ShouldBe(typeof(LocalRootPath));
     }
 }

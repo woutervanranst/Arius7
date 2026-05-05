@@ -756,6 +756,42 @@ public class FileTreeServiceTests
         }
     }
 
+    [Test]
+    public void SharedServices_CarryTypedRepositoryRootsUntilStringBoundaries()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var snapshotServiceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "Snapshot", "SnapshotService.cs"));
+        var fileTreeServiceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "FileTree", "FileTreeService.cs"));
+
+        snapshotServiceSource.ShouldNotContain("(_diskCacheDir / RelativePath.Parse(localName)).FullPath");
+        snapshotServiceSource.ShouldNotContain("(_diskCacheDir / RelativePath.Parse(fileName)).FullPath");
+        snapshotServiceSource.ShouldContain("var localPath = _diskCacheDir / RelativePath.Parse(localName);");
+        snapshotServiceSource.ShouldContain("var path     = _diskCacheDir / RelativePath.Parse(fileName);");
+
+        typeof(SnapshotService)
+            .GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .FieldType
+            .ShouldBe(typeof(LocalRootPath));
+
+        typeof(FileTreeService)
+            .GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .FieldType
+            .ShouldBe(typeof(LocalRootPath));
+
+        typeof(FileTreeService)
+            .GetField("_snapshotsDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .FieldType
+            .ShouldBe(typeof(LocalRootPath));
+
+        typeof(FileTreeService)
+            .GetField("_chunkIndexL2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .FieldType
+            .ShouldBe(typeof(LocalRootPath));
+
+        fileTreeServiceSource.ShouldContain("Directory.EnumerateFiles(_snapshotsDir.ToString())");
+        fileTreeServiceSource.ShouldContain("Directory.EnumerateFiles(_chunkIndexL2Dir.ToString())");
+    }
+
     // ── 7.x  ValidateAsync — idempotent (called twice, no double slow-path) ───
 
     [Test]

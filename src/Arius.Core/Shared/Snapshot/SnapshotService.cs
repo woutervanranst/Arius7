@@ -253,12 +253,12 @@ public sealed class SnapshotService
 
         // Disk-first: check local plain-JSON cache
         var localName = blobName.StartsWith(BlobPaths.Snapshots) ? blobName[BlobPaths.Snapshots.Length..] : blobName;
-        var localPath = (_diskCacheDir / RelativePath.Parse(localName)).FullPath;
-        if (File.Exists(localPath))
+        var localPath = _diskCacheDir / RelativePath.Parse(localName);
+        if (File.Exists(localPath.FullPath))
         {
-            var json = await File.ReadAllBytesAsync(localPath, cancellationToken);
+            var json = await File.ReadAllBytesAsync(localPath.FullPath, cancellationToken);
             return JsonSerializer.Deserialize<SnapshotManifest>(json, s_localJsonOptions)
-                ?? throw new InvalidDataException($"Failed to deserialize local snapshot: {localPath}");
+                ?? throw new InvalidDataException($"Failed to deserialize local snapshot: {localPath.FullPath}");
         }
 
         // Fall back to Azure and cache locally
@@ -272,9 +272,9 @@ public sealed class SnapshotService
     private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
     {
         var fileName = manifest.Timestamp.UtcDateTime.ToString(TimestampFormat);
-        var path     = (_diskCacheDir / RelativePath.Parse(fileName)).FullPath;
+        var path     = _diskCacheDir / RelativePath.Parse(fileName);
         var json     = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
-        await File.WriteAllBytesAsync(path, json, cancellationToken);
+        await File.WriteAllBytesAsync(path.FullPath, json, cancellationToken);
     }
 
     private async Task<SnapshotManifest> LoadFromAzureAsync(

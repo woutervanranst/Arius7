@@ -143,8 +143,17 @@ public sealed class FileTreeService
             {
                 // Treat concurrent directory cleanup or creation races as a cache miss.
             }
+            catch (IOException ex) when (IsTransientFileShareViolation(ex))
+            {
+                // A concurrent writer may still be publishing the cache file on Windows.
+                // Treat the transient sharing violation as a cache miss and wait on the in-flight read.
+                return null;
+            }
 
             return null;
+
+            static bool IsTransientFileShareViolation(IOException exception)
+                => exception.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021);
         }
 
         async Task<IReadOnlyList<FileTreeEntry>> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
