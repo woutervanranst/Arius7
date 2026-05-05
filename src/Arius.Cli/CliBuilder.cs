@@ -5,6 +5,7 @@ using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.Shared;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -152,10 +153,10 @@ public static class CliBuilder
     public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
     {
         var logDir  = RepositoryPaths.GetLogsDirectory(accountName, containerName);
-        Directory.CreateDirectory(logDir);
+        logDir.CreateDirectory();
 
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        var logFile   = Path.Combine(logDir, $"{timestamp}_{commandName}.txt");
+        var logFile   = Path.Combine(logDir.ToString(), $"{timestamp}_{commandName}.txt");
 
         const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}{Exception}";
 

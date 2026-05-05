@@ -105,7 +105,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
         var prefix = Shard.PrefixOf(contentHash);
-        var l2Path = Path.Combine(RepositoryPaths.GetChunkIndexCacheDirectory(Account, containerName), prefix);
+        var l2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(Account, containerName);
+        var l2Path = Path.Combine(l2Dir.ToString(), prefix);
         await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
