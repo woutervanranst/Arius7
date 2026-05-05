@@ -16,7 +16,7 @@ public class ArchiveStepBenchmarks
 {
     private AzuriteE2EBackendFixture? _backend;
     private SyntheticRepositoryDefinition? _definition;
-    private string? _preparedSourceRoot;
+    private LocalRootPath? _preparedSourceRoot;
     private E2EStorageBackendContext? _context;
     private RepositoryTestFixture? _fixture;
 
@@ -27,13 +27,14 @@ public class ArchiveStepBenchmarks
         await _backend.InitializeAsync();
 
         _definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
-        _preparedSourceRoot = Path.Combine(Path.GetTempPath(), "arius", $"benchmark-source-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_preparedSourceRoot);
+        var preparedSourceRoot = Path.Combine(Path.GetTempPath(), "arius", $"benchmark-source-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(preparedSourceRoot);
+        _preparedSourceRoot = RootOf(preparedSourceRoot);
 
         await SyntheticRepositoryMaterializer.MaterializeV1Async(
             _definition,
             RepresentativeWorkflowCatalog.Canonical.Seed,
-            RootOf(_preparedSourceRoot),
+            _preparedSourceRoot.Value,
             new PassphraseEncryptionService("arius-test-passphrase"));
     }
 
@@ -43,8 +44,8 @@ public class ArchiveStepBenchmarks
         if (_backend is not null)
             await _backend.DisposeAsync();
 
-        if (_preparedSourceRoot is not null && Directory.Exists(_preparedSourceRoot))
-            Directory.Delete(_preparedSourceRoot, recursive: true);
+        if (_preparedSourceRoot is not null && Directory.Exists(_preparedSourceRoot.Value.ToString()))
+            Directory.Delete(_preparedSourceRoot.Value.ToString(), recursive: true);
     }
 
     [IterationSetup]
@@ -62,10 +63,10 @@ public class ArchiveStepBenchmarks
             _context.AccountName,
             _context.ContainerName);
 
-        if (Directory.Exists(_fixture.LocalRoot))
-            Directory.Delete(_fixture.LocalRoot, recursive: true);
+        if (Directory.Exists(_fixture.LocalRootPath.ToString()))
+            Directory.Delete(_fixture.LocalRootPath.ToString(), recursive: true);
 
-        FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalRoot);
+        FileSystemHelper.CopyDirectory(_preparedSourceRoot.Value.ToString(), _fixture.LocalRootPath.ToString());
     }
 
     [IterationCleanup]
@@ -97,7 +98,7 @@ public class ArchiveStepBenchmarks
             .Handle(
                 new ArchiveCommand(new ArchiveCommandOptions
                 {
-                    RootDirectory = LocalRootPath.Parse(_fixture.LocalRoot),
+                    RootDirectory = _fixture.LocalRootPath,
                 }),
                 CancellationToken.None)
             .AsTask();

@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -131,13 +132,14 @@ public class RoundtripTests(AzuriteFixture azurite)
             ("root.txt",                       20),
         };
 
-        var contents = new Dictionary<string, byte[]>();
+        var contents = new Dictionary<RelativePath, byte[]>();
         foreach (var (path, size) in files)
         {
             var bytes = new byte[size];
             Random.Shared.NextBytes(bytes);
-            fix.WriteFile(PathOf(path), bytes);
-            contents[path] = bytes;
+            var relativePath = PathOf(path);
+            fix.WriteFile(relativePath, bytes);
+            contents[relativePath] = bytes;
         }
 
         var archiveResult = await fix.ArchiveAsync();
@@ -149,7 +151,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(files.Length);
 
         foreach (var (path, expected) in contents)
-            fix.ReadRestored(PathOf(path)).ShouldBe(expected, $"File mismatch: {path}");
+            fix.ReadRestored(path).ShouldBe(expected, $"File mismatch: {path}");
     }
 
     // ── 13.6: Incremental archive — multiple snapshots ────────────────────────
@@ -440,12 +442,13 @@ public class RoundtripTests(AzuriteFixture azurite)
             "brackets[test].txt",
         };
 
-        var contents = new Dictionary<string, byte[]>();
+        var contents = new Dictionary<RelativePath, byte[]>();
         foreach (var name in files)
         {
             var bytes = new byte[50]; Random.Shared.NextBytes(bytes);
-            fix.WriteFile(PathOf(name), bytes);
-            contents[name] = bytes;
+            var relativePath = PathOf(name);
+            fix.WriteFile(relativePath, bytes);
+            contents[relativePath] = bytes;
         }
 
         var archiveResult = await fix.ArchiveAsync();
@@ -456,7 +459,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(files.Length);
 
         foreach (var (name, expected) in contents)
-            fix.ReadRestored(PathOf(name)).ShouldBe(expected, $"Mismatch: {name}");
+            fix.ReadRestored(name).ShouldBe(expected, $"Mismatch: {name}");
     }
 
     // ── 14.6: Empty file (0 bytes) roundtrip ─────────────────────────────────

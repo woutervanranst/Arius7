@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -25,21 +26,21 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // ── Arrange: multiple small files in nested directories ───────────
-        var smallFiles = new (string RelPath, byte[] Content, DateTime Created, DateTime Modified)[]
+        var smallFiles = new (RelativePath RelPath, byte[] Content, DateTime Created, DateTime Modified)[]
         {
-            ("docs/readme.txt",       "hello world"u8.ToArray(),
+            (PathOf("docs/readme.txt"),       "hello world"u8.ToArray(),
              new(2023, 3, 10, 8, 0, 0, DateTimeKind.Utc),  new(2024, 5, 20, 16, 30, 0, DateTimeKind.Utc)),
 
-            ("docs/notes/meeting.md", "# Meeting notes\n- item 1\n- item 2"u8.ToArray(),
+            (PathOf("docs/notes/meeting.md"), "# Meeting notes\n- item 1\n- item 2"u8.ToArray(),
              new(2022, 11, 1, 12, 0, 0, DateTimeKind.Utc), new(2023, 7, 15, 9, 45, 0, DateTimeKind.Utc)),
 
-            ("src/lib/util.cs",       "namespace Util { class C {} }"u8.ToArray(),
+            (PathOf("src/lib/util.cs"),       "namespace Util { class C {} }"u8.ToArray(),
              new(2024, 1, 5, 0, 0, 0, DateTimeKind.Utc),   new(2025, 2, 28, 23, 59, 0, DateTimeKind.Utc)),
         };
 
         foreach (var (relPath, content, created, modified) in smallFiles)
         {
-            var fullPath = fix.WriteFile(PathOf(relPath), content);
+            var fullPath = fix.WriteFile(relPath, content);
             File.SetCreationTimeUtc(fullPath, created);
             File.SetLastWriteTimeUtc(fullPath, modified);
         }
@@ -47,7 +48,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = RootOf(fix.LocalRoot),
+            RootDirectory      = fix.LocalRootPath,
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -55,7 +56,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRootPath,
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
@@ -64,8 +65,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         // ── Assert ────────────────────────────────────────────────────────
         foreach (var (relPath, _, expectedCreated, expectedModified) in smallFiles)
         {
-            var restoredPath = Path.Combine(fix.RestoreRoot,
-                relPath.Replace('/', Path.DirectorySeparatorChar));
+            var restoredPath = (fix.RestoreRootPath / relPath).FullPath;
             var pointerPath = restoredPath + ".pointer.arius";
 
             File.Exists(restoredPath).ShouldBeTrue($"Binary should exist: {relPath}");
@@ -106,21 +106,21 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // ── Arrange: a single file just over the 1 MB threshold ───────────
-        var relPath  = "data/assets/bigfile.bin";
+        var relPath  = PathOf("data/assets/bigfile.bin");
         var content  = new byte[1024 * 1024 + 512]; // just over 1 MB
         Random.Shared.NextBytes(content);
 
         var expectedCreated  = new DateTime(2021, 6, 15, 10, 30, 0, DateTimeKind.Utc);
         var expectedModified = new DateTime(2024, 12, 25, 18, 0, 0, DateTimeKind.Utc);
 
-        var sourcePath = fix.WriteFile(PathOf(relPath), content);
+        var sourcePath = fix.WriteFile(relPath, content);
         File.SetCreationTimeUtc(sourcePath, expectedCreated);
         File.SetLastWriteTimeUtc(sourcePath, expectedModified);
 
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = RootOf(fix.LocalRoot),
+            RootDirectory      = fix.LocalRootPath,
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -128,15 +128,14 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = RootOf(fix.RestoreRoot),
+            RootDirectory = fix.RestoreRootPath,
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
         // ── Assert ────────────────────────────────────────────────────────
-        var restoredPath = Path.Combine(fix.RestoreRoot,
-            relPath.Replace('/', Path.DirectorySeparatorChar));
+        var restoredPath = (fix.RestoreRootPath / relPath).FullPath;
         var pointerPath = restoredPath + ".pointer.arius";
 
         File.Exists(restoredPath).ShouldBeTrue("Binary should exist");

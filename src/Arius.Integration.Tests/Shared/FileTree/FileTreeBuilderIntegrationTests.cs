@@ -32,13 +32,13 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
     private static async Task<FileTreeStagingSession> CreateStagingAsync(
         string containerName,
-        params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
+        params (RelativePath Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
     {
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(Account, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Timestamp, file.Timestamp);
+            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Timestamp, file.Timestamp);
 
         return session;
     }
@@ -55,7 +55,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             await using var stagingSession = await CreateStagingAsync(
                 container.Name,
-                ("readme.txt", FakeContentHash('a'), now));
+                (PathOf("readme.txt"), FakeContentHash('a'), now));
 
             var builder  = CreateBuilder(blobs, container.Name, out var fileTreeService);
             await fileTreeService.ValidateAsync();
@@ -97,7 +97,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             await using var stagingSession = await CreateStagingAsync(
                 container.Name,
-                ("photo.jpg", FakeContentHash('b'), now));
+                (PathOf("photo.jpg"), FakeContentHash('b'), now));
 
             var builder1 = CreateBuilder(blobs, container.Name, out var fileTreeService1);
             await fileTreeService1.ValidateAsync();
@@ -141,9 +141,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             await using var stagingSession = await CreateStagingAsync(
                 container.Name,
-                ("photos/2024/june/a.jpg", FakeContentHash('c'), now),
-                ("photos/2024/june/b.jpg", FakeContentHash('d'), now),
-                ("docs/report.pdf", FakeContentHash('e'), now));
+                (PathOf("photos/2024/june/a.jpg"), FakeContentHash('c'), now),
+                (PathOf("photos/2024/june/b.jpg"), FakeContentHash('d'), now),
+                (PathOf("docs/report.pdf"), FakeContentHash('e'), now));
 
             var builder  = CreateBuilder(blobs, container.Name, out var fileTreeService);
             await fileTreeService.ValidateAsync();

@@ -18,13 +18,13 @@ public class FileTreeBuilderTests
     private static async Task<(FileTreeStagingSession Session, string StagingRoot)> CreateStagingAsync(
         string accountName,
         string containerName,
-        params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
+        params (RelativePath Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
     {
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Created, file.Modified);
+            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
 
         return (session, session.StagingRoot);
     }
@@ -83,7 +83,7 @@ public class FileTreeBuilderTests
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var (stagingSession, stagingRoot) = await CreateStagingAsync(acct, cont, ("readme.txt", FakeContentHash('b'), now, now));
+            var (stagingSession, stagingRoot) = await CreateStagingAsync(acct, cont, (PathOf("readme.txt"), FakeContentHash('b'), now, now));
 
             var blobs   = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, acct, cont, out var fileTreeService);
@@ -118,17 +118,17 @@ public class FileTreeBuilderTests
             await using var stagingSession1 = (await CreateStagingAsync(
                 acct1,
                 cont1,
-                ("photos/a.jpg", FakeContentHash('c'), now, now),
-                ("photos/b.jpg", FakeContentHash('d'), now, now),
-                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
+                (PathOf("photos/a.jpg"), FakeContentHash('c'), now, now),
+                (PathOf("photos/b.jpg"), FakeContentHash('d'), now, now),
+                (PathOf("docs/r.pdf"), FakeContentHash('e'), now, now))).Session;
             var stagingRoot1 = stagingSession1.StagingRoot;
 
             await using var stagingSession2 = (await CreateStagingAsync(
                 acct2,
                 cont2,
-                ("photos/a.jpg", FakeContentHash('c'), now, now),
-                ("photos/b.jpg", FakeContentHash('d'), now, now),
-                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
+                (PathOf("photos/a.jpg"), FakeContentHash('c'), now, now),
+                (PathOf("photos/b.jpg"), FakeContentHash('d'), now, now),
+                (PathOf("docs/r.pdf"), FakeContentHash('e'), now, now))).Session;
             var stagingRoot2 = stagingSession2.StagingRoot;
 
             var blobs1   = new FakeRecordingBlobContainerService();
@@ -164,7 +164,7 @@ public class FileTreeBuilderTests
             var blobs1 = new FakeRecordingBlobContainerService();
             var blobs2 = new FakeRecordingBlobContainerService();
             FileTreeHash? root1;
-            await using (var stagingSession1 = (await CreateStagingAsync(acct, cont, ("file.txt", FakeContentHash('f'), now1, now1))).Session)
+            await using (var stagingSession1 = (await CreateStagingAsync(acct, cont, (PathOf("file.txt"), FakeContentHash('f'), now1, now1))).Session)
             {
                 var builder1 = CreateBuilder(blobs1, acct, cont, out var fileTreeService1);
                 await fileTreeService1.ValidateAsync();
@@ -174,7 +174,7 @@ public class FileTreeBuilderTests
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
 
             FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(acct, cont, ("file.txt", FakeContentHash('f'), now1, now2))).Session)
+            await using (var stagingSession2 = (await CreateStagingAsync(acct, cont, (PathOf("file.txt"), FakeContentHash('f'), now1, now2))).Session)
             {
                 var builder2 = CreateBuilder(blobs2, acct, cont, out var fileTreeService2);
                 await fileTreeService2.ValidateAsync();
@@ -359,8 +359,8 @@ public class FileTreeBuilderTests
             await using var stagingSession = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("photos/a.jpg", FakeContentHash('d'), now, now),
-                ("docs/b.jpg", FakeContentHash('e'), now, now))).Session;
+                (PathOf("photos/a.jpg"), FakeContentHash('d'), now, now),
+                (PathOf("docs/b.jpg"), FakeContentHash('e'), now, now))).Session;
 
             var blobs = new BlockingFileTreeUploadBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
@@ -395,7 +395,7 @@ public class FileTreeBuilderTests
 
             var blobs   = new FakeRecordingBlobContainerService();
             FileTreeHash? root;
-            await using (var stagingSession1 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
+            await using (var stagingSession1 = (await CreateStagingAsync(accountName, containerName, (PathOf("file.txt"), FakeContentHash('1'), now, now))).Session)
             {
                 var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService1);
                 await fileTreeService1.ValidateAsync();
@@ -410,7 +410,7 @@ public class FileTreeBuilderTests
                 blobs2.SeedRemoteBlob(blobName);
 
             FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
+            await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, (PathOf("file.txt"), FakeContentHash('1'), now, now))).Session)
             {
                 var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
                 await fileTreeService2.ValidateAsync();
@@ -439,7 +439,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('2'), now, now))).Session;
+            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, (PathOf("file.txt"), FakeContentHash('2'), now, now))).Session;
 
             var blobs = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out _);
@@ -473,9 +473,9 @@ public class FileTreeBuilderTests
             await using var stagingSession = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("photos/2024/june/a.jpg", FakeContentHash('7'), now, now),
-                ("photos/2024/june/b.jpg", FakeContentHash('8'), now, now),
-                ("docs/report.pdf", FakeContentHash('9'), now, now))).Session;
+                (PathOf("photos/2024/june/a.jpg"), FakeContentHash('7'), now, now),
+                (PathOf("photos/2024/june/b.jpg"), FakeContentHash('8'), now, now),
+                (PathOf("docs/report.pdf"), FakeContentHash('9'), now, now))).Session;
 
             var blobs = new BlockingFileTreeUploadBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
@@ -512,7 +512,7 @@ public class FileTreeBuilderTests
             const string hexChars = "0123456789abcdef";
             var files = Enumerable.Range(0, 32)
                 .Select(i => (
-                    Path: $"dir-{i:D2}/file.txt",
+                    Path: PathOf($"dir-{i:D2}/file.txt"),
                     Hash: FakeContentHash(hexChars[i % hexChars.Length]),
                     Created: now,
                     Modified: now))
@@ -668,9 +668,9 @@ public class FileTreeBuilderTests
             await using (var stagingSession1 = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
-                ("a/b/other.txt", FakeContentHash('b'), now, now),
-                ("z.txt", FakeContentHash('c'), now, now))).Session)
+                (PathOf("a/b/c/file.txt"), FakeContentHash('a'), now, now),
+                (PathOf("a/b/other.txt"), FakeContentHash('b'), now, now),
+                (PathOf("z.txt"), FakeContentHash('c'), now, now))).Session)
             {
                 var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
                 await fileTreeService.ValidateAsync();
@@ -685,9 +685,9 @@ public class FileTreeBuilderTests
             await using (var stagingSession2 = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
-                ("a/b/other.txt", FakeContentHash('b'), now, now),
-                ("z.txt", FakeContentHash('c'), now, now))).Session)
+                (PathOf("a/b/c/file.txt"), FakeContentHash('a'), now, now),
+                (PathOf("a/b/other.txt"), FakeContentHash('b'), now, now),
+                (PathOf("z.txt"), FakeContentHash('c'), now, now))).Session)
             {
                 var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
                 await fileTreeService2.ValidateAsync();
@@ -721,10 +721,10 @@ public class FileTreeBuilderTests
             await using (var stagingSession1 = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("b.txt", FakeContentHash('1'), now, now),
-                ("a.txt", FakeContentHash('2'), now, now),
-                ("docs/z.txt", FakeContentHash('3'), now, now),
-                ("docs/a.txt", FakeContentHash('4'), now, now))).Session)
+                (PathOf("b.txt"), FakeContentHash('1'), now, now),
+                (PathOf("a.txt"), FakeContentHash('2'), now, now),
+                (PathOf("docs/z.txt"), FakeContentHash('3'), now, now),
+                (PathOf("docs/a.txt"), FakeContentHash('4'), now, now))).Session)
             {
                 var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
                 await fileTreeService1.ValidateAsync();
@@ -739,10 +739,10 @@ public class FileTreeBuilderTests
             await using (var stagingSession2 = (await CreateStagingAsync(
                 accountName,
                 containerName,
-                ("docs/a.txt", FakeContentHash('4'), now, now),
-                ("docs/z.txt", FakeContentHash('3'), now, now),
-                ("a.txt", FakeContentHash('2'), now, now),
-                ("b.txt", FakeContentHash('1'), now, now))).Session)
+                (PathOf("docs/a.txt"), FakeContentHash('4'), now, now),
+                (PathOf("docs/z.txt"), FakeContentHash('3'), now, now),
+                (PathOf("a.txt"), FakeContentHash('2'), now, now),
+                (PathOf("b.txt"), FakeContentHash('1'), now, now))).Session)
             {
                 var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
                 await fileTreeService2.ValidateAsync();
