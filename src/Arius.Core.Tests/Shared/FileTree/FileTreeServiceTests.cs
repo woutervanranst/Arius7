@@ -27,17 +27,8 @@ public class FileTreeServiceTests
 
     private static IReadOnlyList<FileTreeEntry> MakeEntries(string fileName = "a.txt", string hash = "aabbccdd") =>
     [
-        new FileEntry
-        {
-            Name        = SegmentOf(fileName),
-            ContentHash = ContentHash.Parse(NormalizeHash(hash)),
-            Created  = s_ts1,
-            Modified = s_ts2
-        }
+        FileOf(fileName, hash, s_ts1, s_ts2)
     ];
-
-    private static string NormalizeHash(string hash)
-        => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
 
     private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)

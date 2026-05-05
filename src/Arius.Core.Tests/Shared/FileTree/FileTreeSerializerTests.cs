@@ -22,8 +22,8 @@ public class FileTreeSerializerTests
     {
         var entries = new List<FileTreeEntry>(items.Length);
         entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
-            : FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
+            ? DirOf(item.name, item.hash)
+            : FileOf(item.name, item.hash, s_created, s_modified))));
 
         return entries;
     }
@@ -161,8 +161,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
-            FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
+            DirOf("sub", "abc"),
+            FileOf("f.txt", "def", s_created, s_modified)
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
@@ -202,13 +202,7 @@ public class FileTreeSerializerTests
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
-        var entry = new FileEntry
-        {
-            Name = SegmentOf("file with spaces.txt"),
-            ContentHash = ContentHash.Parse(NormalizeHash("abc")),
-            Created = created,
-            Modified = modified
-        };
+        var entry = FileOf("file with spaces.txt", "abc", created, modified);
 
         var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry);
         var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);
@@ -221,13 +215,7 @@ public class FileTreeSerializerTests
     {
         var created = new DateTimeOffset(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
         var modified = created.AddMinutes(5);
-        var entry = new FileEntry
-        {
-            Name = SegmentOf("file with spaces.txt"),
-            ContentHash = ContentHash.Parse(NormalizeHash("abc")),
-            Created = created,
-            Modified = modified
-        };
+        var entry = FileOf("file with spaces.txt", "abc", created, modified);
 
         var line = FileTreeSerializer.SerializePersistedFileEntryLine(entry) + "\r";
         var parsed = FileTreeSerializer.ParsePersistedFileEntryLine(line);
