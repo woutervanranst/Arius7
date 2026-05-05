@@ -46,7 +46,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
     private async Task AppendFileEntryAsync(RelativePath directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
-        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot.ToString(), directoryId);
+        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, directoryId);
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
@@ -66,22 +66,22 @@ internal sealed class FileTreeStagingWriter : IDisposable
             var directoryName = currentPath.Name
                 ?? throw new InvalidOperationException("Directory path must include a directory name.");
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
-            var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot.ToString(), FileTreePaths.GetStagingDirectoryId(parentPath));
+            var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
 
             await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
         }
     }
 
-    private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
+    private async Task AppendLineAsync(RootedPath path, string line, CancellationToken cancellationToken)
     {
-        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
+        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path.FullPath) % (uint)_lockStripes.Length];
         await nodeLock.WaitAsync(cancellationToken);
 
         try
         {
-            Directory.CreateDirectory(_stagingRoot.ToString());
+            _stagingRoot.CreateDirectory();
 
-            await File.AppendAllLinesAsync(path, [line], cancellationToken);
+            await File.AppendAllLinesAsync(path.FullPath, [line], cancellationToken);
         }
         finally
         {

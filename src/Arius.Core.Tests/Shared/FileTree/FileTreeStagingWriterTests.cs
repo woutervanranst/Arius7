@@ -30,19 +30,37 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    public void FileTreePaths_ExposeTypedStagingHelpers()
+    {
+        var stagingRootMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingRootDirectory), [typeof(LocalRootPath)]);
+        var stagingNodeMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingNodePath), [typeof(LocalRootPath), typeof(string)]);
+        var stagingLockMethod = typeof(FileTreePaths).GetMethod(nameof(FileTreePaths.GetStagingLockPath), [typeof(LocalRootPath)]);
+
+        stagingRootMethod.ShouldNotBeNull();
+        stagingRootMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+
+        stagingNodeMethod.ShouldNotBeNull();
+        stagingNodeMethod.ReturnType.ShouldBe(typeof(RootedPath));
+
+        stagingLockMethod.ShouldNotBeNull();
+        stagingLockMethod.ReturnType.ShouldBe(typeof(RootedPath));
+    }
+
+    [Test]
     public async Task OpenAsync_DeletesExistingStagingDirectory()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheDir);
-            Directory.CreateDirectory(stagingRoot);
-            await File.WriteAllTextAsync(Path.Combine(stagingRoot, "stale"), "old");
+            var cacheRoot = LocalRootPath.Parse(cacheDir);
+            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheRoot);
+            stagingRoot.CreateDirectory();
+            await (stagingRoot / RelativePath.Parse("stale")).WriteAllTextAsync("old");
 
             await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
 
-            File.Exists(Path.Combine(stagingRoot, "stale")).ShouldBeFalse();
-            Directory.Exists(session.StagingRoot.ToString()).ShouldBeTrue();
+            (stagingRoot / RelativePath.Parse("stale")).ExistsFile.ShouldBeFalse();
+            session.StagingRoot.ExistsDirectory.ShouldBeTrue();
         }
         finally
         {
@@ -76,12 +94,12 @@ public class FileTreeStagingWriterTests
         try
         {
             var first = await FileTreeStagingSession.OpenAsync(cacheDir);
-            await File.WriteAllTextAsync(Path.Combine(first.StagingRoot.ToString(), "owned-by-first"), "first");
+            await (first.StagingRoot / RelativePath.Parse("owned-by-first")).WriteAllTextAsync("first");
 
             await first.DisposeAsync();
 
             await using var second = await FileTreeStagingSession.OpenAsync(cacheDir);
-            File.Exists(Path.Combine(second.StagingRoot.ToString(), "owned-by-first")).ShouldBeFalse();
+            (second.StagingRoot / RelativePath.Parse("owned-by-first")).ExistsFile.ShouldBeFalse();
         }
         finally
         {
@@ -97,11 +115,11 @@ public class FileTreeStagingWriterTests
         try
         {
             var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            await File.WriteAllTextAsync(Path.Combine(session.StagingRoot.ToString(), "owned-by-first"), "first");
+            await (session.StagingRoot / RelativePath.Parse("owned-by-first")).WriteAllTextAsync("first");
 
             await session.DisposeAsync();
 
-            Directory.Exists(FileTreePaths.GetStagingRootDirectory(cacheDir)).ShouldBeFalse();
+            FileTreePaths.GetStagingRootDirectory(LocalRootPath.Parse(cacheDir)).ExistsDirectory.ShouldBeFalse();
         }
         finally
         {
@@ -123,14 +141,14 @@ public class FileTreeStagingWriterTests
 
             var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
-            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), rootId);
-            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), photosId);
-            var line = (await File.ReadAllLinesAsync(photosPath)).Single();
+            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId);
+            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId);
+            var line = (await File.ReadAllLinesAsync(photosPath.FullPath)).Single();
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
             entry.Name.ShouldBe(SegmentOf("a.jpg"));
             entry.ContentHash.ShouldBe(TestHash);
-            File.Exists(rootPath).ShouldBeTrue();
+            rootPath.ExistsFile.ShouldBeTrue();
         }
         finally
         {
@@ -151,8 +169,8 @@ public class FileTreeStagingWriterTests
             await writer.AppendFileEntryAsync(RelativePath.Parse("a.jpg"), TestHash, TestTimestamp, TestTimestamp);
 
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
-            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), rootId);
-            var rootEntries = await File.ReadAllLinesAsync(rootPath);
+            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId);
+            var rootEntries = await File.ReadAllLinesAsync(rootPath.FullPath);
 
             rootEntries.Length.ShouldBe(1);
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(rootEntries.Single());
@@ -183,8 +201,8 @@ public class FileTreeStagingWriterTests
             var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
             var photos2024Id = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos/2024"));
 
-            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), rootId));
-            var photosEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), photosId));
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId).FullPath);
+            var photosEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId).FullPath);
 
             rootEntries.ShouldContain($"{photosId} D photos");
             rootEntries.ShouldNotContain($"{photosId} D photos/");
@@ -227,9 +245,9 @@ public class FileTreeStagingWriterTests
             var leafParent = prefixes[^1];
             var leafParentId = FileTreePaths.GetStagingDirectoryId(leafParent);
 
-            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), rootId));
-            var firstDirectoryEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), firstDirectoryId));
-            var leafEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), leafParentId));
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId).FullPath);
+            var firstDirectoryEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, firstDirectoryId).FullPath);
+            var leafEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, leafParentId).FullPath);
 
             rootEntries.ShouldContain($"{firstDirectoryId} D d0");
             rootEntries.ShouldNotContain($"{firstDirectoryId} D d0/");
@@ -260,9 +278,9 @@ public class FileTreeStagingWriterTests
 
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
             var spacedDirectoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse(" photos"));
-            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), rootId));
-            var nodePath = FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), spacedDirectoryId);
-            var line = (await File.ReadAllLinesAsync(nodePath)).Single(l => l.Contains(" F ", StringComparison.Ordinal));
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId).FullPath);
+            var nodePath = FileTreePaths.GetStagingNodePath(session.StagingRoot, spacedDirectoryId);
+            var line = (await File.ReadAllLinesAsync(nodePath.FullPath)).Single(l => l.Contains(" F ", StringComparison.Ordinal));
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
             rootEntries.ShouldContain($"{spacedDirectoryId} D  photos");
@@ -356,8 +374,8 @@ public class FileTreeStagingWriterTests
             await writer.AppendFileEntryAsync(RelativePath.Parse("photos/a.jpg"), TestHash, TestTimestamp, TestTimestamp);
 
             var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
-            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot.ToString(), photosId);
-            var line = (await File.ReadAllLinesAsync(photosPath)).Single();
+            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId);
+            var line = (await File.ReadAllLinesAsync(photosPath.FullPath)).Single();
             var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
 
             entry.Name.ShouldBe(SegmentOf("a.jpg"));

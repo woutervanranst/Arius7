@@ -24,14 +24,15 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
         ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Directory.CreateDirectory(fileTreeCacheDirectory);
+        var cacheDirectory = LocalRootPath.Parse(fileTreeCacheDirectory);
+        cacheDirectory.CreateDirectory();
 
-        var lockPath = FileTreePaths.GetStagingLockPath(fileTreeCacheDirectory);
+        var lockPath = FileTreePaths.GetStagingLockPath(cacheDirectory);
         FileStream lockStream;
 
         try
         {
-            lockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
+            lockStream = new FileStream(lockPath.FullPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
         }
         catch (IOException ex)
         {
@@ -40,11 +41,11 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         try
         {
-            var stagingRoot = LocalRootPath.Parse(FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory));
-            if (Directory.Exists(stagingRoot.ToString()))
-                Directory.Delete(stagingRoot.ToString(), recursive: true);
+            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheDirectory);
+            if (stagingRoot.ExistsDirectory)
+                stagingRoot.DeleteDirectory(recursive: true);
 
-            Directory.CreateDirectory(stagingRoot.ToString());
+            stagingRoot.CreateDirectory();
             return Task.FromResult(new FileTreeStagingSession(stagingRoot, lockStream));
         }
         catch
@@ -58,8 +59,8 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
     {
         try
         {
-            if (Directory.Exists(StagingRoot.ToString()))
-                Directory.Delete(StagingRoot.ToString(), recursive: true);
+            if (StagingRoot.ExistsDirectory)
+                StagingRoot.DeleteDirectory(recursive: true);
         }
         finally
         {

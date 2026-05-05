@@ -12,6 +12,8 @@ internal static class FileTreePaths
 {
     private const string StagingDirectoryName   = ".staging";
     private const string LockFileName           = ".staging.lock";
+    private static readonly RelativePath StagingDirectoryRelativePath = RelativePath.Parse(StagingDirectoryName);
+    private static readonly RelativePath StagingLockRelativePath = RelativePath.Parse(LockFileName);
 
     // -- FileTree Cache Paths ---
 
@@ -45,20 +47,29 @@ internal static class FileTreePaths
     /// Returns the staging node file path for one staged directory id.
     /// Example: <c>~/.arius/<container>/filetrees/.staging/&lt;directoryId&gt;</c>
     /// </summary>
+    public static RootedPath GetStagingNodePath(LocalRootPath stagingRoot, string directoryId)
+        => stagingRoot / RelativePath.Parse(directoryId);
+
     public static string GetStagingNodePath(string stagingRoot, string directoryId)
-        => Path.Combine(stagingRoot, directoryId);
+        => GetStagingNodePath(LocalRootPath.Parse(stagingRoot), directoryId).FullPath;
 
     /// <summary>
     /// Returns the root directory used by the active filetree staging session.
     /// Example: <c>~/.arius/<container>/filetrees/.staging/</c>
     /// </summary>
-    public static string GetStagingRootDirectory(string fileTreeCacheDirectory) 
-        => Path.Combine(fileTreeCacheDirectory, StagingDirectoryName);
+    public static LocalRootPath GetStagingRootDirectory(LocalRootPath fileTreeCacheDirectory)
+        => LocalRootPath.Parse((fileTreeCacheDirectory / StagingDirectoryRelativePath).FullPath);
+
+    public static string GetStagingRootDirectory(string fileTreeCacheDirectory)
+        => GetStagingRootDirectory(LocalRootPath.Parse(fileTreeCacheDirectory)).ToString();
 
     /// <summary>
     /// Returns the process lock file path that guards a single active filetree staging session.
     /// Example: <c>~/.arius/<container>/filetrees/.staging.lock</c>
     /// </summary>
-    public static string GetStagingLockPath(string fileTreeCacheDirectory) 
-        => Path.Combine(fileTreeCacheDirectory, LockFileName);
+    public static RootedPath GetStagingLockPath(LocalRootPath fileTreeCacheDirectory)
+        => fileTreeCacheDirectory / StagingLockRelativePath;
+
+    public static string GetStagingLockPath(string fileTreeCacheDirectory)
+        => GetStagingLockPath(LocalRootPath.Parse(fileTreeCacheDirectory)).FullPath;
 }
