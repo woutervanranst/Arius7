@@ -1,21 +1,23 @@
+using Arius.Core.Shared.Paths;
+
 namespace Arius.Core.Shared.FileTree;
 
 internal interface IFileTreeStagingSession : IAsyncDisposable
 {
-    string StagingRoot { get; }
+    LocalRootPath StagingRoot { get; }
 }
 
 internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 {
     private readonly FileStream _lockStream;
 
-    private FileTreeStagingSession(string stagingRoot, FileStream lockStream)
+    private FileTreeStagingSession(LocalRootPath stagingRoot, FileStream lockStream)
     {
         StagingRoot = stagingRoot;
         _lockStream = lockStream;
     }
 
-    public string StagingRoot { get; }
+    public LocalRootPath StagingRoot { get; }
 
     public static Task<FileTreeStagingSession> OpenAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken = default)
     {
@@ -38,11 +40,11 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         try
         {
-            var stagingRoot = FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory);
-            if (Directory.Exists(stagingRoot))
-                Directory.Delete(stagingRoot, recursive: true);
+            var stagingRoot = LocalRootPath.Parse(FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory));
+            if (Directory.Exists(stagingRoot.ToString()))
+                Directory.Delete(stagingRoot.ToString(), recursive: true);
 
-            Directory.CreateDirectory(stagingRoot);
+            Directory.CreateDirectory(stagingRoot.ToString());
             return Task.FromResult(new FileTreeStagingSession(stagingRoot, lockStream));
         }
         catch
@@ -56,8 +58,8 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
     {
         try
         {
-            if (Directory.Exists(StagingRoot))
-                Directory.Delete(StagingRoot, recursive: true);
+            if (Directory.Exists(StagingRoot.ToString()))
+                Directory.Delete(StagingRoot.ToString(), recursive: true);
         }
         finally
         {

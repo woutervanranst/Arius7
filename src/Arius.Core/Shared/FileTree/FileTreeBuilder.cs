@@ -45,10 +45,8 @@ public sealed class FileTreeBuilder
     /// filetree blobs and returning the root tree hash. Returns <c>null</c> if the staging root
     /// contains no file entries.
     /// </summary>
-    public async Task<FileTreeHash?> SynchronizeAsync(string stagingRoot, CancellationToken cancellationToken = default)
+    public async Task<FileTreeHash?> SynchronizeAsync(LocalRootPath stagingRoot, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
-
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var workerCancellationToken = linkedCts.Token;
         ExceptionDispatchInfo? uploadFailure = null;
@@ -134,7 +132,7 @@ public sealed class FileTreeBuilder
 
         async IAsyncEnumerable<string> ReadNodeLinesAsync(string directoryId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
-            var path = FileTreePaths.GetStagingNodePath(stagingRoot, directoryId);
+            var path = FileTreePaths.GetStagingNodePath(stagingRoot.ToString(), directoryId);
             if (!File.Exists(path))
                 yield break; // empty directory
 

@@ -15,7 +15,7 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static async Task<(FileTreeStagingSession Session, string StagingRoot)> CreateStagingAsync(
+    private static async Task<(FileTreeStagingSession Session, LocalRootPath StagingRoot)> CreateStagingAsync(
         string accountName,
         string containerName,
         params (RelativePath Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
@@ -40,9 +40,9 @@ public class FileTreeBuilderTests
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
-    private static async Task WriteNodeLinesAsync(string stagingRoot, string directoryId, params string[] lines)
+    private static async Task WriteNodeLinesAsync(LocalRootPath stagingRoot, string directoryId, params string[] lines)
     {
-        await File.WriteAllLinesAsync(FileTreePaths.GetStagingNodePath(stagingRoot, directoryId), lines);
+        await File.WriteAllLinesAsync(FileTreePaths.GetStagingNodePath(stagingRoot.ToString(), directoryId), lines);
     }
 
     [Test]

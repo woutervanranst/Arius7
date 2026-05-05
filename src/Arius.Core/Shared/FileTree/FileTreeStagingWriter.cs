@@ -8,12 +8,11 @@ internal sealed class FileTreeStagingWriter : IDisposable
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
     private readonly SemaphoreSlim[] _lockStripes;
-    private readonly string          _stagingRoot;
+    private readonly LocalRootPath   _stagingRoot;
     private          bool            _disposed;
 
-    public FileTreeStagingWriter(string stagingRoot)
+    public FileTreeStagingWriter(LocalRootPath stagingRoot)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stagingRoot);
         _stagingRoot = stagingRoot;
         _lockStripes = Enumerable.Range(0, StripeCount)
             .Select(_ => new SemaphoreSlim(1, 1))
@@ -47,7 +46,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
     private async Task AppendFileEntryAsync(RelativePath directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
-        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, directoryId);
+        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot.ToString(), directoryId);
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
@@ -67,7 +66,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
             var directoryName = currentPath.Name
                 ?? throw new InvalidOperationException("Directory path must include a directory name.");
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
-            var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
+            var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot.ToString(), FileTreePaths.GetStagingDirectoryId(parentPath));
 
             await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
         }
@@ -80,7 +79,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         try
         {
-            Directory.CreateDirectory(_stagingRoot);
+            Directory.CreateDirectory(_stagingRoot.ToString());
 
             await File.AppendAllLinesAsync(path, [line], cancellationToken);
         }
