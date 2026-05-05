@@ -74,7 +74,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var entries = await ReadStoredTreeAsync(stream, s_enc);
 
             entries.Count.ShouldBe(1);
-            entries[0].Name.ShouldBe("readme.txt");
+            entries[0].Name.ShouldBe(SegmentOf("readme.txt"));
             entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
         }
         finally
