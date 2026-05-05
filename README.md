@@ -254,7 +254,7 @@ and cache pipeline behind these nodes.
 
 ```
 abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 photo.jpg
-def456... D subdir/
+def456... D subdir
 ```
 
 - **File entries** (`F`): `<content-hash> F <created> <modified> <name>`
