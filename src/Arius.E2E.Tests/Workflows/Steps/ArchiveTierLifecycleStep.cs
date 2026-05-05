@@ -158,11 +158,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         {
             // Select one representative tar-backed file under the subtree and preserve the exact
             // existing chunk blob bytes/metadata so the ready path can reuse the real blob.
-            var targetRoot = E2EFixture.CombineValidatedRelativePath(fixture.LocalRoot, PathOf(targetPath)).FullPath;
+            var targetRoot = E2EFixture.CombineValidatedRelativePath(fixture.LocalRoot, PathOf(targetPath));
 
-            foreach (var filePath in Directory.EnumerateFiles(targetRoot, "*", SearchOption.AllDirectories))
+            foreach (var filePath in targetRoot.EnumerateFiles(searchOption: SearchOption.AllDirectories))
             {
-                var bytes       = await File.ReadAllBytesAsync(filePath, cancellationToken); // todo use streaming
+                var bytes       = await filePath.ReadAllBytesAsync(cancellationToken); // todo use streaming
                 var contentHash = fixture.Encryption.ComputeHash(bytes);
                 var entry       = await fixture.Index.LookupAsync(contentHash, cancellationToken);
 
@@ -176,7 +176,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
 
                 var metadata     = await fixture.BlobContainer.GetMetadataAsync(chunkBlobName, cancellationToken);
-                var relativePath = fixture.LocalRoot.GetRelativePath(filePath);
+                var relativePath = filePath.RelativePath;
 
                 return new ArchiveTierTargetChunk(relativePath, contentHash, entry.ChunkHash, preservedChunk.ToArray(), metadata.Metadata);
             }

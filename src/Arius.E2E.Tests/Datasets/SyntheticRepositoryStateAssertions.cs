@@ -10,14 +10,14 @@ internal static class SyntheticRepositoryStateAssertions
     {
         var actual = new Dictionary<RelativePath, ContentHash>();
 
-        foreach (var filePath in Directory.EnumerateFiles(rootPath.ToString(), "*", SearchOption.AllDirectories))
+        foreach (var filePath in (rootPath / RelativePath.Root).EnumerateFiles(searchOption: SearchOption.AllDirectories))
         {
-            var relativePath = rootPath.GetRelativePath(filePath);
+            var relativePath = filePath.RelativePath;
 
             if (!includePointerFiles && relativePath.ToString().EndsWith(".pointer.arius", StringComparison.Ordinal))
                 continue;
 
-            await using var stream = File.OpenRead(filePath);
+            await using var stream = filePath.OpenRead();
             actual[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 

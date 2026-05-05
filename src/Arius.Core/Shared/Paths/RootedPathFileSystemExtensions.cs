@@ -62,6 +62,14 @@ public static class RootedPathFileSystemExtensions
 
         public Task WriteAllTextAsync(string content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(path.FullPath, content, cancellationToken);
 
+        public IEnumerable<RootedPath> EnumerateFiles(string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        {
+            foreach (var fullPath in Directory.EnumerateFiles(path.FullPath, searchPattern, searchOption))
+            {
+                yield return path.Root.GetRelativePath(fullPath).RootedAt(path.Root);
+            }
+        }
+
         public async ValueTask CopyToAsync(RootedPath destination, bool overwrite = false, CancellationToken cancellationToken = default)
         {
             if (!overwrite && destination.ExistsFile)

@@ -17,12 +17,11 @@ public static class FileSystemHelper
             (targetRootPath / relativePath).CreateDirectory();
         }
 
-        foreach (var filePath in Directory.EnumerateFiles(sourceRootPath.ToString(), "*", SearchOption.AllDirectories))
+        foreach (var filePath in (sourceRootPath / RelativePath.Root).EnumerateFiles(searchOption: SearchOption.AllDirectories))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var relativePath = sourceRootPath.GetRelativePath(filePath);
-            await relativePath.RootedAt(sourceRootPath).CopyToAsync(relativePath.RootedAt(targetRootPath), overwrite: true, cancellationToken);
+            await filePath.CopyToAsync(filePath.RelativePath.RootedAt(targetRootPath), overwrite: true, cancellationToken);
         }
     }
 }

@@ -41,4 +41,42 @@ public class FileSystemHelperTests
                 Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    [Test]
+    public async Task CopyDirectoryAsync_CopiesMultipleNestedFiles()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-copy-dir-multi-{Guid.NewGuid():N}");
+        var sourceText = Path.Combine(tempRoot, "source");
+        var targetText = Path.Combine(tempRoot, "target");
+
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var sourceRoot = LocalRootPath.Parse(sourceText);
+            var targetRoot = LocalRootPath.Parse(targetText);
+            var sourceDocs = sourceRoot / PathOf("docs");
+            var sourceDeep = sourceRoot / PathOf("docs/nested");
+            var targetFiles = new[]
+            {
+                targetRoot / PathOf("docs/a.txt"),
+                targetRoot / PathOf("docs/nested/b.txt")
+            };
+
+            sourceDocs.CreateDirectory();
+            sourceDeep.CreateDirectory();
+            await (sourceRoot / PathOf("docs/a.txt")).WriteAllTextAsync("a");
+            await (sourceRoot / PathOf("docs/nested/b.txt")).WriteAllTextAsync("b");
+
+            await FileSystemHelper.CopyDirectoryAsync(sourceRoot, targetRoot);
+
+            targetFiles.All(path => path.ExistsFile).ShouldBeTrue();
+            targetFiles.Select(path => path.ReadAllText()).OrderBy(x => x, StringComparer.Ordinal).ToArray().ShouldBe(["a", "b"]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

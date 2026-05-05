@@ -49,16 +49,14 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var targetRootPathText = targetRootPath.ToString();
-
         await FileSystemHelper.CopyDirectoryAsync(sourceRootPath, targetRootPath);
 
         var files = new Dictionary<RelativePath, ContentHash>();
-        foreach (var filePath in Directory.EnumerateFiles(targetRootPathText, "*", SearchOption.AllDirectories))
+        foreach (var filePath in (targetRootPath / RelativePath.Root).EnumerateFiles(searchOption: SearchOption.AllDirectories))
         {
-            var relativePath = targetRootPath.GetRelativePath(filePath);
+            var relativePath = filePath.RelativePath;
 
-            await using var stream = File.OpenRead(filePath);
+            await using var stream = filePath.OpenRead();
             files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 

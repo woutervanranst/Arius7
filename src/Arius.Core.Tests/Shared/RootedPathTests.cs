@@ -136,4 +136,32 @@ public class RootedPathTests
                 Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    [Test]
+    public async Task EnumerateFiles_ReturnsTypedRootedPaths()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-enumerate-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var directory = root / PathOf("docs");
+            var fileA = root / PathOf("docs/a.txt");
+            var fileB = root / PathOf("docs/b.txt");
+
+            directory.CreateDirectory();
+            await fileA.WriteAllTextAsync("a");
+            await fileB.WriteAllTextAsync("b");
+
+            var files = directory.EnumerateFiles().OrderBy(path => path.ToString(), StringComparer.Ordinal).ToArray();
+
+            files.ShouldBe([fileA, fileB]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

@@ -159,7 +159,7 @@ public class FileTreeStagingWriterTests
             entry.Name.ShouldBe(SegmentOf("a.jpg"));
             entry.ContentHash.ShouldBe(TestHash);
 
-            Directory.EnumerateFiles(session.StagingRoot.ToString()).ShouldHaveSingleItem();
+            (session.StagingRoot / RelativePath.Root).EnumerateFiles().ShouldHaveSingleItem();
         }
         finally
         {
