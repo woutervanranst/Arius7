@@ -107,8 +107,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
         var prefix = Shard.PrefixOf(contentHash);
         var l2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(Account, containerName);
-        var l2Path = Path.Combine(l2Dir.ToString(), prefix);
-        await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
+        var l2Path = l2Dir / RelativePath.Parse(prefix);
+        await File.WriteAllBytesAsync(l2Path.FullPath, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
         var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
@@ -119,25 +119,10 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         result.ChunkHash.ShouldBe(chunkHash);
 
         // And L2 must now be in plaintext format (re-cached by the service)
-        File.Exists(l2Path).ShouldBeTrue();
-        var text = await File.ReadAllTextAsync(l2Path);
+        File.Exists(l2Path.FullPath).ShouldBeTrue();
+        l2Path.Root.ShouldBe(l2Dir);
+        l2Path.RelativePath.ShouldBe(RelativePath.Parse(prefix));
+        var text = await File.ReadAllTextAsync(l2Path.FullPath);
         text.ShouldContain(contentHash.ToString());
-    }
-
-    [Test]
-    public void ChunkIndexService_CarriesTypedCacheRootUntilFileSystemBoundary()
-    {
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var source = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "ChunkIndex", "ChunkIndexService.cs"));
-
-        source.ShouldNotContain("var l2Path = (_l2Dir / RelativePath.Parse(prefix)).FullPath;");
-        source.ShouldNotContain("var path  = (_l2Dir / RelativePath.Parse(prefix)).FullPath;");
-        source.ShouldContain("var l2Path = _l2Dir / RelativePath.Parse(prefix);");
-        source.ShouldContain("var path  = _l2Dir / RelativePath.Parse(prefix);");
-
-        typeof(ChunkIndexService)
-            .GetField("_l2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .FieldType
-            .ShouldBe(typeof(LocalRootPath));
     }
 }

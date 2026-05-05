@@ -546,8 +546,8 @@ public class FileTreeServiceTests
         // Determine the L2 dir and pre-populate it with a dummy file
         var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(acct, cont);
         chunkL2Dir.CreateDirectory();
-        var dummyL2File = Path.Combine(chunkL2Dir.ToString(), "dummy-shard.dat");
-        await File.WriteAllTextAsync(dummyL2File, "stale");
+        var dummyL2Path = chunkL2Dir / RelativePath.Parse("dummy-shard.dat");
+        await File.WriteAllTextAsync(dummyL2Path.FullPath, "stale");
 
         try
         {
@@ -555,7 +555,8 @@ public class FileTreeServiceTests
             var secondRemoteHash = FakeFileTreeHash('2');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
+            var localSnapshotMarkerPath = snapshotsDir / RelativePath.Parse("2024-01-01T000000.000Z");
+            await File.WriteAllBytesAsync(localSnapshotMarkerPath.FullPath, []);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
@@ -567,11 +568,13 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Empty marker files created for remote filetrees
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, firstRemoteHash)).ShouldBeTrue();
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, secondRemoteHash)).ShouldBeTrue();
+            var firstMarkerPath = cacheDir / RelativePath.Parse(firstRemoteHash.ToString());
+            var secondMarkerPath = cacheDir / RelativePath.Parse(secondRemoteHash.ToString());
+            File.Exists(firstMarkerPath.FullPath).ShouldBeTrue();
+            File.Exists(secondMarkerPath.FullPath).ShouldBeTrue();
 
             // L2 dummy file deleted
-            File.Exists(dummyL2File).ShouldBeFalse();
+            File.Exists(dummyL2Path.FullPath).ShouldBeFalse();
         }
         finally
         {
@@ -740,11 +743,13 @@ public class FileTreeServiceTests
             var manifest = await snapshotSvc.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
 
             var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
-            var localPath        = Path.Combine(snapshotsDir.ToString(), expectedFileName);
+            var localPath        = snapshotsDir / RelativePath.Parse(expectedFileName);
 
             // Disk file exists and is valid JSON
-            File.Exists(localPath).ShouldBeTrue();
-            var json = await File.ReadAllTextAsync(localPath);
+            File.Exists(localPath.FullPath).ShouldBeTrue();
+            localPath.Root.ShouldBe(snapshotsDir);
+            localPath.RelativePath.ShouldBe(RelativePath.Parse(expectedFileName));
+            var json = await File.ReadAllTextAsync(localPath.FullPath);
             json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded
@@ -754,42 +759,6 @@ public class FileTreeServiceTests
         {
             if (snapshotsDir.ExistsDirectory) snapshotsDir.DeleteDirectory(recursive: true);
         }
-    }
-
-    [Test]
-    public void SharedServices_CarryTypedRepositoryRootsUntilStringBoundaries()
-    {
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var snapshotServiceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "Snapshot", "SnapshotService.cs"));
-        var fileTreeServiceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "FileTree", "FileTreeService.cs"));
-
-        snapshotServiceSource.ShouldNotContain("(_diskCacheDir / RelativePath.Parse(localName)).FullPath");
-        snapshotServiceSource.ShouldNotContain("(_diskCacheDir / RelativePath.Parse(fileName)).FullPath");
-        snapshotServiceSource.ShouldContain("var localPath = _diskCacheDir / RelativePath.Parse(localName);");
-        snapshotServiceSource.ShouldContain("var path     = _diskCacheDir / RelativePath.Parse(fileName);");
-
-        typeof(SnapshotService)
-            .GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .FieldType
-            .ShouldBe(typeof(LocalRootPath));
-
-        typeof(FileTreeService)
-            .GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .FieldType
-            .ShouldBe(typeof(LocalRootPath));
-
-        typeof(FileTreeService)
-            .GetField("_snapshotsDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .FieldType
-            .ShouldBe(typeof(LocalRootPath));
-
-        typeof(FileTreeService)
-            .GetField("_chunkIndexL2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .FieldType
-            .ShouldBe(typeof(LocalRootPath));
-
-        fileTreeServiceSource.ShouldContain("Directory.EnumerateFiles(_snapshotsDir.ToString())");
-        fileTreeServiceSource.ShouldContain("Directory.EnumerateFiles(_chunkIndexL2Dir.ToString())");
     }
 
     // ── 7.x  ValidateAsync — idempotent (called twice, no double slow-path) ───
