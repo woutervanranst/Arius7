@@ -2,7 +2,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Paths;
-using Arius.Tests.Shared.FileTree;
+using Arius.Tests.Shared.Helpers;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -22,8 +22,8 @@ public class FileTreeSerializerTests
     {
         var entries = new List<FileTreeEntry>(items.Length);
         entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? FileTreeEntryHelper.DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
-            : FileTreeEntryHelper.FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
+            ? FileTreeHelper.DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
+            : FileTreeHelper.FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
 
         return entries;
     }
@@ -75,7 +75,7 @@ public class FileTreeSerializerTests
     [Test]
     public void DirectoryEntry_Name_UsesPathSegmentInMemory()
     {
-        var entry = FileTreeEntryHelper.DirectoryEntryOf(SegmentOf("photos"), FakeFileTreeHash('d'));
+        var entry = FileTreeHelper.DirectoryEntryOf(SegmentOf("photos"), FakeFileTreeHash('d'));
 
         entry.Name.ShouldBe(SegmentOf("photos"));
     }
@@ -161,8 +161,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            FileTreeEntryHelper.DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
-            FileTreeEntryHelper.FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
+            FileTreeHelper.DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
+            FileTreeHelper.FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));

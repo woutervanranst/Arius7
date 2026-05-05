@@ -1,7 +1,6 @@
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;

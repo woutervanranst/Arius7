@@ -1,5 +1,4 @@
 using Arius.Core.Features.ListQuery;
-using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Pipeline;

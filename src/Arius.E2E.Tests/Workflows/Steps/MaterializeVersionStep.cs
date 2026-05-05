@@ -1,6 +1,5 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.Tests.Shared.IO;
-using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 

@@ -1,6 +1,5 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.Paths;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 

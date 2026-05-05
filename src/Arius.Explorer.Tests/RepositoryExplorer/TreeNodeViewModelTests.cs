@@ -1,4 +1,3 @@
-using Arius.Core.Shared.Paths;
 using Arius.Explorer.RepositoryExplorer;
 
 namespace Arius.Explorer.Tests.RepositoryExplorer;

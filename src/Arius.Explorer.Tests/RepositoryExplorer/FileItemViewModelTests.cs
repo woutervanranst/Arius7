@@ -1,7 +1,6 @@
 using System.Windows.Media;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.Paths;
 using Arius.Explorer.RepositoryExplorer;
 
 namespace Arius.Explorer.Tests.RepositoryExplorer;

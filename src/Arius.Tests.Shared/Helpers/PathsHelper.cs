@@ -1,6 +1,6 @@
 using Arius.Core.Shared.Paths;
 
-namespace Arius.Tests.Shared.Paths;
+namespace Arius.Tests.Shared.Helpers;
 
 public static class PathsHelper
 {

@@ -4,7 +4,6 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Microsoft.Extensions.Logging.Testing;

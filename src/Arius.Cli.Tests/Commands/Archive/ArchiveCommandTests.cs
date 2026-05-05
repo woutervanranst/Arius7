@@ -1,6 +1,5 @@
 using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
 

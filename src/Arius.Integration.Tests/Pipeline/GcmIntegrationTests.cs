@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;

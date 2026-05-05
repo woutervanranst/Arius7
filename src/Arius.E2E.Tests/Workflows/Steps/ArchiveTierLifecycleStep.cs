@@ -13,7 +13,6 @@ using Arius.Tests.Shared.IO;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
