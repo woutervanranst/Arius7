@@ -39,7 +39,7 @@ public class RestoreCommandHandlerTests
 
         var content = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(content);
-        fixture.WriteFile("docs/readme.txt", content);
+        fixture.WriteFile(PathOf("docs/readme.txt"), content);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -82,7 +82,7 @@ public class RestoreCommandHandlerTests
             $"acct-restore-case-{Guid.NewGuid():N}",
             $"ctr-restore-case-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("Docs/Readme.txt", [1, 2, 3, 4]);
+        fixture.WriteFile(PathOf("Docs/Readme.txt"), [1, 2, 3, 4]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -105,7 +105,7 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(0);
-        fixture.RestoredExists("Docs/Readme.txt").ShouldBeFalse();
+        fixture.RestoredExists(PathOf("Docs/Readme.txt")).ShouldBeFalse();
     }
 
     [Test]
@@ -115,8 +115,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-leading-slash-{Guid.NewGuid():N}",
             $"ctr-restore-leading-slash-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("file-a.txt", [1, 2, 3, 4]);
-        fixture.WriteFile("file-b.txt", [5, 6, 7, 8]);
+        fixture.WriteFile(PathOf("file-a.txt"), [1, 2, 3, 4]);
+        fixture.WriteFile(PathOf("file-b.txt"), [5, 6, 7, 8]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -139,8 +139,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists("file-a.txt").ShouldBeTrue();
-        fixture.RestoredExists("file-b.txt").ShouldBeFalse();
+        fixture.RestoredExists(PathOf("file-a.txt")).ShouldBeTrue();
+        fixture.RestoredExists(PathOf("file-b.txt")).ShouldBeFalse();
     }
 
     [Test]
@@ -178,8 +178,8 @@ public class RestoreCommandHandlerTests
         var content = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(content);
 
-        fixture.WriteFile("archives/duplicates/binary-a.bin", content);
-        fixture.WriteFile("nested/deep/a/b/c/binary-b.bin",   content);
+        fixture.WriteFile(PathOf("archives/duplicates/binary-a.bin"), content);
+        fixture.WriteFile(PathOf("nested/deep/a/b/c/binary-b.bin"),   content);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -201,8 +201,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fixture.ReadRestored("archives/duplicates/binary-a.bin").ShouldBe(content);
-        fixture.ReadRestored("nested/deep/a/b/c/binary-b.bin").ShouldBe(content);
+        fixture.ReadRestored(PathOf("archives/duplicates/binary-a.bin")).ShouldBe(content);
+        fixture.ReadRestored(PathOf("nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
     }
 
     [Test]
@@ -220,8 +220,8 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
         var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
 
-        fixture.WriteFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
-        fixture.WriteFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
+        fixture.WriteFile(PathOf("archives/duplicates/copy-a.bin"), content, firstCreated,  firstModified);
+        fixture.WriteFile(PathOf("nested/deep/a/b/c/copy-b.bin"),   content, secondCreated, secondModified);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -280,8 +280,8 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2020, 3, 4, 5, 6,  7, DateTimeKind.Utc);
         var secondModified = new DateTime(2020, 4, 5, 6, 7,  8, DateTimeKind.Utc);
 
-        fixture.WriteFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
-        fixture.WriteFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
+        fixture.WriteFile(PathOf("zero/a.txt"), Array.Empty<byte>(), firstCreated,  firstModified);
+        fixture.WriteFile(PathOf("zero/b.txt"), Array.Empty<byte>(), secondCreated, secondModified);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions

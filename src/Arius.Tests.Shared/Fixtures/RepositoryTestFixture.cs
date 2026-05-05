@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
@@ -28,6 +29,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly string                            _tempRoot;
     private readonly string                            _account;
     private readonly string                            _container;
+    private readonly LocalRootPath                     _localRoot;
+    private readonly LocalRootPath                     _restoreRoot;
     private readonly IMediator                         _mediator;
     private readonly Action<string>                    _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
@@ -59,8 +62,10 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         FileTreeService = fileTreeService;
         Snapshot        = snapshot;
         _tempRoot       = tempRoot;
-        LocalRoot       = localRoot;
-        RestoreRoot     = restoreRoot;
+        _localRoot      = LocalRootPath.Parse(localRoot);
+        _restoreRoot    = LocalRootPath.Parse(restoreRoot);
+        LocalRoot       = _localRoot.ToString();
+        RestoreRoot     = _restoreRoot.ToString();
         _account        = account;
         _container      = containerName;
         _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
@@ -97,8 +102,14 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Source directory used by archive-oriented tests.</summary>
     public string LocalRoot { get; }
 
+    /// <summary>Typed source directory used by archive-oriented tests.</summary>
+    public LocalRootPath LocalRootPath => _localRoot;
+
     /// <summary>Restore destination directory used by restore-oriented tests.</summary>
     public string RestoreRoot { get; }
+
+    /// <summary>Typed restore destination directory used by restore-oriented tests.</summary>
+    public LocalRootPath RestoreRootPath => _restoreRoot;
 
     /// <summary>Parent temporary directory that contains <see cref="LocalRoot"/> and <see cref="RestoreRoot"/>.</summary>
     public string TempRoot => _tempRoot;
@@ -197,9 +208,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Writes a binary file under <see cref="LocalRoot"/> and returns the full path.
     /// The relative path is validated to stay inside the fixture source directory.
     /// </summary>
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
     {
-        var full = CombineValidatedRelativePath(LocalRoot, relativePath);
+        var full = relativePath.RootedAt(_localRoot).FullPath;
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllBytes(full, content);
         return full;
@@ -209,7 +220,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Writes a binary file under <see cref="LocalRoot"/> with explicit UTC creation and modification timestamps.
     /// Use this for archive/restore tests that assert per-path metadata preservation.
     /// </summary>
-    public string WriteFile(string relativePath, byte[] content, DateTime created, DateTime modified)
+    public string WriteFile(RelativePath relativePath, byte[] content, DateTime created, DateTime modified)
     {
         var full = WriteFile(relativePath, content);
         File.SetCreationTimeUtc(full, created);
@@ -221,15 +232,15 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Reads a restored binary file from <see cref="RestoreRoot"/>.
     /// The relative path is validated to stay inside the fixture restore directory.
     /// </summary>
-    public byte[] ReadRestored(string relativePath)
-        => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
+    public byte[] ReadRestored(RelativePath relativePath)
+        => File.ReadAllBytes(relativePath.RootedAt(_restoreRoot).FullPath);
 
     /// <summary>
     /// Returns whether a restored binary file exists under <see cref="RestoreRoot"/>.
     /// The relative path is validated to stay inside the fixture restore directory.
     /// </summary>
-    public bool RestoredExists(string relativePath)
-        => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
+    public bool RestoredExists(RelativePath relativePath)
+        => File.Exists(relativePath.RootedAt(_restoreRoot).FullPath);
 
     /// <summary>
     /// Deletes the local repository cache directory for the supplied account/container pair.
@@ -262,20 +273,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
 
         if (Directory.Exists(_tempRoot))
             _deleteTempRoot(_tempRoot);
-    }
-
-    private static string CombineValidatedRelativePath(string root, string relativePath)
-    {
-        var combined = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        var normalizedRoot = Path.GetFullPath(root);
-
-        if (!combined.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
-            !string.Equals(combined, normalizedRoot, StringComparison.Ordinal))
-        {
-            throw new ArgumentOutOfRangeException(nameof(relativePath), "Path must stay within the fixture root.");
-        }
-
-        return combined;
     }
 
     private static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
