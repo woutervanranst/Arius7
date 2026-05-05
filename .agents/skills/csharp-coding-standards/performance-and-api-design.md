@@ -184,6 +184,33 @@ public bool TryFormatOrderId(int orderId, Span<char> destination, out int charsW
 
 ### Accept Abstractions, Return Appropriately Specific
 
+### `params` Collections and Span Overloads (C# 13+)
+
+- Use `params` collections for convenience-first APIs where terse call sites matter more than the last allocation.
+- Prefer `params ReadOnlySpan<T>` or a plain `ReadOnlySpan<T>` parameter for synchronous hot paths that already operate on spans.
+- If you need both, keep one canonical implementation and forward convenience overloads to it.
+- Be conservative with overload sets. Combining `params`, arrays, collection abstractions, and span overloads can make calls harder to predict and evolve.
+
+```csharp
+public static int Sum(ReadOnlySpan<int> values)
+{
+    var total = 0;
+    foreach (var value in values)
+        total += value;
+    return total;
+}
+
+public static int Sum(params ReadOnlySpan<int> values)
+    => Sum(values);
+```
+
+### Synchronization Guidance (C# 13 / .NET 9+)
+
+- For new synchronous coordination, prefer a dedicated `System.Threading.Lock` field over `lock (new object())` style gates.
+- Keep one lock per protected invariant, and keep the critical section small.
+- Never lock on `this`, `Type`, `string`, or any object another caller can also lock.
+- Never `await` inside `lock`; switch to an async-compatible primitive when async work must be coordinated.
+
 **For Parameters (Accept):**
 
 ```csharp

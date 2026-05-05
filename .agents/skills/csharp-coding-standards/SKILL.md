@@ -1,6 +1,6 @@
 ---
 name: csharp-coding-standards
-description: Use when writing modern, high-performance C# code with records, pattern matching, extension members, async/await, Span<T>/Memory<T>, and public API design.
+description: Use when writing modern, high-performance C# code with records, pattern matching, extension members, params collections, async/await, Span<T>/Memory<T>, and public API design.
 invocable: false
 ---
 
@@ -34,6 +34,7 @@ Use this skill when:
 7. **Composition Over Inheritance** - Avoid abstract base classes, prefer composition
 8. **Value Objects as Structs** - Use `readonly record struct` for value objects
 9. **Extension APIs** - Use extension blocks for cohesive receiver-focused APIs and classic extension methods for isolated helpers or compatibility
+10. **Modern Synchronization** - Prefer dedicated `System.Threading.Lock` instances for synchronous mutual exclusion on .NET 9+
 
 ---
 
@@ -193,6 +194,36 @@ public static class OrderExtensions
 
 ---
 
+### C# 13 API and Runtime Guidance
+
+**`params` collections**
+
+- Use `params` for convenience-first APIs where call-site ergonomics matter more than tiny per-call allocations.
+- Prefer a `ReadOnlySpan<T>` core overload for performance-sensitive synchronous APIs, parsing, formatting, and hot paths.
+- If you need both ergonomics and performance, expose a convenience `params` overload that forwards to one span-based implementation.
+- Avoid large overload matrices. Adding `params`, array, collection, and span overloads together can make overload resolution harder to reason about.
+
+**`System.Threading.Lock` (C# 13 / .NET 9+)**
+
+- For new synchronous mutual-exclusion code, prefer a dedicated private `System.Threading.Lock` field over locking on a plain `object`.
+- Protect one clear invariant per lock. Keep lock scopes small.
+- Do not lock on `this`, `Type`, `string`, or publicly reachable objects.
+- Do not cast `Lock` to `object` before locking. That disables the specialized compiler/runtime behavior.
+- Never `await` inside a `lock`. If you need async coordination, use an async-compatible primitive instead.
+
+**Advanced `ref struct` support**
+
+- C# 13 relaxes where `ref struct` locals can appear in `async` methods and iterators, but they still cannot cross an `await` or `yield` boundary.
+- `ref struct` types can now implement interfaces, and generics can opt in with `where T : allows ref struct`, but keep these features for specialized low-allocation library APIs. They are not general-purpose defaults.
+
+**Overload resolution priority**
+
+- `OverloadResolutionPriorityAttribute` is for public library evolution, not normal application code.
+- Use it sparingly when adding a better overload without breaking existing callers, such as moving callers toward a more efficient span-based API.
+- Prefer better API shape first. Treat the attribute as a compatibility escape hatch, not a substitute for good overload design.
+
+---
+
 ## Composition Over Inheritance
 
 **Avoid abstract base classes.** Use interfaces + composition. Use static helpers for shared logic. Use records with factory methods for variants.
@@ -239,6 +270,7 @@ public async IAsyncEnumerable<Order> StreamOrdersAsync(
 - Use `ConfigureAwait(false)` in library code
 - Never block on async code (no `.Result` or `.Wait()`)
 - Use linked CancellationTokenSource for timeouts
+- `ref struct` locals can exist inside `async` methods in C# 13, but they still cannot live across an `await` boundary
 
 ### Span<T> and Memory<T>
 
@@ -356,6 +388,7 @@ See [anti-patterns-and-reflection.md](anti-patterns-and-reflection.md) for detai
 
 - **C# Language Specification**: https://learn.microsoft.com/en-us/dotnet/csharp/
 - **What's New in C# 14**: https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-14
+- **What's New in C# 13**: https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-13
 - **Extension Members**: https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/classes-and-structs/extension-methods
 - **Pattern Matching**: https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/functional/pattern-matching
 - **Span<T> and Memory<T>**: https://learn.microsoft.com/en-us/dotnet/standard/memory-and-spans/
