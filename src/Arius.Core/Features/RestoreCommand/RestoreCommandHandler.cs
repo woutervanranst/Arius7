@@ -131,12 +131,12 @@ public sealed class RestoreCommandHandler
             {
                 var localPath = opts.RootDirectory / file.RelativePath;
 
-                if (File.Exists(localPath.FullPath))
+                if (localPath.ExistsFile)
                 {
                     if (!opts.Overwrite)
                     {
                         // Hash local file to check if already correct
-                        await using var fs = File.OpenRead(localPath.FullPath);
+                        await using var fs = localPath.OpenRead();
                         var localHash = await _encryption.ComputeHashAsync(fs, cancellationToken);
 
                         if (localHash == file.ContentHash)
@@ -158,8 +158,7 @@ public sealed class RestoreCommandHandler
                     else
                     {
                         _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
-                        var fi = new FileInfo(localPath.FullPath);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, localPath.Length), cancellationToken);
                     }
                 }
                 else
@@ -560,27 +559,30 @@ public sealed class RestoreCommandHandler
     {
         var localPath = opts.RootDirectory / file.RelativePath;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(localPath.FullPath)!);
+        RootedPath? localDirectory = localPath.RelativePath.Parent is { } localParent
+            ? localParent.RootedAt(localPath.Root)
+            : null;
+        localDirectory?.CreateDirectory();
 
         {
             var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var fileStream   = new FileStream(localPath.FullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+            await using var fileStream   = localPath.OpenWrite();
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
         // Set file timestamps from tree metadata (after stream is closed)
-        File.SetCreationTimeUtc(localPath.FullPath,  file.Created.UtcDateTime);
-        File.SetLastWriteTimeUtc(localPath.FullPath, file.Modified.UtcDateTime);
+        localPath.CreationTimeUtc = file.Created.UtcDateTime;
+        localPath.LastWriteTimeUtc = file.Modified.UtcDateTime;
 
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
         {
-            var pointerPath = localPath.FullPath + ".pointer.arius";
-            await File.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
-            File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
-            File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+            var pointerPath = RelativePath.Parse(file.RelativePath + ".pointer.arius").RootedAt(opts.RootDirectory);
+            await pointerPath.WriteAllTextAsync(file.ContentHash.ToString(), cancellationToken);
+            pointerPath.CreationTimeUtc = file.Created.UtcDateTime;
+            pointerPath.LastWriteTimeUtc = file.Modified.UtcDateTime;
         }
     }
 
@@ -620,46 +622,48 @@ public sealed class RestoreCommandHandler
             if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
-            string? sourcePath = null;
+            RootedPath? sourcePath = null;
 
             for (var i = 0; i < filesForHash.Count; i++)
             {
                 var file = filesForHash[i];
                 var localPath = opts.RootDirectory / file.RelativePath;
 
-                Directory.CreateDirectory(Path.GetDirectoryName(localPath.FullPath)!);
+                RootedPath? localDirectory = localPath.RelativePath.Parent is { } localParent
+                    ? localParent.RootedAt(localPath.Root)
+                    : null;
+                localDirectory?.CreateDirectory();
 
                 if (tarEntry.DataStream is null)
                 {
                     // create an empty file
-                    await using var _ = File.Create(localPath.FullPath);
+                    await using var _ = localPath.OpenWrite();
                 }
                 else if (i == 0)
                 {
-                    await using var output = new FileStream(localPath.FullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                    await using var output = localPath.OpenWrite();
                     await tarEntry.DataStream.CopyToAsync(output, cancellationToken);
-                    sourcePath = localPath.FullPath;
+                    sourcePath = localPath;
                 }
                 else
                 {
-                    // TODO: investigate Async copy? Ref https://github.com/dotnet/runtime/issues/20697, https://github.com/dotnet/runtime/issues/20695
-                    File.Copy(sourcePath!, localPath.FullPath, overwrite: true);
+                    await sourcePath!.Value.CopyToAsync(localPath, overwrite: true, cancellationToken);
                 }
 
                 // Set timestamps
-                File.SetCreationTimeUtc(localPath.FullPath,  file.Created.UtcDateTime);
-                File.SetLastWriteTimeUtc(localPath.FullPath, file.Modified.UtcDateTime);
+                localPath.CreationTimeUtc = file.Created.UtcDateTime;
+                localPath.LastWriteTimeUtc = file.Modified.UtcDateTime;
 
                 // Create pointer file
                 if (!opts.NoPointers)
                 {
-                    var pointerPath = localPath.FullPath + ".pointer.arius";
-                    await File.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
-                    File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
-                    File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+                    var pointerPath = RelativePath.Parse(file.RelativePath + ".pointer.arius").RootedAt(opts.RootDirectory);
+                    await pointerPath.WriteAllTextAsync(contentHash.ToString(), cancellationToken);
+                    pointerPath.CreationTimeUtc = file.Created.UtcDateTime;
+                    pointerPath.LastWriteTimeUtc = file.Modified.UtcDateTime;
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath.FullPath).Length), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, localPath.Length), cancellationToken);
                 restored++;
             }
         }
