@@ -228,7 +228,19 @@ public static class FileTreeSerializer
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified,
-            Name        = PathSegment.Parse(name)
+            Name        = ParseFileEntryName(name, line)
         };
+    }
+
+    private static PathSegment ParseFileEntryName(string name, string line)
+    {
+        try
+        {
+            return PathSegment.Parse(name);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new FormatException($"Invalid file entry (non-canonical name): '{line}'", ex);
+        }
     }
 }

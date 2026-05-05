@@ -243,6 +243,28 @@ public class FileTreeSerializerTests
     }
 
     [Test]
+    [Arguments("broken/name")]
+    [Arguments("broken\\name")]
+    [Arguments("broken\rname")]
+    public void ParsePersistedFileEntryLine_MalformedName_ThrowsFormatException(string name)
+    {
+        var line = $"{NormalizeHash("abc")} F {s_created:O} {s_modified:O} {name}";
+
+        Should.Throw<FormatException>(() => FileTreeSerializer.ParsePersistedFileEntryLine(line));
+    }
+
+    [Test]
+    [Arguments("broken/name")]
+    [Arguments("broken\\name")]
+    [Arguments("broken\rname")]
+    public void Deserialize_MalformedPersistedFileName_ThrowsFormatException(string name)
+    {
+        var text = $"{NormalizeHash("abc")} F {s_created:O} {s_modified:O} {name}\n";
+
+        Should.Throw<FormatException>(() => FileTreeSerializer.Deserialize(System.Text.Encoding.UTF8.GetBytes(text)));
+    }
+
+    [Test]
     public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
