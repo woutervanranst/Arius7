@@ -40,7 +40,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         foreach (var (relPath, content, created, modified) in smallFiles)
         {
-            var fullPath = fix.WriteFile(relPath, content);
+            var fullPath = fix.WriteFile(PathOf(relPath), content);
             File.SetCreationTimeUtc(fullPath, created);
             File.SetLastWriteTimeUtc(fullPath, modified);
         }
@@ -114,7 +114,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         var expectedCreated  = new DateTime(2021, 6, 15, 10, 30, 0, DateTimeKind.Utc);
         var expectedModified = new DateTime(2024, 12, 25, 18, 0, 0, DateTimeKind.Utc);
 
-        var sourcePath = fix.WriteFile(relPath, content);
+        var sourcePath = fix.WriteFile(PathOf(relPath), content);
         File.SetCreationTimeUtc(sourcePath, expectedCreated);
         File.SetLastWriteTimeUtc(sourcePath, expectedModified);
 

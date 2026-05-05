@@ -54,8 +54,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Two large files (> 1 MB each)
         var content1 = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(content1);
         var content2 = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(content2);
-        fix.WriteFile("file1.bin", content1);
-        fix.WriteFile("file2.bin", content2);
+        fix.WriteFile(PathOf("file1.bin"), content1);
+        fix.WriteFile(PathOf("file2.bin"), content2);
 
         // ── Run 1: crash after 1 upload (partial — uploads only one chunk)
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
@@ -95,8 +95,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        fix.ReadRestored("file1.bin").ShouldBe(content1);
-        fix.ReadRestored("file2.bin").ShouldBe(content2);
+        fix.ReadRestored(PathOf("file1.bin")).ShouldBe(content1);
+        fix.ReadRestored(PathOf("file2.bin")).ShouldBe(content2);
     }
 
     // ── 9.5 / 15.2: Crash after tar upload, before thin chunks ───────────────
@@ -110,9 +110,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
         var c3 = new byte[300]; Random.Shared.NextBytes(c3);
-        fix.WriteFile("small1.txt", c1);
-        fix.WriteFile("small2.txt", c2);
-        fix.WriteFile("small3.txt", c3);
+        fix.WriteFile(PathOf("small1.txt"), c1);
+        fix.WriteFile(PathOf("small2.txt"), c2);
+        fix.WriteFile(PathOf("small3.txt"), c3);
 
         // Crash after the tar chunk upload completes but before thin chunks are written.
         // Completed upload #1 = tar chunk metadata write; then the next completed upload faults.
@@ -137,9 +137,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(3);
 
-        fix.ReadRestored("small1.txt").ShouldBe(c1);
-        fix.ReadRestored("small2.txt").ShouldBe(c2);
-        fix.ReadRestored("small3.txt").ShouldBe(c3);
+        fix.ReadRestored(PathOf("small1.txt")).ShouldBe(c1);
+        fix.ReadRestored(PathOf("small2.txt")).ShouldBe(c2);
+        fix.ReadRestored(PathOf("small3.txt")).ShouldBe(c3);
     }
 
     // ── 15.3: Crash after all uploads but before index ────────────────────────
@@ -152,8 +152,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Two files, one large, one small
         var large = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(large);
         var small = new byte[100];              Random.Shared.NextBytes(small);
-        fix.WriteFile("large.bin", large);
-        fix.WriteFile("small.txt", small);
+        fix.WriteFile(PathOf("large.bin"), large);
+        fix.WriteFile(PathOf("small.txt"), small);
 
         // Allow the large chunk upload to complete and the thin chunk upload to complete,
         // then crash when the chunk-index shard is uploaded.
@@ -180,7 +180,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fix.ReadRestored("large.bin").ShouldBe(large);
-        fix.ReadRestored("small.txt").ShouldBe(small);
+        fix.ReadRestored(PathOf("large.bin")).ShouldBe(large);
+        fix.ReadRestored(PathOf("small.txt")).ShouldBe(small);
     }
 }

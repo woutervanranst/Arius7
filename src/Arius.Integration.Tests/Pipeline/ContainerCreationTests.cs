@@ -75,14 +75,14 @@ public class ContainerCreationTests(AzuriteFixture azurite)
     public async Task Archive_ExistingContainer_Succeeds_Idempotent()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
-        fix.WriteFile("hello.txt", "hello"u8.ToArray());
+        fix.WriteFile(PathOf("hello.txt"), "hello"u8.ToArray());
 
         // First archive — container was pre-created by fixture
         var result1 = await fix.ArchiveAsync();
         result1.Success.ShouldBeTrue(result1.ErrorMessage);
 
         // Second archive — same existing container, CreateContainerIfNotExistsAsync is a no-op
-        fix.WriteFile("hello2.txt", "world"u8.ToArray());
+        fix.WriteFile(PathOf("hello2.txt"), "world"u8.ToArray());
         var result2 = await fix.ArchiveAsync();
         result2.Success.ShouldBeTrue(result2.ErrorMessage);
     }

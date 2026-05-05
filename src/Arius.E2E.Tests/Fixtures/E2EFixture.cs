@@ -141,13 +141,13 @@ public sealed class E2EFixture : IAsyncDisposable
         return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
 
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
         => _repository.WriteFile(relativePath, content);
 
-    public byte[] ReadRestored(string relativePath)
+    public byte[] ReadRestored(RelativePath relativePath)
         => _repository.ReadRestored(relativePath);
 
-    public bool RestoredExists(string relativePath)
+    public bool RestoredExists(RelativePath relativePath)
         => _repository.RestoredExists(relativePath);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 

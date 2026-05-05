@@ -23,10 +23,10 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("photos/vacation.jpg",   Rnd(100));
-        fix.WriteFile("photos/sunset.jpg",     Rnd(200));
-        fix.WriteFile("docs/readme.txt",       Rnd(50));
-        fix.WriteFile("root.txt",              Rnd(20));
+        fix.WriteFile(PathOf("photos/vacation.jpg"), Rnd(100));
+        fix.WriteFile(PathOf("photos/sunset.jpg"),   Rnd(200));
+        fix.WriteFile(PathOf("docs/readme.txt"),     Rnd(50));
+        fix.WriteFile(PathOf("root.txt"),            Rnd(20));
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -48,9 +48,9 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("photos/vacation.jpg",   Rnd(100));
-        fix.WriteFile("photos/sunset.jpg",     Rnd(200));
-        fix.WriteFile("docs/readme.txt",       Rnd(50));
+        fix.WriteFile(PathOf("photos/vacation.jpg"), Rnd(100));
+        fix.WriteFile(PathOf("photos/sunset.jpg"),   Rnd(200));
+        fix.WriteFile(PathOf("docs/readme.txt"),     Rnd(50));
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -67,9 +67,9 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("photos/VACATION.jpg",   Rnd(100));
-        fix.WriteFile("photos/sunset.jpg",     Rnd(200));
-        fix.WriteFile("docs/readme.txt",       Rnd(50));
+        fix.WriteFile(PathOf("photos/VACATION.jpg"), Rnd(100));
+        fix.WriteFile(PathOf("photos/sunset.jpg"),   Rnd(200));
+        fix.WriteFile(PathOf("docs/readme.txt"),     Rnd(50));
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -87,7 +87,7 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = Rnd(1234);
-        fix.WriteFile("file.bin", content);
+        fix.WriteFile(PathOf("file.bin"), content);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -104,14 +104,14 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("v1-only.txt", Rnd(50));
+        fix.WriteFile(PathOf("v1-only.txt"), Rnd(50));
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
         var snapshot1 = r1.SnapshotTime.ToString("yyyy-MM-ddTHHmmss");
 
         await Task.Delay(1100);
 
-        fix.WriteFile("v2-added.txt", Rnd(50));
+        fix.WriteFile(PathOf("v2-added.txt"), Rnd(50));
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
 

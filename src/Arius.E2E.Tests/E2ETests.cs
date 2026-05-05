@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Fixtures;
 
@@ -50,7 +51,7 @@ internal class E2ETests(AzureFixture azure)
         {
             var content = new byte[2048];
             Random.Shared.NextBytes(content);
-            fixture.WriteFile("hot.bin", content);
+            fixture.WriteFile(PathOf("hot.bin"), content);
 
             var archiveResult = await fixture.ArchiveAsync();
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -60,7 +61,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.FilesRestored.ShouldBe(1);
 
             File.Exists(Path.Combine(fixture.RestoreRoot, "hot.bin.pointer.arius")).ShouldBeTrue();
-            fixture.ReadRestored("hot.bin").ShouldBe(content);
+            fixture.ReadRestored(PathOf("hot.bin")).ShouldBe(content);
         }
         finally
         {
@@ -85,7 +86,7 @@ internal class E2ETests(AzureFixture azure)
         {
             var content = new byte[2 * 1024 * 1024];
             Random.Shared.NextBytes(content);
-            fixture.WriteFile("large.bin", content);
+            fixture.WriteFile(PathOf("large.bin"), content);
 
             var archiveResult = await fixture.ArchiveAsync(cancellationToken);
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -95,7 +96,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
             restoreResult.FilesRestored.ShouldBe(1);
 
-            fixture.ReadRestored("large.bin").ShouldBe(content);
+            fixture.ReadRestored(PathOf("large.bin")).ShouldBe(content);
         }
         finally
         {

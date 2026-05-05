@@ -21,7 +21,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a file directly to Archive tier
-        fix.WriteFile("data.bin", new byte[1024 * 1024]); // 1 MB
+        fix.WriteFile(PathOf("data.bin"), new byte[1024 * 1024]); // 1 MB
         var archiveResult = await fix.ArchiveAsync(new()
         {
             RootDirectory = RootOf(fix.LocalRoot),
@@ -70,7 +70,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a file to Hot tier — no rehydration needed
-        fix.WriteFile("data.bin", new byte[1024]);
+        fix.WriteFile(PathOf("data.bin"), new byte[1024]);
         var archiveResult = await fix.ArchiveAsync(new()
         {
             RootDirectory = RootOf(fix.LocalRoot),

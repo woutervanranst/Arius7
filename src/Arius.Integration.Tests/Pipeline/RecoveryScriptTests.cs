@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;
@@ -105,7 +106,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("cbc-large.bin", original);
+        fix.WriteFile(PathOf("cbc-large.bin"), original);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -161,7 +162,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("large.bin", original);
+        fix.WriteFile(PathOf("large.bin"), original);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -219,8 +220,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile("small1.txt", c1);
-        fix.WriteFile("small2.txt", c2);
+        fix.WriteFile(PathOf("small1.txt"), c1);
+        fix.WriteFile(PathOf("small2.txt"), c2);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -302,8 +303,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile("small1.txt", c1);
-        fix.WriteFile("small2.txt", c2);
+        fix.WriteFile(PathOf("small1.txt"), c1);
+        fix.WriteFile(PathOf("small2.txt"), c2);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);

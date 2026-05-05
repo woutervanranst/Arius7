@@ -40,7 +40,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var fix = await PipelineFixture.CreateAsync(azurite);
         var content = new byte[200];
         Random.Shared.NextBytes(content);
-        fix.WriteFile("test.bin", content);
+        fix.WriteFile(PathOf("test.bin"), content);
 
         // Archive with Hot tier (Azurite) so blobs are accessible
         var archiveOpts = new ArchiveCommandOptions

@@ -143,11 +143,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── File helpers ──────────────────────────────────────────────────────────
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with the given content.</summary>
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
         => _repository.WriteFile(relativePath, content);
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with random byte content.</summary>
-    public string WriteRandomFile(string relativePath, int sizeBytes)
+    public string WriteRandomFile(RelativePath relativePath, int sizeBytes)
     {
         var bytes = new byte[sizeBytes];
         Random.Shared.NextBytes(bytes);
@@ -155,11 +155,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     }
 
     /// <summary>Reads a restored file's bytes from <see cref="RestoreRoot"/>.</summary>
-    public byte[] ReadRestored(string relativePath)
+    public byte[] ReadRestored(RelativePath relativePath)
         => _repository.ReadRestored(relativePath);
 
     /// <summary>Checks whether a restored file exists.</summary>
-    public bool RestoredExists(string relativePath) =>
+    public bool RestoredExists(RelativePath relativePath) =>
         _repository.RestoredExists(relativePath);
 
     /// <summary>
