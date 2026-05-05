@@ -7,7 +7,6 @@ using Arius.E2E.Tests.Workflows;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.IO;
 using BenchmarkDotNet.Attributes;
-using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.Benchmarks;
 
