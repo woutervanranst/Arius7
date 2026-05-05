@@ -5,6 +5,15 @@ namespace Arius.Core.Tests.Shared;
 public class RootedPathTests
 {
     [Test]
+    public void RootedOf_ComposesRelativePathUnderTypedRoot()
+    {
+        var rooted = RootedOf("C:/repo", "docs/readme.txt");
+
+        rooted.Root.ShouldBe(RootOf("C:/repo"));
+        rooted.RelativePath.ShouldBe(PathOf("docs/readme.txt"));
+    }
+
+    [Test]
     public void RootedAt_ComposesRootAndRelativePath()
     {
         var root = RootOf(Path.GetFullPath(Path.Combine(Path.GetTempPath(), "arius-rooted")));
