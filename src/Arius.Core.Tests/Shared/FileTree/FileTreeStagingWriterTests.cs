@@ -199,6 +199,55 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
+    public async Task AppendFileEntryAsync_DeeplyNestedPath_SucceedsWithBareDirectoryNamesInOrder()
+    {
+        const int depth = 6000;
+
+        var prefixes = new RelativePath[depth];
+        var currentPath = RelativePath.Root;
+        for (var i = 0; i < depth; i++)
+        {
+            currentPath /= SegmentOf($"d{i}");
+            prefixes[i] = currentPath;
+        }
+
+        var filePath = currentPath / SegmentOf("a.jpg");
+
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp);
+
+            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
+            var firstDirectoryId = FileTreePaths.GetStagingDirectoryId(prefixes[0]);
+            var secondDirectoryId = FileTreePaths.GetStagingDirectoryId(prefixes[1]);
+            var leafParent = prefixes[^1];
+            var leafParentId = FileTreePaths.GetStagingDirectoryId(leafParent);
+
+            var rootEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId));
+            var firstDirectoryEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, firstDirectoryId));
+            var leafEntries = await File.ReadAllLinesAsync(FileTreePaths.GetStagingNodePath(session.StagingRoot, leafParentId));
+
+            rootEntries.ShouldContain($"{firstDirectoryId} D d0");
+            rootEntries.ShouldNotContain($"{firstDirectoryId} D d0/");
+            firstDirectoryEntries.ShouldContain($"{secondDirectoryId} D d1");
+            firstDirectoryEntries.ShouldNotContain($"{secondDirectoryId} D d1/");
+
+            var fileEntry = FileTreeSerializer.ParsePersistedFileEntryLine(leafEntries.Single());
+            fileEntry.Name.ShouldBe(SegmentOf("a.jpg"));
+            fileEntry.ContentHash.ShouldBe(TestHash);
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task AppendFileEntryAsync_PreservesLeadingAndTrailingSpacesInPathSegments()
     {
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
