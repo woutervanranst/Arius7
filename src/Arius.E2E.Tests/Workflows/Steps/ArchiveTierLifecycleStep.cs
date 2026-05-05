@@ -45,8 +45,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!sourceState.RootPath.ExistsDirectory && sourceVersion == SyntheticRepositoryVersion.V2)
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
-            var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V2));
-            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
+            var versionRootPath = state.VersionedSourceRoot / PathSegment.Parse(nameof(SyntheticRepositoryVersion.V2));
+            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
             state.VersionedSourceStates[SyntheticRepositoryVersion.V2] = sourceState;
         }
 
@@ -92,9 +92,9 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         await UploadReadyRehydratedChunkAsync(azureBlobContainer, targetChunk, cancellationToken);
 
         var cleanupDeletedChunks = 0;
-        var workflowRoot = Path.GetDirectoryName(state.VersionedSourceRoot.ToString())
+        var workflowRoot = state.VersionedSourceRoot.Parent
             ?? throw new InvalidOperationException($"{Name}: representative workflow root is not available.");
-        var readyRestoreRoot = LocalRootPath.Parse(Path.Combine(workflowRoot, "archive-tier-ready"));
+        var readyRestoreRoot = workflowRoot / PathSegment.Parse("archive-tier-ready");
         readyRestoreRoot.CreateDirectory();
 
         try

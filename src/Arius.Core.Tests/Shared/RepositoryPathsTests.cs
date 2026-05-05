@@ -26,10 +26,10 @@ public class RepositoryPathsTests
         logsDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
 
         ((LocalRootPath)repositoryDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root);
-        ((LocalRootPath)chunkIndexDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "chunk-index")));
-        ((LocalRootPath)fileTreeDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "filetrees")));
-        ((LocalRootPath)snapshotDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
-        ((LocalRootPath)logsDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "logs")));
+        ((LocalRootPath)chunkIndexDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root / PathSegment.Parse("chunk-index"));
+        ((LocalRootPath)fileTreeDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root / PathSegment.Parse("filetrees"));
+        ((LocalRootPath)snapshotDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root / PathSegment.Parse("snapshots"));
+        ((LocalRootPath)logsDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root / PathSegment.Parse("logs"));
     }
 
     [Test]

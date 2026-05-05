@@ -81,9 +81,20 @@ public readonly record struct LocalRootPath
         }
     }
 
+    public LocalRootPath? Parent
+    {
+        get
+        {
+            var parent = Path.GetDirectoryName(Value);
+            return string.IsNullOrEmpty(parent) ? null : Parse(parent);
+        }
+    }
+
     public bool Equals(LocalRootPath other) => Comparer.Equals(Value, other.Value);
 
     public override int GetHashCode() => Comparer.GetHashCode(Value);
+
+    public static LocalRootPath operator /(LocalRootPath left, PathSegment right) => Parse(Path.Combine(left.Value, right.ToString()));
 
     public static RootedPath operator /(LocalRootPath left, RelativePath right) => new(left, right);
 

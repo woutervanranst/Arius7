@@ -182,7 +182,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult1 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1")),
+                RootDirectory = fix.RestoreRoot / PathSegment.Parse("v1"),
                 Version       = snapshot1,
                 Overwrite     = true,
             }), default);
@@ -190,13 +190,13 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult1.Success.ShouldBeTrue(restoreResult1.ErrorMessage);
         restoreResult1.FilesRestored.ShouldBe(1);
 
-        var v1Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1"));
+        var v1Dir = fix.RestoreRoot / PathSegment.Parse("v1");
         (PathOf("file-a.bin").RootedAt(v1Dir)).ExistsFile.ShouldBeTrue();
         (PathOf("file-b.bin").RootedAt(v1Dir)).ExistsFile.ShouldBeFalse();
         (PathOf("file-a.bin").RootedAt(v1Dir)).ReadAllBytes().ShouldBe(contentA);
 
         // ── Restore latest snapshot → both files ──────────────────────────────
-        var v2Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v2"));
+        var v2Dir = fix.RestoreRoot / PathSegment.Parse("v2");
         var restoreResult2 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
@@ -410,7 +410,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         r2.Success.ShouldBeTrue();
 
         // Restore latest: keep.bin only
-        var latestDir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "latest"));
+        var latestDir = fix.RestoreRoot / PathSegment.Parse("latest");
         var rl = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions { RootDirectory = latestDir, Overwrite = true }), default);
         rl.Success.ShouldBeTrue();
@@ -419,7 +419,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         PathOf("delete.bin").RootedAt(latestDir).ExistsFile.ShouldBeFalse();
 
         // Restore snapshot 1: both files
-        var v1Dir = LocalRootPath.Parse(Path.Combine(fix.RestoreRoot.ToString(), "v1"));
+        var v1Dir = fix.RestoreRoot / PathSegment.Parse("v1");
         var rv1 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions { RootDirectory = v1Dir, Version = snapshot1, Overwrite = true }), default);
         rv1.Success.ShouldBeTrue();

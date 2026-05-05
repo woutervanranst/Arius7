@@ -27,8 +27,8 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
         {
             case SyntheticRepositoryVersion.V1:
             {
-                var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V1));
-                return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
+                var versionRootPath = state.VersionedSourceRoot / PathSegment.Parse(nameof(SyntheticRepositoryVersion.V1));
+                return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
             }
             case SyntheticRepositoryVersion.V2:
             {
@@ -38,8 +38,8 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
                 if (!v1State.RootPath.ExistsDirectory)
                     v1State = await RematerializeV1Async(state, cancellationToken);
 
-                var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V2));
-                return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
+                var versionRootPath = state.VersionedSourceRoot / PathSegment.Parse(nameof(SyntheticRepositoryVersion.V2));
+                return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
             }
             default:
                 throw new ArgumentOutOfRangeException();
@@ -48,8 +48,8 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     internal static async Task<SyntheticRepositoryState> RematerializeV1Async(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V1));
-        var versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
+        var versionRootPath = state.VersionedSourceRoot / PathSegment.Parse(nameof(SyntheticRepositoryVersion.V1));
+        var versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
         state.VersionedSourceStates[SyntheticRepositoryVersion.V1] = versionState;
         return versionState;
     }

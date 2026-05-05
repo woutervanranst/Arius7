@@ -29,26 +29,26 @@ public static class RepositoryPaths
     /// Example: <c>~/.arius/<container>/chunk-index/</c>
     /// </summary>
     public static LocalRootPath GetChunkIndexCacheDirectory(string accountName, string containerName) 
-        => LocalRootPath.Parse((GetRepositoryDirectory(accountName, containerName) / RelativePath.Parse("chunk-index")).FullPath);
+        => GetRepositoryDirectory(accountName, containerName) / PathSegment.Parse("chunk-index");
 
     /// <summary>
     /// Returns the filetree cache directory for one repository.
     /// Example: <c>~/.arius/<container>/filetrees/</c>
     /// </summary>
     public static LocalRootPath GetFileTreeCacheDirectory(string accountName, string containerName) 
-        => LocalRootPath.Parse((GetRepositoryDirectory(accountName, containerName) / RelativePath.Parse("filetrees")).FullPath);
+        => GetRepositoryDirectory(accountName, containerName) / PathSegment.Parse("filetrees");
 
     /// <summary>
     /// Returns the snapshot cache directory for one repository.
     /// Example: <c>~/.arius/<container>/snapshots/</c>
     /// </summary>
     public static LocalRootPath GetSnapshotCacheDirectory(string accountName, string containerName) 
-        => LocalRootPath.Parse((GetRepositoryDirectory(accountName, containerName) / RelativePath.Parse("snapshots")).FullPath);
+        => GetRepositoryDirectory(accountName, containerName) / PathSegment.Parse("snapshots");
 
     /// <summary>
     /// Returns the logs directory for one repository.
     /// Example: <c>~/.arius/<container>/logs/</c>
     /// </summary>
     public static LocalRootPath GetLogsDirectory(string accountName, string containerName) 
-        => LocalRootPath.Parse((GetRepositoryDirectory(accountName, containerName) / RelativePath.Parse("logs")).FullPath);
+        => GetRepositoryDirectory(accountName, containerName) / PathSegment.Parse("logs");
 }

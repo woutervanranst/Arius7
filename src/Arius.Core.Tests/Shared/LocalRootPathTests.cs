@@ -58,4 +58,29 @@ public class LocalRootPathTests
                 Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    [Test]
+    public void Parent_ReturnsContainingRoot()
+    {
+        var root = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius-local-root", "child"));
+
+        root.Parent.ShouldBe(LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius-local-root")));
+    }
+
+    [Test]
+    public void Parent_OfFilesystemRoot_IsNull()
+    {
+        var root = LocalRootPath.Parse(Path.GetPathRoot(Path.GetTempPath())!);
+
+        root.Parent.ShouldBeNull();
+    }
+
+    [Test]
+    public void Slash_PathSegment_ReturnsChildRoot()
+    {
+        var root = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius-local-root"));
+
+        (root / PathSegment.Parse("snapshots"))
+            .ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
+    }
 }
