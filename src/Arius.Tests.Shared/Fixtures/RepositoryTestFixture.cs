@@ -252,8 +252,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
 
         try
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (cacheDir.ExistsDirectory)
+                cacheDir.DeleteDirectory(recursive: true);
         }
         catch (DirectoryNotFoundException ex)
         {

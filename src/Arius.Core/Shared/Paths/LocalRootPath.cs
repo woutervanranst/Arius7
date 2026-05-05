@@ -87,6 +87,8 @@ public readonly record struct LocalRootPath
 
     public static RootedPath operator /(LocalRootPath left, RelativePath right) => new(left, right);
 
+    public static implicit operator string(LocalRootPath path) => path.ToString();
+
     public override string ToString() => Value;
 
     private static StringComparer Comparer =>

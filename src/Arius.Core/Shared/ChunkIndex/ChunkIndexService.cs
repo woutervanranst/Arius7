@@ -70,7 +70,7 @@ public sealed class ChunkIndexService : IDisposable
         _blobs         = blobs;
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
-        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
+        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName).ToString();
 
         Directory.CreateDirectory(_l2Dir);
     }

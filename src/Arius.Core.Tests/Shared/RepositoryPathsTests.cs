@@ -1,4 +1,5 @@
 using Arius.Core.Shared;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Tests.Shared;
 
@@ -8,13 +9,23 @@ public class RepositoryPathsTests
     public void RepositoryDirectories_AreDerivedUnderUserProfile()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var root = Path.Combine(home, ".arius", "account-container");
+        var root = LocalRootPath.Parse(Path.Combine(home, ".arius", "account-container"));
+        var repositoryDirectoryMethod = typeof(RepositoryPaths).GetMethod(nameof(RepositoryPaths.GetRepositoryDirectory))!;
+        var chunkIndexDirectoryMethod = typeof(RepositoryPaths).GetMethod(nameof(RepositoryPaths.GetChunkIndexCacheDirectory))!;
+        var fileTreeDirectoryMethod = typeof(RepositoryPaths).GetMethod(nameof(RepositoryPaths.GetFileTreeCacheDirectory))!;
+        var snapshotDirectoryMethod = typeof(RepositoryPaths).GetMethod(nameof(RepositoryPaths.GetSnapshotCacheDirectory))!;
+        var logsDirectoryMethod = typeof(RepositoryPaths).GetMethod(nameof(RepositoryPaths.GetLogsDirectory))!;
 
-        RepositoryPaths.GetRepositoryDirectory("account", "container").ShouldBe(root);
-        RepositoryPaths.GetRepoDirectoryName("account", "container").ShouldBe("account-container");
-        RepositoryPaths.GetChunkIndexCacheDirectory("account", "container").ShouldBe(Path.Combine(root, "chunk-index"));
-        RepositoryPaths.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
-        RepositoryPaths.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
-        RepositoryPaths.GetLogsDirectory("account", "container").ShouldBe(Path.Combine(root,            "logs"));
+        repositoryDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+        chunkIndexDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+        fileTreeDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+        snapshotDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+        logsDirectoryMethod.ReturnType.ShouldBe(typeof(LocalRootPath));
+
+        ((LocalRootPath)repositoryDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(root);
+        ((LocalRootPath)chunkIndexDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "chunk-index")));
+        ((LocalRootPath)fileTreeDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "filetrees")));
+        ((LocalRootPath)snapshotDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
+        ((LocalRootPath)logsDirectoryMethod.Invoke(null, ["account", "container"])!).ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "logs")));
     }
 }

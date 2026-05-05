@@ -56,9 +56,9 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
+        _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName).ToString();
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
-        _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
+        _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName).ToString();
 
         Directory.CreateDirectory(_diskCacheDir);
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
