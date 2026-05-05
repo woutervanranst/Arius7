@@ -13,6 +13,7 @@ using Arius.Tests.Shared.IO;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
@@ -46,7 +47,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
             var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V2));
-            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
+            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, RootOf(v1State.RootPath), RootOf(versionRootPath), state.Fixture.Encryption);
             state.VersionedSourceStates[SyntheticRepositoryVersion.V2] = sourceState;
         }
 

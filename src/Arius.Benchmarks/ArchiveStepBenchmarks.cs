@@ -7,6 +7,7 @@ using Arius.E2E.Tests.Workflows;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.IO;
 using BenchmarkDotNet.Attributes;
+using static Arius.Tests.Shared.Paths.PathsHelper;
 
 namespace Arius.Benchmarks;
 
@@ -33,7 +34,7 @@ public class ArchiveStepBenchmarks
         await SyntheticRepositoryMaterializer.MaterializeV1Async(
             _definition,
             RepresentativeWorkflowCatalog.Canonical.Seed,
-            _preparedSourceRoot,
+            RootOf(_preparedSourceRoot),
             new PassphraseEncryptionService("arius-test-passphrase"));
     }
 

@@ -138,7 +138,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
         Directory.CreateDirectory(LocalRoot);
 
-        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
+        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRootPath.Parse(LocalRoot), Encryption);
     }
 
     public string WriteFile(RelativePath relativePath, byte[] content)
