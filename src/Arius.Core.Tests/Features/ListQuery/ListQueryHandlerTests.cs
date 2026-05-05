@@ -23,8 +23,8 @@ public class ListQueryHandlerTests
     public async Task Handle_CloudOnlyNonRecursive_StreamsRootDirectoryEntries()
     {
         var rootTree = Entries(
-            DirectoryEntryOf("docs/", TreeHashFor("docs")),
-            FileEntryOf("readme.txt", ContentHashFor("readme")));
+            DirectoryEntryOf(SegmentOf("docs"), TreeHashFor("docs")),
+            FileEntryOf(SegmentOf("readme.txt"), ContentHashFor("readme")));
         var snapshot = new SnapshotManifest
         {
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
@@ -72,13 +72,13 @@ public class ListQueryHandlerTests
     public async Task Handle_PrefixAndNonRecursive_StreamsOnlyImmediateChildrenOfPrefix()
     {
         var docsTree = Entries(
-            DirectoryEntryOf("nested/", FakeFileTreeHash('d')),
-            FileEntryOf("guide.txt", FakeContentHash('e')));
+            DirectoryEntryOf(SegmentOf("nested"), FakeFileTreeHash('d')),
+            FileEntryOf(SegmentOf("guide.txt"), FakeContentHash('e')));
 
         var docsHash = FileTreeBuilder.ComputeHash(docsTree, s_encryption);
         var rootTree = Entries(
-            DirectoryEntryOf("docs/", docsHash),
-            FileEntryOf("root.txt", FakeContentHash('f')));
+            DirectoryEntryOf(SegmentOf("docs"), docsHash),
+            FileEntryOf(SegmentOf("root.txt"), FakeContentHash('f')));
 
         var snapshot = new SnapshotManifest
         {
@@ -122,8 +122,8 @@ public class ListQueryHandlerTests
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "local-only.txt"), "local-only");
 
             var rootTree = Entries(
-                FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
-                FileEntryOf("shared.txt", ContentHashFor("shared")));
+                FileEntryOf(SegmentOf("cloud-only.txt"), ContentHashFor("cloud-only")),
+                FileEntryOf(SegmentOf("shared.txt"), ContentHashFor("shared")));
             var snapshot = new SnapshotManifest
             {
                 Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
@@ -207,11 +207,11 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_RecursiveFalse_YieldsOnlyImmediateChildren()
     {
-        var childTree = Entries(FileEntryOf("deep.txt", FakeContentHash('6')));
+        var childTree = Entries(FileEntryOf(SegmentOf("deep.txt"), FakeContentHash('6')));
         var childHash = FileTreeBuilder.ComputeHash(childTree, s_encryption);
         var rootTree = Entries(
-            DirectoryEntryOf("child/", childHash),
-            FileEntryOf("root.txt", FakeContentHash('7')));
+            DirectoryEntryOf(SegmentOf("child"), childHash),
+            FileEntryOf(SegmentOf("root.txt"), FakeContentHash('7')));
         var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
@@ -242,10 +242,10 @@ public class ListQueryHandlerTests
     public async Task Handle_FilenameFilter_CaseInsensitiveMatchOnFilesNotDirs()
     {
         var rootTree = Entries(
-            DirectoryEntryOf("Photos/", FakeFileTreeHash('8')),
-            FileEntryOf("VACATION.jpg", FakeContentHash('9')),
-            FileEntryOf("sunset.jpg", FakeContentHash('a')),
-            FileEntryOf("readme.txt", FakeContentHash('c')));
+            DirectoryEntryOf(SegmentOf("Photos"), FakeFileTreeHash('8')),
+            FileEntryOf(SegmentOf("VACATION.jpg"), FakeContentHash('9')),
+            FileEntryOf(SegmentOf("sunset.jpg"), FakeContentHash('a')),
+            FileEntryOf(SegmentOf("readme.txt"), FakeContentHash('c')));
         var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
@@ -282,8 +282,8 @@ public class ListQueryHandlerTests
 
             // root has: cloud+local dir, cloud-only dir; local has: local-only dir
             var rootTree = Entries(
-                DirectoryEntryOf("cloud-local-dir/", cloudLocalHash),
-                DirectoryEntryOf("cloud-only-dir/", cloudOnlyHash));
+                DirectoryEntryOf(SegmentOf("cloud-local-dir"), cloudLocalHash),
+                DirectoryEntryOf(SegmentOf("cloud-only-dir"), cloudOnlyHash));
             var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
             var snapshot = MakeSnapshot(rootHash);
 
@@ -324,12 +324,12 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_BatchSizeLookup_CalledOncePerDirectory_SizeNullWhenNotInIndex()
     {
-        var childTree = Entries(FileEntryOf("child-file.txt", FakeContentHash('d')));
+        var childTree = Entries(FileEntryOf(SegmentOf("child-file.txt"), FakeContentHash('d')));
         var childHash = FileTreeBuilder.ComputeHash(childTree, s_encryption);
         var rootTree = Entries(
-            DirectoryEntryOf("child/", childHash),
-            FileEntryOf("known.txt", ContentHashFor("known")),
-            FileEntryOf("unknown.txt", FakeContentHash('f')));
+            DirectoryEntryOf(SegmentOf("child"), childHash),
+            FileEntryOf(SegmentOf("known.txt"), ContentHashFor("known")),
+            FileEntryOf(SegmentOf("unknown.txt"), FakeContentHash('f')));
         var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
         var snapshot = MakeSnapshot(rootHash);
 
@@ -407,8 +407,8 @@ public class ListQueryHandlerTests
         for (var i = 10; i >= 1; i--)
         {
             var tree = Entries(
-                DirectoryEntryOf($"level{i + 1}/", currentHash),
-                FileEntryOf($"file{i}.txt", FakeContentHash("123456789a"[10 - i])));
+                DirectoryEntryOf(SegmentOf($"level{i + 1}"), currentHash),
+                FileEntryOf(SegmentOf($"file{i}.txt"), FakeContentHash("123456789a"[10 - i])));
             currentHash = FileTreeBuilder.ComputeHash(tree, s_encryption);
             await SeedTreeAsync(blobs, tree);
         }
@@ -469,17 +469,17 @@ public class ListQueryHandlerTests
         return payload.Hash;
     }
 
-    private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
+    private static FileEntry FileEntryOf(PathSegment name, ContentHash hash) => new()
     {
-        Name = SegmentOf(name),
+        Name = name,
         ContentHash = hash,
         Created = s_created,
         Modified = s_modified
     };
 
-    private static DirectoryEntry DirectoryEntryOf(string name, FileTreeHash hash) => new()
+    private static DirectoryEntry DirectoryEntryOf(PathSegment name, FileTreeHash hash) => new()
     {
-        Name = SegmentOf(name.TrimEnd('/')),
+        Name = name,
         FileTreeHash = hash
     };
 }
