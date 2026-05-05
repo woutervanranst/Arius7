@@ -1,6 +1,6 @@
 ---
-name: modern-csharp-coding-standards
-description: Write modern, high-performance C# code using records, pattern matching, value objects, async/await, Span<T>/Memory<T>, and best-practice API design patterns. Emphasizes functional-style programming with C# 12+ features.
+name: csharp-coding-standards
+description: Use when writing modern, high-performance C# code with records, pattern matching, extension members, async/await, Span<T>/Memory<T>, and public API design.
 invocable: false
 ---
 
@@ -33,6 +33,7 @@ Use this skill when:
 6. **API Design** - Accept abstractions, return appropriately specific types
 7. **Composition Over Inheritance** - Avoid abstract base classes, prefer composition
 8. **Value Objects as Structs** - Use `readonly record struct` for value objects
+9. **Extension APIs** - Use extension blocks for cohesive receiver-focused APIs and classic extension methods for isolated helpers or compatibility
 
 ---
 
@@ -154,6 +155,44 @@ public void ProcessOrder(Order? order)
 
 ---
 
+### C# 14 Ergonomics
+
+- Use null-conditional assignment (`customer?.Order = order`) for simple null-guarded writes. Keep explicit `if` statements when the assignment body is complex enough to hide work.
+- Use `field` backed properties for simple accessor validation or normalization without a manual backing field. If the accessor logic becomes non-trivial, or the backing field must be shared across members, declare the field explicitly.
+
+### Extension Members (C# 14+)
+
+Use `extension` blocks for cohesive receiver-focused APIs. Keep classic `this` extension methods for isolated helpers, older language targets, and generic signatures that do not port cleanly.
+
+```csharp
+public static class OrderExtensions
+{
+    extension(Order order)
+    {
+        public bool IsDraft => order.Status is OrderStatus.Draft;
+
+        public OrderDto ToDto() => new(
+            order.Id.ToString(),
+            order.Total.Amount,
+            order.Status.ToString());
+    }
+
+    public static OrderSummary ToSummary(this Order order)
+        => new(order.Id.ToString(), order.Total.Amount);
+}
+```
+
+**Guidelines:**
+- Prefer `extension` blocks when you add multiple related members to the same receiver, or when you need extension properties or static extension members.
+- Keep classic extension methods for one-off helpers, files that already use the older style, older `LangVersion` targets, or generic signatures that do not port cleanly to extension blocks.
+- Do not mass-convert existing extension methods just for syntax consistency. The runtime shape is compatible, but moving members between container classes can break callers that disambiguate on the static class name.
+- Keep extension properties cheap, side-effect-free, and obviously derived from the receiver. Use a method instead for I/O, async work, allocation-heavy mapping, or anything surprising.
+- Real members always win over extensions. Use narrow namespaces and specific names to reduce ambiguity and IntelliSense noise.
+- For explicit mapping, keep verb-based methods such as `ToDto()` and `ToSummary()`. Do not model mappings as extension properties.
+- Some classic generic extension methods cannot be ported directly. If the receiver's type parameters do not come first in the lowered method, or receiver constraints depend on member type parameters, keep the classic `this` syntax.
+
+---
+
 ## Composition Over Inheritance
 
 **Avoid abstract base classes.** Use interfaces + composition. Use static helpers for shared logic. Use records with factory methods for variants.
@@ -205,6 +244,8 @@ public async IAsyncEnumerable<Order> StreamOrdersAsync(
 
 Use `Span<T>` for synchronous zero-allocation operations, `Memory<T>` for async, and `ArrayPool<T>` for large temporary buffers.
 
+C# 14 makes `Span<T>` and `ReadOnlySpan<T>` participate more naturally in overload resolution and type inference. Treat new span overloads as versioning-sensitive API changes: adding a `ReadOnlySpan<T>` overload beside array, string, or collection overloads can change which overload existing call sites bind to. Prefer one canonical span overload when possible, and verify representative call sites before adding more.
+
 See [performance-and-api-design.md](performance-and-api-design.md) for complete Span/Memory examples and the API design section.
 
 ---
@@ -219,7 +260,7 @@ See [composition-and-error-handling.md](composition-and-error-handling.md) for t
 
 ## Avoid Reflection-Based Metaprogramming
 
-**Banned:** AutoMapper, Mapster, ExpressMapper. Use explicit mapping extension methods instead. Use `UnsafeAccessorAttribute` (.NET 8+) when you genuinely need private member access.
+**Banned:** AutoMapper, Mapster, ExpressMapper. Use explicit mapping extension methods instead. In C# 14+, use extension blocks to group multiple related mappings for the same receiver, but keep mappings as methods such as `ToDto()`, not properties. Use `UnsafeAccessorAttribute` (.NET 8+) when you genuinely need private member access.
 
 See [anti-patterns-and-reflection.md](anti-patterns-and-reflection.md) for full guidance.
 
@@ -314,6 +355,8 @@ See [anti-patterns-and-reflection.md](anti-patterns-and-reflection.md) for detai
 ## Additional Resources
 
 - **C# Language Specification**: https://learn.microsoft.com/en-us/dotnet/csharp/
+- **What's New in C# 14**: https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-14
+- **Extension Members**: https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/classes-and-structs/extension-methods
 - **Pattern Matching**: https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/functional/pattern-matching
 - **Span<T> and Memory<T>**: https://learn.microsoft.com/en-us/dotnet/standard/memory-and-spans/
 - **Async Best Practices**: https://learn.microsoft.com/en-us/archive/msdn-magazine/2013/march/async-await-best-practices-in-asynchronous-programming

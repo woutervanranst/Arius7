@@ -170,6 +170,16 @@ public bool TryFormatOrderId(int orderId, Span<char> destination, out int charsW
 | `byte[]` | When you need to store data long-term or pass to APIs requiring arrays |
 | `ArrayPool<T>` | Large temporary buffers (>1KB) to avoid GC pressure |
 
+### C# 14 Span Overload Caveats
+
+- C# 14 lets `Span<T>` and `ReadOnlySpan<T>` participate more naturally in overload resolution, extension receivers, and generic inference.
+- Treat new span overloads as versioning-sensitive API changes. Adding a `ReadOnlySpan<T>` overload beside array, string, or collection overloads can change which overload existing call sites bind to.
+- Prefer one canonical overload when possible:
+  - `ReadOnlySpan<T>` for read-only synchronous parsing, formatting, and scanning.
+  - `Span<T>` only when caller-owned mutation is part of the contract.
+  - `Memory<T>` / `ReadOnlyMemory<T>` for async APIs.
+- Before adding a span overload to a public API, verify representative call sites with arrays, strings, and existing generic or extension-method calls so you do not introduce ambiguities or unexpected overload picks.
+
 ## API Design Principles
 
 ### Accept Abstractions, Return Appropriately Specific
