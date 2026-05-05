@@ -68,14 +68,14 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    public IBlobContainerService                               BlobContainer   { get; }
-    public IEncryptionService                                  Encryption      { get; }
-    public Arius.Core.Shared.ChunkIndex.ChunkIndexService      Index           { get; }
-    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage    { get; }
-    public Arius.Core.Shared.FileTree.FileTreeService          FileTreeService { get; }
-    public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
-    public string                                              LocalRoot       { get; }
-    public string                                              RestoreRoot     { get; }
+    public IBlobContainerService BlobContainer   { get; }
+    public IEncryptionService    Encryption      { get; }
+    public ChunkIndexService     Index           { get; }
+    public IChunkStorageService  ChunkStorage    { get; }
+    public FileTreeService       FileTreeService { get; }
+    public SnapshotService       Snapshot        { get; }
+    public string                LocalRoot       { get; }
+    public string                RestoreRoot     { get; }
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {

@@ -22,8 +22,8 @@ public class FileTreeSerializerTests
     {
         var entries = new List<FileTreeEntry>(items.Length);
         entries.AddRange(items.Select(item => (FileTreeEntry)(item.isDirectory
-            ? FileTreeHelper.DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
-            : FileTreeHelper.FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
+            ? DirectoryEntryOf(SegmentOf(item.name), FileTreeHash.Parse(NormalizeHash(item.hash)))
+            : FileEntryOf(SegmentOf(item.name), ContentHash.Parse(NormalizeHash(item.hash)), s_created, s_modified))));
 
         return entries;
     }
@@ -75,7 +75,7 @@ public class FileTreeSerializerTests
     [Test]
     public void DirectoryEntry_Name_UsesPathSegmentInMemory()
     {
-        var entry = FileTreeHelper.DirectoryEntryOf(SegmentOf("photos"), FakeFileTreeHash('d'));
+        var entry = DirectoryEntryOf(SegmentOf("photos"), FakeFileTreeHash('d'));
 
         entry.Name.ShouldBe(SegmentOf("photos"));
     }
@@ -161,8 +161,8 @@ public class FileTreeSerializerTests
     {
         IReadOnlyList<FileTreeEntry> entries =
         [
-            FileTreeHelper.DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
-            FileTreeHelper.FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
+            DirectoryEntryOf(SegmentOf("sub"), FileTreeHash.Parse(NormalizeHash("abc"))),
+            FileEntryOf(SegmentOf("f.txt"), ContentHash.Parse(NormalizeHash("def")), s_created, s_modified)
         ];
 
         var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
