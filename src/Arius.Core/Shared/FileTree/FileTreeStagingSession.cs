@@ -20,17 +20,12 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
     public LocalRootPath StagingRoot { get; }
 
     public static Task<FileTreeStagingSession> OpenAsync(LocalRootPath fileTreeCacheDirectory, CancellationToken cancellationToken = default)
-        => OpenAsync(fileTreeCacheDirectory.ToString(), cancellationToken);
-
-    public static Task<FileTreeStagingSession> OpenAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
-        var cacheDirectory = LocalRootPath.Parse(fileTreeCacheDirectory);
-        cacheDirectory.CreateDirectory();
+        fileTreeCacheDirectory.CreateDirectory();
 
-        var lockPath = FileTreePaths.GetStagingLockPath(cacheDirectory);
+        var lockPath = FileTreePaths.GetStagingLockPath(fileTreeCacheDirectory);
         FileStream lockStream;
 
         try
@@ -44,7 +39,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         try
         {
-            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheDirectory);
+            var stagingRoot = FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory);
             if (stagingRoot.ExistsDirectory)
                 stagingRoot.DeleteDirectory(recursive: true);
 

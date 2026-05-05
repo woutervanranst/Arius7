@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -152,7 +153,7 @@ public class ArchiveRecoveryTests
         using var env = new ArchiveTestEnvironment();
         env.WriteRandomFile("docs/readme.txt", 1024);
 
-        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(env.FileTreeCacheDirectory));
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
 

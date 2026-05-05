@@ -64,7 +64,7 @@ public class FileTreeStagingWriterTests
             stagingRoot.CreateDirectory();
             await (stagingRoot / RelativePath.Parse("stale")).WriteAllTextAsync("old");
 
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheRoot);
 
             (stagingRoot / RelativePath.Parse("stale")).ExistsFile.ShouldBeFalse();
             session.StagingRoot.ExistsDirectory.ShouldBeTrue();
@@ -82,10 +82,11 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var first = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var cacheRoot = LocalRootPath.Parse(cacheDir);
+            await using var first = await FileTreeStagingSession.OpenAsync(cacheRoot);
 
             await Assert.ThrowsAsync<IOException>(async () =>
-                await FileTreeStagingSession.OpenAsync(cacheDir));
+                await FileTreeStagingSession.OpenAsync(cacheRoot));
         }
         finally
         {
@@ -100,12 +101,13 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            var first = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var cacheRoot = LocalRootPath.Parse(cacheDir);
+            var first = await FileTreeStagingSession.OpenAsync(cacheRoot);
             await (first.StagingRoot / RelativePath.Parse("owned-by-first")).WriteAllTextAsync("first");
 
             await first.DisposeAsync();
 
-            await using var second = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var second = await FileTreeStagingSession.OpenAsync(cacheRoot);
             (second.StagingRoot / RelativePath.Parse("owned-by-first")).ExistsFile.ShouldBeFalse();
         }
         finally
@@ -121,7 +123,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             await (session.StagingRoot / RelativePath.Parse("owned-by-first")).WriteAllTextAsync("first");
 
             await session.DisposeAsync();
@@ -141,7 +143,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(RelativePath.Parse("photos/a.jpg"), TestHash, TestTimestamp, TestTimestamp);
@@ -170,7 +172,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(RelativePath.Parse("a.jpg"), TestHash, TestTimestamp, TestTimestamp);
@@ -199,7 +201,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(RelativePath.Parse("photos/2024/a.jpg"), ContentHash.Parse(new string('b', 64)), TestTimestamp, TestTimestamp);
@@ -241,7 +243,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp);
@@ -278,7 +280,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(RelativePath.Parse(" photos/a.jpg "), TestHash, TestTimestamp, TestTimestamp);
@@ -309,7 +311,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -330,7 +332,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -356,7 +358,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -375,7 +377,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync(RelativePath.Parse("photos/a.jpg"), TestHash, TestTimestamp, TestTimestamp);
@@ -401,7 +403,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             var exception = Assert.Throws<ArgumentException>(() => RelativePath.Parse("photos/./a.jpg"));
@@ -423,7 +425,7 @@ public class FileTreeStagingWriterTests
         var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
         try
         {
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var session = await FileTreeStagingSession.OpenAsync(LocalRootPath.Parse(cacheDir));
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>

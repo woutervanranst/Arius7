@@ -20,9 +20,6 @@ internal static class FileTreePaths
     /// Example: <c>~/.arius/<container>/filetrees/0123abcd...</c>
     /// </summary>
     public static string GetCachePath(LocalRootPath fileTreeCacheDirectory, FileTreeHash hash)
-        => GetCachePath(fileTreeCacheDirectory.ToString(), hash);
-
-    public static string GetCachePath(string fileTreeCacheDirectory, FileTreeHash hash)
         => GetCachePath(fileTreeCacheDirectory, hash.ToString());
 
     /// <summary>
@@ -30,10 +27,7 @@ internal static class FileTreePaths
     /// Example: <c>~/.arius/<container>/filetrees/0123abcd...</c>
     /// </summary>
     public static string GetCachePath(LocalRootPath fileTreeCacheDirectory, string hashText)
-        => GetCachePath(fileTreeCacheDirectory.ToString(), hashText);
-
-    public static string GetCachePath(string fileTreeCacheDirectory, string hashText)
-        => Path.Combine(fileTreeCacheDirectory, hashText);
+        => (fileTreeCacheDirectory / RelativePath.Parse(hashText)).FullPath;
 
 
     // -- FileTree Staging Paths ---

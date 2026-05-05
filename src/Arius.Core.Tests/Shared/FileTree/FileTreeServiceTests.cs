@@ -31,7 +31,7 @@ public class FileTreeServiceTests
         FileEntryOf(fileName, hash, s_ts1, s_ts2)
     ];
 
-    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, LocalRootPath cacheDir, string snapshotsDir)
+    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, LocalRootPath cacheDir, LocalRootPath snapshotsDir)
         MakeService(string acct, string cont)
     {
         var blobs        = new FakeInMemoryBlobContainerService();
@@ -39,14 +39,14 @@ public class FileTreeServiceTests
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir     = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
+        snapshotsDir.CreateDirectory(); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
     }
 
-    private static async Task CleanupAsync(LocalRootPath cacheDir, string snapshotsDir)
+    private static async Task CleanupAsync(LocalRootPath cacheDir, LocalRootPath snapshotsDir)
     {
         if (cacheDir.ExistsDirectory)       cacheDir.DeleteDirectory(recursive: true);
-        if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
+        if (snapshotsDir.ExistsDirectory)   snapshotsDir.DeleteDirectory(recursive: true);
         await Task.CompletedTask;
     }
 
@@ -170,7 +170,7 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir);
+        snapshotsDir.CreateDirectory();
 
         try
         {
@@ -211,7 +211,7 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir);
+        snapshotsDir.CreateDirectory();
 
         try
         {
@@ -308,7 +308,7 @@ public class FileTreeServiceTests
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir);
+        snapshotsDir.CreateDirectory();
 
         try
         {
@@ -352,7 +352,7 @@ public class FileTreeServiceTests
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir);
+        snapshotsDir.CreateDirectory();
 
         try
         {
@@ -488,7 +488,7 @@ public class FileTreeServiceTests
             var timestamp = "2024-06-15T100000.000Z";
 
             // Write a local snapshot marker
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, timestamp), []);
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), timestamp), []);
 
             // Seed a remote snapshot with the same timestamp
             blobs.SeedBlob(BlobPaths.Snapshot(timestamp), [], contentType: null);
@@ -519,11 +519,11 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
         var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
-        Directory.CreateDirectory(snapshotsDir);
+        snapshotsDir.CreateDirectory();
 
         try
         {
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-06-15T100000.000Z"), []);
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-06-15T100000.000Z"), []);
 
             await svc.ValidateAsync();
 
@@ -555,7 +555,7 @@ public class FileTreeServiceTests
             var secondRemoteHash = FakeFileTreeHash('2');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
@@ -592,7 +592,7 @@ public class FileTreeServiceTests
             var existingHash = FakeFileTreeHash('3');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
@@ -720,7 +720,7 @@ public class FileTreeServiceTests
         finally
         {
             if (cacheDir.ExistsDirectory)       cacheDir.DeleteDirectory(recursive: true);
-            if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
+            if (snapshotsDir.ExistsDirectory) snapshotsDir.DeleteDirectory(recursive: true);
         }
     }
 
@@ -740,7 +740,7 @@ public class FileTreeServiceTests
             var manifest = await snapshotSvc.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
 
             var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
-            var localPath        = Path.Combine(snapshotsDir, expectedFileName);
+            var localPath        = Path.Combine(snapshotsDir.ToString(), expectedFileName);
 
             // Disk file exists and is valid JSON
             File.Exists(localPath).ShouldBeTrue();
@@ -752,7 +752,7 @@ public class FileTreeServiceTests
         }
         finally
         {
-            if (Directory.Exists(snapshotsDir)) Directory.Delete(snapshotsDir, recursive: true);
+            if (snapshotsDir.ExistsDirectory) snapshotsDir.DeleteDirectory(recursive: true);
         }
     }
 

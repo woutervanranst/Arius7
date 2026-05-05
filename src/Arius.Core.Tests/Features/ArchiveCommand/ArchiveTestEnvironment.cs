@@ -58,7 +58,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
+        Func<LocalRootPath, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName).CreateDirectory();
         RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).CreateDirectory();

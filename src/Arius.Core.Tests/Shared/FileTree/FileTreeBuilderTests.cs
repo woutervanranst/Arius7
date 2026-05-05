@@ -21,7 +21,7 @@ public class FileTreeBuilderTests
         params (RelativePath Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
     {
         var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
-        var session = await FileTreeStagingSession.OpenAsync(cacheDir.ToString());
+        var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
             await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
@@ -59,7 +59,7 @@ public class FileTreeBuilderTests
             var blobs   = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
             await fileTreeService.ValidateAsync();
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir.ToString());
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
             var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             root.ShouldBeNull();
@@ -217,7 +217,7 @@ public class FileTreeBuilderTests
                 Modified = now
             });
 
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir.ToString());
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
             await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
 
             var blobs = new FakeRecordingBlobContainerService();
@@ -289,7 +289,7 @@ public class FileTreeBuilderTests
             var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
 
-            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir.ToString());
+            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir);
             await WriteNodeLinesAsync(
                 stagingSession1.StagingRoot,
                 rootId,
@@ -314,7 +314,7 @@ public class FileTreeBuilderTests
             await stagingSession1.DisposeAsync();
             cacheDir.DeleteDirectory(recursive: true);
 
-            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(cacheDir.ToString());
+            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(cacheDir);
             await WriteNodeLinesAsync(
                 stagingSession2.StagingRoot,
                 rootId,

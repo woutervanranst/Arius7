@@ -143,8 +143,8 @@ public sealed class SnapshotService
     // ── Directory helper ──────────────────────────────────────────────────────
 
     /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName).ToString();
+    public static LocalRootPath GetDiskCacheDirectory(string accountName, string containerName)
+        => RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
 
     // ── Snapshot blob name ────────────────────────────────────────────────────
 

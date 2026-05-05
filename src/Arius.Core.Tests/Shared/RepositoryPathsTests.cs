@@ -1,5 +1,7 @@
 using Arius.Core.Shared;
+using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.Snapshot;
 
 namespace Arius.Core.Tests.Shared;
 
@@ -34,6 +36,23 @@ public class RepositoryPathsTests
     {
         typeof(LocalRootPath)
             .GetMethod("op_Implicit", [typeof(LocalRootPath)])
+            .ShouldBeNull();
+
+        typeof(SnapshotService)
+            .GetMethod(nameof(SnapshotService.GetDiskCacheDirectory))!
+            .ReturnType
+            .ShouldBe(typeof(LocalRootPath));
+
+        typeof(FileTreeStagingSession)
+            .GetMethod(nameof(FileTreeStagingSession.OpenAsync), [typeof(string), typeof(CancellationToken)])
+            .ShouldBeNull();
+
+        typeof(FileTreePaths)
+            .GetMethod(nameof(FileTreePaths.GetCachePath), [typeof(string), typeof(string)])
+            .ShouldBeNull();
+
+        typeof(FileTreePaths)
+            .GetMethod(nameof(FileTreePaths.GetCachePath), [typeof(string), typeof(Arius.Core.Shared.Hashes.FileTreeHash)])
             .ShouldBeNull();
     }
 }

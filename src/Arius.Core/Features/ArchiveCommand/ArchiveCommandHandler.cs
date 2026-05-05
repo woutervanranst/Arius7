@@ -49,7 +49,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
     private readonly string                         _containerName;
-    private readonly Func<string, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
+    private readonly Func<LocalRootPath, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
 
     public ArchiveCommandHandler(
         IBlobContainerService           blobs,
@@ -77,7 +77,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
+        Func<LocalRootPath, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
     {
         _blobs           = blobs;
         _encryption      = encryption;
@@ -92,7 +92,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _openStagingSession = openStagingSession;
     }
 
-    private static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken)
+    private static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(LocalRootPath fileTreeCacheDirectory, CancellationToken cancellationToken)
         => await FileTreeStagingSession.OpenAsync(fileTreeCacheDirectory, cancellationToken);
 
     /// <summary>
@@ -156,7 +156,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         try
         {
             _logger.LogInformation("[phase] open-staging");
-            stagingSession = await _openStagingSession(stagingCacheDirectory.ToString(), cancellationToken);
+            stagingSession = await _openStagingSession(stagingCacheDirectory, cancellationToken);
         }
         catch (OperationCanceledException)
         {
