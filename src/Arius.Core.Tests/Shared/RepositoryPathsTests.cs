@@ -1,5 +1,6 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 
@@ -54,5 +55,17 @@ public class RepositoryPathsTests
         typeof(FileTreePaths)
             .GetMethod(nameof(FileTreePaths.GetCachePath), [typeof(string), typeof(Arius.Core.Shared.Hashes.FileTreeHash)])
             .ShouldBeNull();
+    }
+
+    [Test]
+    public void FileTreeService_UsesTypedFileTreeHashCachePaths()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var source = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core", "Shared", "FileTree", "FileTreeService.cs"));
+
+        source.ShouldNotContain("FileTreePaths.GetCachePath(_diskCacheDir, hash.ToString())");
+        source.ShouldNotContain("FileTreePaths.GetCachePath(_diskCacheDir, payload.Hash.ToString())");
+        source.ShouldContain("FileTreePaths.GetCachePath(_diskCacheDir, hash)");
+        source.ShouldContain("FileTreePaths.GetCachePath(_diskCacheDir, payload.Hash)");
     }
 }

@@ -76,8 +76,7 @@ public sealed class FileTreeService
     /// </summary>
     public async Task<IReadOnlyList<FileTreeEntry>> ReadAsync(FileTreeHash hash, CancellationToken cancellationToken = default)
     {
-        var hashText = hash.ToString();
-        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
+        var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hash);
 
         // Avoid race conditions between concurrent readers and writers for the same hash by
         // coordinating via a per-hash in-flight task.
@@ -175,7 +174,6 @@ public sealed class FileTreeService
     /// </summary>
     public async Task WriteAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
-        var hashText     = payload.Hash.ToString();
         var blobName     = BlobPaths.FileTree(payload.Hash);
         var storageBytes = await SerializeStorageAsync(payload.Plaintext, cancellationToken);
         var contentType  = _encryption.IsEncrypted
@@ -192,7 +190,7 @@ public sealed class FileTreeService
         }
 
         // Write plaintext to disk cache regardless of whether upload was new or existing.
-        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, hashText);
+        var diskPath  = FileTreePaths.GetCachePath(_diskCacheDir, payload.Hash);
         await WriteCacheAtomicallyAsync(diskPath, payload.Plaintext, cancellationToken);
     }
 
