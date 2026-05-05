@@ -1,6 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -15,7 +16,7 @@ internal static class Helpers
     {
         var options = new RestoreOptions
         {
-            RootDirectory = RootOf(fixture.RestoreRoot),
+            RootDirectory = fixture.RestoreRoot,
             Overwrite     = overwrite,
             Version       = version,
         };
@@ -34,7 +35,7 @@ internal static class Helpers
         if (preserveConflictBytes)
         {
             var conflictPath = GetConflictPath(state.Definition, expectedVersion);
-            var restoredPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
+            var restoredPath = (fixture.RestoreRoot / PathOf(conflictPath)).FullPath;
             var expectedConflictBytes = CreateConflictBytes(state.Seed, conflictPath);
 
             restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
@@ -51,7 +52,7 @@ internal static class Helpers
         {
             foreach (var relativePath in expectedState.Files.Keys)
             {
-                var pointerPath = Path.Combine(fixture.RestoreRoot, (relativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+                var pointerPath = (fixture.RestoreRoot / RelativePath.Parse(relativePath + ".pointer.arius")).FullPath;
 
                 File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
@@ -61,7 +62,7 @@ internal static class Helpers
     public static async Task WriteRestoreConflictAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed)
     {
         var conflictPath = GetConflictPath(definition, expectedVersion);
-        var fullPath = Path.Combine(fixture.RestoreRoot, conflictPath.Replace('/', Path.DirectorySeparatorChar));
+        var fullPath = (fixture.RestoreRoot / PathOf(conflictPath)).FullPath;
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
         var conflictBytes = CreateConflictBytes(seed, conflictPath);
@@ -131,8 +132,8 @@ internal static class Helpers
 
     static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
     {
-        expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
-        expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
+        expectedState.Files.TryGetValue(PathOf(pathA), out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
+        expectedState.Files.TryGetValue(PathOf(pathB), out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
         var contentHashA = await ComputeContentHashAsync(state, pathA, cancellationToken);
@@ -144,7 +145,7 @@ internal static class Helpers
 
     static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
     {
-        var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, relativePath);
+        var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, PathOf(relativePath)).FullPath;
         await using var f        = File.OpenRead(fullPath);
         return await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken);
     }

@@ -52,8 +52,8 @@ public sealed class E2EFixture : IAsyncDisposable
         FileTreeService = fileTreeService;
         Snapshot        = snapshot;
         _tempRoot       = tempRoot;
-        LocalRoot       = localRoot;
-        RestoreRoot     = restoreRoot;
+        LocalRoot       = LocalRootPath.Parse(localRoot);
+        RestoreRoot     = LocalRootPath.Parse(restoreRoot);
         _account        = account;
         _container      = containerName;
         _defaultTier    = defaultTier;
@@ -74,8 +74,8 @@ public sealed class E2EFixture : IAsyncDisposable
     public IChunkStorageService  ChunkStorage    { get; }
     public FileTreeService       FileTreeService { get; }
     public SnapshotService       Snapshot        { get; }
-    public string                LocalRoot       { get; }
-    public string                RestoreRoot     { get; }
+    public LocalRootPath         LocalRoot       { get; }
+    public LocalRootPath         RestoreRoot     { get; }
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
@@ -133,12 +133,12 @@ public sealed class E2EFixture : IAsyncDisposable
 
     internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
     {
-        if (Directory.Exists(LocalRoot))
-            Directory.Delete(LocalRoot, recursive: true);
+        if (Directory.Exists(LocalRoot.ToString()))
+            Directory.Delete(LocalRoot.ToString(), recursive: true);
 
-        Directory.CreateDirectory(LocalRoot);
+        Directory.CreateDirectory(LocalRoot.ToString());
 
-        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRootPath.Parse(LocalRoot), Encryption);
+        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
 
     public string WriteFile(RelativePath relativePath, byte[] content)
@@ -160,7 +160,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = RootOf(LocalRoot),
+                RootDirectory = LocalRoot,
                 UploadTier    = _defaultTier,
             }),
             ct).AsTask();
@@ -169,7 +169,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RootOf(RestoreRoot),
+                RootDirectory = RestoreRoot,
                 Overwrite     = true,
             }),
             ct).AsTask();
@@ -200,16 +200,9 @@ public sealed class E2EFixture : IAsyncDisposable
         await Task.CompletedTask;
     }
 
-    internal static string CombineValidatedRelativePath(string rootPath, string relativePath)
+    internal static RootedPath CombineValidatedRelativePath(LocalRootPath rootPath, RelativePath relativePath)
     {
-        if (Path.IsPathRooted(relativePath))
-            throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
-
-        var parts = relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Contains("..", StringComparer.Ordinal))
-            throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
-
-        return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        return rootPath / relativePath;
     }
 
     bool ShouldResetCacheOnDispose()

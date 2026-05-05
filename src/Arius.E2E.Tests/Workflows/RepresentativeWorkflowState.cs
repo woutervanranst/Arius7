@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Paths;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 
@@ -10,7 +11,7 @@ internal sealed class RepresentativeWorkflowState
     public required E2EFixture                                                          Fixture                            { get; set; }
     public required SyntheticRepositoryDefinition                                       Definition                         { get; init; }
     public required int                                                                 Seed                               { get; init; }
-    public required string                                                              VersionedSourceRoot                { get; init; }
+    public required LocalRootPath                                                       VersionedSourceRoot                { get; init; }
     public          SyntheticRepositoryVersion?                                         CurrentSourceVersion               { get; set; }
     public          SyntheticRepositoryState?                                           CurrentSyntheticRepositoryState    { get; set; }
     public          Dictionary<SyntheticRepositoryVersion, SyntheticRepositoryState>    VersionedSourceStates              { get; } = new();

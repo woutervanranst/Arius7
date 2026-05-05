@@ -9,11 +9,11 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var versionState = state.VersionedSourceStates.TryGetValue(Version, out var existingState) && Directory.Exists(existingState.RootPath)
+        var versionState = state.VersionedSourceStates.TryGetValue(Version, out var existingState) && Directory.Exists(existingState.RootPath.ToString())
             ? existingState
             : await MaterializeVersionAsync(state, cancellationToken);
 
-        FileSystemHelper.CopyDirectory(versionState.RootPath, state.Fixture.LocalRoot);
+        FileSystemHelper.CopyDirectory(versionState.RootPath.ToString(), state.Fixture.LocalRoot.ToString());
 
         state.CurrentSyntheticRepositoryState = versionState;
         state.VersionedSourceStates[Version]  = versionState;
@@ -26,19 +26,19 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
         {
             case SyntheticRepositoryVersion.V1:
             {
-                var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V1));
-                return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath), state.Fixture.Encryption);
+                var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V1));
+                return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
             }
             case SyntheticRepositoryVersion.V2:
             {
                 if (!state.VersionedSourceStates.TryGetValue(SyntheticRepositoryVersion.V1, out var v1State))
                     throw new InvalidOperationException("V1 source state must exist before materializing V2.");
 
-                if (!Directory.Exists(v1State.RootPath))
+                if (!Directory.Exists(v1State.RootPath.ToString()))
                     v1State = await RematerializeV1Async(state, cancellationToken);
 
-                var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V2));
-                return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, RootOf(v1State.RootPath), RootOf(versionRootPath), state.Fixture.Encryption);
+                var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V2));
+                return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
             }
             default:
                 throw new ArgumentOutOfRangeException();
@@ -47,8 +47,8 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     internal static async Task<SyntheticRepositoryState> RematerializeV1Async(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V1));
-        var versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath), state.Fixture.Encryption);
+        var versionRootPath = state.VersionedSourceRoot / PathOf(nameof(SyntheticRepositoryVersion.V1));
+        var versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, RootOf(versionRootPath.FullPath), state.Fixture.Encryption);
         state.VersionedSourceStates[SyntheticRepositoryVersion.V1] = versionState;
         return versionState;
     }

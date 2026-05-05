@@ -1,21 +1,21 @@
 using System.Collections.ObjectModel;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.E2E.Tests.Datasets;
 
 internal sealed record SyntheticRepositoryState
 {
-    public SyntheticRepositoryState(string rootPath, IReadOnlyDictionary<string, ContentHash> files)
+    public SyntheticRepositoryState(LocalRootPath rootPath, IReadOnlyDictionary<RelativePath, ContentHash> files)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(files);
 
         RootPath = rootPath;
-        Files = new ReadOnlyDictionary<string, ContentHash>(
-            new Dictionary<string, ContentHash>(files, StringComparer.Ordinal));
+        Files = new ReadOnlyDictionary<RelativePath, ContentHash>(
+            new Dictionary<RelativePath, ContentHash>(files));
     }
 
-    public string RootPath { get; }
+    public LocalRootPath RootPath { get; }
 
-    public IReadOnlyDictionary<string, ContentHash> Files { get; }
+    public IReadOnlyDictionary<RelativePath, ContentHash> Files { get; }
 }

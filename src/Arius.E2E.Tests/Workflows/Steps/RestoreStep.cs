@@ -12,10 +12,10 @@ internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, Sy
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        if (Directory.Exists(state.Fixture.RestoreRoot))
-            Directory.Delete(state.Fixture.RestoreRoot, recursive: true);
+        if (Directory.Exists(state.Fixture.RestoreRoot.ToString()))
+            Directory.Delete(state.Fixture.RestoreRoot.ToString(), recursive: true);
 
-        Directory.CreateDirectory(state.Fixture.RestoreRoot);
+        Directory.CreateDirectory(state.Fixture.RestoreRoot.ToString());
 
         var version = Helpers.ResolveVersion(state, Target);
 

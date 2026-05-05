@@ -1,3 +1,4 @@
+using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
@@ -62,7 +63,7 @@ internal static class RepresentativeWorkflowRunner
                 Fixture            = fixture,
                 Definition         = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
                 Seed               = workflow.Seed,
-                VersionedSourceRoot = versionedSourceRoot,
+                VersionedSourceRoot = LocalRootPath.Parse(versionedSourceRoot),
             };
 
             foreach (var step in workflow.Steps)

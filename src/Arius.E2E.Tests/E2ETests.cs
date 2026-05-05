@@ -59,7 +59,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
             restoreResult.FilesRestored.ShouldBe(1);
 
-            File.Exists(Path.Combine(fixture.RestoreRoot, "hot.bin.pointer.arius")).ShouldBeTrue();
+            File.Exists((fixture.RestoreRoot / PathOf("hot.bin.pointer.arius")).FullPath).ShouldBeTrue();
             fixture.ReadRestored(PathOf("hot.bin")).ShouldBe(content);
         }
         finally

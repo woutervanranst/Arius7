@@ -25,7 +25,7 @@ internal static class SyntheticRepositoryMaterializer
 
         Directory.CreateDirectory(rootPathText);
 
-        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
+        var files = new Dictionary<RelativePath, ContentHash>();
 
         foreach (var file in definition.Files)
         {
@@ -33,10 +33,10 @@ internal static class SyntheticRepositoryMaterializer
             await WriteFileAsync(rootPath, relativePath, CreateBytes(seed, file.ContentId ?? file.Path, file.SizeBytes));
 
             await using var stream = File.OpenRead(relativePath.RootedAt(rootPath).FullPath);
-            files[relativePath.ToString()] = await encryption.ComputeHashAsync(stream);
+            files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
-        return new SyntheticRepositoryState(rootPathText, files);
+        return new SyntheticRepositoryState(rootPath, files);
     }
 
     public static async Task<SyntheticRepositoryState> MaterializeV2FromExistingAsync(
@@ -57,18 +57,18 @@ internal static class SyntheticRepositoryMaterializer
 
         FileSystemHelper.CopyDirectory(sourceRootPathText, targetRootPathText);
 
-        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
+        var files = new Dictionary<RelativePath, ContentHash>();
         foreach (var filePath in Directory.EnumerateFiles(targetRootPathText, "*", SearchOption.AllDirectories))
         {
             var relativePath = targetRootPath.GetRelativePath(filePath);
 
             await using var stream = File.OpenRead(filePath);
-            files[relativePath.ToString()] = await encryption.ComputeHashAsync(stream);
+            files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
         await ApplyV2MutationsAsync(definition, seed, targetRootPath, encryption, files);
 
-        return new SyntheticRepositoryState(targetRootPathText, files);
+        return new SyntheticRepositoryState(targetRootPath, files);
     }
 
     static byte[] CreateBytes(int seed, string contentId, long sizeBytes)
@@ -95,7 +95,7 @@ internal static class SyntheticRepositoryMaterializer
         int seed,
         LocalRootPath rootPath,
         IEncryptionService encryption,
-        Dictionary<string, ContentHash> files)
+        Dictionary<RelativePath, ContentHash> files)
     {
         foreach (var mutation in definition.V2Mutations)
         {
@@ -105,7 +105,7 @@ internal static class SyntheticRepositoryMaterializer
             {
                 case SyntheticFileMutationKind.Delete:
                     File.Delete(relativePath.RootedAt(rootPath).FullPath);
-                    files.Remove(relativePath.ToString());
+                    files.Remove(relativePath);
                     break;
 
                 case SyntheticFileMutationKind.Rename:
@@ -115,16 +115,16 @@ internal static class SyntheticRepositoryMaterializer
                     Directory.CreateDirectory(Path.GetDirectoryName(targetPath.FullPath)!);
                     File.Move(sourcePath.FullPath, targetPath.FullPath);
 
-                    var existingHash = files[relativePath.ToString()];
-                    files.Remove(relativePath.ToString());
-                    files[targetRelativePath.ToString()] = existingHash;
+                    var existingHash = files[relativePath];
+                    files.Remove(relativePath);
+                    files[targetRelativePath] = existingHash;
                     break;
 
                 case SyntheticFileMutationKind.ChangeContent:
                 case SyntheticFileMutationKind.Add:
                     var bytes = CreateBytes(seed, mutation.ReplacementContentId!, mutation.ReplacementSizeBytes!.Value);
                     await WriteFileAsync(rootPath, relativePath, bytes);
-                    files[relativePath.ToString()] = encryption.ComputeHash(bytes);
+                    files[relativePath] = encryption.ComputeHash(bytes);
                     break;
 
                 default:
