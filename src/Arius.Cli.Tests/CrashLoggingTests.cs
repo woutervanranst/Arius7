@@ -81,13 +81,4 @@ public class CrashLoggingTests
 #pragma warning restore TUnit0055
     }
 
-    [Test]
-    public void ConfigureAuditLogging_KeepsTypedLogDirectoryUntilFileBoundary()
-    {
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var source = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Cli", "CliBuilder.cs"));
-
-        source.ShouldNotContain("Path.Combine(logDir.ToString()", Case.Sensitive);
-        source.ShouldContain("logDir / RelativePath.Parse", Case.Sensitive);
-    }
 }

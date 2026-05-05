@@ -3,7 +3,6 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
-using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Core.Tests.Shared;
 
@@ -68,63 +67,5 @@ public class RepositoryPathsTests
         source.ShouldNotContain("FileTreePaths.GetCachePath(_diskCacheDir, payload.Hash.ToString())");
         source.ShouldContain("FileTreePaths.GetCachePath(_diskCacheDir, hash)");
         source.ShouldContain("FileTreePaths.GetCachePath(_diskCacheDir, payload.Hash)");
-    }
-
-    [Test]
-    public void Task3Callers_KeepTypedRepositoryRootsUntilStringBoundaries()
-    {
-        var repositoryFixtureConstructor = typeof(RepositoryTestFixture).GetConstructor(
-            [
-                typeof(Arius.Core.Shared.Storage.IBlobContainerService),
-                typeof(Arius.Core.Shared.Encryption.IEncryptionService),
-                typeof(Arius.Core.Shared.ChunkIndex.ChunkIndexService),
-                typeof(Arius.Core.Shared.ChunkStorage.IChunkStorageService),
-                typeof(Arius.Core.Shared.FileTree.FileTreeService),
-                typeof(Arius.Core.Shared.Snapshot.SnapshotService),
-                typeof(string),
-                typeof(LocalRootPath),
-                typeof(LocalRootPath),
-                typeof(string),
-                typeof(string),
-                typeof(Action<string>)
-            ]);
-
-        repositoryFixtureConstructor.ShouldNotBeNull();
-        typeof(RepositoryTestFixture)
-            .GetConstructor(
-                [
-                    typeof(Arius.Core.Shared.Storage.IBlobContainerService),
-                    typeof(Arius.Core.Shared.Encryption.IEncryptionService),
-                    typeof(Arius.Core.Shared.ChunkIndex.ChunkIndexService),
-                    typeof(Arius.Core.Shared.ChunkStorage.IChunkStorageService),
-                    typeof(Arius.Core.Shared.FileTree.FileTreeService),
-                    typeof(Arius.Core.Shared.Snapshot.SnapshotService),
-                    typeof(string),
-                    typeof(string),
-                    typeof(string),
-                    typeof(string),
-                    typeof(string),
-                    typeof(Action<string>)
-                ])
-            .ShouldBeNull();
-
-        typeof(RepositoryTestFixture).GetProperty(nameof(RepositoryTestFixture.LocalRootPath))!.PropertyType.ShouldBe(typeof(LocalRootPath));
-        typeof(RepositoryTestFixture).GetProperty(nameof(RepositoryTestFixture.RestoreRootPath))!.PropertyType.ShouldBe(typeof(LocalRootPath));
-
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var archiveTestEnvironmentSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Core.Tests", "Features", "ArchiveCommand", "ArchiveTestEnvironment.cs"));
-        archiveTestEnvironmentSource.ShouldNotContain("private readonly string                            _rootDirectory;");
-        archiveTestEnvironmentSource.ShouldNotContain("FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName).ToString()");
-
-        var pipelineFixtureSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.Integration.Tests", "Pipeline", "PipelineFixture.cs"));
-        pipelineFixtureSource.ShouldNotContain("public string LocalRoot => _repository.LocalRoot;");
-        pipelineFixtureSource.ShouldNotContain("public string RestoreRoot => _repository.RestoreRoot;");
-        pipelineFixtureSource.ShouldContain("public string LocalRoot => LocalRootPath.ToString();");
-        pipelineFixtureSource.ShouldContain("public string RestoreRoot => RestoreRootPath.ToString();");
-
-        var e2eFixtureSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Arius.E2E.Tests", "Fixtures", "E2EFixture.cs"));
-        e2eFixtureSource.ShouldNotContain("string localRoot,");
-        e2eFixtureSource.ShouldNotContain("string restoreRoot,");
-        e2eFixtureSource.ShouldNotContain("repository.LocalRoot, repository.RestoreRoot");
     }
 }

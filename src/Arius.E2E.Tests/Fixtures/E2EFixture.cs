@@ -133,10 +133,10 @@ public sealed class E2EFixture : IAsyncDisposable
 
     internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
     {
-        if (Directory.Exists(LocalRoot.ToString()))
-            Directory.Delete(LocalRoot.ToString(), recursive: true);
+        if (LocalRoot.ExistsDirectory)
+            LocalRoot.DeleteDirectory(recursive: true);
 
-        Directory.CreateDirectory(LocalRoot.ToString());
+        LocalRoot.CreateDirectory();
 
         return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
