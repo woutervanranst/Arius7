@@ -35,7 +35,7 @@ public sealed class FileHashingHandler(ProgressState state) : INotificationHandl
 {
     public ValueTask Handle(FileHashingEvent notification, CancellationToken cancellationToken)
     {
-        state.AddFile(notification.RelativePath, notification.FileSize);
+        state.AddFile(notification.RelativePath.ToString(), notification.FileSize);
         return ValueTask.CompletedTask;
     }
 }
@@ -50,7 +50,7 @@ public sealed class FileHashedHandler(ProgressState state) : INotificationHandle
 {
     public ValueTask Handle(FileHashedEvent notification, CancellationToken cancellationToken)
     {
-        state.SetFileHashed(notification.RelativePath, notification.ContentHash);
+        state.SetFileHashed(notification.RelativePath.ToString(), notification.ContentHash);
         return ValueTask.CompletedTask;
     }
 }

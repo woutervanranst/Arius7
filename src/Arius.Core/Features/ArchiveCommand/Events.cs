@@ -1,4 +1,5 @@
 ﻿using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Paths;
 using Mediator;
 
 namespace Arius.Core.Features.ArchiveCommand;
@@ -8,7 +9,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// <summary>A single file discovered during enumeration (published per-file).</summary>
 /// <param name="RelativePath">Forward-slash relative path of the file.</param>
 /// <param name="FileSize">File size in bytes.</param>
-public sealed record FileScannedEvent(string RelativePath, long FileSize) : INotification;
+public sealed record FileScannedEvent(RelativePath RelativePath, long FileSize) : INotification;
 
 /// <summary>File enumeration complete: final totals known.</summary>
 /// <param name="TotalFiles">Total number of files enumerated.</param>
@@ -18,10 +19,10 @@ public sealed record ScanCompleteEvent(long TotalFiles, long TotalBytes) : INoti
 /// <summary>A file started hashing.</summary>
 /// <param name="RelativePath">Relative path of the file being hashed.</param>
 /// <param name="FileSize">File size in bytes; used as the progress bar denominator.</param>
-public sealed record FileHashingEvent(string RelativePath, long FileSize) : INotification;
+public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) : INotification;
 
 /// <summary>A file finished hashing.</summary>
-public sealed record FileHashedEvent(string RelativePath, ContentHash ContentHash) : INotification;
+public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash) : INotification;
 
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;

@@ -319,7 +319,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     Name: binaryName,
                     BinaryExists: false,
                     PointerExists: true,
-                    PointerHash: ReadPointerHash(file.FullName, (currentRelativeDirectory / PathSegment.Parse(file.Name)).ToString()),
+                    PointerHash: ReadPointerHash(
+                        (currentRelativeDirectory / PathSegment.Parse(file.Name)).RootedAt(localDir.Value.Root),
+                        currentRelativeDirectory / PathSegment.Parse(file.Name)),
                     FileSize: null,
                     Created: null,
                     Modified: null);
@@ -332,7 +334,11 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     Name: file.Name,
                     BinaryExists: true,
                     PointerExists: hasPointer,
-                    PointerHash: hasPointer ? ReadPointerHash(pointerPath, (currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix)).ToString()) : null,
+                    PointerHash: hasPointer
+                        ? ReadPointerHash(
+                            (currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix)).RootedAt(localDir.Value.Root),
+                            currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix))
+                        : null,
                     FileSize: file.Length,
                     Created: new DateTimeOffset(file.CreationTimeUtc, TimeSpan.Zero),
                     Modified: new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero));
@@ -342,11 +348,11 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         return new LocalDirectorySnapshot(directories, files);
     }
 
-    private ContentHash? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(RootedPath fullPath, RelativePath relPath)
     {
         try
         {
-            var content = File.ReadAllText(fullPath).Trim();
+            var content = File.ReadAllText(fullPath.FullPath).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);

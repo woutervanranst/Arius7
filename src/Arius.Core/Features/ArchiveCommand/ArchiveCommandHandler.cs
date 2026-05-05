@@ -216,11 +216,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     foreach (var pair in pairs)
                     {
                         count++;
-                        var relativePathText = pair.RelativePath.ToString();
                         var fullPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
                         var fileSize = fullPath is not null && File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0L;
                         totalBytes += fileSize;
-                        await _mediator.Publish(new FileScannedEvent(relativePathText, fileSize), cancellationToken);
+                        await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
                     }
 
@@ -245,7 +244,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         var fullBinaryPath = pair.BinaryExists ? (opts.RootDirectory / pair.RelativePath).FullPath : null;
                         var fileSize = fullBinaryPath is not null ? new FileInfo(fullBinaryPath).Length : 0L;
 
-                        await _mediator.Publish(new FileHashingEvent(relativePathText, fileSize), ct);
+                        await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
                         ContentHash contentHash;
                         if (pair is { BinaryExists: false, PointerHash: not null })
@@ -267,7 +266,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             return;
                         }
 
-                        await _mediator.Publish(new FileHashedEvent(relativePathText, contentHash), ct);
+                        await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
 
                         _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", relativePathText, contentHash.Short8, fileSize.Bytes().Humanize());
 

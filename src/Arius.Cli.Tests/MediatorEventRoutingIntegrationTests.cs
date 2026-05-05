@@ -45,10 +45,10 @@ public class MediatorEventRoutingIntegrationTests
         var state    = sp.GetRequiredService<ProgressState>();
 
         // Publish all archive notification events in pipeline order
-        await mediator.Publish(new FileScannedEvent("a.bin", 100));
+        await mediator.Publish(new FileScannedEvent(PathOf("a.bin"), 100));
         await mediator.Publish(new ScanCompleteEvent(1, 100));
-        await mediator.Publish(new FileHashingEvent("a.bin", 100));
-        await mediator.Publish(new FileHashedEvent("a.bin", FakeContentHash('a')));
+        await mediator.Publish(new FileHashingEvent(PathOf("a.bin"), 100));
+        await mediator.Publish(new FileHashedEvent(PathOf("a.bin"), FakeContentHash('a')));
         await mediator.Publish(new TarBundleStartedEvent());
         await mediator.Publish(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100));
         await mediator.Publish(new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('a')]));

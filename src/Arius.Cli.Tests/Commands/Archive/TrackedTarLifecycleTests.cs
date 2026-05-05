@@ -26,10 +26,10 @@ public class TrackedTarLifecycleTests
         // Add files (need them in ContentHashToPath for entry handler)
         var hashingH = new FileHashingHandler(state);
         var hashedH  = new FileHashedHandler(state);
-        await hashingH.Handle(new FileHashingEvent("f1.txt", 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("f1.txt", FakeContentHash('a')), CancellationToken.None);
-        await hashingH.Handle(new FileHashingEvent("f2.txt", 200), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("f2.txt", FakeContentHash('b')), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent(PathOf("f1.txt"), 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(PathOf("f1.txt"), FakeContentHash('a')), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent(PathOf("f2.txt"), 200), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(PathOf("f2.txt"), FakeContentHash('b')), CancellationToken.None);
 
         await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100), CancellationToken.None);
         await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 2, 300), CancellationToken.None);

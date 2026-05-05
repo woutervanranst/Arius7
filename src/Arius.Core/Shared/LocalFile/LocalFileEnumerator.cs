@@ -100,7 +100,7 @@ public sealed class LocalFileEnumerator
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
-                var pointerHash = ReadPointerHash(file.FullName, relativeName);
+                var pointerHash = ReadPointerHash(filePath, relativePath);
                 yield return new FilePair
                 {
                     RelativePath  = binaryFileRelativePath,
@@ -115,9 +115,9 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var pointerRel  = relativeName + PointerSuffix;
-                var pointerPath = RelativePath.Parse(pointerRel).RootedAt(rootDirectory).FullPath;
-                var hasPointer  = File.Exists(pointerPath);
+                var pointerRel  = RelativePath.Parse(relativeName + PointerSuffix);
+                var pointerPath = pointerRel.RootedAt(rootDirectory);
+                var hasPointer  = File.Exists(pointerPath.FullPath);
                 ContentHash? pointerHash = null;
 
                 if (hasPointer)
@@ -140,11 +140,11 @@ public sealed class LocalFileEnumerator
     // ── Task 7.3: Pointer detection ───────────────────────────────────────────
 
     /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
-    private ContentHash? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(RootedPath fullPath, RelativePath relPath)
     {
         try
         {
-            var content = File.ReadAllText(fullPath).Trim();
+            var content = File.ReadAllText(fullPath.FullPath).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
                 _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
