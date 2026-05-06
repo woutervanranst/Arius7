@@ -11,10 +11,10 @@ public static class FileTreeHelper
 
     public static FileEntry FileEntryOf(PathSegment name, ContentHash hash, DateTimeOffset created, DateTimeOffset modified) => new()
     {
-        Name = name,
+        Name        = name,
         ContentHash = hash,
-        Created = created,
-        Modified = modified
+        Created     = created,
+        Modified    = modified
     };
 
 
@@ -23,7 +23,7 @@ public static class FileTreeHelper
 
     public static DirectoryEntry DirectoryEntryOf(PathSegment name, FileTreeHash hash) => new()
     {
-        Name = name,
+        Name         = name,
         FileTreeHash = hash
     };
 
