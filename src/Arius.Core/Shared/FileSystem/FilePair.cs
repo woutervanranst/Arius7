@@ -1,6 +1,6 @@
 using Arius.Core.Shared.Hashes;
 
-namespace Arius.Core.Shared.Paths;
+namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
 /// Represents a local file (binary and/or pointer) to be processed by the archive pipeline.

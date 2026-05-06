@@ -1,5 +1,4 @@
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 

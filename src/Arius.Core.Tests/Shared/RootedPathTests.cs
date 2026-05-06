@@ -1,4 +1,4 @@
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Tests.Shared;
 

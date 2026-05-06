@@ -4,8 +4,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;

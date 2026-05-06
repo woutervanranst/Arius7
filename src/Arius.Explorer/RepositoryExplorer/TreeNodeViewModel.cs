@@ -1,6 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Arius.Explorer.RepositoryExplorer;

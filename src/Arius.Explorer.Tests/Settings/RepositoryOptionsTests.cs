@@ -1,5 +1,5 @@
 using System.IO;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Extensions;
 

@@ -1,5 +1,5 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Mediator;
 
 namespace Arius.Core.Features.ListQuery;

@@ -12,7 +12,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.RepositoryExplorer;
 using Arius.Explorer.Settings;

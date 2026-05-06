@@ -1,7 +1,7 @@
 using Arius.Core.Shared;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 
 namespace Arius.Core.Tests.Shared;

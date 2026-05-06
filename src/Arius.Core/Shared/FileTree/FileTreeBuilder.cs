@@ -1,8 +1,8 @@
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Shared.FileTree;
 

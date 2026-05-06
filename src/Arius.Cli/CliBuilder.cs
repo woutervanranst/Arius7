@@ -5,7 +5,7 @@ using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.Shared;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

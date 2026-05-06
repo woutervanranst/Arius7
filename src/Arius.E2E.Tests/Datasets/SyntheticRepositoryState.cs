@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 
 namespace Arius.E2E.Tests.Datasets;
 

@@ -3,7 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;

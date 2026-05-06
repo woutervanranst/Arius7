@@ -1,4 +1,4 @@
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 

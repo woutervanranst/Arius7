@@ -1,5 +1,5 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
-using Arius.Core.Shared.Paths;
 using Arius.E2E.Tests.Fixtures;
 
 namespace Arius.E2E.Tests;

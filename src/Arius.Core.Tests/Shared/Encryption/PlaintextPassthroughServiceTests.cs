@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Tests.Shared.Streaming;
 
 namespace Arius.Core.Tests.Shared.Encryption;

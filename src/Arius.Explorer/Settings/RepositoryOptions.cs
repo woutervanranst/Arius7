@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.Explorer.Shared.Extensions;
 
 namespace Arius.Explorer.Settings;

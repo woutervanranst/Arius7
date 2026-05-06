@@ -1,4 +1,4 @@
-namespace Arius.Core.Shared.Paths;
+namespace Arius.Core.Shared.FileSystem;
 
 public readonly record struct RelativePath
 {

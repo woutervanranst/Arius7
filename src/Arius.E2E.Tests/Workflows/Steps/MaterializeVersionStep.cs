@@ -1,5 +1,5 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.E2E.Tests.Datasets;
-using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Helpers;
 
 namespace Arius.E2E.Tests.Workflows.Steps;

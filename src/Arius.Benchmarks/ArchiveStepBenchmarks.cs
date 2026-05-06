@@ -1,6 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Paths;
+using Arius.Core.Shared.FileSystem;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;

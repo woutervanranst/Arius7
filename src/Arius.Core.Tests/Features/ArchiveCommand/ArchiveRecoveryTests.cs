@@ -2,7 +2,6 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 

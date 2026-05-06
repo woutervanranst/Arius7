@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Arius.Tests.Shared.Helpers;
 
 namespace Arius.Core.Tests.Shared.FileTree;

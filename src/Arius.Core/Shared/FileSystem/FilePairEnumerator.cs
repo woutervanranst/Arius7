@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.Shared.Paths;
+namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
 /// Enumerates local files and assembles <see cref="FilePair"/> objects.
