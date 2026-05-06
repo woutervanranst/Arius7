@@ -74,7 +74,7 @@ IMPORTANT: Prefer retrieval-led reasoning over pretraining for any .NET work.
 Workflow: skim repo patterns -> consult dotnet-skills by name -> implement smallest-change -> note conflicts.
 
 Routing (invoke by name)
-- C# / code quality: modern-csharp-coding-standards, csharp-concurrency-patterns, api-design, type-design-performance
+- C# / code quality: csharp-coding-standards, csharp-concurrency-patterns, api-design, type-design-performance
 - ASP.NET Core / Web (incl. Aspire): aspire-service-defaults, aspire-integration-testing, transactional-emails
 - Data: efcore-patterns, database-performance
 - DI / config: dependency-injection-patterns, microsoft-extensions-configuration
