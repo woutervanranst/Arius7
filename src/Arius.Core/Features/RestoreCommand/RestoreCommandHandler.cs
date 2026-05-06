@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -90,6 +91,8 @@ public sealed class RestoreCommandHandler
 
         try
         {
+            var restoreFileSystem = new RelativeFileSystem(LocalDirectory.Parse(Path.GetFullPath(opts.RootDirectory)));
+
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
 
             var snapshot    = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
@@ -112,7 +115,8 @@ public sealed class RestoreCommandHandler
 
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
-            var files     = await CollectFilesAsync(snapshot.RootHash, opts.TargetPath, cancellationToken);
+            var targetPath = ParseTargetPath(opts.TargetPath);
+            var files     = await CollectFilesAsync(snapshot.RootHash, targetPath, cancellationToken);
 
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
@@ -128,43 +132,40 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in files)
             {
-                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-                if (File.Exists(localPath))
+                if (restoreFileSystem.FileExists(file.RelativePath))
                 {
                     if (!opts.Overwrite)
                     {
                         // Hash local file to check if already correct
-                        await using var fs = File.OpenRead(localPath);
+                        await using var fs = restoreFileSystem.OpenRead(file.RelativePath);
                         var localHash = await _encryption.ComputeHashAsync(fs, cancellationToken);
 
                         if (localHash == file.ContentHash)
                         {
-                            _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath);
+                            _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath.ToString());
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
-                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
                             continue;
                         }
 
                         // File exists with different hash, no --overwrite → keep local
-                        _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                        _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath.ToString());
                         skipped++;
-                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath, fs.Length), cancellationToken);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
                         continue;
                     }
                     else
                     {
-                        _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
-                        var fi = new FileInfo(localPath);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.Overwrite, fi.Length), cancellationToken);
+                        _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath.ToString());
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.Overwrite, restoreFileSystem.GetFileSize(file.RelativePath)), cancellationToken);
                     }
                 }
                 else
                 {
-                    _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath);
-                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath, RestoreDisposition.New, 0), cancellationToken);
+                    _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath.ToString());
+                    await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.New, 0), cancellationToken);
                 }
 
                 toRestore.Add(file);
@@ -369,9 +370,9 @@ public sealed class RestoreCommandHandler
                     {
                         foreach (var file in filesForChunk)
                         {
-                            await RestoreLargeFileAsync(chunkHash, file, opts, compressedSize, ct);
+                            await RestoreLargeFileAsync(chunkHash, file, restoreFileSystem, opts, compressedSize, ct);
                             Interlocked.Increment(ref filesRestoredLong);
-                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath, indexEntry.OriginalSize), ct);
+                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), indexEntry.OriginalSize), ct);
                         }
                     }
                     else
@@ -382,7 +383,7 @@ public sealed class RestoreCommandHandler
                             .GroupBy(f => f.ContentHash)
                             .ToDictionary(g => g.Key, g => g.ToList());
                         var restored = await RestoreTarBundleAsync(
-                            chunkHash, filesByContentHash, opts, compressedSize, ct);
+                            chunkHash, filesByContentHash, restoreFileSystem, opts, compressedSize, ct);
                         Interlocked.Add(ref filesRestoredLong, restored);
                     }
                 });
@@ -470,15 +471,14 @@ public sealed class RestoreCommandHandler
     /// that match <paramref name="targetPath"/> (or all files if <c>null</c>).
     /// Emits batched <see cref="TreeTraversalProgressEvent"/> during traversal.
     /// </summary>
-    private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, string? targetPath, CancellationToken cancellationToken)
+    private async Task<List<FileToRestore>> CollectFilesAsync(FileTreeHash rootHash, RelativePath? targetPath, CancellationToken cancellationToken)
     {
         var result = new List<FileToRestore>();
-        var prefix = NormalizePath(targetPath);
 
         var lastEmit = DateTimeOffset.UtcNow;
         var lastEmitCount = 0;
 
-        await WalkTreeAsync(rootHash, string.Empty, prefix, result, cancellationToken, async () =>
+        await WalkTreeAsync(rootHash, RelativePath.Root, targetPath, result, cancellationToken, async () =>
         {
             // Emit progress event every 10 files or every 100ms
             var now = DateTimeOffset.UtcNow;
@@ -503,14 +503,14 @@ public sealed class RestoreCommandHandler
 
     private async Task WalkTreeAsync(
         FileTreeHash       treeHash,
-        string             currentPath,     // forward-slash relative, no trailing slash
-        string?            targetPrefix,
+        RelativePath       currentPath,
+        RelativePath?      targetPrefix,
         List<FileToRestore> result,
         CancellationToken  cancellationToken,
         Func<Task>?        onFileDiscovered = null)
     {
         // Skip entire subtrees that cannot match the prefix filter
-        if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix))
+        if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix.Value))
             return;
 
         // Load tree entries via cache
@@ -518,20 +518,15 @@ public sealed class RestoreCommandHandler
 
         foreach (var entry in treeEntries)
         {
-            var entryPath = currentPath.Length == 0
-                ? entry.Name
-                : $"{currentPath}/{entry.Name}";
-
             if (entry is DirectoryEntry directoryEntry)
             {
-                // Strip trailing slash from directory name used in path assembly
-                var dirPath = entryPath.TrimEnd('/');
+                var dirPath = currentPath / PathSegment.Parse(entry.Name.TrimEnd('/'));
                 await WalkTreeAsync(directoryEntry.FileTreeHash, dirPath, targetPrefix, result, cancellationToken, onFileDiscovered);
             }
             else if (entry is FileEntry fileEntry)
             {
-                // File entry
-                if (targetPrefix is null || entryPath.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                var entryPath = currentPath / fileEntry.Name;
+                if (targetPrefix is null || entryPath.StartsWith(targetPrefix.Value))
                 {
                     result.Add(new FileToRestore(
                         RelativePath : entryPath,
@@ -546,21 +541,38 @@ public sealed class RestoreCommandHandler
         }
     }
 
-    private static bool IsPathRelevant(string currentPath, string targetPrefix)
+    private static bool IsPathRelevant(RelativePath currentPath, RelativePath targetPrefix)
     {
-        if (currentPath.Length == 0) return true; // root always relevant
-
-        // currentPath is a directory; it's relevant if either:
-        //   (a) it's a prefix of targetPrefix (we need to descend into it)
-        //   (b) targetPrefix is a prefix of it (it's inside the target dir)
-        return targetPrefix.StartsWith(currentPath, StringComparison.OrdinalIgnoreCase)
-            || currentPath.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase);
+        return currentPath == RelativePath.Root
+            || targetPrefix.StartsWith(currentPath)
+            || currentPath.StartsWith(targetPrefix);
     }
 
-    private static string? NormalizePath(string? path)
+    private static RelativePath? ParseTargetPath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        return path.Replace('\\', '/').TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        var normalized = path.Replace('\\', '/').Trim();
+        if (normalized.Length == 0)
+            return null;
+
+        if (normalized.Length >= 3
+            && char.IsAsciiLetter(normalized[0])
+            && normalized[1] == ':'
+            && normalized[2] == '/')
+        {
+            throw new FormatException($"Invalid relative path: '{normalized}'.");
+        }
+
+        if (normalized.StartsWith('/'))
+        {
+            normalized = normalized.Trim('/');
+            return normalized.Length == 0 ? RelativePath.Root : RelativePath.Parse(normalized);
+        }
+
+        normalized = normalized.TrimEnd('/');
+        return normalized.Length == 0 ? RelativePath.Root : RelativePath.Parse(normalized);
     }
 
     // ── Large file restore (task 10.7) ────────────────────────────────────────
@@ -568,33 +580,28 @@ public sealed class RestoreCommandHandler
     private async Task RestoreLargeFileAsync(
         ChunkHash      chunkHash,
         FileToRestore  file,
+        RelativeFileSystem restoreFileSystem,
         RestoreOptions opts,
         long           compressedSize,
         CancellationToken cancellationToken)
     {
-        var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-        Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
-
         {
-            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath, compressedSize, DownloadKind.LargeFile);
+            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var fileStream   = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+            await using var fileStream   = restoreFileSystem.CreateFile(file.RelativePath);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
         // Set file timestamps from tree metadata (after stream is closed)
-        File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-        File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+        restoreFileSystem.SetTimestamps(file.RelativePath, file.Created, file.Modified);
 
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
         {
-            var pointerPath = localPath + ".pointer.arius";
-            await File.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
-            File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
-            File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+            var pointerPath = file.RelativePath.ToPointerPath();
+            await restoreFileSystem.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
+            restoreFileSystem.SetTimestamps(pointerPath, file.Created, file.Modified);
         }
     }
 
@@ -616,6 +623,7 @@ public sealed class RestoreCommandHandler
     private async Task<int> RestoreTarBundleAsync(
         ChunkHash                                 chunkHash,
         Dictionary<ContentHash, List<FileToRestore>> filesNeeded,
+        RelativeFileSystem                        restoreFileSystem,
         RestoreOptions                            opts,
         long                                      compressedSize,
         CancellationToken                         cancellationToken)
@@ -634,46 +642,41 @@ public sealed class RestoreCommandHandler
             if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
-            string? sourcePath = null;
+            RelativePath? sourcePath = null;
 
             for (var i = 0; i < filesForHash.Count; i++)
             {
                 var file = filesForHash[i];
-                var localPath = Path.Combine(opts.RootDirectory, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-                Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
                 if (tarEntry.DataStream is null)
                 {
                     // create an empty file
-                    await using var _ = File.Create(localPath);
+                    await using var _ = restoreFileSystem.CreateFile(file.RelativePath);
                 }
                 else if (i == 0)
                 {
-                    await using var output = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                    await using var output = restoreFileSystem.CreateFile(file.RelativePath);
                     await tarEntry.DataStream.CopyToAsync(output, cancellationToken);
-                    sourcePath = localPath;
+                    sourcePath = file.RelativePath;
                 }
                 else
                 {
                     // TODO: investigate Async copy? Ref https://github.com/dotnet/runtime/issues/20697, https://github.com/dotnet/runtime/issues/20695
-                    File.Copy(sourcePath!, localPath, overwrite: true);
+                    restoreFileSystem.CopyFile(sourcePath ?? throw new InvalidOperationException("Tar duplicate copy requires a source path."), file.RelativePath, overwrite: true);
                 }
 
                 // Set timestamps
-                File.SetCreationTimeUtc(localPath,  file.Created.UtcDateTime);
-                File.SetLastWriteTimeUtc(localPath, file.Modified.UtcDateTime);
+                restoreFileSystem.SetTimestamps(file.RelativePath, file.Created, file.Modified);
 
                 // Create pointer file
                 if (!opts.NoPointers)
                 {
-                    var pointerPath = localPath + ".pointer.arius";
-                    await File.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
-                    File.SetCreationTimeUtc(pointerPath,  file.Created.UtcDateTime);
-                    File.SetLastWriteTimeUtc(pointerPath, file.Modified.UtcDateTime);
+                    var pointerPath = file.RelativePath.ToPointerPath();
+                    await restoreFileSystem.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
+                    restoreFileSystem.SetTimestamps(pointerPath, file.Created, file.Modified);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, new FileInfo(localPath).Length), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), restoreFileSystem.GetFileSize(file.RelativePath)), cancellationToken);
                 restored++;
             }
         }

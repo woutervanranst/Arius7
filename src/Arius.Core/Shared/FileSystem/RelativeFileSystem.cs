@@ -83,5 +83,21 @@ internal sealed class RelativeFileSystem
 
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));
 
+    public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
+
+    public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
+    {
+        var fullPath = _root.Resolve(path);
+        File.SetCreationTimeUtc(fullPath, created.UtcDateTime);
+        File.SetLastWriteTimeUtc(fullPath, modified.UtcDateTime);
+    }
+
+    public void CopyFile(RelativePath source, RelativePath destination, bool overwrite)
+    {
+        var destinationPath = _root.Resolve(destination);
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Copy(_root.Resolve(source), destinationPath, overwrite);
+    }
+
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
 }
