@@ -1,6 +1,8 @@
 using System.Formats.Tar;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
@@ -76,6 +78,49 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_CaseInsensitivePathCollision_FailsBeforeSnapshotPublication()
+    {
+        using var env = new ArchiveTestEnvironment();
+
+        var result = await env.ArchiveAsync(
+            BlobTier.Cool,
+            enumerateFilePairs: _ =>
+            [
+                new FilePair
+                {
+                    Path = RelativePath.Parse("photos/pic.jpg"),
+                    Binary = new BinaryFile
+                    {
+                        Path = RelativePath.Parse("photos/pic.jpg"),
+                        Size = 32,
+                        Created = DateTimeOffset.UnixEpoch,
+                        Modified = DateTimeOffset.UnixEpoch
+                    },
+                    Pointer = null
+                },
+                new FilePair
+                {
+                    Path = RelativePath.Parse("Photos/pic.jpg"),
+                    Binary = new BinaryFile
+                    {
+                        Path = RelativePath.Parse("Photos/pic.jpg"),
+                        Size = 32,
+                        Created = DateTimeOffset.UnixEpoch,
+                        Modified = DateTimeOffset.UnixEpoch
+                    },
+                    Pointer = null
+                }
+            ]);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("case-insensitive", Case.Insensitive);
+        result.ErrorMessage.ShouldContain("photos/pic.jpg");
+        result.ErrorMessage.ShouldContain("Photos/pic.jpg");
+        result.RootHash.ShouldBeNull();
     }
 
     [Test]

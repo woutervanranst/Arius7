@@ -14,10 +14,10 @@
 
 ## 3. Archive-Time File Model
 
-- [ ] 3.1 Add internal `BinaryFile`, `PointerFile`, and `FilePair` records with relative paths only and no host full-path fields.
-- [ ] 3.2 Refactor local file enumeration to produce archive-time `FilePair` values using `RelativeFileSystem.EnumerateFiles()` and pointer path helpers.
-- [ ] 3.3 Add tests for binary-only, pointer-only, binary+pointer, invalid pointer content, inaccessible file handling, and streaming/no-materialization enumeration behavior.
-- [ ] 3.4 Add archive path collision validation that rejects ordinal case-insensitive relative path collisions before snapshot publication, with tests for Linux-only casing conflicts.
+- [x] 3.1 Add internal `BinaryFile`, `PointerFile`, and `FilePair` records with relative paths only and no host full-path fields.
+- [x] 3.2 Refactor local file enumeration to produce archive-time `FilePair` values using `RelativeFileSystem.EnumerateFiles()` and pointer path helpers.
+- [x] 3.3 Add tests for binary-only, pointer-only, binary+pointer, invalid pointer content, inaccessible file handling, and streaming/no-materialization enumeration behavior.
+- [x] 3.4 Add archive path collision validation that rejects ordinal case-insensitive relative path collisions before snapshot publication, with tests for Linux-only casing conflicts.
 
 ## 4. Archive And Filetree Refactor
 

@@ -3,8 +3,10 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
@@ -57,7 +59,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
+        Func<string, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
         Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
@@ -65,9 +68,25 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler         = openStagingSession is null
-            ? new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName)
-            : new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName, openStagingSession);
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>> stagingSessionFactory = openStagingSession is not null
+            ? openStagingSession
+            : OpenStagingSessionAsync;
+        var handler         = new ArchiveCommandHandler(
+            Blobs,
+            _encryption,
+            _index,
+            chunkStorage,
+            fileTreeService,
+            snapshotSvc,
+            _mediator,
+            _logger,
+            AccountName,
+            _containerName,
+            stagingSessionFactory,
+            enumerateFilePairs);
+
+        static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string path, CancellationToken ct)
+            => await FileTreeStagingSession.OpenAsync(path, ct);
 
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions

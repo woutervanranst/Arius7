@@ -9,7 +9,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// A <see cref="Shared.LocalFile.FilePair"/> after content hash has been computed.
 /// Used between Hash stage and Dedup stage.
 /// </summary>
-public sealed record HashedFilePair(
+internal sealed record HashedFilePair(
     FilePair       FilePair,
     ContentHash    ContentHash,
     string         LocalRootPath  // absolute path to archive root (for stream reading)
@@ -19,7 +19,7 @@ public sealed record HashedFilePair(
 /// A file that has passed dedup check and needs to be uploaded.
 /// Carries the resolved content hash and the source path for streaming.
 /// </summary>
-public sealed record FileToUpload(
+internal sealed record FileToUpload(
     HashedFilePair HashedPair,
     long           FileSize     // bytes (0 for pointer-only)
 );
@@ -27,7 +27,7 @@ public sealed record FileToUpload(
 /// <summary>
 /// An index entry recording the content-hash → chunk-hash mapping after upload.
 /// </summary>
-public sealed record IndexEntry(
+internal sealed record IndexEntry(
     ContentHash ContentHash,
     ChunkHash ChunkHash,
     long   OriginalSize,
@@ -39,7 +39,7 @@ public sealed record IndexEntry(
 /// Carries original-size for proportional compressed-size estimation,
 /// and the full <see cref="HashedFilePair"/> for manifest-entry writing.
 /// </summary>
-public sealed record TarEntry(
+internal sealed record TarEntry(
     ContentHash    ContentHash,
     long           OriginalSize,
     HashedFilePair HashedPair
@@ -48,7 +48,7 @@ public sealed record TarEntry(
 /// <summary>
 /// A sealed tar archive ready for upload.
 /// </summary>
-public sealed record SealedTar(
+internal sealed record SealedTar(
     string          TarFilePath,       // temp file on disk
     ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
     long            UncompressedSize,  // sum of file sizes
