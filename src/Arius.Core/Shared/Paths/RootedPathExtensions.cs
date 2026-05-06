@@ -1,6 +1,6 @@
 namespace Arius.Core.Shared.Paths;
 
-public static class RootedPathFileSystemExtensions
+public static class RootedPathExtensions
 {
     extension(RootedPath path)
     {
