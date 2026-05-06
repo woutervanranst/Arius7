@@ -1,9 +1,17 @@
 namespace Arius.Core.Shared.FileSystem;
 
+/// <summary>
+/// Represents an absolute local filesystem root that Arius is allowed to operate within.
+/// It exists to separate host paths from repository-relative paths, with responsibility for normalization,
+/// root-containment checks, and safe resolution between the two domains.
+/// </summary>
 internal readonly record struct LocalDirectory(string? RawValue)
 {
     private string Value => RawValue ?? throw new InvalidOperationException("LocalDirectory is uninitialized.");
 
+    /// <summary>
+    /// Parses and normalizes an absolute local directory path.
+    /// </summary>
     public static LocalDirectory Parse(string value)
     {
         if (!TryParse(value, out var directory))
@@ -12,6 +20,9 @@ internal readonly record struct LocalDirectory(string? RawValue)
         return directory;
     }
 
+    /// <summary>
+    /// Validates and normalizes an absolute local directory path.
+    /// </summary>
     public static bool TryParse(string? value, out LocalDirectory directory)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -32,6 +43,9 @@ internal readonly record struct LocalDirectory(string? RawValue)
         return true;
     }
 
+    /// <summary>
+    /// Converts a contained host path into a repository-relative path.
+    /// </summary>
     public bool TryGetRelativePath(string hostPath, out RelativePath relativePath)
     {
         ArgumentNullException.ThrowIfNull(hostPath);
@@ -47,6 +61,9 @@ internal readonly record struct LocalDirectory(string? RawValue)
         return RelativePath.TryParse(relative.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/'), out relativePath);
     }
 
+    /// <summary>
+    /// Resolves a repository-relative path under this local root and rejects root escape.
+    /// </summary>
     public string Resolve(RelativePath path)
     {
         var candidate = Path.GetFullPath(Path.Combine(Value, path.ToString().Replace('/', Path.DirectorySeparatorChar)));

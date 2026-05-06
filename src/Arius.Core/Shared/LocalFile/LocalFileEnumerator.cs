@@ -7,15 +7,10 @@ namespace Arius.Core.Shared.LocalFile;
 // ── Task 7.2, 7.3, 7.4, 7.5: File enumeration service ────────────────────────
 
 /// <summary>
-/// Enumerates local files and assembles <see cref="FilePair"/> objects.
-///
-/// Rules:
-/// - Files ending in <c>.pointer.arius</c> are always treated as pointer files.
-/// - All other files are treated as binaries.
-/// - Depth-first enumeration (for directory affinity with the tar builder).
-/// - Inaccessible files are skipped with a warning logged.
-/// - Pointer file content must be a valid hex string; invalid content is warned and ignored.
-/// - Paths are normalized to forward slashes (task 7.5).
+/// Enumerates local repository files and assembles <see cref="FilePair"/> values.
+/// It exists to translate raw filesystem contents into Arius's archive-time local-file domain model,
+/// with responsibility for recognizing pointer files, pairing them with binaries, and tolerating unreadable
+/// or invalid pointer content without leaking host-path details into the rest of the core.
 /// </summary>
 internal sealed class LocalFileEnumerator
 {

@@ -1,5 +1,10 @@
 namespace Arius.Core.Shared.FileSystem;
 
+/// <summary>
+/// Provides Arius.Core's local filesystem boundary for work scoped to a <see cref="LocalDirectory"/> root.
+/// It exists so features can perform file IO with <see cref="RelativePath"/> values instead of raw strings,
+/// with responsibility for containment-safe enumeration, reads, writes, and directory creation.
+/// </summary>
 internal sealed class RelativeFileSystem
 {
     private readonly LocalDirectory _root;
@@ -9,6 +14,9 @@ internal sealed class RelativeFileSystem
         _root = root;
     }
 
+    /// <summary>
+    /// Enumerates all files under the rooted directory as repository-relative entries.
+    /// </summary>
     public IEnumerable<LocalFileEntry> EnumerateFiles()
     {
         foreach (var filePath in Directory.EnumerateFiles(_root.ToString(), "*", SearchOption.AllDirectories))
@@ -27,6 +35,9 @@ internal sealed class RelativeFileSystem
         }
     }
 
+    /// <summary>
+    /// Enumerates immediate child directories of the provided relative path.
+    /// </summary>
     public IEnumerable<LocalDirectoryEntry> EnumerateDirectories(RelativePath path)
     {
         foreach (var directoryPath in Directory.EnumerateDirectories(_root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
@@ -38,6 +49,9 @@ internal sealed class RelativeFileSystem
         }
     }
 
+    /// <summary>
+    /// Enumerates immediate child files of the provided relative path.
+    /// </summary>
     public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path)
     {
         foreach (var filePath in Directory.EnumerateFiles(_root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
@@ -60,8 +74,14 @@ internal sealed class RelativeFileSystem
 
     public bool DirectoryExists(RelativePath path) => Directory.Exists(_root.Resolve(path));
 
+    /// <summary>
+    /// Opens a file for reading within the rooted directory.
+    /// </summary>
     public Stream OpenRead(RelativePath path) => File.OpenRead(_root.Resolve(path));
 
+    /// <summary>
+    /// Creates or overwrites a file within the rooted directory, creating parent directories as needed.
+    /// </summary>
     public Stream CreateFile(RelativePath path)
     {
         var fullPath = _root.Resolve(path);
@@ -95,6 +115,9 @@ internal sealed class RelativeFileSystem
 
     public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
 
+    /// <summary>
+    /// Sets creation and last-write timestamps for a file within the rooted directory.
+    /// </summary>
     public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
     {
         var fullPath = _root.Resolve(path);
@@ -102,6 +125,9 @@ internal sealed class RelativeFileSystem
         File.SetLastWriteTimeUtc(fullPath, modified.UtcDateTime);
     }
 
+    /// <summary>
+    /// Copies a file within the rooted directory, creating the destination parent directory when needed.
+    /// </summary>
     public void CopyFile(RelativePath source, RelativePath destination, bool overwrite)
     {
         var destinationPath = _root.Resolve(destination);
