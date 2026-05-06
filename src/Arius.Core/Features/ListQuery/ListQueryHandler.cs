@@ -279,7 +279,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             _logger.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", currentRelativeDirectory.ToString());
         }
 
-        var files = new Dictionary<string, LocalFileState>(StringComparer.OrdinalIgnoreCase);
         IEnumerable<LocalFileEntry> fileInfos;
         try
         {
@@ -293,41 +292,10 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             fileInfos = [];
         }
 
-        foreach (var file in fileInfos)
-        {
-            if (TryGetPointerBinaryPath(file.Path, out var binaryPath))
-            {
-                if (localFileSystem.FileExists(binaryPath))
-                {
-                    continue;
-                }
-
-                var binaryName = binaryPath.Name.ToString();
-                files[binaryName] = new LocalFileState(
-                    Name: binaryName,
-                    Path: binaryPath,
-                    BinaryExists: false,
-                    PointerExists: true,
-                    PointerHash: ReadPointerHash(localFileSystem, file.Path),
-                    FileSize: null,
-                    Created: null,
-                    Modified: null);
-            }
-            else
-            {
-                var pointerPath = file.Path.ToPointerPath();
-                var hasPointer = localFileSystem.FileExists(pointerPath);
-                files[file.Path.Name.ToString()] = new LocalFileState(
-                    Name: file.Path.Name.ToString(),
-                    Path: file.Path,
-                    BinaryExists: true,
-                    PointerExists: hasPointer,
-                    PointerHash: hasPointer ? ReadPointerHash(localFileSystem, pointerPath) : null,
-                    FileSize: file.Size,
-                    Created: file.Created,
-                    Modified: file.Modified);
-            }
-        }
+        var files = LocalFileSnapshotBuilder.BuildFiles(
+            fileInfos,
+            localFileSystem.FileExists,
+            path => ReadPointerHash(localFileSystem, path));
 
         return new LocalDirectorySnapshot(directories, files);
     }
@@ -379,19 +347,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private static PathSegment ParseDirectoryEntryName(string name) => PathSegment.Parse(name.TrimEnd('/'));
 
-    private static bool TryGetPointerBinaryPath(RelativePath path, out RelativePath binaryPath)
-    {
-        var value = path.ToString();
-        if (!value.EndsWith(RelativePathPointerExtensions.PointerSuffix, StringComparison.OrdinalIgnoreCase))
-        {
-            binaryPath = default;
-            return false;
-        }
-
-        binaryPath = RelativePath.Parse(value[..^RelativePathPointerExtensions.PointerSuffix.Length]);
-        return true;
-    }
-
     private static string RenderDirectoryPath(RelativePath path) =>
         path == RelativePath.Root ? "/" : $"{path}/";
 
@@ -403,16 +358,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private sealed record RecursionTarget(RelativePath RelativeDirectory, FileTreeHash? TreeHash, bool HasLocalDirectory);
 
     private sealed record LocalDirectoryState(string Name, RelativePath Path);
-
-    private sealed record LocalFileState(
-        string Name,
-        RelativePath Path,
-        bool BinaryExists,
-        bool PointerExists,
-        ContentHash? PointerHash,
-        long? FileSize,
-        DateTimeOffset? Created,
-        DateTimeOffset? Modified);
 
     private sealed record LocalDirectorySnapshot(
         IReadOnlyDictionary<string, LocalDirectoryState> Directories,

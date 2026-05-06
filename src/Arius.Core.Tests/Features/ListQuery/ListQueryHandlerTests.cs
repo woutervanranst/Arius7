@@ -1,6 +1,7 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -303,6 +304,40 @@ public class ListQueryHandlerTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    [Test]
+    public void BuildFiles_UppercasePointerSuffix_UpdatesExistingBinaryEntry()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt"),
+                Size = 12,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() == "docs/shared.txt",
+            path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
+
+        result.Count.ShouldBe(1);
+
+        var shared = result["shared.txt"];
+        shared.BinaryExists.ShouldBeTrue();
+        shared.PointerExists.ShouldBeTrue();
+        shared.PointerHash.ShouldBe(FakeContentHash('2'));
     }
 
     [Test]
