@@ -1,4 +1,5 @@
 using Arius.Core.Shared;
+using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Tests.Shared;
 
@@ -16,5 +17,21 @@ public class RepositoryPathsTests
         RepositoryPaths.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
         RepositoryPaths.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
         RepositoryPaths.GetLogsDirectory("account", "container").ShouldBe(Path.Combine(root,            "logs"));
+    }
+
+    [Test]
+    public void RepositoryCacheHelpers_ExposeTypedRootsAndRelativeSegments()
+    {
+        RepositoryPaths.ChunkIndexCacheRelativePath.ShouldBe(RelativePath.Parse("chunk-index"));
+        RepositoryPaths.FileTreeCacheRelativePath.ShouldBe(RelativePath.Parse("filetrees"));
+        RepositoryPaths.SnapshotCacheRelativePath.ShouldBe(RelativePath.Parse("snapshots"));
+        RepositoryPaths.LogsRelativePath.ShouldBe(RelativePath.Parse("logs"));
+
+        RepositoryPaths.GetChunkIndexCacheRoot("account", "container").ToString()
+            .ShouldBe(RepositoryPaths.GetChunkIndexCacheDirectory("account", "container"));
+        RepositoryPaths.GetFileTreeCacheRoot("account", "container").ToString()
+            .ShouldBe(RepositoryPaths.GetFileTreeCacheDirectory("account", "container"));
+        RepositoryPaths.GetSnapshotCacheRoot("account", "container").ToString()
+            .ShouldBe(RepositoryPaths.GetSnapshotCacheDirectory("account", "container"));
     }
 }

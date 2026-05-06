@@ -10,7 +10,7 @@
 - [x] 2.1 Add `LocalDirectory` as an internal absolute local root token with normalization and root-containment support.
 - [x] 2.2 Add concrete internal `RelativeFileSystem` rooted at `LocalDirectory`, including `EnumerateFiles()`, existence checks, stream open/create, pointer text read/write, directory creation, and file deletion operations needed by Arius.Core.
 - [x] 2.3 Add tests proving `RelativeFileSystem` strips the root into `RelativePath`, prevents root escape, and performs filesystem operations without exposing full-path strings to callers.
-- [ ] 2.4 Update Arius.Core local filesystem code paths to route direct `File.*`, `Directory.*`, and `Path.*` domain operations through `RelativeFileSystem`.
+- [x] 2.4 Update Arius.Core local filesystem code paths to route direct `File.*`, `Directory.*`, and `Path.*` domain operations through `RelativeFileSystem`.
 
 ## 3. Archive-Time File Model
 
@@ -21,10 +21,10 @@
 
 ## 4. Archive And Filetree Refactor
 
-- [ ] 4.1 Refactor `ArchiveCommandHandler` internals to consume `RelativePath`, `BinaryFile`, `PointerFile`, `FilePair`, and `RelativeFileSystem` while preserving public string contracts and event payload shapes.
-- [ ] 4.2 Refactor file hashing, upload, pointer writing, local binary removal, and progress callbacks to use relative paths internally and convert to strings only at public/logging boundaries.
-- [ ] 4.3 Refactor `FileTreeStagingWriter`, filetree entry construction, and traversal helpers to accept validated `RelativePath` and `PathSegment` values instead of ad hoc path strings.
-- [ ] 4.4 Add/update archive and filetree tests for canonical path staging, invalid staged path rejection, case-collision failure, and filetree traversal by relative path composition.
+- [x] 4.1 Refactor `ArchiveCommandHandler` internals to consume `RelativePath`, `BinaryFile`, `PointerFile`, `FilePair`, and `RelativeFileSystem` while preserving public string contracts and event payload shapes.
+- [x] 4.2 Refactor file hashing, upload, pointer writing, local binary removal, and progress callbacks to use relative paths internally and convert to strings only at public/logging boundaries.
+- [x] 4.3 Refactor `FileTreeStagingWriter`, filetree entry construction, and traversal helpers to accept validated `RelativePath` and `PathSegment` values instead of ad hoc path strings.
+- [x] 4.4 Add/update archive and filetree tests for canonical path staging, invalid staged path rejection, case-collision failure, and filetree traversal by relative path composition.
 
 ## 5. List And Restore Refactor
 
@@ -36,13 +36,13 @@
 
 ## 6. Blob, Cache, And Storage Path Cleanup
 
-- [ ] 6.1 Refactor blob path helper internals for chunks, rehydrated chunks, filetrees, snapshots, and chunk-index shards to use `RelativePath` where they represent slash-normalized logical paths, converting to strings at storage-interface boundaries.
-- [ ] 6.2 Refactor repository cache path helpers to use `LocalDirectory`, `RelativePath`, and `RelativeFileSystem` where they interact with disk cache layout.
-- [ ] 6.3 Add/update tests for blob-name rendering, cache path rendering, snapshot path rendering, and chunk-index shard path rendering.
+- [x] 6.1 Refactor blob path helper internals for chunks, rehydrated chunks, filetrees, snapshots, and chunk-index shards to use `RelativePath` where they represent slash-normalized logical paths, converting to strings at storage-interface boundaries.
+- [x] 6.2 Refactor repository cache path helpers to use `LocalDirectory`, `RelativePath`, and `RelativeFileSystem` where they interact with disk cache layout.
+- [x] 6.3 Add/update tests for blob-name rendering, cache path rendering, snapshot path rendering, and chunk-index shard path rendering.
 
 ## 7. Sweep And Verification
 
-- [ ] 7.1 Sweep `src/Arius.Core` for remaining path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary; refactor or document intentional exceptions.
-- [ ] 7.2 Run Arius.Core-focused unit tests and update any affected tests to assert behavior through public string contracts and internal relative path behavior where appropriate.
-- [ ] 7.3 Run broader relevant test projects after the refactor (`Arius.Core.Tests`, `Arius.Cli.Tests`, `Arius.Architecture.Tests`, and integration tests if affected).
-- [ ] 7.4 Run the .NET slopwatch quality gate after code changes and address any shortcuts or suppressed failures it reports.
+- [x] 7.1 Sweep `src/Arius.Core` for remaining path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary; refactor or document intentional exceptions.
+- [x] 7.2 Run Arius.Core-focused unit tests and update any affected tests to assert behavior through public string contracts and internal relative path behavior where appropriate.
+- [x] 7.3 Run broader relevant test projects after the refactor (`Arius.Core.Tests`, `Arius.Cli.Tests`, `Arius.Architecture.Tests`, and integration tests if affected).
+- [x] 7.4 Run the .NET slopwatch quality gate after code changes and address any shortcuts or suppressed failures it reports.
