@@ -90,6 +90,26 @@ public static class RootedPathExtensions
             }
         }
 
+        public IEnumerable<RootedPath> EnumerateDirectories(string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        {
+            foreach (var fullPath in Directory.EnumerateDirectories(path.FullPath, searchPattern, searchOption))
+            {
+                yield return path.Root.GetRelativePath(fullPath).RootedAt(path.Root);
+            }
+        }
+
+        internal IEnumerable<RootedFileEntry> EnumerateFileEntries(string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        {
+            foreach (var fullPath in Directory.EnumerateFiles(path.FullPath, searchPattern, searchOption))
+            {
+                var fileInfo = new FileInfo(fullPath);
+                yield return new RootedFileEntry(
+                    path.Root.GetRelativePath(fullPath).RootedAt(path.Root),
+                    fileInfo.Length,
+                    fileInfo.LastWriteTimeUtc);
+            }
+        }
+
         public async ValueTask CopyToAsync(RootedPath destination, bool overwrite = false, CancellationToken cancellationToken = default)
         {
             if (!overwrite && destination.ExistsFile)

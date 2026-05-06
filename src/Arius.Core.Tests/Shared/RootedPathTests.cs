@@ -166,6 +166,65 @@ public class RootedPathTests
     }
 
     [Test]
+    public void EnumerateDirectories_ReturnsTypedChildDirectories()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-enumerate-dirs-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var directory = root / PathOf("docs");
+            var childA = root / PathOf("docs/a");
+            var childB = root / PathOf("docs/b");
+
+            directory.CreateDirectory();
+            childA.CreateDirectory();
+            childB.CreateDirectory();
+
+            var directories = directory.EnumerateDirectories().OrderBy(path => path.ToString(), StringComparer.Ordinal).ToArray();
+
+            directories.ShouldBe([childA, childB]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task EnumerateFileEntries_ReturnsTypedFilesWithMetadata()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-file-entries-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var directory = root / PathOf("docs");
+            var file = root / PathOf("docs/readme.txt");
+
+            directory.CreateDirectory();
+            await file.WriteAllTextAsync("hello");
+
+            var modified = new DateTime(2024, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+            file.LastWriteTimeUtc = modified;
+
+            var entry = directory.EnumerateFileEntries().ShouldHaveSingleItem();
+
+            entry.Path.ShouldBe(file);
+            entry.Length.ShouldBe(5);
+            entry.LastWriteTimeUtc.ShouldBe(modified);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task ReadLinesAsync_WriteAllLinesAsync_And_AppendAllLinesAsync_WorkAgainstFile()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-lines-{Guid.NewGuid():N}");
