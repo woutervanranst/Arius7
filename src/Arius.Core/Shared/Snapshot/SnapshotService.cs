@@ -143,12 +143,6 @@ public sealed class SnapshotService
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
     }
 
-    // ── Directory helper ──────────────────────────────────────────────────────
-
-    /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName).ToString();
-
     // ── Snapshot blob name ────────────────────────────────────────────────────
 
     /// <summary>Returns the blob name for a snapshot with the given UTC timestamp.</summary>
