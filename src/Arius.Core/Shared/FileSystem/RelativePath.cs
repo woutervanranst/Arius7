@@ -5,8 +5,15 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists so Arius.Core can reason about repository paths as domain values instead of ad hoc strings,
 /// with responsibility for validation, composition, and segment-aware path operations.
 /// </summary>
-internal readonly record struct RelativePath(string? RawValue)
+internal readonly record struct RelativePath
 {
+    private string? RawValue { get; }
+
+    public RelativePath(string? rawValue)
+    {
+        RawValue = rawValue;
+    }
+
     /// <summary>
     /// Gets the repository root path.
     /// </summary>
