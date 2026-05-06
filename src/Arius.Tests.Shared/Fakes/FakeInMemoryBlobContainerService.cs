@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Compression;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Tests.Shared.Storage;
+namespace Arius.Tests.Shared.Fakes;
 
 /// <summary>
 /// Shared in-memory <see cref="IBlobContainerService"/> test double.

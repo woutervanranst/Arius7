@@ -9,7 +9,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;

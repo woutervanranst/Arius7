@@ -8,7 +8,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

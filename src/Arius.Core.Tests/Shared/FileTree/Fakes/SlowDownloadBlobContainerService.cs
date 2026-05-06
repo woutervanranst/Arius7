@@ -1,5 +1,5 @@
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 
 namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 
