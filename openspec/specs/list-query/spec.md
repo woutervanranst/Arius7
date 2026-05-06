@@ -30,7 +30,7 @@ The system SHALL list entries in a snapshot by traversing the Merkle tree as a s
 - **THEN** `FileTreeService.ReadAsync` SHALL return the cached version from disk without contacting Azure
 
 ### Requirement: Path prefix filter
-The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The filter SHALL navigate to the target subtree by descending through the Merkle tree, reading tree blobs via `FileTreeService.ReadAsync` (only downloading tree blobs on the path to the target prefix on cache miss). Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further.
+The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The handler SHALL parse the public prefix string into a validated relative domain path before traversal. The filter SHALL navigate to the target subtree by descending through the Merkle tree, reading tree blobs via `FileTreeService.ReadAsync` (only downloading tree blobs on the path to the target prefix on cache miss). Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further. Prefix matching and traversal SHALL be segment-aware and SHALL NOT rely on raw string prefix matching.
 
 #### Scenario: Filter by directory prefix
 - **WHEN** `arius ls --prefix photos/2024/` is run
@@ -43,6 +43,10 @@ The system SHALL support filtering by path prefix to list entries within a speci
 #### Scenario: Prefix with non-recursive
 - **WHEN** `ListQuery` is executed with `Prefix=photos/2024/` and `Recursive=false`
 - **THEN** the system SHALL stream only the immediate children of `photos/2024/`
+
+#### Scenario: Prefix does not match partial path segment
+- **WHEN** `ListQuery` is executed with `Prefix=photos/`
+- **THEN** an entry under `photoshop/` SHALL NOT match the prefix
 
 ### Requirement: Filename substring filter
 The system SHALL support filtering by filename substring to search for files across the full snapshot. This requires traversing the entire tree (all directories).
@@ -89,13 +93,13 @@ The `ListQuery` SHALL accept a `Recursive` property (default `true`). When `Recu
 - **THEN** the system SHALL stream only the immediate children of the `photos/2024/` directory
 
 ### Requirement: Local filesystem merge
-The `ListQuery` SHALL accept an optional `LocalPath` parameter. When provided, the handler SHALL merge Merkle tree (cloud) state with local filesystem state using a two-phase algorithm per directory, modeled after the `LocalFileEnumerator` pattern.
+The `ListQuery` SHALL accept an optional `LocalPath` parameter. When provided, the handler SHALL merge Merkle tree (cloud) state with local filesystem state using a two-phase algorithm per directory, modeled after the archive file-pair enumeration pattern and using relative domain paths internally.
 
-**Phase 1 - Cloud iteration**: Iterate over the Merkle tree entries for the current directory. For each entry, check whether it exists locally (via `File.Exists` / `Directory.Exists`). If the local counterpart exists, yield a combined cloud+local entry. If not, yield a cloud-only entry. Track which names have been yielded.
+**Phase 1 - Cloud iteration**: Iterate over the Merkle tree entries for the current directory. For each entry, check whether it exists locally through the filesystem domain boundary. If the local counterpart exists, yield a combined cloud+local entry. If not, yield a cloud-only entry. Track which relative path names have been yielded.
 
-**Phase 2 - Local iteration**: Iterate over the local filesystem entries for the current directory. For each entry, if it was already yielded in Phase 1 (present in the Merkle tree), skip it. Otherwise, yield a local-only entry.
+**Phase 2 - Local iteration**: Iterate over the local filesystem entries for the current directory through the filesystem domain boundary. For each entry, if it was already yielded in Phase 1 (present in the Merkle tree), skip it. Otherwise, yield a local-only entry.
 
-For files that exist locally, the entry SHALL include `FilePair` information (pointer file presence, binary existence). The merge SHALL handle three directory recursion cases: cloud+local (recurse with both tree hash and local path), cloud-only (recurse with tree hash only, null local path), local-only (recurse with local path only, null tree hash).
+For files that exist locally, the entry SHALL include FilePair information (pointer file presence, binary existence). The merge SHALL handle three directory recursion cases: cloud+local (recurse with both tree hash and local relative path), cloud-only (recurse with tree hash only, no local path), local-only (recurse with local relative path only, no tree hash).
 
 #### Scenario: File exists in both cloud and local
 - **WHEN** `ListQuery` is executed with `LocalPath` set and a file `photo.jpg` exists in both the Merkle tree and the local directory

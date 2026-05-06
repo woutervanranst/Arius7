@@ -22,7 +22,7 @@ The system SHALL resolve the target snapshot for restore operations. When `-v` i
 - **THEN** the system SHALL report an error and exit
 
 ### Requirement: Tree traversal to target path
-The system SHALL walk the merkle tree from the root to the requested path, reading tree blobs through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed.
+The system SHALL walk the merkle tree from the root to the requested path using validated relative domain paths, reading tree blobs through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed. Restore traversal SHALL produce restore-time file candidates based on relative paths, content hashes, timestamps, and chunk metadata rather than archive-time FilePair objects.
 
 #### Scenario: Restore single file
 - **WHEN** restoring `photos/2024/june/vacation.jpg`
@@ -163,13 +163,13 @@ The system SHALL load Azure pricing rates from a JSON configuration file. The fi
 - **THEN** the system SHALL report an error and exit
 
 ### Requirement: Streaming restore (no local cache)
-The system SHALL restore files by streaming chunks directly to their final path without intermediate local caching. For large files: download → decrypt → gunzip → write to final path. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final paths. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
+The system SHALL restore files by streaming chunks directly to their final relative path under the requested restore root without intermediate local caching. For large files: download → decrypt → gunzip → write to final path through the filesystem domain boundary. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final relative paths through the filesystem domain boundary. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
 
 Downloads SHALL execute in parallel with up to 4 concurrent workers. When `RestoreOptions.CreateDownloadProgress` is provided, the download stream SHALL be wrapped with `ProgressStream` to report byte-level progress via `IProgress<long>`.
 
 #### Scenario: Large file streaming restore
 - **WHEN** restoring a 2 GB large file
-- **THEN** the system SHALL stream download → decrypt → gunzip → write directly to the target path with no intermediate temp file
+- **THEN** the system SHALL stream download → decrypt → gunzip → write directly to the target relative path with no intermediate temp file
 
 #### Scenario: Large file streaming restore with progress
 - **WHEN** restoring a 2 GB large file with `CreateDownloadProgress` set
@@ -178,7 +178,7 @@ Downloads SHALL execute in parallel with up to 4 concurrent workers. When `Resto
 
 #### Scenario: Tar bundle streaming extract
 - **WHEN** restoring 3 files that are bundled in the same tar
-- **THEN** the system SHALL download the tar once, stream through the tar entries, and extract the 3 matching content-hash entries to their final paths
+- **THEN** the system SHALL download the tar once, stream through the tar entries, and extract the 3 matching content-hash entries to their final relative paths
 
 #### Scenario: Tar entry not needed
 - **WHEN** a tar contains 300 files but only 2 are needed for this restore
@@ -187,6 +187,17 @@ Downloads SHALL execute in parallel with up to 4 concurrent workers. When `Resto
 #### Scenario: Parallel downloads saturate bandwidth
 - **WHEN** 4 chunks are being downloaded concurrently
 - **THEN** each SHALL independently stream download → decrypt → gunzip → write without contention
+
+### Requirement: Restore pointer path derivation
+When restore creates pointer files, it SHALL derive pointer-file relative paths from the restored file's relative path using centralized pointer path behavior.
+
+#### Scenario: Pointer path for restored file
+- **WHEN** restore materializes `photos/pic.jpg` and pointer creation is enabled
+- **THEN** it SHALL write pointer content to `photos/pic.jpg.pointer.arius` under the restore root
+
+#### Scenario: Restore without pointers
+- **WHEN** restore materializes `photos/pic.jpg` with pointer creation disabled
+- **THEN** it SHALL NOT write `photos/pic.jpg.pointer.arius`
 
 ### Requirement: Rehydration kick-off
 The system SHALL start rehydration for all archive-tier chunks that are not yet rehydrated, using the user-selected priority (Standard or High). Rehydration SHALL copy blobs to `chunks-rehydrated/` (Hot tier). If Azure throttles the request, the system SHALL retry with exponential backoff. After starting rehydration, the system SHALL exit with a message indicating how many chunks are pending and suggesting the user re-run later.
