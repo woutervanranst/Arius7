@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Features.ArchiveCommand;
@@ -7,7 +6,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 
 /// <summary>
-/// A <see cref="Shared.LocalFile.FilePair"/> after content hash has been computed.
+/// A <see cref="Shared.Paths.FilePair"/> after content hash has been computed.
 /// Used between Hash stage and Dedup stage.
 /// </summary>
 public sealed record HashedFilePair(

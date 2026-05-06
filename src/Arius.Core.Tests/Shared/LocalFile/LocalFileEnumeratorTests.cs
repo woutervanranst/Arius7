@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Tests.Shared.LocalFile;
@@ -10,7 +9,7 @@ public class LocalFileEnumeratorTests : IDisposable
 {
     private readonly string _root;
     private readonly LocalRootPath _localRoot;
-    private readonly LocalFileEnumerator _enumerator = new();
+    private readonly FilePairEnumerator _enumerator = new();
 
     public LocalFileEnumeratorTests()
     {
@@ -172,28 +171,28 @@ public class LocalFileEnumeratorTests : IDisposable
     [Test]
     public void NormalizePath_BackslashesToForwardSlashes()
     {
-        var result = LocalFileEnumerator.NormalizePath(@"docs\2024\report.pdf");
+        var result = FilePairEnumerator.NormalizePath(@"docs\2024\report.pdf");
         result.ShouldBe("docs/2024/report.pdf");
     }
 
     [Test]
     public void NormalizePath_AlreadyForwardSlash_Unchanged()
     {
-        var result = LocalFileEnumerator.NormalizePath("photos/2024/june/a.jpg");
+        var result = FilePairEnumerator.NormalizePath("photos/2024/june/a.jpg");
         result.ShouldBe("photos/2024/june/a.jpg");
     }
 
     [Test]
     public void NormalizePath_LeadingSlash_Removed()
     {
-        var result = LocalFileEnumerator.NormalizePath("/photos/file.jpg");
+        var result = FilePairEnumerator.NormalizePath("/photos/file.jpg");
         result.ShouldBe("photos/file.jpg");
     }
 
     [Test]
     public void NormalizePath_DeeplyNested_CorrectResult()
     {
-        var result = LocalFileEnumerator.NormalizePath(@"a\b\c\d\e\f\g.txt");
+        var result = FilePairEnumerator.NormalizePath(@"a\b\c\d\e\f\g.txt");
         result.ShouldBe("a/b/c/d/e/f/g.txt");
     }
 

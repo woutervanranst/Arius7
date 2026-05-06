@@ -4,8 +4,6 @@ using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
-using Arius.Core.Shared.LocalFile;
-
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>

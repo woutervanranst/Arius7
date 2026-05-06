@@ -1,52 +1,7 @@
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Paths;
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.Shared.LocalFile;
-
-// ── Task 7.1: FilePair model ───────────────────────────────────────────────────
-
-/// <summary>
-/// Represents a local file (binary and/or pointer) to be processed by the archive pipeline.
-///
-/// Each <see cref="FilePair"/> has exactly one of:
-/// - Both binary and pointer: normal archived file with up-to-date pointer
-/// - Binary only: not yet archived (needs upload and pointer creation)
-/// - Pointer only (thin archive): binary was removed, pointer has the content hash
-///
-/// Paths are always forward-slash-normalized and relative to the archive root.
-/// </summary>
-public sealed record FilePair
-{
-    /// <summary>
-    /// Forward-slash-normalized path relative to the archive root (no leading slash).
-    /// e.g. <c>photos/2024/june/a.jpg</c>
-    /// </summary>
-    public required RelativePath RelativePath { get; init; }
-
-    /// <summary><c>true</c> if the binary file is present on disk.</summary>
-    public required bool BinaryExists { get; init; }
-
-    /// <summary><c>true</c> if a <c>.pointer.arius</c> file is present alongside the binary.</summary>
-    public required bool PointerExists { get; init; }
-
-    /// <summary>
-    /// The hash stored in the pointer file, if the pointer exists and contains a valid hex hash.
-    /// <c>null</c> when no pointer or when pointer content is invalid.
-    /// </summary>
-    public          ContentHash? PointerHash { get; init; }
-
-    /// <summary>File size in bytes of the binary. <c>null</c> for pointer-only entries.</summary>
-    public          long?   FileSize { get; init; }
-
-    /// <summary>Creation timestamp of the binary (UTC). <c>null</c> for pointer-only entries.</summary>
-    public          DateTimeOffset? Created  { get; init; }
-
-    /// <summary>Last-modified timestamp of the binary (UTC). <c>null</c> for pointer-only entries.</summary>
-    public          DateTimeOffset? Modified { get; init; }
-}
-
-// ── Task 7.2, 7.3, 7.4, 7.5: File enumeration service ────────────────────────
+namespace Arius.Core.Shared.Paths;
 
 /// <summary>
 /// Enumerates local files and assembles <see cref="FilePair"/> objects.
@@ -59,12 +14,12 @@ public sealed record FilePair
 /// - Pointer file content must be a valid hex string; invalid content is warned and ignored.
 /// - Paths are normalized to forward slashes (task 7.5).
 /// </summary>
-public sealed class LocalFileEnumerator
+public sealed class FilePairEnumerator
 {
 
-    private readonly ILogger<LocalFileEnumerator>? _logger;
+    private readonly ILogger<FilePairEnumerator>? _logger;
 
-    public LocalFileEnumerator(ILogger<LocalFileEnumerator>? logger = null)
+    public FilePairEnumerator(ILogger<FilePairEnumerator>? logger = null)
     {
         _logger = logger;
     }

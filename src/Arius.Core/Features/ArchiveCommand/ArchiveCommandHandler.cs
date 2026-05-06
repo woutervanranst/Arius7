@@ -7,7 +7,6 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -208,7 +207,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 try
                 {
-                    var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
+                    var  enumerator = new FilePairEnumerator(_logger as ILogger<FilePairEnumerator>);
                     var  pairs      = enumerator.Enumerate(opts.RootDirectory);
                     long count      = 0;
                     long totalBytes = 0;

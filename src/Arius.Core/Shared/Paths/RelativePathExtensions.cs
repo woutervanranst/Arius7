@@ -1,6 +1,4 @@
-using Arius.Core.Shared.Paths;
-
-namespace Arius.Core.Shared.LocalFile;
+namespace Arius.Core.Shared.Paths;
 
 public static class RelativePathExtensions
 {
