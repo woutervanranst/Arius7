@@ -356,6 +356,7 @@ public class RestoreCommandHandlerTests
             CancellationToken.None);
 
         restoreResult.Success.ShouldBeFalse();
+        restoreResult.ErrorMessage.ShouldNotBeNull();
         restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
         fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
     }
