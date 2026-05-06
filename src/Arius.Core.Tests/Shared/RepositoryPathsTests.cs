@@ -22,6 +22,8 @@ public class RepositoryPathsTests
     [Test]
     public void RepositoryCacheHelpers_ExposeTypedRootsAndRelativeSegments()
     {
+        RepositoryPaths.GetRepositoryRoot("account", "container").ToString()
+            .ShouldBe(RepositoryPaths.GetRepositoryDirectory("account", "container"));
         RepositoryPaths.ChunkIndexCacheRelativePath.ShouldBe(RelativePath.Parse("chunk-index"));
         RepositoryPaths.FileTreeCacheRelativePath.ShouldBe(RelativePath.Parse("filetrees"));
         RepositoryPaths.SnapshotCacheRelativePath.ShouldBe(RelativePath.Parse("snapshots"));
@@ -33,5 +35,7 @@ public class RepositoryPathsTests
             .ShouldBe(RepositoryPaths.GetFileTreeCacheDirectory("account", "container"));
         RepositoryPaths.GetSnapshotCacheRoot("account", "container").ToString()
             .ShouldBe(RepositoryPaths.GetSnapshotCacheDirectory("account", "container"));
+        RepositoryPaths.GetLogsRoot("account", "container").ToString()
+            .ShouldBe(RepositoryPaths.GetLogsDirectory("account", "container"));
     }
 }

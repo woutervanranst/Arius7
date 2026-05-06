@@ -137,16 +137,17 @@ public sealed class SnapshotService
     {
         _blobs        = blobs;
         _encryption   = encryption;
-        _diskCacheDir = GetDiskCacheDirectory(accountName, containerName);
+        var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+        _diskCacheDir = diskCacheRoot.ToString();
         Directory.CreateDirectory(_diskCacheDir);
-        _diskCacheFileSystem = new RelativeFileSystem(LocalDirectory.Parse(_diskCacheDir));
+        _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
     }
 
     // ── Directory helper ──────────────────────────────────────────────────────
 
     /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
     public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
+        => RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName).ToString();
 
     // ── Snapshot blob name ────────────────────────────────────────────────────
 

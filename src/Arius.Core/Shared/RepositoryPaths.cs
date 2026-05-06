@@ -24,30 +24,30 @@ public static class RepositoryPaths
     /// </summary>
     public static string GetRepoDirectoryName(string accountName, string containerName) => $"{accountName}-{containerName}";
 
-    internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(GetRepositoryDirectory(accountName, containerName));
+    internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return LocalDirectory.Parse(Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName)));
+    }
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(GetChunkIndexCacheDirectory(accountName, containerName));
+        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), ChunkIndexCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
 
     internal static LocalDirectory GetFileTreeCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(GetFileTreeCacheDirectory(accountName, containerName));
+        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), FileTreeCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
 
     internal static LocalDirectory GetSnapshotCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(GetSnapshotCacheDirectory(accountName, containerName));
+        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), SnapshotCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
 
     internal static LocalDirectory GetLogsRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(GetLogsDirectory(accountName, containerName));
+        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), LogsRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
 
     /// <summary>
     /// Returns the repository root directory under the user's <c>.arius</c> home.
     /// Example: <c>~/.arius/<container>/</c>
     /// </summary>
-    public static string GetRepositoryDirectory(string accountName, string containerName)
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName));
-    }
+    public static string GetRepositoryDirectory(string accountName, string containerName) =>
+        GetRepositoryRoot(accountName, containerName).ToString();
 
     /// <summary>
     /// Returns the chunk-index cache directory for one repository.
@@ -78,5 +78,5 @@ public static class RepositoryPaths
         GetCacheDirectory(accountName, containerName, LogsRelativePath);
 
     private static string GetCacheDirectory(string accountName, string containerName, RelativePath relativePath) =>
-        Path.Combine(GetRepositoryDirectory(accountName, containerName), relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
+        Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
 }

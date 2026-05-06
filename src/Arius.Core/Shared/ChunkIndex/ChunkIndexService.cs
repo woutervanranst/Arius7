@@ -72,8 +72,9 @@ public sealed class ChunkIndexService : IDisposable
         _blobs         = blobs;
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
-        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
-        _l2FileSystem  = new RelativeFileSystem(LocalDirectory.Parse(_l2Dir));
+        var l2Root = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
+        _l2Dir         = l2Root.ToString();
+        _l2FileSystem  = new RelativeFileSystem(l2Root);
 
         Directory.CreateDirectory(_l2Dir);
     }
