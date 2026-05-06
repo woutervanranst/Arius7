@@ -1,0 +1,67 @@
+## MODIFIED Requirements
+
+### Requirement: Tree traversal to target path
+The system SHALL walk the merkle tree from the root to the requested path using validated relative domain paths, reading tree blobs through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed. Restore traversal SHALL produce restore-time file candidates based on relative paths, content hashes, timestamps, and chunk metadata rather than archive-time FilePair objects.
+
+#### Scenario: Restore single file
+- **WHEN** restoring `photos/2024/june/vacation.jpg`
+- **THEN** the system SHALL read tree blobs for `/`, `photos/`, `photos/2024/`, `photos/2024/june/` via `FileTreeService.ReadAsync` and locate the file entry
+
+#### Scenario: Restore directory
+- **WHEN** restoring `photos/2024/`
+- **THEN** the system SHALL traverse the full subtree under `photos/2024/` reading tree blobs via `FileTreeService.ReadAsync` and collect all file entries
+
+#### Scenario: Restore full snapshot
+- **WHEN** restoring with `--full`
+- **THEN** the system SHALL traverse the entire tree reading all tree blobs via `FileTreeService.ReadAsync` and collect all file entries
+
+#### Scenario: Parse file entry from tree blob
+- **WHEN** a tree blob line is `abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 my vacation photo.jpg`
+- **THEN** the system SHALL parse hash as `abc123...`, type as file, created and modified as the ISO-8601 timestamps, and name as `my vacation photo.jpg`
+
+#### Scenario: Parse directory entry from tree blob
+- **WHEN** a tree blob line is `def456... D 2024 trip/`
+- **THEN** the system SHALL parse hash as `def456...`, type as directory, and name as `2024 trip/`
+
+#### Scenario: Cached tree blob reuse during restore
+- **WHEN** a tree blob was downloaded during a previous `ls` or `restore` invocation
+- **THEN** `FileTreeService.ReadAsync` SHALL return the cached version from disk without contacting Azure
+
+### Requirement: Streaming restore (no local cache)
+The system SHALL restore files by streaming chunks directly to their final relative path under the requested restore root without intermediate local caching. For large files: download → decrypt → gunzip → write to final path through the filesystem domain boundary. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final relative paths through the filesystem domain boundary. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
+
+Downloads SHALL execute in parallel with up to 4 concurrent workers. When `RestoreOptions.CreateDownloadProgress` is provided, the download stream SHALL be wrapped with `ProgressStream` to report byte-level progress via `IProgress<long>`.
+
+#### Scenario: Large file streaming restore
+- **WHEN** restoring a 2 GB large file
+- **THEN** the system SHALL stream download → decrypt → gunzip → write directly to the target relative path with no intermediate temp file
+
+#### Scenario: Large file streaming restore with progress
+- **WHEN** restoring a 2 GB large file with `CreateDownloadProgress` set
+- **THEN** the system SHALL wrap the download stream with `ProgressStream`
+- **AND** the `IProgress<long>` callback SHALL receive cumulative byte counts as data is read
+
+#### Scenario: Tar bundle streaming extract
+- **WHEN** restoring 3 files that are bundled in the same tar
+- **THEN** the system SHALL download the tar once, stream through the tar entries, and extract the 3 matching content-hash entries to their final relative paths
+
+#### Scenario: Tar entry not needed
+- **WHEN** a tar contains 300 files but only 2 are needed for this restore
+- **THEN** the system SHALL skip the 298 unneeded entries during streaming tar iteration
+
+#### Scenario: Parallel downloads saturate bandwidth
+- **WHEN** 4 chunks are being downloaded concurrently
+- **THEN** each SHALL independently stream download → decrypt → gunzip → write without contention
+
+## ADDED Requirements
+
+### Requirement: Restore pointer path derivation
+When restore creates pointer files, it SHALL derive pointer-file relative paths from the restored file's relative path using centralized pointer path behavior.
+
+#### Scenario: Pointer path for restored file
+- **WHEN** restore materializes `photos/pic.jpg` and pointer creation is enabled
+- **THEN** it SHALL write pointer content to `photos/pic.jpg.pointer.arius` under the restore root
+
+#### Scenario: Restore without pointers
+- **WHEN** restore materializes `photos/pic.jpg` with pointer creation disabled
+- **THEN** it SHALL NOT write `photos/pic.jpg.pointer.arius`
