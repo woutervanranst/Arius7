@@ -91,7 +91,7 @@ public sealed class RestoreCommandHandler
 
         try
         {
-            var restoreFileSystem = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
+            var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
 
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
 
@@ -132,39 +132,39 @@ public sealed class RestoreCommandHandler
 
             foreach (var file in files)
             {
-                if (restoreFileSystem.FileExists(file.RelativePath))
+                if (fs.FileExists(file.RelativePath))
                 {
                     if (!opts.Overwrite)
                     {
                         // Hash local file to check if already correct
-                        await using var fs = restoreFileSystem.OpenRead(file.RelativePath);
-                        var localHash = await _encryption.ComputeHashAsync(fs, cancellationToken);
+                        await using var s = fs.OpenRead(file.RelativePath);
+                        var localHash = await _encryption.ComputeHashAsync(s, cancellationToken);
 
                         if (localHash == file.ContentHash)
                         {
-                            _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath.ToString());
+                            _logger.LogInformation("[disposition] {Path} -> skip (identical)", file.RelativePath);
                             skipped++;
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
-                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.SkipIdentical, fs.Length), cancellationToken);
+                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), s.Length), cancellationToken);
+                            await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.SkipIdentical, s.Length), cancellationToken);
                             continue;
                         }
 
                         // File exists with different hash, no --overwrite → keep local
-                        _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath.ToString());
+                        _logger.LogInformation("[disposition] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
                         skipped++;
-                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), fs.Length), cancellationToken);
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.KeepLocalDiffers, fs.Length), cancellationToken);
+                        await _mediator.Publish(new FileSkippedEvent(file.RelativePath.ToString(), s.Length), cancellationToken);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.KeepLocalDiffers, s.Length), cancellationToken);
                         continue;
                     }
                     else
                     {
-                        _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath.ToString());
-                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.Overwrite, restoreFileSystem.GetFileSize(file.RelativePath)), cancellationToken);
+                        _logger.LogInformation("[disposition] {Path} -> overwrite", file.RelativePath);
+                        await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.Overwrite, fs.GetFileSize(file.RelativePath)), cancellationToken);
                     }
                 }
                 else
                 {
-                    _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath.ToString());
+                    _logger.LogInformation("[disposition] {Path} -> new", file.RelativePath);
                     await _mediator.Publish(new FileDispositionEvent(file.RelativePath.ToString(), RestoreDisposition.New, 0), cancellationToken);
                 }
 
@@ -178,251 +178,253 @@ public sealed class RestoreCommandHandler
             if (toRestore.Count > 0)
             {
 
-            // ── Step 4: Chunk resolution ──────────────────────────────────────
+                // ── Step 4: Chunk resolution ──────────────────────────────────────
 
-            var contentHashes = toRestore
-                .Select(file => file.ContentHash)
-                .Distinct()
-                .ToList();
-            var indexEntries  = await _index.LookupAsync(contentHashes, cancellationToken);
+                var contentHashes = toRestore
+                    .Select(file => file.ContentHash)
+                    .Distinct()
+                    .ToList();
+                var indexEntries = await _index.LookupAsync(contentHashes, cancellationToken);
 
-            // Group files by chunk hash
-            var filesByChunkHash = new Dictionary<ChunkHash, List<FileToRestore>>();
-            var unresolved = new List<FileToRestore>();
+                // Group files by chunk hash
+                var filesByChunkHash = new Dictionary<ChunkHash, List<FileToRestore>>();
+                var unresolved       = new List<FileToRestore>();
 
-            foreach (var file in toRestore)
-            {
-                if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
+                foreach (var file in toRestore)
                 {
-                    _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
-                    unresolved.Add(file);
-                    continue;
+                    if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
+                    {
+                        _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
+                        unresolved.Add(file);
+                        continue;
+                    }
+
+                    if (!filesByChunkHash.TryGetValue(entry.ChunkHash, out var list))
+                        filesByChunkHash[entry.ChunkHash] = list = new List<FileToRestore>();
+                    list.Add(file);
                 }
 
-                if (!filesByChunkHash.TryGetValue(entry.ChunkHash, out var list))
-                    filesByChunkHash[entry.ChunkHash] = list = new List<FileToRestore>();
-                list.Add(file);
-            }
+                var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && entry.IsLargeChunk);
+                var tarChunks   = filesByChunkHash.Count - largeChunks;
 
-            var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && entry.IsLargeChunk);
-            var tarChunks   = filesByChunkHash.Count - largeChunks;
-
-            // Sum original and compressed sizes from index entries for the aggregate counters.
-            // For large files, sizes come from the single index entry.
-            // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
-            // sum across all files to reconstruct the total tar.gz blob size.
-            long totalOriginalBytes   = 0;
-            long totalCompressedBytes = 0;
-            foreach (var chunkHash in filesByChunkHash.Keys)
-            {
-                var firstFile = filesByChunkHash[chunkHash][0];
-                if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
+                // Sum original and compressed sizes from index entries for the aggregate counters.
+                // For large files, sizes come from the single index entry.
+                // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
+                // sum across all files to reconstruct the total tar.gz blob size.
+                long totalOriginalBytes   = 0;
+                long totalCompressedBytes = 0;
+                foreach (var chunkHash in filesByChunkHash.Keys)
                 {
-                    if (ie2.IsLargeChunk)
+                    var firstFile = filesByChunkHash[chunkHash][0];
+                    if (indexEntries.TryGetValue(firstFile.ContentHash, out var ie2))
                     {
-                        totalOriginalBytes   += ie2.OriginalSize;
-                        totalCompressedBytes += ie2.CompressedSize;
-                    }
-                    else
-                    {
-                        // Tar bundle: sum across all files that map to this chunk
-                        foreach (var file in filesByChunkHash[chunkHash])
+                        if (ie2.IsLargeChunk)
                         {
-                            if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                            totalOriginalBytes   += ie2.OriginalSize;
+                            totalCompressedBytes += ie2.CompressedSize;
+                        }
+                        else
+                        {
+                            // Tar bundle: sum across all files that map to this chunk
+                            foreach (var file in filesByChunkHash[chunkHash])
                             {
-                                totalOriginalBytes   += fileEntry.OriginalSize;
-                                totalCompressedBytes += fileEntry.CompressedSize;
+                                if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                                {
+                                    totalOriginalBytes   += fileEntry.OriginalSize;
+                                    totalCompressedBytes += fileEntry.CompressedSize;
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", filesByChunkHash.Count, largeChunks, tarChunks);
-            await _mediator.Publish(new ChunkResolutionCompleteEvent(filesByChunkHash.Count, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
+                _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", filesByChunkHash.Count, largeChunks, tarChunks);
+                await _mediator.Publish(new ChunkResolutionCompleteEvent(filesByChunkHash.Count, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
 
-            // ── Step 5: Rehydration status check ──────────────────────────────
+                // ── Step 5: Rehydration status check ──────────────────────────────
 
-            var available          = new List<ChunkHash>();   // chunk hashes ready to download
-            var needsRehydration   = new List<ChunkHash>();   // archive-tier, not yet rehydrated
-            var rehydrationPending = new List<ChunkHash>();   // copy already in progress
+                var available          = new List<ChunkHash>(); // chunk hashes ready to download
+                var needsRehydration   = new List<ChunkHash>(); // archive-tier, not yet rehydrated
+                var rehydrationPending = new List<ChunkHash>(); // copy already in progress
 
-            foreach (var chunkHash in filesByChunkHash.Keys)
-            {
-                var hydrationStatus = await _chunkStorage.GetHydrationStatusAsync(chunkHash, cancellationToken);
-                switch (hydrationStatus)
+                foreach (var chunkHash in filesByChunkHash.Keys)
                 {
-                    case ChunkHydrationStatus.Unknown:
-                        _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
-                        break;
-                    case ChunkHydrationStatus.RehydrationPending:
-                        rehydrationPending.Add(chunkHash);
-                        break;
-                    case ChunkHydrationStatus.NeedsRehydration:
-                        needsRehydration.Add(chunkHash);
-                        break;
-                    case ChunkHydrationStatus.Available:
-                        available.Add(chunkHash);
-                        break;
-                }
-            }
-
-            _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, 0, needsRehydration.Count, rehydrationPending.Count);
-            await _mediator.Publish(new RehydrationStatusEvent(available.Count, 0, needsRehydration.Count, rehydrationPending.Count), cancellationToken);
-
-            // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
-
-            long rehydrationBytes = 0;
-            long downloadBytes    = 0;
-
-            foreach (var chunkHash in available)
-                downloadBytes += SumCompressedBytes(chunkHash);
-            foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
-                rehydrationBytes += SumCompressedBytes(chunkHash);
-
-            long SumCompressedBytes(ChunkHash chunkHash)
-            {
-                var firstFile = filesByChunkHash[chunkHash][0];
-                if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
-                    return 0;
-
-                var isLargeChunk = ie.IsLargeChunk;
-                if (isLargeChunk)
-                    return ie.CompressedSize;
-
-                // Tar bundle: sum proportional shares across all files in the chunk
-                long sum = 0;
-                foreach (var file in filesByChunkHash[chunkHash])
-                {
-                    if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
-                        sum += fileEntry.CompressedSize;
-                }
-                return sum;
-            }
-
-            // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
-            var costEstimate = RestoreCostCalculator.Compute(
-                chunksAvailable:          available.Count,
-                chunksAlreadyRehydrated:  0,
-                chunksNeedingRehydration: needsRehydration.Count,
-                chunksPendingRehydration: rehydrationPending.Count,
-                rehydrationBytes:         rehydrationBytes,
-                downloadBytes:            downloadBytes);
-
-            // If there are archive-tier chunks, invoke confirmation callback (task 10.6)
-            var rehydratePriority = RehydratePriority.Standard;
-
-            if (needsRehydration.Count > 0 || rehydrationPending.Count > 0)
-            {
-                if (opts.ConfirmRehydration is not null)
-                {
-                    var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
-                    if (chosenPriority is null)
+                    var hydrationStatus = await _chunkStorage.GetHydrationStatusAsync(chunkHash, cancellationToken);
+                    switch (hydrationStatus)
                     {
-                        // User cancelled rehydration — exit without downloading or rehydrating
-                        return new RestoreResult
-                        {
-                            Success                  = true,
-                            FilesRestored            = 0,
-                            FilesSkipped             = skipped,
-                            ChunksPendingRehydration = needsRehydration.Count + rehydrationPending.Count,
-                        };
+                        case ChunkHydrationStatus.Unknown:
+                            _logger.LogWarning("Chunk blob not found: {ChunkHash}", chunkHash);
+                            break;
+                        case ChunkHydrationStatus.RehydrationPending:
+                            rehydrationPending.Add(chunkHash);
+                            break;
+                        case ChunkHydrationStatus.NeedsRehydration:
+                            needsRehydration.Add(chunkHash);
+                            break;
+                        case ChunkHydrationStatus.Available:
+                            available.Add(chunkHash);
+                            break;
                     }
-                    rehydratePriority = chosenPriority.Value;
                 }
-            }
 
-            // ── Step 7: Phase 1 — download available chunks ───────────────────
+                _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", available.Count, 0, needsRehydration.Count, rehydrationPending.Count);
+                await _mediator.Publish(new RehydrationStatusEvent(available.Count, 0, needsRehydration.Count, rehydrationPending.Count), cancellationToken);
 
-            const int DownloadWorkers = 4;
+                // ── Step 6 (task 10.6): Cost estimation and confirmation ──────────────
 
-            // Download available chunks in parallel
-            await Parallel.ForEachAsync(
-                available,
-                new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = cancellationToken },
-                async (chunkHash, ct) =>
+                long rehydrationBytes = 0;
+                long downloadBytes    = 0;
+
+                foreach (var chunkHash in available)
+                    downloadBytes += SumCompressedBytes(chunkHash);
+                foreach (var chunkHash in needsRehydration.Concat(rehydrationPending))
+                    rehydrationBytes += SumCompressedBytes(chunkHash);
+
+                long SumCompressedBytes(ChunkHash chunkHash)
                 {
-                    var filesForChunk = filesByChunkHash[chunkHash];
+                    var firstFile = filesByChunkHash[chunkHash][0];
+                    if (!indexEntries.TryGetValue(firstFile.ContentHash, out var ie))
+                        return 0;
 
-                    // Determine chunk type from index entry
-                    // If content-hash == chunk-hash → large file
-                    // otherwise → thin/tar bundle
-                    var firstFile   = filesForChunk[0];
-                    if (!indexEntries.TryGetValue(firstFile.ContentHash, out var indexEntry))
-                        return;
-
-                    var isLargeChunk = indexEntry.IsLargeChunk;
-
-                    // For large files, sizes come from the single index entry.
-                    // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
-                    // sum across all files to reconstruct the total tar.gz blob size.
-                    var compressedSize = isLargeChunk
-                        ? indexEntry.CompressedSize
-                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.CompressedSize : 0);
-                    var originalSize = isLargeChunk
-                        ? indexEntry.OriginalSize
-                        : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.OriginalSize : 0);
-
-                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash.Short8, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
-
+                    var isLargeChunk = ie.IsLargeChunk;
                     if (isLargeChunk)
+                        return ie.CompressedSize;
+
+                    // Tar bundle: sum proportional shares across all files in the chunk
+                    long sum = 0;
+                    foreach (var file in filesByChunkHash[chunkHash])
                     {
-                        foreach (var file in filesForChunk)
+                        if (indexEntries.TryGetValue(file.ContentHash, out var fileEntry))
+                            sum += fileEntry.CompressedSize;
+                    }
+
+                    return sum;
+                }
+
+                // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
+                var costEstimate = RestoreCostCalculator.Compute(
+                    chunksAvailable: available.Count,
+                    chunksAlreadyRehydrated: 0,
+                    chunksNeedingRehydration: needsRehydration.Count,
+                    chunksPendingRehydration: rehydrationPending.Count,
+                    rehydrationBytes: rehydrationBytes,
+                    downloadBytes: downloadBytes);
+
+                // If there are archive-tier chunks, invoke confirmation callback (task 10.6)
+                var rehydratePriority = RehydratePriority.Standard;
+
+                if (needsRehydration.Count > 0 || rehydrationPending.Count > 0)
+                {
+                    if (opts.ConfirmRehydration is not null)
+                    {
+                        var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
+                        if (chosenPriority is null)
                         {
-                            await RestoreLargeFileAsync(chunkHash, file, restoreFileSystem, opts, compressedSize, ct);
-                            Interlocked.Increment(ref filesRestoredLong);
-                            await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), indexEntry.OriginalSize), ct);
+                            // User cancelled rehydration — exit without downloading or rehydrating
+                            return new RestoreResult
+                            {
+                                Success                  = true,
+                                FilesRestored            = 0,
+                                FilesSkipped             = skipped,
+                                ChunksPendingRehydration = needsRehydration.Count + rehydrationPending.Count,
+                            };
+                        }
+
+                        rehydratePriority = chosenPriority.Value;
+                    }
+                }
+
+                // ── Step 7: Phase 1 — download available chunks ───────────────────
+
+                const int DownloadWorkers = 4;
+
+                // Download available chunks in parallel
+                await Parallel.ForEachAsync(
+                    available,
+                    new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = cancellationToken },
+                    async (chunkHash, ct) =>
+                    {
+                        var filesForChunk = filesByChunkHash[chunkHash];
+
+                        // Determine chunk type from index entry
+                        // If content-hash == chunk-hash → large file
+                        // otherwise → thin/tar bundle
+                        var firstFile = filesForChunk[0];
+                        if (!indexEntries.TryGetValue(firstFile.ContentHash, out var indexEntry))
+                            return;
+
+                        var isLargeChunk = indexEntry.IsLargeChunk;
+
+                        // For large files, sizes come from the single index entry.
+                        // For tar bundles, ShardEntry.CompressedSize is a proportional per-file share;
+                        // sum across all files to reconstruct the total tar.gz blob size.
+                        var compressedSize = isLargeChunk
+                            ? indexEntry.CompressedSize
+                            : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.CompressedSize : 0);
+                        var originalSize = isLargeChunk
+                            ? indexEntry.OriginalSize
+                            : filesForChunk.Sum(f => indexEntries.TryGetValue(f.ContentHash, out var e) ? e.OriginalSize : 0);
+
+                        _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunkHash.Short8, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize.Bytes().Humanize());
+                        await _mediator.Publish(new ChunkDownloadStartedEvent(chunkHash, isLargeChunk ? "large" : "tar", filesForChunk.Count, compressedSize, originalSize), ct);
+
+                        if (isLargeChunk)
+                        {
+                            foreach (var file in filesForChunk)
+                            {
+                                await RestoreLargeFileAsync(chunkHash, file, fs, opts, compressedSize, ct);
+                                Interlocked.Increment(ref filesRestoredLong);
+                                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), indexEntry.OriginalSize), ct);
+                            }
+                        }
+                        else
+                        {
+                            // Tar bundle: stream through tar, extract matching entries.
+                            // Multiple files may share the same content hash (duplicates), so use a lookup.
+                            var filesByContentHash = filesForChunk
+                                .GroupBy(f => f.ContentHash)
+                                .ToDictionary(g => g.Key, g => g.ToList());
+                            var restored = await RestoreTarBundleAsync(
+                                chunkHash, filesByContentHash, fs, opts, compressedSize, ct);
+                            Interlocked.Add(ref filesRestoredLong, restored);
+                        }
+                    });
+
+                filesRestored = (int)Interlocked.Read(ref filesRestoredLong);
+
+                // ── Step 8: Phase 2 — kick off rehydration (task 10.8) ───────────────
+
+                // Only request rehydration for chunks that have NOT yet been requested.
+                // Chunks in rehydrationPending already have a copy in progress; re-requesting
+                // would throw BlobArchived 409 from Azure because StartCopyFromUri is not
+                // permitted on an archived blob that already has a pending copy.
+                var chunksToRequest   = needsRehydration.ToList();
+                var chunksToRehydrate = chunksToRequest.Count + rehydrationPending.Count;
+
+                if (chunksToRehydrate > 0)
+                {
+                    long totalRehydrateBytes = 0;
+                    foreach (var chunkHash in chunksToRequest)
+                    {
+                        try
+                        {
+                            await _chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
+
+                            if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
+                                totalRehydrateBytes += ie.CompressedSize;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to start rehydration for chunk {ChunkHash}", chunkHash);
                         }
                     }
-                    else
-                    {
-                        // Tar bundle: stream through tar, extract matching entries.
-                        // Multiple files may share the same content hash (duplicates), so use a lookup.
-                        var filesByContentHash = filesForChunk
-                            .GroupBy(f => f.ContentHash)
-                            .ToDictionary(g => g.Key, g => g.ToList());
-                        var restored = await RestoreTarBundleAsync(
-                            chunkHash, filesByContentHash, restoreFileSystem, opts, compressedSize, ct);
-                        Interlocked.Add(ref filesRestoredLong, restored);
-                    }
-                });
 
-            filesRestored = (int)Interlocked.Read(ref filesRestoredLong);
-
-            // ── Step 8: Phase 2 — kick off rehydration (task 10.8) ───────────────
-
-            // Only request rehydration for chunks that have NOT yet been requested.
-            // Chunks in rehydrationPending already have a copy in progress; re-requesting
-            // would throw BlobArchived 409 from Azure because StartCopyFromUri is not
-            // permitted on an archived blob that already has a pending copy.
-            var chunksToRequest = needsRehydration.ToList();
-            var chunksToRehydrate = chunksToRequest.Count + rehydrationPending.Count;
-
-            if (chunksToRehydrate > 0)
-            {
-                long totalRehydrateBytes = 0;
-                foreach (var chunkHash in chunksToRequest)
-                {
-                    try
-                    {
-                        await _chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
-
-                        if (indexEntries.TryGetValue(filesByChunkHash[chunkHash][0].ContentHash, out var ie))
-                            totalRehydrateBytes += ie.CompressedSize;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to start rehydration for chunk {ChunkHash}", chunkHash);
-                    }
+                    await _mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
                 }
 
-                await _mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
+                totalPending = chunksToRehydrate;
+
             }
-
-            totalPending = chunksToRehydrate;
-
-            } // end if (toRestore.Count > 0)
 
             // ── Step 9 (task 10.10): Cleanup ALL rehydrated blobs in the container ─
 
@@ -579,7 +581,7 @@ public sealed class RestoreCommandHandler
     private async Task RestoreLargeFileAsync(
         ChunkHash      chunkHash,
         FileToRestore  file,
-        RelativeFileSystem restoreFileSystem,
+        RelativeFileSystem fs,
         RestoreOptions opts,
         long           compressedSize,
         CancellationToken cancellationToken)
@@ -587,20 +589,20 @@ public sealed class RestoreCommandHandler
         {
             var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var fileStream   = restoreFileSystem.CreateFile(file.RelativePath);
+            await using var fileStream   = fs.CreateFile(file.RelativePath);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
         // Set file timestamps from tree metadata (after stream is closed)
-        restoreFileSystem.SetTimestamps(file.RelativePath, file.Created, file.Modified);
+        fs.SetTimestamps(file.RelativePath, file.Created, file.Modified);
 
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
         {
             var pointerPath = file.RelativePath.ToPointerPath();
-            await restoreFileSystem.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
-            restoreFileSystem.SetTimestamps(pointerPath, file.Created, file.Modified);
+            await fs.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
+            fs.SetTimestamps(pointerPath, file.Created, file.Modified);
         }
     }
 
@@ -622,7 +624,7 @@ public sealed class RestoreCommandHandler
     private async Task<int> RestoreTarBundleAsync(
         ChunkHash                                 chunkHash,
         Dictionary<ContentHash, List<FileToRestore>> filesNeeded,
-        RelativeFileSystem                        restoreFileSystem,
+        RelativeFileSystem                        fs,
         RestoreOptions                            opts,
         long                                      compressedSize,
         CancellationToken                         cancellationToken)
@@ -650,32 +652,32 @@ public sealed class RestoreCommandHandler
                 if (tarEntry.DataStream is null)
                 {
                     // create an empty file
-                    await using var _ = restoreFileSystem.CreateFile(file.RelativePath);
+                    await using var _ = fs.CreateFile(file.RelativePath);
                 }
                 else if (i == 0)
                 {
-                    await using var output = restoreFileSystem.CreateFile(file.RelativePath);
+                    await using var output = fs.CreateFile(file.RelativePath);
                     await tarEntry.DataStream.CopyToAsync(output, cancellationToken);
                     sourcePath = file.RelativePath;
                 }
                 else
                 {
                     // TODO: investigate Async copy? Ref https://github.com/dotnet/runtime/issues/20697, https://github.com/dotnet/runtime/issues/20695
-                    restoreFileSystem.CopyFile(sourcePath ?? throw new InvalidOperationException("Tar duplicate copy requires a source path."), file.RelativePath, overwrite: true);
+                    fs.CopyFile(sourcePath ?? throw new InvalidOperationException("Tar duplicate copy requires a source path."), file.RelativePath, overwrite: true);
                 }
 
                 // Set timestamps
-                restoreFileSystem.SetTimestamps(file.RelativePath, file.Created, file.Modified);
+                fs.SetTimestamps(file.RelativePath, file.Created, file.Modified);
 
                 // Create pointer file
                 if (!opts.NoPointers)
                 {
                     var pointerPath = file.RelativePath.ToPointerPath();
-                    await restoreFileSystem.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
-                    restoreFileSystem.SetTimestamps(pointerPath, file.Created, file.Modified);
+                    await fs.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
+                    fs.SetTimestamps(pointerPath, file.Created, file.Modified);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), restoreFileSystem.GetFileSize(file.RelativePath)), cancellationToken);
+                await _mediator.Publish(new FileRestoredEvent(file.RelativePath.ToString(), fs.GetFileSize(file.RelativePath)), cancellationToken);
                 restored++;
             }
         }
