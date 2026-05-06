@@ -65,6 +65,14 @@ public class RelativePathTests
     }
 
     [Test]
+    public void ToPointerFilePath_AppendsPointerSuffix()
+    {
+        var path = RelativePath.Parse("docs/readme.txt");
+
+        path.ToPointerFilePath().ShouldBe(RelativePath.Parse("docs/readme.txt.pointer.arius"));
+    }
+
+    [Test]
     [Arguments("")]
     [Arguments(" ")]
     [Arguments("/photos")]

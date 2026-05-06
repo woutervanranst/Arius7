@@ -379,7 +379,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 try
                 {
                     var         tarEntries     = new List<TarEntry>();
-                    string?     currentTarPath = null;
+                    RootedPath? currentTarPath = null;
                     TarWriter?  tarWriter      = null;
                     FileStream? tarStream      = null;
                     long        currentSize    = 0;
@@ -393,8 +393,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         tarStream!.Dispose();
 
                         // Compute tar hash
+                        var tarPath = currentTarPath ?? throw new InvalidOperationException("Current tar path must exist when sealing a tar bundle.");
+
                         ChunkHash tarHash;
-                        await using (var fs = File.OpenRead(currentTarPath!))
+                        await using (var fs = tarPath.OpenRead())
                         {
                             tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(fs, cancellationToken));
                         }
@@ -405,7 +407,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         foreach (var te in tarEntries)
                             _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath.ToString(), te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
-                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
+                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(tarPath, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                         tarEntries.Clear();
                         currentTarPath = null;
@@ -419,8 +421,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         // Initialize new tar if needed
                         if (tarWriter is null)
                         {
-                            currentTarPath = Path.GetTempFileName();
-                            tarStream      = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                            var tempTarPath = Path.GetTempFileName();
+                            var tempTarRoot = LocalRootPath.Parse(Path.GetDirectoryName(tempTarPath)!);
+                            currentTarPath = tempTarRoot / RelativePath.FromPlatformRelativePath(Path.GetFileName(tempTarPath));
+                            tarStream = currentTarPath.Value.Open(FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
                             tarWriter      = new TarWriter(tarStream, leaveOpen: false);
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
@@ -467,7 +471,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
-                        await using var fs             = File.OpenRead(sealed_.TarFilePath);
+                        await using var fs             = sealed_.TarFilePath.OpenRead();
                         var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealed_.TarHash, sealed_.UncompressedSize);
                         var             uploadResult   = await _chunkStorage.UploadTarAsync(sealed_.TarHash, fs, sealed_.UncompressedSize, opts.UploadTier, tarProgress, ct);
                         var             compressedSize = uploadResult.StoredSize;
@@ -500,7 +504,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                     finally
                     {
-                        try { File.Delete(sealed_.TarFilePath); } catch { /* ignore */ }
+                        try { sealed_.TarFilePath.DeleteFile(); } catch { /* ignore */ }
                     }
                 });
 
@@ -556,7 +560,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (relativePath, hash) = item;
-                    var pointerPath = opts.RootDirectory / RelativePath.Parse(relativePath + ".pointer.arius");
+                    var pointerPath = opts.RootDirectory / relativePath.ToPointerFilePath();
                     await pointerPath.WriteAllTextAsync(hash.ToString(), ct);
                 });
             }

@@ -52,7 +52,15 @@ public static class RootedPathFileSystemExtensions
 
         public FileStream OpenRead() => File.OpenRead(path.FullPath);
 
-        public FileStream OpenWrite() => File.Open(path.FullPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        public FileStream Open(
+            FileMode mode,
+            FileAccess access,
+            FileShare share = FileShare.None,
+            int bufferSize = 4096,
+            bool useAsync = false)
+            => new(path.FullPath, mode, access, share, bufferSize, useAsync);
+
+        public FileStream OpenWrite() => path.Open(FileMode.Create, FileAccess.Write);
 
         public string ReadAllText() => File.ReadAllText(path.FullPath);
 
@@ -62,11 +70,17 @@ public static class RootedPathFileSystemExtensions
 
         public Task<byte[]> ReadAllBytesAsync(CancellationToken cancellationToken = default) => File.ReadAllBytesAsync(path.FullPath, cancellationToken);
 
+        public IAsyncEnumerable<string> ReadLinesAsync(CancellationToken cancellationToken = default) => File.ReadLinesAsync(path.FullPath, cancellationToken);
+
         public void WriteAllBytes(ReadOnlySpan<byte> bytes) => File.WriteAllBytes(path.FullPath, bytes);
 
         public Task WriteAllBytesAsync(byte[] bytes, CancellationToken cancellationToken = default) => File.WriteAllBytesAsync(path.FullPath, bytes, cancellationToken);
 
         public Task WriteAllTextAsync(string content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(path.FullPath, content, cancellationToken);
+
+        public Task WriteAllLinesAsync(IEnumerable<string> lines, CancellationToken cancellationToken = default) => File.WriteAllLinesAsync(path.FullPath, lines, cancellationToken);
+
+        public Task AppendAllLinesAsync(IEnumerable<string> lines, CancellationToken cancellationToken = default) => File.AppendAllLinesAsync(path.FullPath, lines, cancellationToken);
 
         public IEnumerable<RootedPath> EnumerateFiles(string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
         {
@@ -86,7 +100,7 @@ public static class RootedPathFileSystemExtensions
                 (destination.Root / destinationParent.Value).CreateDirectory();
 
             await using (var source = path.OpenRead())
-            await using (var target = File.Open(destination.FullPath, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            await using (var target = destination.Open(overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await source.CopyToAsync(target, cancellationToken);
             }

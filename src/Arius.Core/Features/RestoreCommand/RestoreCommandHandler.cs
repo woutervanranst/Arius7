@@ -579,7 +579,7 @@ public sealed class RestoreCommandHandler
         // Create pointer file (task 10.11)
         if (!opts.NoPointers)
         {
-            var pointerPath = RelativePath.Parse(file.RelativePath + ".pointer.arius").RootedAt(opts.RootDirectory);
+            var pointerPath = file.RelativePath.ToPointerFilePath().RootedAt(opts.RootDirectory);
             await pointerPath.WriteAllTextAsync(file.ContentHash.ToString(), cancellationToken);
             pointerPath.CreationTimeUtc = file.Created.UtcDateTime;
             pointerPath.LastWriteTimeUtc = file.Modified.UtcDateTime;
@@ -657,7 +657,7 @@ public sealed class RestoreCommandHandler
                 // Create pointer file
                 if (!opts.NoPointers)
                 {
-                    var pointerPath = RelativePath.Parse(file.RelativePath + ".pointer.arius").RootedAt(opts.RootDirectory);
+                    var pointerPath = file.RelativePath.ToPointerFilePath().RootedAt(opts.RootDirectory);
                     await pointerPath.WriteAllTextAsync(contentHash.ToString(), cancellationToken);
                     pointerPath.CreationTimeUtc = file.Created.UtcDateTime;
                     pointerPath.LastWriteTimeUtc = file.Modified.UtcDateTime;

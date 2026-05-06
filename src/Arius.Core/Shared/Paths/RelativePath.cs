@@ -95,6 +95,8 @@ public readonly record struct RelativePath
 
     public RootedPath RootedAt(LocalRootPath root) => new(root, this);
 
+    public RelativePath ToPointerFilePath() => Parse($"{Value}.pointer.arius");
+
 
     public bool StartsWith(RelativePath other)
     {

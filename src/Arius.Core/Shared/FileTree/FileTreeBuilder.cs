@@ -136,7 +136,7 @@ public sealed class FileTreeBuilder
             if (!path.ExistsFile)
                 yield break; // empty directory
 
-            await foreach (var line in File.ReadLinesAsync(path.FullPath, ct))
+            await foreach (var line in path.ReadLinesAsync(ct))
                 yield return line;
         }
 

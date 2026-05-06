@@ -164,4 +164,56 @@ public class RootedPathTests
                 Directory.Delete(tempRoot, recursive: true);
         }
     }
+
+    [Test]
+    public async Task ReadLinesAsync_WriteAllLinesAsync_And_AppendAllLinesAsync_WorkAgainstFile()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-lines-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var path = root / PathOf("docs/lines.txt");
+            (root / PathOf("docs")).CreateDirectory();
+
+            await path.WriteAllLinesAsync(["alpha", "beta"]);
+            await path.AppendAllLinesAsync(["gamma"]);
+
+            var lines = await path.ReadLinesAsync().ToArrayAsync();
+
+            lines.ShouldBe(["alpha", "beta", "gamma"]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Open_CanCreateAsyncWriteStream_WithCustomOptions()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-rooted-open-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var root = RootOf(tempRoot);
+            var path = root / PathOf("docs/custom.bin");
+            (root / PathOf("docs")).CreateDirectory();
+
+            await using (var stream = path.Open(FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
+            {
+                await stream.WriteAsync(new byte[] { 1, 2, 3 });
+            }
+
+            path.ReadAllBytes().ShouldBe([1, 2, 3]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

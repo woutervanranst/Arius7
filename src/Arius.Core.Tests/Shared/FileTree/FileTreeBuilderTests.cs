@@ -42,7 +42,7 @@ public class FileTreeBuilderTests
 
     private static async Task WriteNodeLinesAsync(LocalRootPath stagingRoot, string directoryId, params string[] lines)
     {
-        await File.WriteAllLinesAsync(FileTreePaths.GetStagingNodePath(stagingRoot, directoryId).FullPath, lines);
+        await FileTreePaths.GetStagingNodePath(stagingRoot, directoryId).WriteAllLinesAsync(lines);
     }
 
     [Test]

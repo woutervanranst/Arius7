@@ -81,7 +81,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
         {
             _stagingRoot.CreateDirectory();
 
-            await File.AppendAllLinesAsync(path.FullPath, [line], cancellationToken);
+            await path.AppendAllLinesAsync([line], cancellationToken);
         }
         finally
         {

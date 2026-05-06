@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
+using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Features.ArchiveCommand;
 
@@ -48,7 +49,7 @@ public sealed record TarEntry(
 /// A sealed tar archive ready for upload.
 /// </summary>
 public sealed record SealedTar(
-    string          TarFilePath,       // temp file on disk
+    RootedPath      TarFilePath,       // temp file on disk
     ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
     long            UncompressedSize,  // sum of file sizes
     IReadOnlyList<TarEntry> Entries    // per-file info for thin chunk creation

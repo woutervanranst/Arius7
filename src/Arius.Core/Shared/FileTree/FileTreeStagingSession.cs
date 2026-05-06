@@ -30,7 +30,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 
         try
         {
-            lockStream = new FileStream(lockPath.FullPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
+            lockStream = lockPath.Open(FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
         }
         catch (IOException ex)
         {

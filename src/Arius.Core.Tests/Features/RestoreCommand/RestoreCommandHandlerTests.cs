@@ -251,7 +251,7 @@ public class RestoreCommandHandlerTests
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
             var restoredPath = fixture.RestoreRoot / RelativePath.FromPlatformRelativePath(relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath + ".pointer.arius");
+            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath).ToPointerFilePath();
 
             restoredPath.ReadAllBytes().ShouldBe(expectedContent);
             pointerPath.ExistsFile.ShouldBeTrue($"Pointer file should exist for {relativePath}");
@@ -311,7 +311,7 @@ public class RestoreCommandHandlerTests
         void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
         {
             var restoredPath = fixture.RestoreRoot / RelativePath.FromPlatformRelativePath(relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath + ".pointer.arius");
+            var pointerPath  = fixture.RestoreRoot / PathOf(relativePath).ToPointerFilePath();
 
             restoredPath.ReadAllBytes().ShouldBe(expectedContent);
             pointerPath.ExistsFile.ShouldBeTrue($"Pointer file should exist for {relativePath}");
