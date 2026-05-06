@@ -80,7 +80,7 @@ public class LocalRootPathTests
     {
         var root = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius-local-root"));
 
-        root.GetSubdirectoryRoot(PathSegment.Parse("snapshots"))
+        root.GetSubdirectoryRoot("snapshots")
             .ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
     }
 }

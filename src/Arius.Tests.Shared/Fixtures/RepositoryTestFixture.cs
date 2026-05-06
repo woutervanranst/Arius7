@@ -10,6 +10,7 @@ using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fakes;
+using Arius.Tests.Shared.Helpers;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -276,8 +277,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         tempRootBase.CreateDirectory();
 
         var resolvedTempRoot = tempRoot ?? tempRootBase.GetSubdirectoryRoot(PathSegment.Parse($"arius-test-{Guid.NewGuid():N}"));
-        var localRoot = resolvedTempRoot.GetSubdirectoryRoot(PathSegment.Parse("source"));
-        var restoreRoot = resolvedTempRoot.GetSubdirectoryRoot(PathSegment.Parse("restore"));
+        var localRoot = resolvedTempRoot.GetSubdirectoryRoot("source");
+        var restoreRoot = resolvedTempRoot.GetSubdirectoryRoot("restore");
 
         if (resolvedTempRoot.ExistsDirectory)
             resolvedTempRoot.DeleteDirectory(recursive: true);

@@ -2,6 +2,7 @@ using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.Tests.Shared.Helpers;
 
 namespace Arius.E2E.Tests.Workflows;
 
@@ -20,7 +21,7 @@ internal static class RepresentativeWorkflowRunner
 
     internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, LocalRootPath workflowRoot, CancellationToken cancellationToken)
     {
-        var fixtureRoot = workflowRoot.GetSubdirectoryRoot(PathSegment.Parse("fixture"));
+        var fixtureRoot = workflowRoot.GetSubdirectoryRoot("fixture");
 
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
@@ -53,7 +54,7 @@ internal static class RepresentativeWorkflowRunner
         {
             fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
 
-            var versionedSourceRoot = workflowRoot.GetSubdirectoryRoot(PathSegment.Parse("representative-source"));
+            var versionedSourceRoot = workflowRoot.GetSubdirectoryRoot("representative-source");
             versionedSourceRoot.CreateDirectory();
 
             state = new RepresentativeWorkflowState
