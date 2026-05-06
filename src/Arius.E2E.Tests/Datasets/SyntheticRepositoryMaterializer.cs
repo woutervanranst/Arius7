@@ -3,7 +3,7 @@ using System.Text;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Paths;
-using Arius.Tests.Shared.IO;
+using Arius.Tests.Shared.Helpers;
 
 namespace Arius.E2E.Tests.Datasets;
 

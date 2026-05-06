@@ -5,7 +5,7 @@ using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;
 using Arius.Tests.Shared.Fixtures;
-using Arius.Tests.Shared.IO;
+using Arius.Tests.Shared.Helpers;
 using BenchmarkDotNet.Attributes;
 
 namespace Arius.Benchmarks;

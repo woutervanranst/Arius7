@@ -1,5 +1,5 @@
 using Arius.Core.Shared.Paths;
-using Arius.Tests.Shared.IO;
+using Arius.Tests.Shared.Helpers;
 
 namespace Arius.Core.Tests.Shared;
 
