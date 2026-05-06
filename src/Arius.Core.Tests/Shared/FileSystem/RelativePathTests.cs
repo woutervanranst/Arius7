@@ -102,9 +102,16 @@ public class RelativePathTests
     }
 
     [Test]
+    public void ToBinaryPath_UppercasePointerSuffix_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => RelativePath.Parse("photos/pic.jpg.POINTER.ARIUS").ToBinaryPath());
+    }
+
+    [Test]
     public void IsPointerPath_ReturnsTrueOnlyForPointerSuffix()
     {
         RelativePath.Parse("photos/pic.jpg.pointer.arius").IsPointerPath().ShouldBeTrue();
+        RelativePath.Parse("photos/pic.jpg.POINTER.ARIUS").IsPointerPath().ShouldBeFalse();
         RelativePath.Parse("photos/pic.jpg").IsPointerPath().ShouldBeFalse();
     }
 }

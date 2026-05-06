@@ -47,7 +47,7 @@ internal static class LocalFileSnapshotBuilder
             else
             {
                 var pointerPath = file.Path.ToPointerPath();
-                var hasPointer = enumeratedPaths.Contains(pointerPath) || fileExists(pointerPath);
+                var hasPointer = enumeratedPaths.Contains(pointerPath);
                 files[file.Path.Name.ToString()] = new LocalFileState(
                     Name: file.Path.Name.ToString(),
                     Path: file.Path,
