@@ -103,9 +103,12 @@ public static class RootedPathExtensions
             foreach (var fullPath in Directory.EnumerateFiles(path.FullPath, searchPattern, searchOption))
             {
                 var fileInfo = new FileInfo(fullPath);
+                var rootedPath = path.Root.GetRelativePath(fullPath).RootedAt(path.Root);
                 yield return new RootedFileEntry(
-                    path.Root.GetRelativePath(fullPath).RootedAt(path.Root),
+                    rootedPath,
+                    rootedPath.Name ?? throw new InvalidOperationException($"Enumerated file path '{rootedPath}' did not have a name."),
                     fileInfo.Length,
+                    fileInfo.CreationTimeUtc,
                     fileInfo.LastWriteTimeUtc);
             }
         }

@@ -208,13 +208,17 @@ public class RootedPathTests
             directory.CreateDirectory();
             await file.WriteAllTextAsync("hello");
 
+            var created = new DateTime(2024, 3, 1, 2, 3, 4, DateTimeKind.Utc);
             var modified = new DateTime(2024, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+            file.CreationTimeUtc = created;
             file.LastWriteTimeUtc = modified;
 
             var entry = directory.EnumerateFileEntries().ShouldHaveSingleItem();
 
             entry.Path.ShouldBe(file);
+            entry.Name.ShouldBe(PathSegment.Parse("readme.txt"));
             entry.Length.ShouldBe(5);
+            entry.CreationTimeUtc.ShouldBe(created);
             entry.LastWriteTimeUtc.ShouldBe(modified);
         }
         finally
