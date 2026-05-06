@@ -7,9 +7,9 @@
 
 ## 2. Local Filesystem Boundary
 
-- [ ] 2.1 Add `LocalDirectory` as an internal absolute local root token with normalization and root-containment support.
-- [ ] 2.2 Add concrete internal `RelativeFileSystem` rooted at `LocalDirectory`, including `EnumerateFiles()`, existence checks, stream open/create, pointer text read/write, directory creation, and file deletion operations needed by Arius.Core.
-- [ ] 2.3 Add tests proving `RelativeFileSystem` strips the root into `RelativePath`, prevents root escape, and performs filesystem operations without exposing full-path strings to callers.
+- [x] 2.1 Add `LocalDirectory` as an internal absolute local root token with normalization and root-containment support.
+- [x] 2.2 Add concrete internal `RelativeFileSystem` rooted at `LocalDirectory`, including `EnumerateFiles()`, existence checks, stream open/create, pointer text read/write, directory creation, and file deletion operations needed by Arius.Core.
+- [x] 2.3 Add tests proving `RelativeFileSystem` strips the root into `RelativePath`, prevents root escape, and performs filesystem operations without exposing full-path strings to callers.
 - [ ] 2.4 Update Arius.Core local filesystem code paths to route direct `File.*`, `Directory.*`, and `Path.*` domain operations through `RelativeFileSystem`.
 
 ## 3. Archive-Time File Model

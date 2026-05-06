@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
@@ -83,24 +84,25 @@ public sealed class LocalFileEnumerator
     /// </summary>
     public IEnumerable<FilePair> Enumerate(string rootDirectory)
     {
-        foreach (var file in EnumerateFilesDepthFirst(rootDirectory))
-        {
-            var relativeName = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
+        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(Path.GetFullPath(rootDirectory)));
 
-            if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+        foreach (var file in fileSystem.EnumerateFiles())
+        {
+            var relativePath = file.Path;
+
+            if (relativePath.IsPointerPath())
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
-                var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
-                var binaryFileFullPath = Path.Combine(rootDirectory, binaryFileRelativeName.Replace('/', Path.DirectorySeparatorChar));
+                var binaryPath = relativePath.ToBinaryPath();
 
-                if (File.Exists(binaryFileFullPath))
+                if (fileSystem.FileExists(binaryPath))
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
-                var pointerHash = ReadPointerHash(file.FullName, relativeName);
+                var pointerHash = ReadPointerHash(fileSystem, relativePath);
                 yield return new FilePair
                 {
-                    RelativePath  = binaryFileRelativeName,
+                    RelativePath  = binaryPath.ToString(),
                     BinaryExists  = false,
                     PointerExists = true,
                     PointerHash   = pointerHash,
@@ -112,23 +114,22 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var pointerRel  = relativeName + PointerSuffix;
-                var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
-                var hasPointer  = File.Exists(pointerPath);
+                var pointerPath = relativePath.ToPointerPath();
+                var hasPointer  = fileSystem.FileExists(pointerPath);
                 ContentHash? pointerHash = null;
 
                 if (hasPointer)
-                    pointerHash = ReadPointerHash(pointerPath, pointerRel);
+                    pointerHash = ReadPointerHash(fileSystem, pointerPath);
 
                 yield return new FilePair
                 {
-                    RelativePath  = relativeName, // this will be the relative name of the BinaryFile
+                    RelativePath  = relativePath.ToString(), // this will be the relative name of the BinaryFile
                     BinaryExists  = true,
                     PointerExists = hasPointer,
                     PointerHash   = pointerHash,
-                    FileSize      = file.Length,
-                    Created       = new DateTimeOffset(file.CreationTimeUtc,  TimeSpan.Zero),
-                    Modified      = new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)
+                    FileSize      = file.Size,
+                    Created       = file.Created,
+                    Modified      = file.Modified
                 };
             }
         }
@@ -137,14 +138,14 @@ public sealed class LocalFileEnumerator
     // ── Task 7.3: Pointer detection ───────────────────────────────────────────
 
     /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
-    private ContentHash? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(RelativeFileSystem fileSystem, RelativePath path)
     {
         try
         {
-            var content = File.ReadAllText(fullPath).Trim();
+            var content = fileSystem.ReadAllText(path).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
-                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
+                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path.ToString());
                 return null;
             }
 
@@ -152,7 +153,7 @@ public sealed class LocalFileEnumerator
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", relPath);
+            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", path.ToString());
             return null;
         }
     }
