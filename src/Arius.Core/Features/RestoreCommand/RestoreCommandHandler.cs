@@ -91,7 +91,7 @@ public sealed class RestoreCommandHandler
 
         try
         {
-            var restoreFileSystem = new RelativeFileSystem(LocalDirectory.Parse(Path.GetFullPath(opts.RootDirectory)));
+            var restoreFileSystem = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
 
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
 

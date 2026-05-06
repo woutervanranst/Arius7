@@ -37,7 +37,7 @@ internal sealed class LocalFileEnumerator
     /// </summary>
     public IEnumerable<FilePair> Enumerate(string rootDirectory)
     {
-        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(Path.GetFullPath(rootDirectory)));
+        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootDirectory));
 
         foreach (var file in fileSystem.EnumerateFiles())
         {

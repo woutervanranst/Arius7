@@ -139,7 +139,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_InvalidRootedPrefix_ThrowsFormatException()
+    public async Task Handle_RootedPrefix_ThrowsFormatException()
     {
         IReadOnlyList<FileTreeEntry> rootTree = [];
         var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
@@ -338,6 +338,53 @@ public class ListQueryHandlerTests
         shared.BinaryExists.ShouldBeTrue();
         shared.PointerExists.ShouldBeTrue();
         shared.PointerHash.ShouldBe(FakeContentHash('2'));
+    }
+
+    [Test]
+    public void BuildFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt"),
+                Size = 12,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.pointer.arius"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected file existence probe for {path}"),
+                _ => false
+            },
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => FakeContentHash('2'),
+                "docs/pointer-only.txt.pointer.arius" => FakeContentHash('3'),
+                _ => null
+            });
+
+        result.Count.ShouldBe(2);
+        result["shared.txt"].PointerExists.ShouldBeTrue();
+        result["pointer-only.txt"].BinaryExists.ShouldBeFalse();
     }
 
     [Test]

@@ -293,7 +293,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_RootPrefixedTargetPath_RestoresMatchingFile()
+    public async Task Handle_RootPrefixedTargetPath_FailsRestore()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
             $"acct-restore-root-prefixed-target-{Guid.NewGuid():N}",
@@ -321,10 +321,10 @@ public class RestoreCommandHandlerTests
             }),
             CancellationToken.None);
 
-        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-        restoreResult.FilesRestored.ShouldBe(2);
+        restoreResult.Success.ShouldBeFalse();
+        restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
         fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
-        fixture.RestoredExists("photos/other.jpg").ShouldBeTrue();
+        fixture.RestoredExists("photos/other.jpg").ShouldBeFalse();
     }
 
     [Test]
@@ -361,7 +361,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_RootTargetPath_RestoresFullSnapshot()
+    public async Task Handle_RootTargetPath_FailsRestore()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
             $"acct-restore-root-target-{Guid.NewGuid():N}",
@@ -389,10 +389,10 @@ public class RestoreCommandHandlerTests
             }),
             CancellationToken.None);
 
-        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-        restoreResult.FilesRestored.ShouldBe(2);
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
-        fixture.RestoredExists("docs/readme.txt").ShouldBeTrue();
+        restoreResult.Success.ShouldBeFalse();
+        restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
+        fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
+        fixture.RestoredExists("docs/readme.txt").ShouldBeFalse();
     }
 
     [Test]

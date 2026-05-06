@@ -11,6 +11,7 @@ internal static class LocalFileSnapshotBuilder
         Func<RelativePath, ContentHash?> readPointerHash)
     {
         var files = new Dictionary<string, LocalFileState>(StringComparer.OrdinalIgnoreCase);
+        var enumeratedPaths = fileInfos.Select(file => file.Path).ToHashSet();
 
         foreach (var file in fileInfos)
         {
@@ -28,7 +29,7 @@ internal static class LocalFileSnapshotBuilder
                     continue;
                 }
 
-                if (fileExists(binaryPath))
+                if (enumeratedPaths.Contains(binaryPath) || fileExists(binaryPath))
                 {
                     continue;
                 }
@@ -46,7 +47,7 @@ internal static class LocalFileSnapshotBuilder
             else
             {
                 var pointerPath = file.Path.ToPointerPath();
-                var hasPointer = fileExists(pointerPath);
+                var hasPointer = enumeratedPaths.Contains(pointerPath) || fileExists(pointerPath);
                 files[file.Path.Name.ToString()] = new LocalFileState(
                     Name: file.Path.Name.ToString(),
                     Path: file.Path,
@@ -64,14 +65,13 @@ internal static class LocalFileSnapshotBuilder
 
     private static bool TryGetPointerBinaryPath(RelativePath path, out RelativePath binaryPath)
     {
-        var value = path.ToString();
-        if (!value.EndsWith(RelativePathPointerExtensions.PointerSuffix, StringComparison.OrdinalIgnoreCase))
+        if (!path.IsPointerPath())
         {
             binaryPath = default;
             return false;
         }
 
-        binaryPath = RelativePath.Parse(value[..^RelativePathPointerExtensions.PointerSuffix.Length]);
+        binaryPath = path.ToBinaryPath();
         return true;
     }
 }

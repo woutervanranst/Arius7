@@ -154,7 +154,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long totalSize     = 0;
 
         var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(_accountName, _containerName).ToString();
-        var archiveFileSystem = new RelativeFileSystem(LocalDirectory.Parse(Path.GetFullPath(opts.RootDirectory)));
+        var archiveFileSystem = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
         IFileTreeStagingSession stagingSession;
 
         FileTreeHash? snapshotRootHash = null;

@@ -115,18 +115,13 @@ internal readonly record struct RelativePath(string? RawValue)
         if (prefix.Value.Length == 0)
             return true;
 
-        var currentSegments = Segments.ToArray();
-        var prefixSegments = prefix.Segments.ToArray();
-        if (prefixSegments.Length > currentSegments.Length)
+        if (Value.Length < prefix.Value.Length)
             return false;
 
-        for (var i = 0; i < prefixSegments.Length; i++)
-        {
-            if (!string.Equals(currentSegments[i].ToString(), prefixSegments[i].ToString(), StringComparison.Ordinal))
-                return false;
-        }
+        if (!Value.StartsWith(prefix.Value, StringComparison.Ordinal))
+            return false;
 
-        return true;
+        return Value.Length == prefix.Value.Length || Value[prefix.Value.Length] == '/';
     }
 
     public static RelativePath operator /(RelativePath path, PathSegment segment) =>

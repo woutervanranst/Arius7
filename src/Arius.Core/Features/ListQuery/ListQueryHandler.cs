@@ -335,7 +335,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         if (normalized.StartsWith('/'))
         {
-            return RelativePath.Parse(normalized);
+            throw new FormatException($"Invalid relative path: '{normalized}'.");
         }
 
         normalized = normalized.TrimEnd('/');
@@ -343,7 +343,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     }
 
     private static LocalDirectory? ParseLocalRoot(string? path) =>
-        string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(Path.GetFullPath(path));
+        string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
 
     private static PathSegment ParseDirectoryEntryName(string name) => PathSegment.Parse(name.TrimEnd('/'));
 
