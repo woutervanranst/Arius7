@@ -5,8 +5,15 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists to make path composition explicit and safe, with responsibility for rejecting separators,
 /// traversal markers, and other invalid single-segment values before they enter the filesystem domain.
 /// </summary>
-internal readonly record struct PathSegment(string? RawValue)
+internal readonly record struct PathSegment
 {
+    private string? RawValue { get; }
+
+    public PathSegment(string? rawValue)
+    {
+        RawValue = rawValue;
+    }
+
     private string Value => RawValue ?? throw new InvalidOperationException("PathSegment is uninitialized.");
 
     /// <summary>

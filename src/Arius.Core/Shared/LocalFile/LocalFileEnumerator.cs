@@ -38,8 +38,10 @@ internal sealed class LocalFileEnumerator
     public IEnumerable<FilePair> Enumerate(string rootDirectory)
     {
         var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootDirectory));
+        var files = fileSystem.EnumerateFiles().ToList();
+        var enumeratedPaths = files.Select(file => file.Path).ToHashSet();
 
-        foreach (var file in fileSystem.EnumerateFiles())
+        foreach (var file in files)
         {
             var relativePath = file.Path;
 
@@ -48,7 +50,7 @@ internal sealed class LocalFileEnumerator
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
                 var binaryPath = relativePath.ToBinaryPath();
 
-                if (fileSystem.FileExists(binaryPath))
+                if (enumeratedPaths.Contains(binaryPath))
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
@@ -69,7 +71,7 @@ internal sealed class LocalFileEnumerator
             {
                 // Binary file: check for pointer via File.Exists
                 var pointerPath = relativePath.ToPointerPath();
-                var hasPointer  = fileSystem.FileExists(pointerPath);
+                var hasPointer  = enumeratedPaths.Contains(pointerPath);
                 ContentHash? pointerHash = null;
 
                 if (hasPointer)

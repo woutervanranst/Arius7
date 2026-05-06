@@ -236,6 +236,25 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs[0].Pointer.ShouldNotBeNull();
     }
 
+    [Test]
+    public void Enumerate_UppercasePointerSuffix_TreatsFileAsRegularBinary()
+    {
+        CreateFile("photos/vacation.jpg");
+        CreateFile("photos/vacation.jpg.POINTER.ARIUS", new string('a', 64));
+
+        var pairs = _enumerator.Enumerate(_root).OrderBy(pair => pair.Path.ToString(), StringComparer.Ordinal).ToList();
+
+        pairs.Count.ShouldBe(2);
+
+        pairs[0].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
+        pairs[0].Binary.ShouldNotBeNull();
+        pairs[0].Pointer.ShouldBeNull();
+
+        pairs[1].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg.POINTER.ARIUS"));
+        pairs[1].Binary.ShouldNotBeNull();
+        pairs[1].Pointer.ShouldBeNull();
+    }
+
     // ── Single-pass: yielded before enumeration completes ─────────────────────
 
     /// <summary>
