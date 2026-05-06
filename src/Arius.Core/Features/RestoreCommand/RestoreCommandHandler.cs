@@ -567,8 +567,7 @@ public sealed class RestoreCommandHandler
 
         if (normalized.StartsWith('/'))
         {
-            normalized = normalized.Trim('/');
-            return normalized.Length == 0 ? RelativePath.Root : RelativePath.Parse(normalized);
+            throw new FormatException($"Invalid relative path: '{normalized}'.");
         }
 
         normalized = normalized.TrimEnd('/');

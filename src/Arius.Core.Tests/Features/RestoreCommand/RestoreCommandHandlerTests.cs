@@ -323,7 +323,7 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeFalse();
         restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
+        fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
         fixture.RestoredExists("photos/other.jpg").ShouldBeFalse();
     }
 
@@ -418,7 +418,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "/photos/pic.jpg",
+                TargetPath = "photos/pic.jpg",
                 Overwrite = true,
                 NoPointers = true,
             }),
@@ -431,7 +431,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_RootPrefixedFileTarget_RestoresOnlyRequestedFile()
+    public async Task Handle_FileTarget_RestoresOnlyRequestedFile()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
             $"acct-restore-file-target-{Guid.NewGuid():N}",
@@ -454,7 +454,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "/photos/pic.jpg",
+                TargetPath = "photos/pic.jpg",
                 Overwrite = true,
             }),
             CancellationToken.None);
