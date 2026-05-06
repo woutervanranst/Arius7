@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -118,7 +119,7 @@ public class ListQueryHandlerTests
         try
         {
             await (tempRoot / RelativePath.Parse("shared.txt")).WriteAllTextAsync("local-shared");
-            await (tempRoot / RelativePath.Parse("shared.txt.pointer.arius")).WriteAllTextAsync(FakeContentHash('2').ToString());
+            await (tempRoot / RelativePath.Parse("shared.txt").ToPointerFilePath()).WriteAllTextAsync(FakeContentHash('2').ToString());
             await (tempRoot / RelativePath.Parse("local-only.txt")).WriteAllTextAsync("local-only");
 
             var rootTree = Entries(

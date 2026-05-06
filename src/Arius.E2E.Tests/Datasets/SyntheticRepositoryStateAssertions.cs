@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 
 namespace Arius.E2E.Tests.Datasets;
@@ -14,7 +15,7 @@ internal static class SyntheticRepositoryStateAssertions
         {
             var relativePath = filePath.RelativePath;
 
-            if (!includePointerFiles && relativePath.ToString().EndsWith(".pointer.arius", StringComparison.Ordinal))
+            if (!includePointerFiles && relativePath.IsPointerFilePath())
                 continue;
 
             await using var stream = filePath.OpenRead();

@@ -61,7 +61,6 @@ public sealed record FilePair
 /// </summary>
 public sealed class LocalFileEnumerator
 {
-    private const string PointerSuffix = ".pointer.arius";
 
     private readonly ILogger<LocalFileEnumerator>? _logger;
 
@@ -87,13 +86,10 @@ public sealed class LocalFileEnumerator
         foreach (var (file, filePath) in EnumerateFilesDepthFirst(RelativePath.Root.RootedAt(rootDirectory)))
         {
             var relativePath = filePath.RelativePath;
-            var relativeName = relativePath.ToString();
-
-            if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+            if (relativePath.IsPointerFilePath())
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
-                var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
-                var binaryFileRelativePath = RelativePath.Parse(binaryFileRelativeName);
+                var binaryFileRelativePath = relativePath.ToBinaryFilePath();
                 var binaryFilePath = binaryFileRelativePath.RootedAt(rootDirectory);
 
                 if (binaryFilePath.ExistsFile)
@@ -115,7 +111,7 @@ public sealed class LocalFileEnumerator
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var pointerRel  = RelativePath.Parse(relativeName + PointerSuffix);
+                var pointerRel  = relativePath.ToPointerFilePath();
                 var pointerPath = pointerRel.RootedAt(rootDirectory);
                 var hasPointer  = pointerPath.ExistsFile;
                 ContentHash? pointerHash = null;

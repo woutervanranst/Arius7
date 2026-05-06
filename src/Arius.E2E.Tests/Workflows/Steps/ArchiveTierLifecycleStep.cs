@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -220,7 +221,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            var pointerPath = readyRestoreRoot / RelativePath.Parse(targetChunk.TargetRelativePath + ".pointer.arius");
+            var pointerPath = readyRestoreRoot / targetChunk.TargetRelativePath.ToPointerFilePath();
             pointerPath.ExistsFile.ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }

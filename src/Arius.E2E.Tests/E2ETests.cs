@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.E2E.Tests.Fixtures;
 
@@ -60,7 +61,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
             restoreResult.FilesRestored.ShouldBe(1);
 
-            (fixture.RestoreRoot / PathOf("hot.bin.pointer.arius")).ExistsFile.ShouldBeTrue();
+            (fixture.RestoreRoot / PathOf("hot.bin").ToPointerFilePath()).ExistsFile.ShouldBeTrue();
             fixture.ReadRestored(PathOf("hot.bin")).ShouldBe(content);
         }
         finally

@@ -1,3 +1,4 @@
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 
 namespace Arius.Core.Tests.Shared;
@@ -70,6 +71,27 @@ public class RelativePathTests
         var path = RelativePath.Parse("docs/readme.txt");
 
         path.ToPointerFilePath().ShouldBe(RelativePath.Parse("docs/readme.txt.pointer.arius"));
+    }
+
+    [Test]
+    public void IsPointerFilePath_ReturnsTrueOnlyForPointerPaths()
+    {
+        RelativePath.Parse("docs/readme.txt").IsPointerFilePath().ShouldBeFalse();
+        RelativePath.Parse("docs/readme.txt.pointer.arius").IsPointerFilePath().ShouldBeTrue();
+    }
+
+    [Test]
+    public void ToBinaryFilePath_RemovesPointerSuffix()
+    {
+        RelativePath.Parse("docs/readme.txt.pointer.arius")
+            .ToBinaryFilePath()
+            .ShouldBe(RelativePath.Parse("docs/readme.txt"));
+    }
+
+    [Test]
+    public void ToBinaryFilePath_NonPointerPath_Throws()
+    {
+        Should.Throw<ArgumentException>(() => RelativePath.Parse("docs/readme.txt").ToBinaryFilePath());
     }
 
     [Test]

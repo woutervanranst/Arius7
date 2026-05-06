@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
@@ -14,7 +15,6 @@ namespace Arius.Core.Features.ListQuery;
 /// </summary>
 public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
-    private const string PointerSuffix = ".pointer.arius";
 
     private readonly ChunkIndexService _index;
     private readonly FileTreeService _fileTreeService;
@@ -306,10 +306,14 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var file in fileInfos)
         {
-            if (file.Name.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+            var relativeFilePath = currentRelativeDirectory / PathSegment.Parse(file.Name);
+
+            if (relativeFilePath.IsPointerFilePath())
             {
-                var binaryName = file.Name[..^PointerSuffix.Length];
-                var binaryPath = (currentRelativeDirectory / PathSegment.Parse(binaryName)).RootedAt(localDir.Value.Root);
+                var binaryRelativePath = relativeFilePath.ToBinaryFilePath();
+                var binaryName = binaryRelativePath.Name?.ToString()
+                    ?? throw new InvalidOperationException("Pointer file must map to a binary file name.");
+                var binaryPath = binaryRelativePath.RootedAt(localDir.Value.Root);
                 if (binaryPath.ExistsFile)
                 {
                     continue;
@@ -320,15 +324,16 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     BinaryExists: false,
                     PointerExists: true,
                     PointerHash: ReadPointerHash(
-                        (currentRelativeDirectory / PathSegment.Parse(file.Name)).RootedAt(localDir.Value.Root),
-                        currentRelativeDirectory / PathSegment.Parse(file.Name)),
+                        relativeFilePath.RootedAt(localDir.Value.Root),
+                        relativeFilePath),
                     FileSize: null,
                     Created: null,
                     Modified: null);
             }
             else
             {
-                var pointerPath = (currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix)).RootedAt(localDir.Value.Root);
+                var pointerRelativePath = relativeFilePath.ToPointerFilePath();
+                var pointerPath = pointerRelativePath.RootedAt(localDir.Value.Root);
                 var hasPointer = pointerPath.ExistsFile;
                 files[file.Name] = new LocalFileState(
                     Name: file.Name,
@@ -337,7 +342,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     PointerHash: hasPointer
                         ? ReadPointerHash(
                             pointerPath,
-                            currentRelativeDirectory / PathSegment.Parse(file.Name + PointerSuffix))
+                            pointerRelativePath)
                         : null,
                     FileSize: file.Length,
                     Created: new DateTimeOffset(file.CreationTimeUtc, TimeSpan.Zero),

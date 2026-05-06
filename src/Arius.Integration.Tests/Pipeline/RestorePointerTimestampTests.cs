@@ -4,6 +4,8 @@ using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
+using Arius.Core.Shared.LocalFile;
+
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
@@ -66,7 +68,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         foreach (var (relPath, _, expectedCreated, expectedModified) in smallFiles)
         {
             var restoredPath = fix.RestoreRoot / relPath;
-            var pointerPath = fix.RestoreRoot / RelativePath.Parse(relPath + ".pointer.arius");
+            var pointerPath = fix.RestoreRoot / relPath.ToPointerFilePath();
 
             restoredPath.ExistsFile.ShouldBeTrue($"Binary should exist: {relPath}");
             pointerPath.ExistsFile.ShouldBeTrue($"Pointer should exist: {relPath}");
@@ -136,7 +138,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         // ── Assert ────────────────────────────────────────────────────────
         var restoredPath = fix.RestoreRoot / relPath;
-        var pointerPath = fix.RestoreRoot / RelativePath.Parse(relPath + ".pointer.arius");
+        var pointerPath = fix.RestoreRoot / relPath.ToPointerFilePath();
 
         restoredPath.ExistsFile.ShouldBeTrue("Binary should exist");
         pointerPath.ExistsFile.ShouldBeTrue("Pointer should exist");

@@ -1,6 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Paths;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -52,7 +53,7 @@ internal static class Helpers
         {
             foreach (var relativePath in expectedState.Files.Keys)
             {
-                var pointerPath = fixture.RestoreRoot / RelativePath.Parse(relativePath + ".pointer.arius");
+                var pointerPath = fixture.RestoreRoot / relativePath.ToPointerFilePath();
 
                 pointerPath.ExistsFile.ShouldBeTrue($"Expected pointer file for {relativePath}");
             }
