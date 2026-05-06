@@ -1,11 +1,11 @@
 ---
 status: "accepted"
-date: 2026-05-06
+date: 2026-05-07
 decision-makers: "Wouter Van Ranst"
 consulted: "OpenCode"
 ---
 
-# Introduce internal filesystem domain types in Arius.Core
+# Introduce filesystem domain types in Arius.Core with a narrow public surface
 
 ## Context and Problem Statement
 
@@ -13,13 +13,14 @@ Arius.Core currently uses raw strings for several different path concepts: archi
 
 Arius archives should be portable across Windows, macOS, and Linux. That makes path handling part of the domain model, not just implementation plumbing: archive paths need one canonical representation, path prefix checks need to be segment-aware, and case-only collisions that are valid on Linux but unsafe on Windows must be rejected before publishing repository state.
 
-The earlier `feat/path-helpers` branch showed that a typed path model improves correctness and developer experience, especially with a `RelativePath` type and `/` path composition operator. It also exposed the wrong boundary: typed path values leaked into public contracts and a broad filesystem wrapper started to look like a Zio-style filesystem abstraction. This decision keeps the useful internal domain model while avoiding public API ripple and over-broad abstraction.
+The earlier `feat/path-helpers` branch showed that a typed path model improves correctness and developer experience, especially with a `RelativePath` type and `/` path composition operator. It also exposed the wrong boundary: typed path values leaked into public feature contracts and a broad filesystem wrapper started to look like a Zio-style filesystem abstraction. This decision keeps the useful domain model, allows the stable path primitives to be public, and prevents public command/query/result contracts from rippling through the codebase.
 
 ## Decision Drivers
 
 * Arius.Core should make invalid archive paths unrepresentable or fail-fast close to the boundary.
 * Archive/list/restore/filetree code should operate on domain-relative paths, not host full-path strings.
 * Public command/query/result/event contracts should remain string-based unless explicitly changed later.
+* Stable domain primitives should not be forced internal when that creates conversion friction without protecting a meaningful boundary.
 * Developer experience should stay lightweight; path construction in tests and focused Core code should not require verbose `PathSegment.Parse("...")` chains.
 * Arius archives should remain cross-OS restorable, even when a source filesystem allows names another target OS cannot represent safely.
 * Direct local filesystem APIs should be quarantined so they do not incentivize new stringly path code.
@@ -30,13 +31,15 @@ The earlier `feat/path-helpers` branch showed that a typed path model improves c
 * Keep raw strings with shared helper methods.
 * Introduce a full semantic path taxonomy, such as separate repository, blob, cache, and local rooted path types.
 * Adopt or emulate a virtual filesystem abstraction such as Zio.
-* Introduce a small internal filesystem domain model centered on `RelativePath`, archive-time file records, and a concrete rooted filesystem boundary.
+* Introduce a small filesystem domain model centered on public path primitives, internal archive-time file records, and a concrete rooted filesystem boundary.
 
 ## Decision Outcome
 
-Chosen option: "Introduce a small internal filesystem domain model centered on `RelativePath`, archive-time file records, and a concrete rooted filesystem boundary", because it captures Arius path semantics inside Core without exposing new types externally or building a broad filesystem abstraction.
+Chosen option: "Introduce a small filesystem domain model centered on public path primitives, internal archive-time file records, and a concrete rooted filesystem boundary", because it captures Arius path semantics without building a broad filesystem abstraction or forcing every public feature contract to expose typed paths.
 
-The core domain path type will be an internal `RelativePath` in `Arius.Core.Shared.FileSystem`. It represents a canonical relative path using `/` separators. It rejects rooted paths, empty non-root paths, empty segments, `.` and `..`, backslashes, control characters, and malformed separators. `RelativePath.Root` represents the empty root path. Prefix operations must be segment-aware so `photos` does not match `photoshop`.
+The core domain path type will be a public `RelativePath` in `Arius.Core.Shared.FileSystem`. It represents a canonical relative path using `/` separators. It rejects rooted paths, empty non-root paths, empty segments, `.` and `..`, backslashes, control characters, and malformed separators. `RelativePath.Root` represents the empty root path. Prefix operations must be segment-aware so `photos` does not match `photoshop`.
+
+`RelativePath` is public because it is an Arius domain primitive, similar in kind to `ContentHash`, `ChunkHash`, and `FileTreeHash`. Archive strips a local root into relative paths, filetrees are built from relative paths, list traverses relative paths, restore re-roots relative paths, and blob/cache logical names often use the same slash-normalized relative path shape. Keeping this type internal creates unnecessary conversion pressure in tests and domain-adjacent code without materially improving encapsulation.
 
 `RelativePath` will preserve the developer experience from the earlier branch:
 
@@ -46,7 +49,27 @@ var path = RelativePath.Root / "photos" / "2024" / "pic.jpg";
 
 The `/ string` operator appends exactly one validated segment. It is not an implicit conversion and it does not parse multi-segment strings: `RelativePath.Root / "photos/pic.jpg"` must throw.
 
-`PathSegment` remains internal and owns single-segment validation, but most callers should not need to use it directly. C# 14 extension members may be used for cheap derived facts, such as pointer path helpers or segment extension lookup. They must not hide IO or expensive operations.
+`PathSegment` is also public because it is the companion primitive for safe segment composition. Most callers should still prefer `RelativePath / "segment"` for readability, but public `PathSegment` avoids awkwardness when callers already have a validated single filetree or directory name. C# 14 extension members may be used for cheap derived facts, such as pointer path helpers or segment extension lookup. They must not hide IO or expensive operations.
+
+The public filesystem-domain surface is intentionally narrow by default:
+
+```text
+Public:
+- RelativePath
+- PathSegment
+
+Internal:
+- BinaryFile
+- PointerFile
+- FilePair
+- LocalDirectory
+- RelativeFileSystem
+- LocalFileEntry
+- LocalDirectoryEntry
+- restore candidate models
+```
+
+Pointer-path helpers may become public only if a concrete public consumer needs Arius pointer-path conventions. By default they remain implementation helpers near `RelativePath`.
 
 Pointer-file naming will be centralized near `RelativePath`. The `.pointer.arius` suffix must not be scattered through handlers. Core should expose helpers such as:
 
@@ -108,18 +131,20 @@ internal sealed class RelativeFileSystem
 
 `LocalDirectory` is a typed root token, not a domain path. `RelativeFileSystem` converts `LocalDirectory + RelativePath` to host paths, enforces containment under the root, and is the only place that should use direct `System.IO` APIs for Arius local filesystem domain work.
 
-`RelativePath` will also be used internally for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Public storage interfaces and SDK boundaries may remain string-based, converting at the boundary.
+`RelativePath` will also be used for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
 
-Public Arius.Core command/query/result/event contracts remain string-based. Handlers parse incoming strings into `LocalDirectory` and `RelativePath` near the start of an operation and convert internal paths back to strings when publishing events or returning result DTOs.
+Public Arius.Core command/query/result/event contracts remain string-based. Handlers parse incoming strings into `LocalDirectory` and `RelativePath` near the start of an operation and convert internal paths back to strings when publishing events or returning result DTOs. Making `RelativePath` public does not mean public feature DTOs should expose it by default.
 
 ### Consequences
 
 * Good, because archive, list, restore, filetree, blob, and cache code can share one canonical relative path model instead of repeating string normalization.
-* Good, because public contracts do not ripple through CLI, UI, tests, or external consumers.
+* Good, because stable path primitives are available to tests and domain-adjacent code without `InternalsVisibleTo` workarounds.
+* Good, because public feature contracts do not ripple through CLI, UI, tests, or external consumers.
 * Good, because `RelativeFileSystem` makes direct host filesystem calls visible and centralized without committing Arius to a virtual filesystem abstraction.
 * Good, because `RelativePath.Root / "photos" / "pic.jpg"` gives tests and focused Core code readable path construction while still validating every segment.
 * Good, because case-insensitive collision checks make unsafe cross-OS archives fail before snapshot publication.
 * Bad, because one generic `RelativePath` can still mix repository paths and blob/cache paths. If real mistakes appear, add semantic wrappers later rather than front-loading ceremony.
+* Bad, because making `RelativePath` and `PathSegment` public creates a small compatibility surface that should be kept stable.
 * Bad, because the refactor is broad and will touch archive, restore, list, filetree, storage helper, cache helper, and tests.
 * Bad, because Linux-only repositories with case-only path differences will be rejected. This is deliberate because Arius archives are intended to be portable.
 
@@ -132,6 +157,9 @@ Implementation must be confirmed by tests and code review:
 * Tests proving `RelativeFileSystem` strips the configured root, prevents root escape, and centralizes local filesystem operations behind `RelativePath` arguments.
 * Archive tests proving case-insensitive path collisions fail before snapshot publication.
 * List and restore tests proving prefix traversal is segment-aware and public path outputs remain strings.
+* Architecture tests allow-listing public filesystem-domain types to `RelativePath` and `PathSegment` by default.
+* Architecture tests proving public feature command/query/result/event contracts do not expose `Arius.Core.Shared.FileSystem` types unless explicitly approved.
+* Architecture tests proving archive-time and filesystem-boundary types remain non-public.
 * A code sweep of `src/Arius.Core` for path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary, with intentional exceptions documented.
 
 ## Pros and Cons of the Options
@@ -164,15 +192,17 @@ Examples include using Zio or building an `ILocalFileSystem`-style interface wit
 * Bad, because a broad API would hide IO costs and make the abstraction larger than the problem.
 * Bad, because the earlier Zio-inspired approach felt too drastic for the current codebase.
 
-### Small internal filesystem domain model
+### Small filesystem domain model with narrow public primitives
 
 This is the chosen option.
 
 * Good, because it strengthens Core path correctness without changing public contracts.
 * Good, because it keeps `RelativePath` as the domain coordinate system: archive strips the root, filetrees are built from relative paths, list traverses relative paths, and restore adds a root back only at the filesystem boundary.
+* Good, because `RelativePath` and `PathSegment` can be used directly in tests and domain-adjacent APIs without broad `InternalsVisibleTo` expansion.
 * Good, because it removes scattered `System.IO` usage without pretending filesystem behavior belongs on domain value objects.
 * Good, because it preserves the useful parts of the previous branch while avoiding its public API and abstraction-size problems.
 * Bad, because it still requires a substantial refactor and careful staged implementation.
+* Bad, because public path primitives require architecture tests and discipline to avoid accidental DTO contract migration.
 
 ## More Information
 

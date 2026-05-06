@@ -2,30 +2,34 @@
 
 ## Context
 
-`Arius.Core` now has internal filesystem domain types, but several important cache, storage, and filetree paths still travel through Core as raw `string` values. That leaves the code in an inconsistent middle state:
+`Arius.Core` now has filesystem domain types, but several important cache, storage, and filetree paths still travel through Core as raw `string` values. The core path primitives are allowed to be public domain values, while archive-time and local-filesystem operational types remain internal. The current implementation is still in an inconsistent middle state:
 
 - local cache roots such as chunk-index L2, filetree cache, and snapshot cache are sometimes typed and sometimes plain strings
 - `IBlobContainerService` still accepts raw blob-name strings, so storage paths are not strongly typed at the boundary
 - `FileTreePaths` still exposes string helpers in Core, unlike the newer `RepositoryPaths` plus `Arius.Tests.Shared/RepositoryCachePaths` split
 - direct `File.*` and `Directory.*` calls in Core still frequently operate on raw strings that are really repository/cache paths
 
-This design finishes that sweep inside `src/Arius.Core` without turning the whole repository into a public typed-path migration.
+This design finishes that sweep inside `src/Arius.Core` without turning public command/query/result/event contracts into a typed-path migration.
 
 ## Goals
 
 - Make `Arius.Core` internally consistent about repository/cache/storage path usage.
-- Replace path-like raw strings in Core with internal strongly typed path values where the path belongs to Arius domain logic.
+- Replace path-like raw strings in Core with strongly typed path values where the path belongs to Arius domain logic.
+- Treat `RelativePath` and `PathSegment` as public Arius domain primitives with a narrow, architecture-tested public surface.
 - Remove Core service fields such as `_l2Dir`, `_diskCacheDir`, `_snapshotsDir`, and `_chunkIndexL2Dir` when they represent typed local roots.
 - Use `RelativePath` for Arius blob names and logical blob-name prefixes throughout `IBlobContainerService` and Core callers.
 - Keep strongly typed filetree path helpers in Core and move string convenience helpers needed only by tests to `Arius.Tests.Shared`.
 - Bring `Arius.Core` local filesystem IO into line with the ADR by routing rooted Arius local filesystem operations through `RelativeFileSystem`.
+- Keep archive-time and local-filesystem operational types internal: `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, `RelativeFileSystem`, `LocalFileEntry`, and `LocalDirectoryEntry`.
 
 ## Non-Goals
 
 - Do not change public command/query/result/event contracts.
+- Do not make public feature DTOs expose `Arius.Core.Shared.FileSystem` types by default.
 - Do not perform a repo-wide migration outside `src/Arius.Core`, except for the minimum `Arius.Core.Tests` and `Arius.Tests.Shared` support needed by this change.
 - Do not introduce a large path taxonomy beyond what current misuse justifies.
 - Do not wrap arbitrary OS temp paths or unrelated external strings that are not part of Arius.Core repository/cache/storage path semantics.
+- Do not use broad `InternalsVisibleTo` expansion as the primary way to make stable domain primitives usable from tests.
 
 ## Scope
 
@@ -40,13 +44,30 @@ Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are o
 
 ## Design
 
+### Public surface direction
+
+The sweep follows ADR-0008's revised boundary:
+
+- `RelativePath` is public.
+- `PathSegment` is public.
+- Pointer-path helpers remain internal unless an implementation step identifies a concrete public consumer.
+- `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, `RelativeFileSystem`, `LocalFileEntry`, `LocalDirectoryEntry`, and restore candidate models remain internal.
+
+The purpose of making `RelativePath` and `PathSegment` public is not to migrate public feature contracts. It is to acknowledge that these are stable Arius domain primitives, comparable to the typed hash value objects, and to reduce conversion/test friction around a value that already coordinates archive, filetree, list, restore, blob-name, and cache-path logic.
+
+Architecture tests must guard this boundary:
+
+- public types in `Arius.Core.Shared.FileSystem` are allow-listed to `RelativePath` and `PathSegment` by default
+- public command/query/result/event contracts must not expose `Arius.Core.Shared.FileSystem` types unless explicitly allow-listed by a future ADR/change
+- archive-time and local-filesystem operational types must remain non-public
+
 ### Local filesystem paths
 
-Core keeps using the existing internal filesystem types:
+Core keeps using these filesystem types:
 
-- `LocalDirectory` for absolute local roots
-- `RelativePath` for paths relative to a known root
-- `RelativeFileSystem` as the concrete rooted filesystem boundary
+- public `RelativePath` for paths relative to a known root
+- internal `LocalDirectory` for absolute local roots
+- internal `RelativeFileSystem` as the concrete rooted filesystem boundary
 
 Services that currently cache both a typed root and a string form must stop storing the redundant string form. They should instead store the typed root and route rooted local filesystem work through `RelativeFileSystem`.
 
@@ -67,6 +88,8 @@ When a service needs to enumerate, create, or delete entries under a cache root,
 Use `RelativePath` for Arius blob names and logical blob-name prefixes inside `Arius.Core`.
 
 This works because Arius blob names are already modeled as canonical slash-separated logical paths, and the current `BlobPaths` helpers already behave like strongly typed relative storage paths. Introducing a separate blob-name type would add ceremony without adding clear semantic separation for this pass.
+
+Because `RelativePath` is public, storage abstractions can accept it without widening access to internal Core implementation details.
 
 `IBlobContainerService` changes from `string` blob-name parameters to `RelativePath` for:
 
@@ -145,7 +168,8 @@ This does not ban all `System.IO` usage everywhere in Core. Path normalization a
 - Persisted on-disk file contents remain unchanged.
 - Persisted blob names remain unchanged.
 - Public contracts remain unchanged.
-- The change is internal to Core behavior and type safety, not repository format.
+- Public path primitives become part of the Arius.Core API surface, but public feature DTO contracts remain unchanged.
+- The change is a Core behavior and type-safety change, not a repository format change.
 
 ## Risks And Mitigations
 
@@ -153,10 +177,13 @@ This does not ban all `System.IO` usage everywhere in Core. Path normalization a
   Mitigation: update `BlobPaths` first so callers convert mechanically from stringified blob names to `RelativePath` values.
 
 - Risk: replacing string helpers with typed helpers makes tests awkward.
-  Mitigation: keep test-only string helpers in `Arius.Tests.Shared`, not in Core.
+  Mitigation: make stable path primitives public, keep test-only string helpers in `Arius.Tests.Shared`, and keep operational filesystem/archive types internal.
 
 - Risk: `RelativeFileSystem` may need a few additional operations to absorb existing service-level IO cleanly.
   Mitigation: add the smallest missing methods needed for Arius cache/snapshot/filetree operations rather than preserving service-level `System.IO` calls.
+
+- Risk: public `RelativePath` and `PathSegment` drift into public command/query/result/event contracts.
+  Mitigation: add architecture tests that allow-list public filesystem primitive types and prevent feature DTO exposure unless explicitly approved.
 
 ## Testing And Verification
 
@@ -165,6 +192,9 @@ Implementation should follow TDD and verify behavior through `Arius.Core.Tests`.
 Required coverage areas:
 
 - tests covering blob-path usage through `RelativePath` and `BlobPaths`
+- architecture tests for the filesystem public surface allow-list
+- architecture tests preventing public feature DTOs from exposing filesystem domain types
+- architecture tests keeping archive-time and local-filesystem operational types non-public
 - updated tests for `FileTreePaths` typed helpers and any moved string helpers
 - focused tests for `ChunkIndexService`, `FileTreeService`, and `SnapshotService` path behavior that would regress if stringly paths leak back in
 - a targeted sweep of `src/Arius.Core` to ensure the named string fields are removed, storage calls use typed blob paths, and rooted Arius local filesystem IO no longer bypasses `RelativeFileSystem`
@@ -178,15 +208,15 @@ Verification commands after implementation:
 
 ### Recommended: targeted Core-only sweep
 
-Refactor path-like strings in `Arius.Core`, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and update only `Arius.Core.Tests` plus minimal shared test helpers.
+Refactor path-like strings in `Arius.Core`, make `RelativePath` and `PathSegment` public, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and update only `Arius.Core.Tests` plus minimal shared test helpers.
 
 This is the chosen approach because it fixes the current inconsistent boundary without turning the change into a repo-wide migration.
 
 ### Full repository migration
 
-Convert all projects and tests to typed path values in one pass.
+Convert all projects and tests to typed path values in one pass, including public feature contracts.
 
-This was rejected because the filesystem types are internal, so a repository-wide sweep would add churn without architectural value for this step.
+This was rejected because public feature contracts should remain stable and string-based. Public `RelativePath` and `PathSegment` are domain primitives, not a mandate to convert every consumer-facing DTO.
 
 ### Local-only migration
 
