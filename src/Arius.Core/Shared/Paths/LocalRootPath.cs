@@ -90,16 +90,15 @@ public readonly record struct LocalRootPath
         }
     }
 
+    public LocalRootPath GetSubdirectoryRoot(PathSegment child) => Parse(Path.Combine(Value, child.ToString()));
+
     public bool Equals(LocalRootPath other) => Comparer.Equals(Value, other.Value);
 
     public override int GetHashCode() => Comparer.GetHashCode(Value);
-
-    public static LocalRootPath operator /(LocalRootPath left, PathSegment right) => Parse(Path.Combine(left.Value, right.ToString()));
 
     public static RootedPath operator /(LocalRootPath left, RelativePath right) => new(left, right);
 
     public override string ToString() => Value;
 
-    private static StringComparer Comparer =>
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private static StringComparer Comparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

@@ -275,9 +275,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var tempRootBase = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), TempRootFolderName));
         tempRootBase.CreateDirectory();
 
-        var resolvedTempRoot = tempRoot ?? (tempRootBase / PathSegment.Parse($"arius-test-{Guid.NewGuid():N}"));
-        var localRoot = resolvedTempRoot / PathSegment.Parse("source");
-        var restoreRoot = resolvedTempRoot / PathSegment.Parse("restore");
+        var resolvedTempRoot = tempRoot ?? tempRootBase.GetSubdirectoryRoot(PathSegment.Parse($"arius-test-{Guid.NewGuid():N}"));
+        var localRoot = resolvedTempRoot.GetSubdirectoryRoot(PathSegment.Parse("source"));
+        var restoreRoot = resolvedTempRoot.GetSubdirectoryRoot(PathSegment.Parse("restore"));
 
         if (resolvedTempRoot.ExistsDirectory)
             resolvedTempRoot.DeleteDirectory(recursive: true);

@@ -76,11 +76,11 @@ public class LocalRootPathTests
     }
 
     [Test]
-    public void Slash_PathSegment_ReturnsChildRoot()
+    public void GetSubdirectoryRoot_ReturnsChildRoot()
     {
         var root = LocalRootPath.Parse(Path.Combine(Path.GetTempPath(), "arius-local-root"));
 
-        (root / PathSegment.Parse("snapshots"))
+        root.GetSubdirectoryRoot(PathSegment.Parse("snapshots"))
             .ShouldBe(LocalRootPath.Parse(Path.Combine(root.ToString(), "snapshots")));
     }
 }
