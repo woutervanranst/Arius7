@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 
@@ -42,11 +43,11 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.Count.ShouldBe(1);
         var pair = pairs[0];
-        pair.RelativePath.ShouldBe("photos/vacation.jpg");
-        pair.BinaryExists.ShouldBeTrue();
-        pair.PointerExists.ShouldBeTrue();
-        pair.PointerHash.ShouldNotBeNull();
-        pair.FileSize.ShouldNotBeNull();
+        pair.Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
+        pair.Binary.ShouldNotBeNull();
+        pair.Pointer.ShouldNotBeNull();
+        pair.Pointer!.Hash.ShouldNotBeNull();
+        pair.Binary!.Size.ShouldBeGreaterThan(0);
     }
 
     // ── Binary only ───────────────────────────────────────────────────────────
@@ -59,10 +60,9 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].RelativePath.ShouldBe("documents/report.pdf");
-        pairs[0].BinaryExists.ShouldBeTrue();
-        pairs[0].PointerExists.ShouldBeFalse();
-        pairs[0].PointerHash.ShouldBeNull();
+        pairs[0].Path.ShouldBe(RelativePath.Parse("documents/report.pdf"));
+        pairs[0].Binary.ShouldNotBeNull();
+        pairs[0].Pointer.ShouldBeNull();
     }
 
     // ── Pointer only (thin archive) ───────────────────────────────────────────
@@ -76,10 +76,9 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].BinaryExists.ShouldBeFalse();
-        pairs[0].PointerExists.ShouldBeTrue();
-        pairs[0].PointerHash.ShouldBe(ContentHash.Parse(hash));
-        pairs[0].FileSize.ShouldBeNull();
+        pairs[0].Binary.ShouldBeNull();
+        pairs[0].Pointer.ShouldNotBeNull();
+        pairs[0].Pointer!.Hash.ShouldBe(ContentHash.Parse(hash));
     }
 
     [Test]
@@ -89,7 +88,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
         var pair = _enumerator.Enumerate(_root).Single();
 
-        pair.RelativePath.ShouldBe("music/song.mp3");
+        pair.Path.ShouldBe(RelativePath.Parse("music/song.mp3"));
     }
 
     // ── Invalid pointer content ───────────────────────────────────────────────
@@ -103,8 +102,8 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].PointerExists.ShouldBeTrue();
-        pairs[0].PointerHash.ShouldBeNull();
+        pairs[0].Pointer.ShouldNotBeNull();
+        pairs[0].Pointer!.Hash.ShouldBeNull();
     }
 
     // ── Stale pointer (hash mismatch handled at higher level, but pair is assembled) ──
@@ -119,8 +118,8 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].BinaryExists.ShouldBeTrue();
-        pairs[0].PointerHash.ShouldBe(ContentHash.Parse(oldHash));
+        pairs[0].Binary.ShouldNotBeNull();
+        pairs[0].Pointer!.Hash.ShouldBe(ContentHash.Parse(oldHash));
     }
 
     // ── Multiple files in nested directories ──────────────────────────────────
@@ -135,9 +134,9 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(3);
-        pairs.Select(p => p.RelativePath).ShouldContain("a.txt");
-        pairs.Select(p => p.RelativePath).ShouldContain("photos/b.jpg");
-        pairs.Select(p => p.RelativePath).ShouldContain("photos/2024/c.jpg");
+        pairs.Select(p => p.Path.ToString()).ShouldContain("a.txt");
+        pairs.Select(p => p.Path.ToString()).ShouldContain("photos/b.jpg");
+        pairs.Select(p => p.Path.ToString()).ShouldContain("photos/2024/c.jpg");
     }
 
     // ── File metadata ─────────────────────────────────────────────────────────
@@ -149,9 +148,9 @@ public class LocalFileEnumeratorTests : IDisposable
 
         var pair = _enumerator.Enumerate(_root).Single();
 
-        pair.FileSize.ShouldBe(11); // "hello world" = 11 bytes
-        pair.Created.ShouldNotBeNull();
-        pair.Modified.ShouldNotBeNull();
+        pair.Binary!.Size.ShouldBe(11); // "hello world" = 11 bytes
+        pair.Binary.Created.ShouldBeGreaterThan(DateTimeOffset.MinValue);
+        pair.Binary.Modified.ShouldBeGreaterThan(DateTimeOffset.MinValue);
     }
 
     // ── 7.7 Path normalization ────────────────────────────────────────────────
@@ -192,7 +191,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].RelativePath.ShouldBe("données/résumé.pdf");
+        pairs[0].Path.ShouldBe(RelativePath.Parse("données/résumé.pdf"));
     }
 
     [Test]
@@ -203,7 +202,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].RelativePath.ShouldBe("my files/my document.pdf");
+        pairs[0].Path.ShouldBe(RelativePath.Parse("my files/my document.pdf"));
     }
 
     [Test]
@@ -233,8 +232,27 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_root).ToList();
 
         pairs.Count.ShouldBe(1, "pointer-with-binary must not produce an extra pair");
-        pairs[0].BinaryExists.ShouldBeTrue();
-        pairs[0].PointerExists.ShouldBeTrue();
+        pairs[0].Binary.ShouldNotBeNull();
+        pairs[0].Pointer.ShouldNotBeNull();
+    }
+
+    [Test]
+    public void Enumerate_UppercasePointerSuffix_TreatsFileAsRegularBinary()
+    {
+        CreateFile("photos/vacation.jpg");
+        CreateFile("photos/vacation.jpg.POINTER.ARIUS", new string('a', 64));
+
+        var pairs = _enumerator.Enumerate(_root).OrderBy(pair => pair.Path.ToString(), StringComparer.Ordinal).ToList();
+
+        pairs.Count.ShouldBe(2);
+
+        pairs[0].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
+        pairs[0].Binary.ShouldNotBeNull();
+        pairs[0].Pointer.ShouldBeNull();
+
+        pairs[1].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg.POINTER.ARIUS"));
+        pairs[1].Binary.ShouldNotBeNull();
+        pairs[1].Pointer.ShouldBeNull();
     }
 
     // ── Single-pass: yielded before enumeration completes ─────────────────────

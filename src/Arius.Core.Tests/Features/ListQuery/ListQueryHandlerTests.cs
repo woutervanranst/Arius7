@@ -1,6 +1,7 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -109,6 +110,59 @@ public class ListQueryHandlerTests
     }
 
     [Test]
+    public async Task Handle_Prefix_DoesNotMatchPartialSegment()
+    {
+        var photosTree = Entries(FileEntryOf("pic.jpg", FakeContentHash('1')));
+        var photoshopTree = Entries(FileEntryOf("logo.png", FakeContentHash('2')));
+        var photosHash = FileTreeBuilder.ComputeHash(photosTree, s_encryption);
+        var photoshopHash = FileTreeBuilder.ComputeHash(photoshopTree, s_encryption);
+        var rootTree = Entries(
+            DirectoryEntryOf("photos/", photosHash),
+            DirectoryEntryOf("photoshop/", photoshopHash));
+        var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, s_encryption));
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, rootTree);
+        await SeedTreeAsync(blobs, photosTree);
+        await SeedTreeAsync(blobs, photoshopTree);
+        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-segments", "ctr-ls-segments", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('1'), FakeChunkHash('3'), 10, 5));
+        var handler = fixture.CreateListQueryHandler();
+
+        var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "photos", Recursive = true }), CancellationToken.None)
+            .OfType<RepositoryFileEntry>()
+            .ToListAsync();
+
+        results.Select(file => file.RelativePath).ShouldBe(["photos/pic.jpg"]);
+    }
+
+    [Test]
+    public async Task Handle_RootedPrefix_ThrowsFormatException()
+    {
+        IReadOnlyList<FileTreeEntry> rootTree = [];
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
+        var snapshot = MakeSnapshot(rootHash);
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, rootTree);
+        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-invalid-prefix", "ctr-ls-invalid-prefix", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
+
+        var exception = await Should.ThrowAsync<FormatException>(async () =>
+        {
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "/photos" }), CancellationToken.None))
+            {
+            }
+        });
+
+        exception.Message.ShouldContain("Invalid relative path");
+    }
+
+    [Test]
     public async Task Handle_WithLocalPath_MergesCloudAndLocalFilesInOneDirectory()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-{Guid.NewGuid():N}");
@@ -180,6 +234,168 @@ public class ListQueryHandlerTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    [Test]
+    public async Task Handle_WithPrefixAndLocalPath_UppercasePointerSuffixIsTreatedAsRegularFile()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt"), "local-shared");
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt.POINTER.ARIUS"), FakeContentHash('2').ToString());
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "local-only.txt"), "local-only");
+
+            var docsTree = Entries(
+                FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
+                FileEntryOf("shared.txt", ContentHashFor("shared")));
+            var docsHash = FileTreeBuilder.ComputeHash(docsTree, s_encryption);
+            var rootTree = Entries(DirectoryEntryOf("docs/", docsHash));
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
+                RootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption),
+                FileCount = 2,
+                TotalSize = 100,
+                AriusVersion = "test"
+            };
+
+            var blobs = new FakeSeededBlobContainerService();
+            await SeedTreeAsync(blobs, rootTree);
+            await SeedTreeAsync(blobs, docsTree);
+            blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-prefix-local", "ctr-ls-prefix-local", s_encryption);
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
+            var handler = fixture.CreateListQueryHandler();
+
+            var results = new List<RepositoryFileEntry>();
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs/", LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            {
+                if (entry is RepositoryFileEntry file)
+                {
+                    results.Add(file);
+                }
+            }
+
+            results.Count.ShouldBe(4);
+
+            var shared = results.Single(file => file.RelativePath == "docs/shared.txt");
+            shared.ExistsInCloud.ShouldBeTrue();
+            shared.ExistsLocally.ShouldBeTrue();
+            shared.HasPointerFile.ShouldBe(false);
+            shared.BinaryExists.ShouldBe(true);
+
+            var cloudOnly = results.Single(file => file.RelativePath == "docs/cloud-only.txt");
+            cloudOnly.ExistsInCloud.ShouldBeTrue();
+            cloudOnly.ExistsLocally.ShouldBeFalse();
+
+            var localOnly = results.Single(file => file.RelativePath == "docs/local-only.txt");
+            localOnly.ExistsInCloud.ShouldBeFalse();
+            localOnly.ExistsLocally.ShouldBeTrue();
+
+            var uppercasePointer = results.Single(file => file.RelativePath == "docs/shared.txt.POINTER.ARIUS");
+            uppercasePointer.ExistsInCloud.ShouldBeFalse();
+            uppercasePointer.ExistsLocally.ShouldBeTrue();
+            uppercasePointer.HasPointerFile.ShouldBe(false);
+            uppercasePointer.BinaryExists.ShouldBe(true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public void BuildFiles_UppercasePointerSuffix_TreatsFileAsRegularBinary()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt"),
+                Size = 12,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() == "docs/shared.txt",
+            path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
+
+        result.Count.ShouldBe(2);
+
+        var shared = result["shared.txt"];
+        shared.BinaryExists.ShouldBeTrue();
+        shared.PointerExists.ShouldBeFalse();
+        shared.PointerHash.ShouldBeNull();
+
+        var uppercasePointer = result["shared.txt.POINTER.ARIUS"];
+        uppercasePointer.BinaryExists.ShouldBeTrue();
+        uppercasePointer.PointerExists.ShouldBeFalse();
+        uppercasePointer.PointerHash.ShouldBeNull();
+    }
+
+    [Test]
+    public void BuildFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt"),
+                Size = 12,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.pointer.arius"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius"),
+                Size = 64,
+                Created = s_created,
+                Modified = s_modified
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected file existence probe for {path}"),
+                _ => false
+            },
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => FakeContentHash('2'),
+                "docs/pointer-only.txt.pointer.arius" => FakeContentHash('3'),
+                _ => null
+            });
+
+        result.Count.ShouldBe(2);
+        result["shared.txt"].PointerExists.ShouldBeTrue();
+        result["pointer-only.txt"].BinaryExists.ShouldBeFalse();
     }
 
     [Test]

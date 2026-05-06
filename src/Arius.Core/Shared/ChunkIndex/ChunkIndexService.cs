@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
@@ -26,6 +27,7 @@ public sealed class ChunkIndexService : IDisposable
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
     private readonly string              _l2Dir;
+    private readonly RelativeFileSystem  _l2FileSystem;
 
     // ── L1 LRU cache ──────────────────────────────────────────────────────────
 
@@ -70,7 +72,9 @@ public sealed class ChunkIndexService : IDisposable
         _blobs         = blobs;
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
-        _l2Dir         = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
+        var l2Root = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
+        _l2Dir         = l2Root.ToString();
+        _l2FileSystem  = new RelativeFileSystem(l2Root);
 
         Directory.CreateDirectory(_l2Dir);
     }
@@ -154,7 +158,7 @@ public sealed class ChunkIndexService : IDisposable
 
             // Serialize and upload
             var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
-            var blobName = BlobPaths.ChunkIndexShard(prefix);
+            var blobName = BlobPaths.ChunkIndexShardPath(prefix).ToString();
 
             await _blobs.UploadAsync(
                 blobName: blobName,
@@ -197,12 +201,12 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         // L2 hit?
-        var l2Path = Path.Combine(_l2Dir, prefix);
-        if (File.Exists(l2Path))
+        var l2Path = RelativePath.Parse(prefix);
+        if (_l2FileSystem.FileExists(l2Path))
         {
             try
             {
-                var bytes = await File.ReadAllBytesAsync(l2Path, cancellationToken);
+                var bytes = await _l2FileSystem.ReadAllBytesAsync(l2Path, cancellationToken);
                 var shard = ShardSerializer.DeserializeLocal(bytes);
                 PromoteToL1(prefix, shard, bytes.Length);
                 return shard;
@@ -210,12 +214,12 @@ public sealed class ChunkIndexService : IDisposable
             catch
             {
                 // Stale or corrupt L2 file (e.g. old encrypted format) — treat as cache miss and fall through to L3.
-                File.Delete(l2Path);
+                _l2FileSystem.DeleteFile(l2Path);
             }
         }
 
         // L3 (Azure)
-        var blobName = BlobPaths.ChunkIndexShard(prefix);
+        var blobName = BlobPaths.ChunkIndexShardPath(prefix).ToString();
         var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
         if (!meta.Exists)
         {
@@ -270,9 +274,9 @@ public sealed class ChunkIndexService : IDisposable
 
     private void SaveToL2(string prefix, Shard shard)
     {
-        var path  = Path.Combine(_l2Dir, prefix);
+        var path  = RelativePath.Parse(prefix);
         var bytes = ShardSerializer.SerializeLocal(shard);
-        File.WriteAllBytes(path, bytes);
+        _l2FileSystem.WriteAllBytesAsync(path, bytes, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     public void Dispose()

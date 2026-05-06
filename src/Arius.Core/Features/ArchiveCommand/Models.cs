@@ -6,28 +6,31 @@ namespace Arius.Core.Features.ArchiveCommand;
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 
 /// <summary>
-/// A <see cref="Shared.LocalFile.FilePair"/> after content hash has been computed.
-/// Used between Hash stage and Dedup stage.
+/// Represents a <see cref="Shared.LocalFile.FilePair"/> after Arius has computed its content hash.
+/// It exists to give the archive pipeline a stable handoff between hashing and deduplication,
+/// with responsibility for pairing the local file model with the resolved content identity.
 /// </summary>
-public sealed record HashedFilePair(
+internal sealed record HashedFilePair(
     FilePair       FilePair,
-    ContentHash    ContentHash,
-    string         LocalRootPath  // absolute path to archive root (for stream reading)
+    ContentHash    ContentHash
 );
 
 /// <summary>
-/// A file that has passed dedup check and needs to be uploaded.
-/// Carries the resolved content hash and the source path for streaming.
+/// Represents a hashed file pair that still needs chunk upload work.
+/// It exists to separate deduplicated-away files from upload candidates,
+/// with responsibility for carrying the hashed local file data and the byte count needed by upload logic.
 /// </summary>
-public sealed record FileToUpload(
+internal sealed record FileToUpload(
     HashedFilePair HashedPair,
     long           FileSize     // bytes (0 for pointer-only)
 );
 
 /// <summary>
-/// An index entry recording the content-hash → chunk-hash mapping after upload.
+/// Represents the chunk-index mapping produced after upload.
+/// It exists to hand off the newly persisted chunk identity and size metadata,
+/// with responsibility for recording the content-hash to chunk-hash relationship Arius stores in the chunk index.
 /// </summary>
-public sealed record IndexEntry(
+internal sealed record IndexEntry(
     ContentHash ContentHash,
     ChunkHash ChunkHash,
     long   OriginalSize,
@@ -35,20 +38,22 @@ public sealed record IndexEntry(
 );
 
 /// <summary>
-/// A small file that has been added to the current tar accumulator.
-/// Carries original-size for proportional compressed-size estimation,
-/// and the full <see cref="HashedFilePair"/> for manifest-entry writing.
+/// Represents a small file staged into the current tar chunk accumulator.
+/// It exists so tar-chunk assembly can retain per-file manifest context while estimating compressed sizes,
+/// with responsibility for carrying the hashed file identity plus the original size used for accounting.
 /// </summary>
-public sealed record TarEntry(
+internal sealed record TarEntry(
     ContentHash    ContentHash,
     long           OriginalSize,
     HashedFilePair HashedPair
 );
 
 /// <summary>
-/// A sealed tar archive ready for upload.
+/// Represents a completed tar chunk that is ready to upload.
+/// It exists to hand off the on-disk tar payload together with the per-entry metadata needed for thin chunks,
+/// with responsibility for describing the sealed tar file, its chunk hash, its size, and its member entries.
 /// </summary>
-public sealed record SealedTar(
+internal sealed record SealedTar(
     string          TarFilePath,       // temp file on disk
     ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
     long            UncompressedSize,  // sum of file sizes

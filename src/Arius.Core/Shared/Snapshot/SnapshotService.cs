@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 
@@ -110,6 +111,7 @@ public sealed class SnapshotService
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
     private readonly string                _diskCacheDir;
+    private readonly RelativeFileSystem    _diskCacheFileSystem;
 
     /// <summary>
     /// Timestamp format used for snapshot blob names and local cache filenames.
@@ -135,21 +137,17 @@ public sealed class SnapshotService
     {
         _blobs        = blobs;
         _encryption   = encryption;
-        _diskCacheDir = GetDiskCacheDirectory(accountName, containerName);
+        var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+        _diskCacheDir = diskCacheRoot.ToString();
         Directory.CreateDirectory(_diskCacheDir);
+        _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
     }
-
-    // ── Directory helper ──────────────────────────────────────────────────────
-
-    /// <summary>Returns <c>~/.arius/{accountName}-{containerName}/snapshots</c>.</summary>
-    public static string GetDiskCacheDirectory(string accountName, string containerName)
-        => RepositoryPaths.GetSnapshotCacheDirectory(accountName, containerName);
 
     // ── Snapshot blob name ────────────────────────────────────────────────────
 
     /// <summary>Returns the blob name for a snapshot with the given UTC timestamp.</summary>
     public static string BlobName(DateTimeOffset timestamp) =>
-        BlobPaths.Snapshot(timestamp.UtcDateTime.ToString(TimestampFormat));
+        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat)).ToString();
 
     /// <summary>Parses a snapshot timestamp from a blob name.</summary>
     public static DateTimeOffset ParseTimestamp(string blobName)
@@ -252,10 +250,10 @@ public sealed class SnapshotService
 
         // Disk-first: check local plain-JSON cache
         var localName = blobName.StartsWith(BlobPaths.Snapshots) ? blobName[BlobPaths.Snapshots.Length..] : blobName;
-        var localPath = Path.Combine(_diskCacheDir, localName);
-        if (File.Exists(localPath))
+        var localPath = RelativePath.Parse(localName);
+        if (_diskCacheFileSystem.FileExists(localPath))
         {
-            var json = await File.ReadAllBytesAsync(localPath, cancellationToken);
+            var json = await _diskCacheFileSystem.ReadAllBytesAsync(localPath, cancellationToken);
             return JsonSerializer.Deserialize<SnapshotManifest>(json, s_localJsonOptions)
                 ?? throw new InvalidDataException($"Failed to deserialize local snapshot: {localPath}");
         }
@@ -271,9 +269,9 @@ public sealed class SnapshotService
     private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
     {
         var fileName = manifest.Timestamp.UtcDateTime.ToString(TimestampFormat);
-        var path     = Path.Combine(_diskCacheDir, fileName);
+        var path     = RelativePath.Parse(fileName);
         var json     = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
-        await File.WriteAllBytesAsync(path, json, cancellationToken);
+        await _diskCacheFileSystem.WriteAllBytesAsync(path, json, cancellationToken);
     }
 
     private async Task<SnapshotManifest> LoadFromAzureAsync(

@@ -1,64 +1,18 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Shared.LocalFile;
 
-// ── Task 7.1: FilePair model ───────────────────────────────────────────────────
-
-/// <summary>
-/// Represents a local file (binary and/or pointer) to be processed by the archive pipeline.
-///
-/// Each <see cref="FilePair"/> has exactly one of:
-/// - Both binary and pointer: normal archived file with up-to-date pointer
-/// - Binary only: not yet archived (needs upload and pointer creation)
-/// - Pointer only (thin archive): binary was removed, pointer has the content hash
-///
-/// Paths are always forward-slash-normalized and relative to the archive root.
-/// </summary>
-public sealed record FilePair
-{
-    /// <summary>
-    /// Forward-slash-normalized path relative to the archive root (no leading slash).
-    /// e.g. <c>photos/2024/june/a.jpg</c>
-    /// </summary>
-    public required string RelativePath { get; init; }
-
-    /// <summary><c>true</c> if the binary file is present on disk.</summary>
-    public required bool BinaryExists { get; init; }
-
-    /// <summary><c>true</c> if a <c>.pointer.arius</c> file is present alongside the binary.</summary>
-    public required bool PointerExists { get; init; }
-
-    /// <summary>
-    /// The hash stored in the pointer file, if the pointer exists and contains a valid hex hash.
-    /// <c>null</c> when no pointer or when pointer content is invalid.
-    /// </summary>
-    public          ContentHash? PointerHash { get; init; }
-
-    /// <summary>File size in bytes of the binary. <c>null</c> for pointer-only entries.</summary>
-    public          long?   FileSize { get; init; }
-
-    /// <summary>Creation timestamp of the binary (UTC). <c>null</c> for pointer-only entries.</summary>
-    public          DateTimeOffset? Created  { get; init; }
-
-    /// <summary>Last-modified timestamp of the binary (UTC). <c>null</c> for pointer-only entries.</summary>
-    public          DateTimeOffset? Modified { get; init; }
-}
-
 // ── Task 7.2, 7.3, 7.4, 7.5: File enumeration service ────────────────────────
 
 /// <summary>
-/// Enumerates local files and assembles <see cref="FilePair"/> objects.
-///
-/// Rules:
-/// - Files ending in <c>.pointer.arius</c> are always treated as pointer files.
-/// - All other files are treated as binaries.
-/// - Depth-first enumeration (for directory affinity with the tar builder).
-/// - Inaccessible files are skipped with a warning logged.
-/// - Pointer file content must be a valid hex string; invalid content is warned and ignored.
-/// - Paths are normalized to forward slashes (task 7.5).
+/// Enumerates local repository files and assembles <see cref="FilePair"/> values.
+/// It exists to translate raw filesystem contents into Arius's archive-time local-file domain model,
+/// with responsibility for recognizing pointer files, pairing them with binaries, and tolerating unreadable
+/// or invalid pointer content without leaking host-path details into the rest of the core.
 /// </summary>
-public sealed class LocalFileEnumerator
+internal sealed class LocalFileEnumerator
 {
     private const string PointerSuffix = ".pointer.arius";
 
@@ -83,52 +37,64 @@ public sealed class LocalFileEnumerator
     /// </summary>
     public IEnumerable<FilePair> Enumerate(string rootDirectory)
     {
-        foreach (var file in EnumerateFilesDepthFirst(rootDirectory))
-        {
-            var relativeName = NormalizePath(Path.GetRelativePath(rootDirectory, file.FullName));
+        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootDirectory));
+        var files = fileSystem.EnumerateFiles().ToList();
+        var enumeratedPaths = files.Select(file => file.Path).ToHashSet();
 
-            if (relativeName.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+        foreach (var file in files)
+        {
+            var relativePath = file.Path;
+
+            if (relativePath.IsPointerPath())
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
-                var binaryFileRelativeName  = relativeName[..^PointerSuffix.Length]; // infer the BinaryFile relative name from the pointer file name
-                var binaryFileFullPath = Path.Combine(rootDirectory, binaryFileRelativeName.Replace('/', Path.DirectorySeparatorChar));
+                var binaryPath = relativePath.ToBinaryPath();
 
-                if (File.Exists(binaryFileFullPath))
+                if (enumeratedPaths.Contains(binaryPath))
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
-                var pointerHash = ReadPointerHash(file.FullName, relativeName);
+                var pointerHash = ReadPointerHash(fileSystem, relativePath);
                 yield return new FilePair
                 {
-                    RelativePath  = binaryFileRelativeName,
-                    BinaryExists  = false,
-                    PointerExists = true,
-                    PointerHash   = pointerHash,
-                    FileSize      = null,
-                    Created       = null,
-                    Modified      = null
+                    Path = binaryPath,
+                    Binary = null,
+                    Pointer = new PointerFile
+                    {
+                        Path = relativePath,
+                        BinaryPath = binaryPath,
+                        Hash = pointerHash
+                    }
                 };
             }
             else
             {
                 // Binary file: check for pointer via File.Exists
-                var pointerRel  = relativeName + PointerSuffix;
-                var pointerPath = Path.Combine(rootDirectory, pointerRel.Replace('/', Path.DirectorySeparatorChar));
-                var hasPointer  = File.Exists(pointerPath);
+                var pointerPath = relativePath.ToPointerPath();
+                var hasPointer  = enumeratedPaths.Contains(pointerPath);
                 ContentHash? pointerHash = null;
 
                 if (hasPointer)
-                    pointerHash = ReadPointerHash(pointerPath, pointerRel);
+                    pointerHash = ReadPointerHash(fileSystem, pointerPath);
 
                 yield return new FilePair
                 {
-                    RelativePath  = relativeName, // this will be the relative name of the BinaryFile
-                    BinaryExists  = true,
-                    PointerExists = hasPointer,
-                    PointerHash   = pointerHash,
-                    FileSize      = file.Length,
-                    Created       = new DateTimeOffset(file.CreationTimeUtc,  TimeSpan.Zero),
-                    Modified      = new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)
+                    Path = relativePath,
+                    Binary = new BinaryFile
+                    {
+                        Path = relativePath,
+                        Size = file.Size,
+                        Created = file.Created,
+                        Modified = file.Modified
+                    },
+                    Pointer = hasPointer
+                        ? new PointerFile
+                        {
+                            Path = pointerPath,
+                            BinaryPath = relativePath,
+                            Hash = pointerHash
+                        }
+                        : null
                 };
             }
         }
@@ -137,14 +103,14 @@ public sealed class LocalFileEnumerator
     // ── Task 7.3: Pointer detection ───────────────────────────────────────────
 
     /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
-    private ContentHash? ReadPointerHash(string fullPath, string relPath)
+    private ContentHash? ReadPointerHash(RelativeFileSystem fileSystem, RelativePath path)
     {
         try
         {
-            var content = File.ReadAllText(fullPath).Trim();
+            var content = fileSystem.ReadAllText(path).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
-                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relPath);
+                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path.ToString());
                 return null;
             }
 
@@ -152,7 +118,7 @@ public sealed class LocalFileEnumerator
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", relPath);
+            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", path.ToString());
             return null;
         }
     }

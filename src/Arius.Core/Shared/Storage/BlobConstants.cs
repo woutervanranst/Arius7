@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Shared.Storage;
 
@@ -84,10 +85,17 @@ public static class BlobPaths
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
     public const string ChunkIndex        = "chunk-index/";
 
-    public static string Chunk(ChunkHash hash)           => $"{Chunks}{hash}";
-    public static string ThinChunk(ContentHash hash)     => $"{Chunks}{hash}";
-    public static string ChunkRehydrated(ChunkHash hash) => $"{ChunksRehydrated}{hash}";
-    public static string FileTree(FileTreeHash hash)     => $"{FileTrees}{hash}";
-    public static string Snapshot(string name)           => $"{Snapshots}{name}";
-    public static string ChunkIndexShard(string prefix)  => $"{ChunkIndex}{prefix}";
+    internal static RelativePath ChunkPath(ChunkHash hash)           => RelativePath.Root / "chunks" / hash.ToString();
+    internal static RelativePath ThinChunkPath(ContentHash hash)     => RelativePath.Root / "chunks" / hash.ToString();
+    internal static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();
+    internal static RelativePath FileTreePath(FileTreeHash hash)     => RelativePath.Root / "filetrees" / hash.ToString();
+    internal static RelativePath SnapshotPath(string name)           => RelativePath.Root / "snapshots" / name;
+    internal static RelativePath ChunkIndexShardPath(string prefix)  => RelativePath.Root / "chunk-index" / prefix;
+
+    public static string Chunk(ChunkHash hash)           => ChunkPath(hash).ToString();
+    public static string ThinChunk(ContentHash hash)     => ThinChunkPath(hash).ToString();
+    public static string ChunkRehydrated(ChunkHash hash) => ChunkRehydratedPath(hash).ToString();
+    public static string FileTree(FileTreeHash hash)     => FileTreePath(hash).ToString();
+    public static string Snapshot(string name)           => SnapshotPath(name).ToString();
+    public static string ChunkIndexShard(string prefix)  => ChunkIndexShardPath(prefix).ToString();
 }

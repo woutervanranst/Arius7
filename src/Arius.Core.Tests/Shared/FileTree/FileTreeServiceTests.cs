@@ -7,6 +7,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileTree;
@@ -45,8 +46,8 @@ public class FileTreeServiceTests
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir     = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir     = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
     }
@@ -176,8 +177,8 @@ public class FileTreeServiceTests
         var blobs = new SlowDownloadBlobContainerService();
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -217,8 +218,8 @@ public class FileTreeServiceTests
         var blobs = new ThrowingDownloadBlobContainerService(expected);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -314,8 +315,8 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -358,8 +359,8 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -434,8 +435,8 @@ public class FileTreeServiceTests
         var encryption = new PlaintextPassthroughService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, account, container);
         var service = new FileTreeService(blobs, encryption, chunkIndex, account, container);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(account, container);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(account, container);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(account, container);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(account, container);
         try
         {
             await service.ValidateAsync();
@@ -525,8 +526,8 @@ public class FileTreeServiceTests
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -552,7 +553,7 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
 
         // Determine the L2 dir and pre-populate it with a dummy file
-        var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(acct, cont);
+        var chunkL2Dir = RepositoryCachePaths.GetChunkIndexCacheDirectory(acct, cont);
         Directory.CreateDirectory(chunkL2Dir);
         var dummyL2File = Path.Combine(chunkL2Dir, "dummy-shard.dat");
         await File.WriteAllTextAsync(dummyL2File, "stale");
@@ -740,7 +741,7 @@ public class FileTreeServiceTests
         const string acct = "tc-marker", cont = "container";
         var blobs        = new FakeInMemoryBlobContainerService();
         var snapshotSvc  = new SnapshotService(blobs, s_enc, acct, cont);
-        var snapshotsDir = SnapshotService.GetDiskCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
         try
         {
             var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);

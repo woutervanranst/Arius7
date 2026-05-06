@@ -3,11 +3,14 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
@@ -30,8 +33,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
         Directory.CreateDirectory(_rootDirectory);
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName));
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -40,9 +43,13 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName);
+
+    public string RootDirectory => _rootDirectory;
 
     public FakeLogCollector ArchiveLogs => _logger.Collector;
+
+    public IMediator Mediator => _mediator;
 
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
@@ -57,23 +64,44 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
+        bool removeLocal = false,
+        bool noPointers = false,
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
+        Func<string, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName));
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler         = openStagingSession is null
-            ? new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName)
-            : new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName, openStagingSession);
+        Func<string, CancellationToken, Task<IFileTreeStagingSession>> stagingSessionFactory = openStagingSession is not null
+            ? openStagingSession
+            : OpenStagingSessionAsync;
+        var handler         = new ArchiveCommandHandler(
+            Blobs,
+            _encryption,
+            _index,
+            chunkStorage,
+            fileTreeService,
+            snapshotSvc,
+            _mediator,
+            _logger,
+            AccountName,
+            _containerName,
+            stagingSessionFactory,
+            enumerateFilePairs);
+
+        static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string path, CancellationToken ct)
+            => await FileTreeStagingSession.OpenAsync(path, ct);
 
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
+                RemoveLocal = removeLocal,
+                NoPointers = noPointers,
             }),
             cancellationToken);
     }

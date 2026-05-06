@@ -1,7 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -237,7 +236,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        var cacheDir = RepositoryPaths.GetRepositoryDirectory(accountName, containerName);
+        var cacheDir = RepositoryCachePaths.GetRepositoryDirectory(accountName, containerName);
 
         try
         {

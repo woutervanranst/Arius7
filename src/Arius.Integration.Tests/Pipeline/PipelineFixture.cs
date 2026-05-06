@@ -1,9 +1,9 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging.Testing;
@@ -167,7 +167,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // Clean up any cache dirs created by this test's container (unique name)
-        var cacheDir = RepositoryPaths.GetRepositoryDirectory(Account, Container.Name);
+        var cacheDir = RepositoryCachePaths.GetRepositoryDirectory(Account, Container.Name);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

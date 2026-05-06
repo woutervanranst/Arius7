@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -35,6 +36,9 @@ internal static class FileTreePaths
     /// Returns the deterministic staging directory id for one relative directory path.
     /// Example output usage: <c>~/.arius/<container>/filetrees/.staging/&lt;directoryId&gt;</c>
     /// </summary>
+    public static string GetStagingDirectoryId(RelativePath directoryPath)
+        => GetStagingDirectoryId(directoryPath.ToString());
+
     public static string GetStagingDirectoryId(string directoryPath)
     {
         var canonicalPath = directoryPath.Replace('\\', '/');
