@@ -1,7 +1,17 @@
 namespace Arius.Core.Shared.FileSystem;
 
+/// <summary>
+/// Represents one canonical repository path segment.
+///
+/// This type keeps repository-internal path composition out of raw strings so
+/// Arius can enforce separator-free, dot-segment-free path identities.
+/// </summary>
 public readonly record struct PathSegment
 {
+    /// <summary>
+    /// Compares path segments using ordinal case-insensitive semantics for host-facing scenarios
+    /// where repository casing should be matched using the local filesystem rules.
+    /// </summary>
     public static IEqualityComparer<PathSegment> OrdinalIgnoreCaseComparer { get; } = new OrdinalIgnoreCasePathSegmentComparer();
 
     private PathSegment(string value)
@@ -26,8 +36,10 @@ public readonly record struct PathSegment
 
     private string Value => field ?? throw new InvalidOperationException("PathSegment is uninitialized.");
 
+    /// <summary>Parses a canonical repository path segment.</summary>
     public static PathSegment Parse(string value) => new(value);
 
+    /// <summary>Attempts to parse a canonical repository path segment.</summary>
     public static bool TryParse(string? value, out PathSegment segment)
     {
         if (value is null)
@@ -48,6 +60,7 @@ public readonly record struct PathSegment
         }
     }
 
+    /// <summary>Compares two segments using the requested string comparison rules.</summary>
     public bool Equals(PathSegment other, StringComparison comparison) =>
         string.Equals(Value, other.Value, comparison);
 

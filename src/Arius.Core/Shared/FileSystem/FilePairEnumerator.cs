@@ -19,6 +19,7 @@ public sealed class FilePairEnumerator
 
     private readonly ILogger<FilePairEnumerator>? _logger;
 
+    /// <summary>Creates a file-pair enumerator for one local archive walk.</summary>
     public FilePairEnumerator(ILogger<FilePairEnumerator>? logger = null)
     {
         _logger = logger;
@@ -113,7 +114,7 @@ public sealed class FilePairEnumerator
 
     // ── Task 7.5: Path normalization ──────────────────────────────────────────
 
-    /// <summary>Normalizes a path to forward slashes, no leading slash.</summary>
+    /// <summary>Normalizes a local path string into Arius' forward-slash repository path form.</summary>
     public static string NormalizePath(string path) =>
         path.Replace('\\', '/').TrimStart('/');
 

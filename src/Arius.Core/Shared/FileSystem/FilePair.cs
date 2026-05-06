@@ -3,7 +3,7 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
-/// Represents a local file (binary and/or pointer) to be processed by the archive pipeline.
+/// Represents the archive-time view of one repository path, combining the binary file and its optional pointer file.
 ///
 /// Each <see cref="FilePair"/> has exactly one of:
 /// - Both binary and pointer: normal archived file with up-to-date pointer
