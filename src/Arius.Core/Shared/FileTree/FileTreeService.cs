@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -33,6 +34,7 @@ public sealed class FileTreeService
     private readonly string                _diskCacheDir;
     private readonly string                _snapshotsDir;
     private readonly string                _chunkIndexL2Dir;
+    private readonly RelativeFileSystem    _diskCacheFileSystem;
 
     /// <summary>
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
@@ -59,6 +61,7 @@ public sealed class FileTreeService
         _diskCacheDir    = RepositoryPaths.GetFileTreeCacheDirectory(accountName, containerName);
         _snapshotsDir    = SnapshotService.GetDiskCacheDirectory(accountName, containerName);
         _chunkIndexL2Dir = RepositoryPaths.GetChunkIndexCacheDirectory(accountName, containerName);
+        _diskCacheFileSystem = new RelativeFileSystem(LocalDirectory.Parse(_diskCacheDir));
 
         Directory.CreateDirectory(_diskCacheDir);
         // Note: _snapshotsDir is created by SnapshotService; we only read it here.
@@ -319,11 +322,11 @@ public sealed class FileTreeService
         {
             cancellationToken.ThrowIfCancellationRequested();
             var hash     = Path.GetFileName(blobName); // strip "filetrees/" prefix
-            var diskPath = FileTreePaths.GetCachePath(_diskCacheDir, hash);
-            if (!File.Exists(diskPath))
+            var relativePath = RelativePath.Parse(hash);
+            if (!_diskCacheFileSystem.FileExists(relativePath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
-                await File.WriteAllBytesAsync(diskPath, [], cancellationToken);
+                await _diskCacheFileSystem.WriteAllBytesAsync(relativePath, [], cancellationToken);
             }
         }
 
