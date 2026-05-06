@@ -149,7 +149,7 @@ public sealed class FileTreeService
 
         async Task<IReadOnlyList<FileTreeEntry>> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
         {
-            var             blobName = BlobPaths.FileTree(hash);
+            var             blobName = BlobPaths.FileTreePath(hash).ToString();
             await using var stream   = await _blobs.DownloadAsync(blobName, CancellationToken.None);
             var             entries  = await DeserializeStorageAsync(stream, CancellationToken.None);
 
@@ -175,7 +175,7 @@ public sealed class FileTreeService
     public async Task WriteAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
         var hashText     = payload.Hash.ToString();
-        var blobName     = BlobPaths.FileTree(payload.Hash);
+        var blobName     = BlobPaths.FileTreePath(payload.Hash).ToString();
         var storageBytes = await SerializeStorageAsync(payload.Plaintext, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted

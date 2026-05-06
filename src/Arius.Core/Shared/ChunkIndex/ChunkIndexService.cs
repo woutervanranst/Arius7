@@ -154,7 +154,7 @@ public sealed class ChunkIndexService : IDisposable
 
             // Serialize and upload
             var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
-            var blobName = BlobPaths.ChunkIndexShard(prefix);
+            var blobName = BlobPaths.ChunkIndexShardPath(prefix).ToString();
 
             await _blobs.UploadAsync(
                 blobName: blobName,
@@ -215,7 +215,7 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         // L3 (Azure)
-        var blobName = BlobPaths.ChunkIndexShard(prefix);
+        var blobName = BlobPaths.ChunkIndexShardPath(prefix).ToString();
         var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
         if (!meta.Exists)
         {

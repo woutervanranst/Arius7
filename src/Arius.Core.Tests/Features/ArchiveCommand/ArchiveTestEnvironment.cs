@@ -44,7 +44,11 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
 
+    public string RootDirectory => _rootDirectory;
+
     public FakeLogCollector ArchiveLogs => _logger.Collector;
+
+    public IMediator Mediator => _mediator;
 
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
@@ -59,6 +63,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
+        bool removeLocal = false,
+        bool noPointers = false,
         Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
         Func<string, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
@@ -93,6 +99,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             {
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
+                RemoveLocal = removeLocal,
+                NoPointers = noPointers,
             }),
             cancellationToken);
     }

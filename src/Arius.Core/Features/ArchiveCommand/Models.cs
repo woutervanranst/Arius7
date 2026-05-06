@@ -11,8 +11,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// </summary>
 internal sealed record HashedFilePair(
     FilePair       FilePair,
-    ContentHash    ContentHash,
-    string         LocalRootPath  // absolute path to archive root (for stream reading)
+    ContentHash    ContentHash
 );
 
 /// <summary>

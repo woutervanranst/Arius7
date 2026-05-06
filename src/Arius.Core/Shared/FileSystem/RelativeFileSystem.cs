@@ -74,11 +74,21 @@ internal sealed class RelativeFileSystem
     public Task<string> ReadAllTextAsync(RelativePath path, CancellationToken cancellationToken) =>
         File.ReadAllTextAsync(_root.Resolve(path), cancellationToken);
 
+    public Task<byte[]> ReadAllBytesAsync(RelativePath path, CancellationToken cancellationToken) =>
+        File.ReadAllBytesAsync(_root.Resolve(path), cancellationToken);
+
     public async Task WriteAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = _root.Resolve(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
+    }
+
+    public async Task WriteAllBytesAsync(RelativePath path, byte[] content, CancellationToken cancellationToken)
+    {
+        var fullPath = _root.Resolve(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
     }
 
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));

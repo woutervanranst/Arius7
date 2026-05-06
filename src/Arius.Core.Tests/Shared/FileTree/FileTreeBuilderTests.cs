@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
@@ -94,6 +95,38 @@ public class FileTreeBuilderTests
                 root.ShouldNotBeNull();
                 blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
             }
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_RelativePathStagedFile_ProducesRootHash()
+    {
+        const string acct = "acct-single-relative";
+        const string cont = "cont-single-relative";
+        var cacheDir = RepositoryPaths.GetFileTreeCacheDirectory(acct, cont);
+
+        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        try
+        {
+            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using (var writer = new FileTreeStagingWriter(stagingSession.StagingRoot))
+            {
+                await writer.AppendFileEntryAsync(RelativePath.Parse("docs/readme.txt"), FakeContentHash('b'), now, now);
+            }
+
+            var blobs = new FakeRecordingBlobContainerService();
+            var builder = CreateBuilder(blobs, acct, cont, out var fileTreeService);
+            await fileTreeService.ValidateAsync();
+
+            var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
+
+            root.ShouldNotBeNull();
+            blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
         finally
         {

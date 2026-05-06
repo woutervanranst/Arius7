@@ -61,6 +61,17 @@ public class RelativeFileSystemTests : IDisposable
     }
 
     [Test]
+    public async Task ByteOperations_UseRelativePathsOnly()
+    {
+        var path = RelativePath.Parse("cache/tree.bin");
+        var bytes = new byte[] { 1, 2, 3, 4 };
+
+        await _fileSystem.WriteAllBytesAsync(path, bytes, CancellationToken.None);
+
+        (await _fileSystem.ReadAllBytesAsync(path, CancellationToken.None)).ShouldBe(bytes);
+    }
+
+    [Test]
     public void OpenRead_MissingFile_Throws()
     {
         Should.Throw<FileNotFoundException>(() => _fileSystem.OpenRead(RelativePath.Parse("missing.bin")));

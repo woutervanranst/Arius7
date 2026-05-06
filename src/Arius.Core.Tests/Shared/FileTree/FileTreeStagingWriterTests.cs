@@ -1,4 +1,5 @@
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
@@ -16,6 +17,13 @@ public class FileTreeStagingWriterTests
     public void GetDirectoryId_RootedPath_Throws(string directoryPath)
     {
         Should.Throw<ArgumentException>(() => FileTreePaths.GetStagingDirectoryId(directoryPath));
+    }
+
+    [Test]
+    public void GetDirectoryId_RelativePath_MatchesStringOverload()
+    {
+        FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos/2024"))
+            .ShouldBe(FileTreePaths.GetStagingDirectoryId("photos/2024"));
     }
 
     [Test]
@@ -109,6 +117,35 @@ public class FileTreeStagingWriterTests
             using var writer = new FileTreeStagingWriter(session.StagingRoot);
 
             await writer.AppendFileEntryAsync("photos/a.jpg", TestHash, TestTimestamp, TestTimestamp);
+
+            var photosId = FileTreePaths.GetStagingDirectoryId("photos");
+            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var rootPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, rootId);
+            var photosPath = FileTreePaths.GetStagingNodePath(session.StagingRoot, photosId);
+            var line = (await File.ReadAllLinesAsync(photosPath)).Single();
+            var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
+
+            entry.Name.ShouldBe("a.jpg");
+            entry.ContentHash.ShouldBe(TestHash);
+            File.Exists(rootPath).ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task AppendFileEntryAsync_RelativePathInput_WritesSingleNodeFilePerDirectoryId()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await writer.AppendFileEntryAsync(RelativePath.Parse("photos/a.jpg"), TestHash, TestTimestamp, TestTimestamp);
 
             var photosId = FileTreePaths.GetStagingDirectoryId("photos");
             var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
@@ -274,6 +311,25 @@ public class FileTreeStagingWriterTests
 
             await Assert.ThrowsAsync<ArgumentException>(async () =>
                 await writer.AppendFileEntryAsync(filePath, TestHash, TestTimestamp, TestTimestamp));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheDir))
+                Directory.Delete(cacheDir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task AppendFileEntryAsync_RootRelativePath_Throws()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        try
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await writer.AppendFileEntryAsync(RelativePath.Root, TestHash, TestTimestamp, TestTimestamp));
         }
         finally
         {

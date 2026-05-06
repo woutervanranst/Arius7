@@ -1,9 +1,12 @@
 using System.Formats.Tar;
+using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Storage;
+using Mediator;
+using NSubstitute;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -154,6 +157,83 @@ public class ArchiveRecoveryTests
         messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] complete", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Archive_UsesTypedBinaryMetadataForScanAndHashProgress()
+    {
+        using var env = new ArchiveTestEnvironment();
+
+        var mediator = env.Mediator;
+        var scannedEvents = new List<FileScannedEvent>();
+        var hashingEvents = new List<FileHashingEvent>();
+        mediator
+            .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo =>
+            {
+                switch (callInfo.ArgAt<INotification>(0))
+                {
+                    case FileScannedEvent scanned:
+                        scannedEvents.Add(scanned);
+                        break;
+                    case FileHashingEvent hashing:
+                        hashingEvents.Add(hashing);
+                        break;
+                }
+            });
+
+        var content = env.WriteRandomFile("photos/pic.jpg", 32);
+        var result = await env.ArchiveAsync(
+            BlobTier.Cool,
+            enumerateFilePairs: _ =>
+            [
+                new FilePair
+                {
+                    Path = RelativePath.Parse("photos/pic.jpg"),
+                    Binary = new BinaryFile
+                    {
+                        Path = RelativePath.Parse("photos/pic.jpg"),
+                        Size = 1234,
+                        Created = DateTimeOffset.UnixEpoch,
+                        Modified = DateTimeOffset.UnixEpoch
+                    },
+                    Pointer = null
+                }
+            ]);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        scannedEvents.ShouldHaveSingleItem();
+        scannedEvents[0].RelativePath.ShouldBe("photos/pic.jpg");
+        scannedEvents[0].FileSize.ShouldBe(1234);
+
+        hashingEvents.ShouldHaveSingleItem();
+        hashingEvents[0].RelativePath.ShouldBe("photos/pic.jpg");
+        hashingEvents[0].FileSize.ShouldBe(1234);
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocal_WritesPointerAndDeletesBinaryAtRelativePath()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 128);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt")).ShouldBeFalse();
+        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt.pointer.arius")).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 128);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true, noPointers: true);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("--remove-local cannot be combined with --no-pointers");
     }
 
     [Test]
