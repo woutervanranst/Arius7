@@ -32,7 +32,7 @@
 - [x] 5.2 Add/update list tests for segment-aware prefix matching, local/cloud merge with relative paths, pointer presence reporting, and no-local-path behavior.
 - [x] 5.3 Refactor `RestoreCommandHandler` to parse target/root strings at the boundary and represent restore candidates with relative paths, content hashes, timestamps, and chunk metadata rather than archive-time file-pair objects.
 - [x] 5.4 Refactor restore conflict checks, streaming writes, directory creation, local hashing, pointer-file creation, and progress identifiers to use `RelativePath` and `RelativeFileSystem` internally.
-- [ ] 5.5 Add/update restore tests for file restore, directory restore, segment-aware target traversal, pointer path creation, no-pointer restore, and streaming writes through the filesystem boundary.
+- [x] 5.5 Add/update restore tests for file restore, directory restore, segment-aware target traversal, pointer path creation, no-pointer restore, and streaming writes through the filesystem boundary.
 
 ## 6. Blob, Cache, And Storage Path Cleanup
 
