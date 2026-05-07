@@ -24,6 +24,7 @@ The earlier `feat/path-helpers` branch showed that a typed path model improves c
 * Developer experience should stay lightweight; path construction in tests and focused Core code should not require verbose `PathSegment.Parse("...")` chains.
 * Arius archives should remain cross-OS restorable, even when a source filesystem allows names another target OS cannot represent safely.
 * Direct local filesystem APIs should be quarantined so they do not incentivize new stringly path code.
+* Adapters should own parsing and formatting of foreign string representations, while Core owns typed Arius path semantics.
 * The solution should be smaller than a virtual filesystem library and should not require StronglyTypedId, Vogen, Zio, or code generation unless a later implementation need proves otherwise.
 
 ## Considered Options
@@ -134,6 +135,14 @@ internal sealed class RelativeFileSystem
 `LocalDirectory` is a typed root token, not a domain path. `RelativeFileSystem` converts `LocalDirectory + RelativePath` to host paths, enforces containment under the root, and is the only place that should use direct `System.IO` APIs for Arius local filesystem domain work.
 
 `RelativePath` will also be used for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
+
+The ownership rule is semantic, not directional:
+
+* Adapters own parsing and formatting.
+* Core owns typed semantics.
+* Domain contracts should not stay stringly just because they entered from the outside.
+
+That means external callers such as the CLI should parse foreign text into `RelativePath` or `PathSegment` before constructing Arius.Core contracts, and should format those typed values back to strings only when talking to foreign boundaries such as console output, configuration, or external SDKs.
 
 Public Arius.Core command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. This includes event payloads, result DTOs, query/command option models, and repository-entry-style contract models where a current string is semantically an Arius domain path or path segment. Query options such as list/restore prefixes and similar path filters should become strongly typed too when they denote Arius relative paths rather than arbitrary text. Within those contracts, use `RelativePath` for values that may contain multiple segments or denote subtree roots/prefixes, and use `PathSegment` only for values that are exactly one name component. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
 

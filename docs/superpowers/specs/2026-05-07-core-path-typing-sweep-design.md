@@ -26,7 +26,7 @@ This design finishes that sweep inside `src/Arius.Core` and converts public comm
 
 - Do not leave genuinely Arius domain path or segment values stringly in public command/query/result/event contracts.
 - Do not expose archive-time or local-filesystem operational types from public command/query/result/event contracts.
-- Do not perform a repo-wide migration outside `src/Arius.Core`, except for the minimum `Arius.Core.Tests` and `Arius.Tests.Shared` support needed by this change.
+- Do not perform a repo-wide migration outside `src/Arius.Core`, except for the minimum support needed by changed Arius.Core public contracts, `Arius.Core.Tests`, and `Arius.Tests.Shared`.
 - Do not introduce a large path taxonomy beyond what current misuse justifies.
 - Do not wrap arbitrary OS temp paths or unrelated external strings that are not part of Arius.Core repository/cache/storage path semantics.
 - Do not use broad `InternalsVisibleTo` expansion as the primary way to make stable domain primitives usable from tests.
@@ -39,8 +39,9 @@ The only non-Core updates allowed in this change are:
 
 - `src/Arius.Core.Tests` updates required by the Core API changes
 - `src/Arius.Tests.Shared` string helper moves that mirror the existing `RepositoryPaths` versus `RepositoryCachePaths` split
+- minimal adapter call-site updates in projects that construct changed Arius.Core public contracts, such as parsing `RelativePath` or `PathSegment` before constructing those contracts
 
-Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are out of scope for this pass.
+Broad follow-on migrations in Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are out of scope for this pass. Only the minimal contract-construction updates needed to keep changed Arius.Core call sites correct are in scope.
 
 ## Design
 
@@ -60,6 +61,14 @@ This sweep should actively convert eligible public contracts, including event pa
 Within this sweep, use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
 
 This includes path-like query and command options such as `ListQueryOptions.Prefix` and similar filters. If the option semantically denotes an Arius relative path, the sweep should convert it from `string` to `RelativePath` instead of leaving it stringly for convenience.
+
+Ownership is semantic, not directional:
+
+- adapters own parsing and formatting of foreign strings
+- Core owns typed Arius path semantics
+- domain contracts should not stay stringly just because they originated outside Core
+
+Concrete consequence: if `ListQueryOptions.Prefix` becomes `RelativePath?`, callers such as the CLI should call `RelativePath.Parse(...)` before constructing the query options, rather than pushing raw strings into Arius.Core and reparsing later.
 
 This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
