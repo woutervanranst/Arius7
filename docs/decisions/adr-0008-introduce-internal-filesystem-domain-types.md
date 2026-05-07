@@ -19,7 +19,7 @@ The earlier `feat/path-helpers` branch showed that a typed path model improves c
 
 * Arius.Core should make invalid archive paths unrepresentable or fail-fast close to the boundary.
 * Archive/list/restore/filetree code should operate on domain-relative paths, not host full-path strings.
-* Public command/query/result/event contracts may use stable Arius domain primitives when that makes the contract clearer.
+* Public command/query/result/event contracts should use stable Arius domain primitives when the value is genuinely an Arius domain path or path segment.
 * Stable domain primitives should not be forced internal when that creates conversion friction without protecting a meaningful boundary.
 * Developer experience should stay lightweight; path construction in tests and focused Core code should not require verbose `PathSegment.Parse("...")` chains.
 * Arius archives should remain cross-OS restorable, even when a source filesystem allows names another target OS cannot represent safely.
@@ -133,13 +133,13 @@ internal sealed class RelativeFileSystem
 
 `RelativePath` will also be used for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
 
-Public Arius.Core command/query/result/event contracts may expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
+Public Arius.Core command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
 
 ### Consequences
 
 * Good, because archive, list, restore, filetree, blob, and cache code can share one canonical relative path model instead of repeating string normalization.
 * Good, because stable path primitives are available to tests and domain-adjacent code without `InternalsVisibleTo` workarounds.
-* Good, because public contracts can use the same stable domain primitive as Core instead of repeatedly converting path strings at every boundary.
+* Good, because public contracts use the same stable domain primitive as Core instead of repeatedly converting path strings at every boundary.
 * Good, because `RelativeFileSystem` makes direct host filesystem calls visible and centralized without committing Arius to a virtual filesystem abstraction.
 * Good, because `RelativePath.Root / "photos" / "pic.jpg"` gives tests and focused Core code readable path construction while still validating every segment.
 * Good, because case-insensitive collision checks make unsafe cross-OS archives fail before snapshot publication.

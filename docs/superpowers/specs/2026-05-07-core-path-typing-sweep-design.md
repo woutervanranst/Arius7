@@ -9,13 +9,13 @@
 - `FileTreePaths` still exposes string helpers in Core, unlike the newer `RepositoryPaths` plus `Arius.Tests.Shared/RepositoryCachePaths` split
 - direct `File.*` and `Directory.*` calls in Core still frequently operate on raw strings that are really repository/cache paths
 
-This design finishes that sweep inside `src/Arius.Core` and allows public command/query/result/event contracts to use `RelativePath` or `PathSegment` when those contracts carry Arius domain paths.
+This design finishes that sweep inside `src/Arius.Core` and converts public command/query/result/event contracts to use `RelativePath` or `PathSegment` when those contracts carry Arius domain paths.
 
 ## Goals
 
 - Make `Arius.Core` internally consistent about repository/cache/storage path usage.
 - Replace path-like raw strings in Core with strongly typed path values where the path belongs to Arius domain logic.
-- Treat `RelativePath` and `PathSegment` as public Arius domain primitives that can appear in command/query/result/event contracts.
+- Treat `RelativePath` and `PathSegment` as public Arius domain primitives and actively convert eligible command/query/result/event contracts to use them.
 - Remove Core service fields such as `_l2Dir`, `_diskCacheDir`, `_snapshotsDir`, and `_chunkIndexL2Dir` when they represent typed local roots.
 - Use `RelativePath` for Arius blob names and logical blob-name prefixes throughout `IBlobContainerService` and Core callers.
 - Keep strongly typed filetree path helpers in Core and move string convenience helpers needed only by tests to `Arius.Tests.Shared`.
@@ -24,6 +24,7 @@ This design finishes that sweep inside `src/Arius.Core` and allows public comman
 
 ## Non-Goals
 
+- Do not leave genuinely Arius domain path or segment values stringly in public command/query/result/event contracts.
 - Do not expose archive-time or local-filesystem operational types from public command/query/result/event contracts.
 - Do not perform a repo-wide migration outside `src/Arius.Core`, except for the minimum `Arius.Core.Tests` and `Arius.Tests.Shared` support needed by this change.
 - Do not introduce a large path taxonomy beyond what current misuse justifies.
@@ -57,7 +58,7 @@ The purpose of making `RelativePath` and `PathSegment` public is to acknowledge 
 Architecture tests must guard this boundary:
 
 - public types in `Arius.Core.Shared.FileSystem` are allow-listed to `RelativePath` and `PathSegment` by default
-- public command/query/result/event contracts may expose `RelativePath` and `PathSegment`
+- public command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the value is genuinely an Arius domain path or path segment
 - public command/query/result/event contracts must not expose archive-time or local-filesystem operational types
 - archive-time and local-filesystem operational types must remain non-public
 
@@ -119,6 +120,8 @@ Storage implementations convert `RelativePath` to raw backend strings only at th
 
 Services that currently expose string-based snapshot blob helpers may keep compatible public helpers when they are used by out-of-scope external test projects, but internal snapshot storage flow should still become `RelativePath`-based. If a helper has only `Arius.Core` or `Arius.Core.Tests` callers after the refactor, its visibility should be narrowed to `internal`.
 
+Within `Arius.Core` public command/query/result/event contracts, compatibility is not the goal of this sweep. If a field or property is semantically an Arius relative path or path segment, it should be converted from `string` to `RelativePath` or `PathSegment` rather than left string-based for convenience.
+
 ### FileTree path helpers
 
 `FileTreePaths` should match the newer repository-cache pattern:
@@ -179,7 +182,7 @@ This does not ban all `System.IO` usage everywhere in Core. Path normalization a
 
 - Persisted on-disk file contents remain unchanged.
 - Persisted blob names remain unchanged.
-- Public command/query/result/event contracts may change from string to `RelativePath` or `PathSegment` when the value is genuinely an Arius domain path.
+- Public command/query/result/event contracts should change from string to `RelativePath` or `PathSegment` when the value is genuinely an Arius domain path or path segment.
 - Public path primitives become part of the Arius.Core API surface and should be kept stable.
 - The change is a Core behavior and type-safety change, not a repository format change.
 
@@ -205,7 +208,7 @@ Required coverage areas:
 
 - tests covering blob-path usage through `RelativePath` and `BlobPaths`
 - architecture tests for the filesystem public surface allow-list
-- architecture tests allowing public feature DTOs to expose only `RelativePath` and `PathSegment` from the filesystem domain
+- architecture tests requiring eligible public feature DTOs to use `RelativePath` and `PathSegment` for filesystem-domain values, and allowing only those filesystem primitives in public contracts
 - architecture tests keeping archive-time and local-filesystem operational types non-public
 - updated tests for `FileTreePaths` typed helpers and any moved string helpers
 - focused tests for `ChunkIndexService`, `FileTreeService`, and `SnapshotService` path behavior that would regress if stringly paths leak back in
@@ -220,7 +223,7 @@ Verification commands after implementation:
 
 ### Recommended: targeted Core-only sweep
 
-Refactor path-like strings in `Arius.Core`, make `RelativePath` and `PathSegment` public, allow command/query/result/event contracts to use those primitives when they carry Arius domain paths, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and update only the affected tests and minimal shared test helpers.
+Refactor path-like strings in `Arius.Core`, make `RelativePath` and `PathSegment` public, convert eligible command/query/result/event contracts to use those primitives, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and update only the affected tests and minimal shared test helpers.
 
 This is the chosen approach because it fixes the current inconsistent boundary without turning the change into a repo-wide migration.
 
