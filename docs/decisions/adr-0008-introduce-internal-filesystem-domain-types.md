@@ -173,10 +173,7 @@ Implementation must be confirmed by tests and code review:
 * Tests for `BinaryFile`, `PointerFile`, and `FilePair` enumeration cases: binary-only, pointer-only, binary plus pointer, invalid pointer content, inaccessible files, and streaming/no-materialization behavior.
 * Tests proving `RelativeFileSystem` strips the configured root, prevents root escape, and centralizes local filesystem operations behind `RelativePath` arguments.
 * Archive tests proving case-insensitive path collisions fail before snapshot publication.
-* List and restore tests proving prefix traversal is segment-aware and public path outputs remain strings.
-* Architecture tests allow-listing public filesystem-domain types to `RelativePath` and `PathSegment` by default.
-* Architecture tests proving public feature command/query/result/event contracts expose only allowed filesystem-domain primitive types, not operational filesystem/archive types.
-* Architecture tests proving archive-time and filesystem-boundary types remain non-public.
+* List and restore tests proving prefix traversal is segment-aware and public path outputs use `RelativePath` / `PathSegment` where the contract value is an Arius domain path or path segment.
 * A code sweep of `src/Arius.Core` for path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary, with intentional exceptions documented.
 
 ## Pros and Cons of the Options
@@ -213,13 +210,13 @@ Examples include using Zio or building an `ILocalFileSystem`-style interface wit
 
 This is the chosen option.
 
-* Good, because it strengthens Core path correctness without changing public contracts.
+* Good, because it strengthens Core path correctness and aligns eligible public contracts with the same path semantics used inside Core.
 * Good, because it keeps `RelativePath` as the domain coordinate system: archive strips the root, filetrees are built from relative paths, list traverses relative paths, and restore adds a root back only at the filesystem boundary.
 * Good, because `RelativePath` and `PathSegment` can be used directly in tests, storage boundaries, and domain-adjacent APIs without broad `InternalsVisibleTo` expansion.
 * Good, because it removes scattered `System.IO` usage without pretending filesystem behavior belongs on domain value objects.
 * Good, because it preserves the useful parts of the previous branch while avoiding its public API and abstraction-size problems.
 * Bad, because it still requires a substantial refactor and careful staged implementation.
-* Bad, because public path primitives require architecture tests and discipline to keep operational filesystem/archive types out of public contracts.
+* Bad, because public path primitives require discipline to keep operational filesystem/archive types out of public contracts.
 
 ## More Information
 

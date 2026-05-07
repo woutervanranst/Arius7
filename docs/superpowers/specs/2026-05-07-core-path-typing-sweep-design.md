@@ -56,11 +56,7 @@ The sweep follows ADR-0008's revised boundary:
 
 The purpose of making `RelativePath` and `PathSegment` public is to acknowledge that these are stable Arius domain primitives, comparable to the typed hash value objects, and to reduce conversion friction around a value that already coordinates archive, filetree, list, restore, blob-name, cache-path, and domain-adjacent public API logic.
 
-This sweep should actively convert eligible public contracts, including event payloads, query/command option models, result DTOs, and repository-entry-style contracts, when a current `string` field or property is semantically an Arius relative path or path segment.
-
-Within this sweep, use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
-
-This includes path-like query and command options such as `ListQueryOptions.Prefix` and similar filters. If the option semantically denotes an Arius relative path, the sweep should convert it from `string` to `RelativePath` instead of leaving it stringly for convenience.
+This sweep should actively convert eligible public contracts, including event payloads, query/command option models, result DTOs, and repository-entry-style contracts, when a current `string` field or property is semantically an Arius relative path or path segment. Use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component. This includes path-like query and command options such as `ListQueryOptions.Prefix` and similar filters.
 
 Ownership is semantic, not directional:
 
@@ -131,9 +127,7 @@ Storage implementations convert `RelativePath` to raw backend strings only at th
 
 Services that currently expose string-based snapshot blob helpers may keep compatible public helpers when they are used by out-of-scope external test projects, but internal snapshot storage flow should still become `RelativePath`-based. If a helper has only `Arius.Core` or `Arius.Core.Tests` callers after the refactor, its visibility should be narrowed to `internal`.
 
-Within `Arius.Core` public command/query/result/event contracts, compatibility is not the goal of this sweep. If a field or property is semantically an Arius relative path or path segment, it should be converted from `string` to `RelativePath` or `PathSegment` rather than left string-based for convenience.
-
-In ambiguous path-like contracts, default to `RelativePath`, not `PathSegment`. `PathSegment` is reserved for cases where multi-segment values are invalid by domain definition.
+Within `Arius.Core` public command/query/result/event contracts, compatibility is not the goal of this sweep. If a field or property is semantically an Arius relative path or path segment, it should be converted from `string` to `RelativePath` or `PathSegment` rather than left string-based for convenience. In ambiguous path-like contracts, default to `RelativePath`, not `PathSegment`.
 
 Repository directory contracts should stop encoding directory-ness in a trailing slash convention once they become strongly typed. Directory entries should carry canonical `RelativePath` values, and the fact that an entry is a directory should be conveyed by the contract type, not by mutating the path representation.
 
@@ -238,7 +232,7 @@ Verification commands after implementation:
 
 ### Recommended: targeted Core-only sweep
 
-Refactor path-like strings in `Arius.Core`, make `RelativePath` and `PathSegment` public, convert eligible command/query/result/event contracts to use those primitives, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and update only the affected tests and minimal shared test helpers.
+Refactor path-like strings in `Arius.Core`, make `RelativePath` and `PathSegment` public, convert eligible command/query/result/event contracts to use those primitives, change the storage interface to use `RelativePath` blob names, move test-only string helpers out of Core, and apply the minimal non-Core adapter/downstream cleanup needed to preserve typed values across changed contract boundaries.
 
 This is the chosen approach because it fixes the current inconsistent boundary without turning the change into a repo-wide migration.
 
