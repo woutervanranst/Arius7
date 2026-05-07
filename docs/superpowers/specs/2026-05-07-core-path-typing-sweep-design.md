@@ -55,12 +55,9 @@ The sweep follows ADR-0008's revised boundary:
 
 The purpose of making `RelativePath` and `PathSegment` public is to acknowledge that these are stable Arius domain primitives, comparable to the typed hash value objects, and to reduce conversion friction around a value that already coordinates archive, filetree, list, restore, blob-name, cache-path, and domain-adjacent public API logic.
 
-Architecture tests must guard this boundary:
+This sweep should actively convert eligible public contracts, including event payloads, query/command option models, result DTOs, and repository-entry-style contracts, when a current `string` field or property is semantically an Arius relative path or path segment.
 
-- public types in `Arius.Core.Shared.FileSystem` are allow-listed to `RelativePath` and `PathSegment` by default
-- public command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the value is genuinely an Arius domain path or path segment
-- public command/query/result/event contracts must not expose archive-time or local-filesystem operational types
-- archive-time and local-filesystem operational types must remain non-public
+This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
 ### Local filesystem paths
 
@@ -198,7 +195,7 @@ This does not ban all `System.IO` usage everywhere in Core. Path normalization a
   Mitigation: add the smallest missing methods needed for Arius cache/snapshot/filetree operations rather than preserving service-level `System.IO` calls.
 
 - Risk: operational filesystem/archive types drift into public command/query/result/event contracts.
-  Mitigation: add architecture tests that allow-list public filesystem primitive types and prevent operational type exposure.
+  Mitigation: keep the implementation boundary explicit during this sweep: only `RelativePath` and `PathSegment` become public filesystem primitives; operational filesystem/archive types remain internal.
 
 ## Testing And Verification
 
@@ -207,11 +204,9 @@ Implementation should follow TDD and verify behavior through `Arius.Core.Tests`.
 Required coverage areas:
 
 - tests covering blob-path usage through `RelativePath` and `BlobPaths`
-- architecture tests for the filesystem public surface allow-list
-- architecture tests requiring eligible public feature DTOs to use `RelativePath` and `PathSegment` for filesystem-domain values, and allowing only those filesystem primitives in public contracts
-- architecture tests keeping archive-time and local-filesystem operational types non-public
 - updated tests for `FileTreePaths` typed helpers and any moved string helpers
 - focused tests for `ChunkIndexService`, `FileTreeService`, and `SnapshotService` path behavior that would regress if stringly paths leak back in
+- focused tests for public events, result DTOs, query/command option models, and repository-entry-style contracts that now use `RelativePath` or `PathSegment`
 - a targeted sweep of `src/Arius.Core` to ensure the named string fields are removed, storage calls use typed blob paths, and rooted Arius local filesystem IO no longer bypasses `RelativeFileSystem`
 
 Verification commands after implementation:
