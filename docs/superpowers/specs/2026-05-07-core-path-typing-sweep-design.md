@@ -39,9 +39,9 @@ The only non-Core updates allowed in this change are:
 
 - `src/Arius.Core.Tests` updates required by the Core API changes
 - `src/Arius.Tests.Shared` string helper moves that mirror the existing `RepositoryPaths` versus `RepositoryCachePaths` split
-- minimal adapter call-site updates in projects that construct changed Arius.Core public contracts, such as parsing `RelativePath` or `PathSegment` before constructing those contracts
+- minimal adapter and downstream call-site updates in projects that construct or consume changed Arius.Core public contracts, such as parsing `RelativePath` or `PathSegment` before constructing those contracts and avoiding immediate `.ToString()` round-trips in internal consumers
 
-Broad follow-on migrations in Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are out of scope for this pass. Only the minimal contract-construction updates needed to keep changed Arius.Core call sites correct are in scope.
+Broad follow-on migrations in Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are out of scope for this pass. Only the minimal contract-construction and downstream typed-value cleanup needed to keep changed Arius.Core call sites correct and idiomatic are in scope.
 
 ## Design
 
@@ -67,8 +67,9 @@ Ownership is semantic, not directional:
 - adapters own parsing and formatting of foreign strings
 - Core owns typed Arius path semantics
 - domain contracts should not stay stringly just because they originated outside Core
+- downstream consumers should keep typed values typed until they actually cross a foreign boundary
 
-Concrete consequence: if `ListQueryOptions.Prefix` becomes `RelativePath?`, callers such as the CLI should call `RelativePath.Parse(...)` before constructing the query options, rather than pushing raw strings into Arius.Core and reparsing later.
+Concrete consequence: if `ListQueryOptions.Prefix` becomes `RelativePath?`, callers such as the CLI should call `RelativePath.Parse(...)` before constructing the query options, rather than pushing raw strings into Arius.Core and reparsing later. If a downstream consumer receives a `RelativePath` from Arius.Core, it should keep that value typed unless it is actually formatting for console output, configuration, serialization, or another foreign boundary.
 
 This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
