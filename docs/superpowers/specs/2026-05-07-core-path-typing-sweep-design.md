@@ -59,6 +59,8 @@ This sweep should actively convert eligible public contracts, including event pa
 
 Within this sweep, use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
 
+This includes path-like query and command options such as `ListQueryOptions.Prefix` and similar filters. If the option semantically denotes an Arius relative path, the sweep should convert it from `string` to `RelativePath` instead of leaving it stringly for convenience.
+
 This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
 ### Local filesystem paths
@@ -122,6 +124,8 @@ Services that currently expose string-based snapshot blob helpers may keep compa
 Within `Arius.Core` public command/query/result/event contracts, compatibility is not the goal of this sweep. If a field or property is semantically an Arius relative path or path segment, it should be converted from `string` to `RelativePath` or `PathSegment` rather than left string-based for convenience.
 
 In ambiguous path-like contracts, default to `RelativePath`, not `PathSegment`. `PathSegment` is reserved for cases where multi-segment values are invalid by domain definition.
+
+Repository directory contracts should stop encoding directory-ness in a trailing slash convention once they become strongly typed. Directory entries should carry canonical `RelativePath` values, and the fact that an entry is a directory should be conveyed by the contract type, not by mutating the path representation.
 
 ### FileTree path helpers
 
