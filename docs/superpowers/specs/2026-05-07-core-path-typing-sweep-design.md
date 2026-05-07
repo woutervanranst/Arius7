@@ -67,9 +67,9 @@ Ownership is semantic, not directional:
 - adapters own parsing and formatting of foreign strings
 - Core owns typed Arius path semantics
 - domain contracts should not stay stringly just because they originated outside Core
-- downstream consumers should keep typed values typed until they actually cross a foreign boundary
+- downstream consumers should preserve strong types for as long as possible and convert only at real foreign boundaries
 
-Concrete consequence: if `ListQueryOptions.Prefix` becomes `RelativePath?`, callers such as the CLI should call `RelativePath.Parse(...)` before constructing the query options, rather than pushing raw strings into Arius.Core and reparsing later. If a downstream consumer receives a `RelativePath` from Arius.Core, it should keep that value typed unless it is actually formatting for console output, configuration, serialization, or another foreign boundary.
+Concrete consequence: if `ListQueryOptions.Prefix` becomes `RelativePath?`, callers such as the CLI should call `RelativePath.Parse(...)` before constructing the query options, rather than pushing raw strings into Arius.Core and reparsing later. If a downstream consumer receives a `RelativePath` from Arius.Core, it should preserve that strong type for as long as possible and convert only when actually formatting for console output, configuration, serialization, or another foreign boundary.
 
 This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
@@ -136,6 +136,8 @@ Within `Arius.Core` public command/query/result/event contracts, compatibility i
 In ambiguous path-like contracts, default to `RelativePath`, not `PathSegment`. `PathSegment` is reserved for cases where multi-segment values are invalid by domain definition.
 
 Repository directory contracts should stop encoding directory-ness in a trailing slash convention once they become strongly typed. Directory entries should carry canonical `RelativePath` values, and the fact that an entry is a directory should be conveyed by the contract type, not by mutating the path representation.
+
+Any trailing slash or similar directory marker should be added only by presentation-layer formatting code, not by Core contracts or other canonical path helpers.
 
 ### FileTree path helpers
 

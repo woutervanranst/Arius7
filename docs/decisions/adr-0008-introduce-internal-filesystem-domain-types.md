@@ -141,13 +141,15 @@ The ownership rule is semantic, not directional:
 * Adapters own parsing and formatting.
 * Core owns typed semantics.
 * Domain contracts should not stay stringly just because they entered from the outside.
-* Downstream consumers should keep typed values typed until they actually cross a foreign boundary.
+* Downstream consumers should preserve strong types for as long as possible and convert only at real foreign boundaries.
 
-That means external callers such as the CLI should parse foreign text into `RelativePath` or `PathSegment` before constructing Arius.Core contracts, and should format those typed values back to strings only when talking to foreign boundaries such as console output, configuration, or external SDKs. Callers should not immediately convert typed path values back to strings just to preserve old internal call patterns.
+That means external callers such as the CLI should parse foreign text into `RelativePath` or `PathSegment` before constructing Arius.Core contracts, and should format those typed values back to strings only when talking to foreign boundaries such as console output, configuration, or external SDKs. Callers should preserve strong types for as long as possible rather than converting them back to strings just to preserve old internal call patterns.
 
 Public Arius.Core command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. This includes event payloads, result DTOs, query/command option models, and repository-entry-style contract models where a current string is semantically an Arius domain path or path segment. Query options such as list/restore prefixes and similar path filters should become strongly typed too when they denote Arius relative paths rather than arbitrary text. Within those contracts, use `RelativePath` for values that may contain multiple segments or denote subtree roots/prefixes, and use `PathSegment` only for values that are exactly one name component. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
 
 Repository directory contracts should stop encoding directory-ness in a trailing slash convention once they become strongly typed. A directory entry should carry a canonical `RelativePath`, and the fact that it represents a directory should come from the contract type itself rather than a slash-suffixed string payload.
+
+If a caller wants to display a directory marker such as a trailing slash, that formatting belongs in the presentation layer, not in the canonical path value carried by Core contracts.
 
 ### Consequences
 
