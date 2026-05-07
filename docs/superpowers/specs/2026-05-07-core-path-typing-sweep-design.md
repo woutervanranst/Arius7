@@ -57,6 +57,8 @@ The purpose of making `RelativePath` and `PathSegment` public is to acknowledge 
 
 This sweep should actively convert eligible public contracts, including event payloads, query/command option models, result DTOs, and repository-entry-style contracts, when a current `string` field or property is semantically an Arius relative path or path segment.
 
+Within this sweep, use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
+
 This sweep should enforce the boundary in production code, but adding or changing architecture-test coverage is not part of this change.
 
 ### Local filesystem paths
@@ -118,6 +120,8 @@ Storage implementations convert `RelativePath` to raw backend strings only at th
 Services that currently expose string-based snapshot blob helpers may keep compatible public helpers when they are used by out-of-scope external test projects, but internal snapshot storage flow should still become `RelativePath`-based. If a helper has only `Arius.Core` or `Arius.Core.Tests` callers after the refactor, its visibility should be narrowed to `internal`.
 
 Within `Arius.Core` public command/query/result/event contracts, compatibility is not the goal of this sweep. If a field or property is semantically an Arius relative path or path segment, it should be converted from `string` to `RelativePath` or `PathSegment` rather than left string-based for convenience.
+
+In ambiguous path-like contracts, default to `RelativePath`, not `PathSegment`. `PathSegment` is reserved for cases where multi-segment values are invalid by domain definition.
 
 ### FileTree path helpers
 

@@ -51,6 +51,8 @@ The `/ string` operator appends exactly one validated segment. It is not an impl
 
 `PathSegment` is also public because it is the companion primitive for safe segment composition. Most callers should still prefer `RelativePath / "segment"` for readability, but public `PathSegment` avoids awkwardness when callers already have a validated single filetree or directory name. C# 14 extension members may be used for cheap derived facts, such as pointer path helpers or segment extension lookup. They must not hide IO or expensive operations.
 
+Use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
+
 The public filesystem-domain surface is intentionally narrow by default:
 
 ```text
@@ -133,7 +135,7 @@ internal sealed class RelativeFileSystem
 
 `RelativePath` will also be used for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
 
-Public Arius.Core command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. This includes event payloads, result DTOs, query/command option models, and repository-entry-style contract models where a current string is semantically an Arius domain path or path segment. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
+Public Arius.Core command/query/result/event contracts should expose `RelativePath` and `PathSegment` when the contract value is genuinely an Arius relative path or path segment. This includes event payloads, result DTOs, query/command option models, and repository-entry-style contract models where a current string is semantically an Arius domain path or path segment. Within those contracts, use `RelativePath` for values that may contain multiple segments or denote subtree roots/prefixes, and use `PathSegment` only for values that are exactly one name component. Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based. Public contracts must not expose archive-time or local-filesystem operational types such as `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, or `RelativeFileSystem`.
 
 ### Consequences
 
