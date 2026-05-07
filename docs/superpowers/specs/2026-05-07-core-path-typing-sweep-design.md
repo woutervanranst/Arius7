@@ -83,6 +83,14 @@ When a service needs to enumerate, create, or delete entries under a cache root,
 - use `RelativeFileSystem` for rooted local file operations under that root
 - extend `RelativeFileSystem` when a needed Arius local filesystem operation is missing
 
+Expected additions to `RelativeFileSystem` are small and concrete. Likely examples for this sweep include:
+
+- enumerating file names under a relative directory
+- deleting all files in a relative directory
+- reading lines asynchronously from a relative file
+- appending lines asynchronously to a relative file
+- publishing a temp file atomically to a destination file within the rooted directory
+
 ### Blob storage paths
 
 Use `RelativePath` for Arius blob names and logical blob-name prefixes inside `Arius.Core`.
@@ -106,6 +114,10 @@ Because `RelativePath` is public, storage abstractions can accept it without wid
 `BlobPaths` becomes the authoritative builder for those `RelativePath` blob names and prefixes. Core callers stop calling `.ToString()` before invoking storage APIs.
 
 Storage implementations convert `RelativePath` to raw backend strings only at the SDK boundary.
+
+`ListAsync` should also return `IAsyncEnumerable<RelativePath>` rather than `IAsyncEnumerable<string>`. Blob listing inside Core should stay typed end-to-end; string conversion belongs only at the storage implementation boundary.
+
+Services that currently expose string-based snapshot blob helpers may keep compatible public helpers when they are used by out-of-scope external test projects, but internal snapshot storage flow should still become `RelativePath`-based. If a helper has only `Arius.Core` or `Arius.Core.Tests` callers after the refactor, its visibility should be narrowed to `internal`.
 
 ### FileTree path helpers
 
