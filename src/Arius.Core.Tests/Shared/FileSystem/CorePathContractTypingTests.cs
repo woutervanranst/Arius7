@@ -110,10 +110,12 @@ public class CorePathContractTypingTests
         var chunkIndexSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "ChunkIndex", "ChunkIndexService.cs"));
         var snapshotSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Snapshot", "SnapshotService.cs"));
         var fileTreeSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeService.cs"));
+        var stagingSessionSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeStagingSession.cs"));
 
         chunkIndexSource.ShouldNotContain("Directory.CreateDirectory(");
         snapshotSource.ShouldNotContain("Directory.CreateDirectory(");
         fileTreeSource.ShouldNotContain("Directory.CreateDirectory(");
+        stagingSessionSource.ShouldNotContain("new FileStream(");
     }
 
     [Test]
@@ -152,6 +154,7 @@ public class CorePathContractTypingTests
         archiveSource.ShouldNotContain("File.Delete(sealed_.TarFilePath)");
         archiveModelsSource.ShouldNotContain("string          TarFilePath");
         localFileSource.ShouldNotContain("path.ToString()");
+        localFileSource.ShouldNotContain("EnumerateFilesDepthFirst(");
     }
 
     [Test]

@@ -104,6 +104,13 @@ internal sealed class RelativeFileSystem
         return new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
     }
 
+    public FileStream OpenOrCreateFile(RelativePath path, FileAccess access, FileShare share, int bufferSize = 4096, bool useAsync = true)
+    {
+        var fullPath = _root.Resolve(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        return new FileStream(fullPath, FileMode.OpenOrCreate, access, share, bufferSize, useAsync);
+    }
+
     public string ReadAllText(RelativePath path) => File.ReadAllText(_root.Resolve(path));
 
     public byte[] ReadAllBytes(RelativePath path) => File.ReadAllBytes(_root.Resolve(path));

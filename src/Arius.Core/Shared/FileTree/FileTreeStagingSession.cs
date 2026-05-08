@@ -29,12 +29,12 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
         var cacheFileSystem = new RelativeFileSystem(fileTreeCacheDirectory);
         cacheFileSystem.CreateDirectory(RelativePath.Root);
 
-        var lockPath = fileTreeCacheDirectory.Resolve(FileTreePaths.GetStagingLockPath());
+        var lockPath = FileTreePaths.GetStagingLockPath();
         FileStream lockStream;
 
         try
         {
-            lockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
+            lockStream = cacheFileSystem.OpenOrCreateFile(lockPath, FileAccess.ReadWrite, FileShare.None, bufferSize: 1, useAsync: true);
         }
         catch (IOException ex)
         {
