@@ -1,3 +1,5 @@
+using Arius.Core.Shared.FileSystem;
+
 namespace Arius.Core.Shared.Storage;
 
 /// <summary>
@@ -75,7 +77,7 @@ public interface IBlobContainerService
     /// </para>
     /// </summary>
     Task UploadAsync(
-        string                              blobName,
+        RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
         BlobTier                            tier,
@@ -94,7 +96,7 @@ public interface IBlobContainerService
     /// </para>
     /// </summary>
     Task<Stream> OpenWriteAsync(
-        string            blobName,
+        RelativePath      blobName,
         string?           contentType       = null,
         CancellationToken cancellationToken = default);
 
@@ -105,7 +107,7 @@ public interface IBlobContainerService
     /// The caller must dispose the stream when done.
     /// </summary>
     Task<Stream> DownloadAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default);
 
     // ── HEAD ──────────────────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ public interface IBlobContainerService
     /// Does not download the blob body.
     /// </summary>
     Task<BlobMetadata> GetMetadataAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default);
 
     // ── List ──────────────────────────────────────────────────────────────────
@@ -123,8 +125,8 @@ public interface IBlobContainerService
     /// <summary>
     /// Lists all blob names that start with <paramref name="prefix"/>.
     /// </summary>
-    IAsyncEnumerable<string> ListAsync(
-        string            prefix,
+    IAsyncEnumerable<RelativePath> ListAsync(
+        RelativePath      prefix,
         CancellationToken cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────
@@ -133,7 +135,7 @@ public interface IBlobContainerService
     /// Replaces the metadata of an existing blob without touching its body.
     /// </summary>
     Task SetMetadataAsync(
-        string                              blobName,
+        RelativePath                        blobName,
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken                   cancellationToken = default);
 
@@ -141,7 +143,7 @@ public interface IBlobContainerService
     /// Sets the access tier of an existing blob.
     /// </summary>
     Task SetTierAsync(
-        string            blobName,
+        RelativePath      blobName,
         BlobTier          tier,
         CancellationToken cancellationToken = default);
 
@@ -154,8 +156,8 @@ public interface IBlobContainerService
     /// Returns immediately — the copy may still be in progress when this method returns.
     /// </summary>
     Task CopyAsync(
-        string             sourceBlobName,
-        string             destinationBlobName,
+        RelativePath       sourceBlobName,
+        RelativePath       destinationBlobName,
         BlobTier           destinationTier,
         RehydratePriority? rehydratePriority  = null,
         CancellationToken  cancellationToken  = default);
@@ -166,6 +168,6 @@ public interface IBlobContainerService
     /// Deletes the blob at <paramref name="blobName"/>. No-ops if the blob does not exist.
     /// </summary>
     Task DeleteAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default);
 }

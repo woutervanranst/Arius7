@@ -31,16 +31,16 @@ public static class RepositoryPaths
     }
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), ChunkIndexCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
+        LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(ChunkIndexCacheRelativePath));
 
     internal static LocalDirectory GetFileTreeCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), FileTreeCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
+        LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(FileTreeCacheRelativePath));
 
     internal static LocalDirectory GetSnapshotCacheRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), SnapshotCacheRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
+        LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(SnapshotCacheRelativePath));
 
     internal static LocalDirectory GetLogsRoot(string accountName, string containerName) =>
-        LocalDirectory.Parse(Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), LogsRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
+        LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(LogsRelativePath));
 
     /// <summary>
     /// Returns the logs directory for one repository.
@@ -50,5 +50,5 @@ public static class RepositoryPaths
         GetCacheDirectory(accountName, containerName, LogsRelativePath);
 
     private static string GetCacheDirectory(string accountName, string containerName, RelativePath relativePath) =>
-        Path.Combine(GetRepositoryRoot(accountName, containerName).ToString(), relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
+        GetRepositoryRoot(accountName, containerName).Resolve(relativePath).ToString();
 }

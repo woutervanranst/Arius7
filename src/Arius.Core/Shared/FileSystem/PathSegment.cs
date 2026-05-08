@@ -5,7 +5,7 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists to make path composition explicit and safe, with responsibility for rejecting separators,
 /// traversal markers, and other invalid single-segment values before they enter the filesystem domain.
 /// </summary>
-internal readonly record struct PathSegment
+public readonly record struct PathSegment
 {
     private string? RawValue { get; }
 
