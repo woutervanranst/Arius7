@@ -41,14 +41,4 @@ public static class RepositoryPaths
 
     internal static LocalDirectory GetLogsRoot(string accountName, string containerName) =>
         LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(LogsRelativePath));
-
-    /// <summary>
-    /// Returns the logs directory for one repository.
-    /// Example: <c>~/.arius/<container>/logs/</c>
-    /// </summary>
-    public static string GetLogsDirectory(string accountName, string containerName) =>
-        GetCacheDirectory(accountName, containerName, LogsRelativePath);
-
-    private static string GetCacheDirectory(string accountName, string containerName, RelativePath relativePath) =>
-        GetRepositoryRoot(accountName, containerName).Resolve(relativePath).ToString();
 }

@@ -28,9 +28,10 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
         state.IncrementFilesRestored(notification.FileSize);
         state.AddRestoreEvent(notification.RelativePath, notification.FileSize, skipped: false);
 
-        if (state.TrackedDownloads.TryGetValue(notification.RelativePath, out var td)
+        var relativePath = notification.RelativePath.ToString();
+        if (state.TrackedDownloads.TryGetValue(relativePath, out var td)
             && td.Kind == DownloadKind.LargeFile
-            && state.TrackedDownloads.TryRemove(notification.RelativePath, out var removed))
+            && state.TrackedDownloads.TryRemove(relativePath, out var removed))
         {
             state.AddRestoreBytesDownloaded(removed.CompressedSize);
         }

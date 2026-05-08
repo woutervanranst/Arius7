@@ -497,7 +497,7 @@ internal static class RestoreVerb
                     foreach (var ev in recent)
                     {
                         var sym     = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
-                        var path    = Markup.Escape(DisplayHelpers.TruncateAndLeftJustify(ev.RelativePath, 40));
+                        var path    = Markup.Escape(DisplayHelpers.TruncateAndLeftJustify(ev.RelativePath.ToString(), 40));
                         var sizeStr = Markup.Escape(ev.FileSize.Bytes().Humanize());
                         lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
                     }

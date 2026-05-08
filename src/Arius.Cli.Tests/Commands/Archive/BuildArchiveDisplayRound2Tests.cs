@@ -1,4 +1,5 @@
 using Arius.Cli.Commands.Archive;
+using Arius.Core.Shared.FileSystem;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -46,7 +47,7 @@ public class BuildArchiveDisplayRound2Tests
     public void BuildArchiveDisplay_ShowsRelativePath_NotJustFilename()
     {
         var state = new ProgressState();
-        state.AddFile("some/deep/path/file.bin", 1024);
+        state.AddFile(RelativePath.Parse("some/deep/path/file.bin"), 1024);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("some/deep/path/file.bin");
@@ -57,7 +58,7 @@ public class BuildArchiveDisplayRound2Tests
     {
         var longPath = "a/very/long/directory/structure/with/file.bin"; // > 30 chars
         var state = new ProgressState();
-        state.AddFile(longPath, 2048);
+        state.AddFile(RelativePath.Parse(longPath), 2048);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("...");
@@ -68,7 +69,7 @@ public class BuildArchiveDisplayRound2Tests
     public void BuildArchiveDisplay_ShowsSize_ForHashingState()
     {
         var state = new ProgressState();
-        state.AddFile("doc.pdf", 5_000_000);
+        state.AddFile(RelativePath.Parse("doc.pdf"), 5_000_000);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("MB");

@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -133,7 +134,7 @@ internal static class ArchiveVerb
 
                     CreateHashProgress = (relativePath, fileSize) =>
                     {
-                        if (progressState.TrackedFiles.TryGetValue(relativePath, out var file))
+                        if (progressState.TrackedFiles.TryGetValue(RelativePath.Parse(relativePath), out var file))
                             return new Progress<long>(bytes => file.SetBytesProcessed(bytes));
                         return new Progress<long>();
                     },
@@ -295,7 +296,7 @@ internal static class ArchiveVerb
                 var pct = file.TotalBytes > 0 ? (double)file.BytesProcessed / file.TotalBytes : 0.0;
                 var (cur, tot, unit) = DisplayHelpers.SplitSizePair(file.BytesProcessed, file.TotalBytes);
                 rowData.Add((
-                    DisplayHelpers.TruncateAndLeftJustify(file.RelativePath, 30),
+                    DisplayHelpers.TruncateAndLeftJustify(file.RelativePath.ToString(), 30),
                     DisplayHelpers.RenderProgressBar(pct, 12),
                     file.State == FileState.Hashing ? "Hashing" : "Uploading",
                     Math.Min(pct * 100, 100).ToString("F0", CultureInfo.InvariantCulture) + "%",

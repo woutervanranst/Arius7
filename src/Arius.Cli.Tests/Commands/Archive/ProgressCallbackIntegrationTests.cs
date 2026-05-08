@@ -1,3 +1,5 @@
+using Arius.Core.Shared.FileSystem;
+
 namespace Arius.Cli.Tests.Commands.Archive;
 
 /// <summary>
@@ -14,12 +16,13 @@ public class ProgressCallbackIntegrationTests
     public void CreateHashProgress_UpdatesBytesProcessed()
     {
         var state = new ProgressState();
-        state.AddFile("large.bin", 5_000_000);
-        state.SetFileHashed("large.bin", FakeContentHash('a'));
+        var path  = RelativePath.Parse("large.bin");
+        state.AddFile(path, 5_000_000);
+        state.SetFileHashed(path, FakeContentHash('a'));
 
         // Simulate what CliBuilder wires: look up TrackedFile by relative path
         IProgress<long>? hashProgress = null;
-        if (state.TrackedFiles.TryGetValue("large.bin", out var file))
+        if (state.TrackedFiles.TryGetValue(path, out var file))
             hashProgress = new Progress<long>(bytes => file.SetBytesProcessed(bytes));
 
         hashProgress.ShouldNotBeNull();
@@ -34,8 +37,9 @@ public class ProgressCallbackIntegrationTests
     public void CreateUploadProgress_LargeFile_ResetsThenUpdatesBytesProcessed()
     {
         var state = new ProgressState();
-        state.AddFile("chunk.bin", 1_000_000);
-        state.SetFileHashed("chunk.bin", FakeContentHash('b'));
+        var path  = RelativePath.Parse("chunk.bin");
+        state.AddFile(path, 1_000_000);
+        state.SetFileHashed(path, FakeContentHash('b'));
         state.SetFileUploading(FakeContentHash('b'));
 
         IProgress<long>? uploadProgress = null;
@@ -53,11 +57,11 @@ public class ProgressCallbackIntegrationTests
         }
 
         uploadProgress.ShouldNotBeNull();
-        state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(0L);
+        state.TrackedFiles[path].BytesProcessed.ShouldBe(0L);
 
         uploadProgress.Report(450_000);
-        WaitFor(() => state.TrackedFiles["chunk.bin"].BytesProcessed == 450_000L);
-        state.TrackedFiles["chunk.bin"].BytesProcessed.ShouldBe(450_000L);
+        WaitFor(() => state.TrackedFiles[path].BytesProcessed == 450_000L);
+        state.TrackedFiles[path].BytesProcessed.ShouldBe(450_000L);
     }
 
     [Test]

@@ -17,7 +17,7 @@ public class RepositoryPathsTests
         RepositoryCachePaths.GetChunkIndexCacheDirectory("account", "container").ShouldBe(Path.Combine(root, "chunk-index"));
         RepositoryCachePaths.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
         RepositoryCachePaths.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
-        RepositoryPaths.GetLogsDirectory("account", "container").ShouldBe(Path.Combine(root, "logs"));
+        RepositoryPaths.GetLogsRoot("account", "container").ToString().ShouldBe(Path.Combine(root, "logs"));
     }
 
     [Test]
@@ -37,6 +37,9 @@ public class RepositoryPathsTests
         RepositoryPaths.GetSnapshotCacheRoot("account", "container").ToString()
             .ShouldBe(RepositoryCachePaths.GetSnapshotCacheDirectory("account", "container"));
         RepositoryPaths.GetLogsRoot("account", "container").ToString()
-            .ShouldBe(RepositoryPaths.GetLogsDirectory("account", "container"));
+            .ShouldBe(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".arius", "account-container", "logs"));
+
+        typeof(RepositoryPaths).GetMethod("GetLogsDirectory")
+            .ShouldBeNull();
     }
 }

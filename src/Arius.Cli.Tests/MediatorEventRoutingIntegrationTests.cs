@@ -1,6 +1,7 @@
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,10 +46,10 @@ public class MediatorEventRoutingIntegrationTests
         var state    = sp.GetRequiredService<ProgressState>();
 
         // Publish all archive notification events in pipeline order
-        await mediator.Publish(new FileScannedEvent("a.bin", 100));
+        await mediator.Publish(new FileScannedEvent(RelativePath.Parse("a.bin"), 100));
         await mediator.Publish(new ScanCompleteEvent(1, 100));
-        await mediator.Publish(new FileHashingEvent("a.bin", 100));
-        await mediator.Publish(new FileHashedEvent("a.bin", FakeContentHash('a')));
+        await mediator.Publish(new FileHashingEvent(RelativePath.Parse("a.bin"), 100));
+        await mediator.Publish(new FileHashedEvent(RelativePath.Parse("a.bin"), FakeContentHash('a')));
         await mediator.Publish(new TarBundleStartedEvent());
         await mediator.Publish(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100));
         await mediator.Publish(new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('a')]));
@@ -63,7 +64,7 @@ public class MediatorEventRoutingIntegrationTests
         state.FilesHashed.ShouldBe(1L);
         state.TarsUploaded.ShouldBe(1L);
         // a.bin was removed after tar entry added
-        state.TrackedFiles.ContainsKey("a.bin").ShouldBeFalse();
+        state.TrackedFiles.ContainsKey(RelativePath.Parse("a.bin")).ShouldBeFalse();
         state.SnapshotComplete.ShouldBeTrue();
     }
 
@@ -75,9 +76,9 @@ public class MediatorEventRoutingIntegrationTests
         var state    = sp.GetRequiredService<ProgressState>();
 
         await mediator.Publish(new RestoreStartedEvent(10));
-        await mediator.Publish(new FileRestoredEvent("a.txt", 1000L));
-        await mediator.Publish(new FileRestoredEvent("b.txt", 2000L));
-        await mediator.Publish(new FileSkippedEvent("c.txt", 500L));
+        await mediator.Publish(new FileRestoredEvent(RelativePath.Parse("a.txt"), 1000L));
+        await mediator.Publish(new FileRestoredEvent(RelativePath.Parse("b.txt"), 2000L));
+        await mediator.Publish(new FileSkippedEvent(RelativePath.Parse("c.txt"), 500L));
         await mediator.Publish(new RehydrationStartedEvent(4, 2048));
 
         state.RestoreTotalFiles.ShouldBe(10);
@@ -86,5 +87,10 @@ public class MediatorEventRoutingIntegrationTests
         state.FilesSkipped.ShouldBe(1L);
         state.BytesSkipped.ShouldBe(500L);
         state.RehydrationChunkCount.ShouldBe(4);
+        state.RecentRestoreEvents.Select(e => e.RelativePath).ShouldBe([
+            RelativePath.Parse("a.txt"),
+            RelativePath.Parse("b.txt"),
+            RelativePath.Parse("c.txt")
+        ]);
     }
 }
