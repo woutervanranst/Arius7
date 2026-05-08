@@ -102,9 +102,7 @@ internal sealed class PricingConfig
     {
         try
         {
-            var directory = LocalDirectory.Parse(System.IO.Path.GetDirectoryName(path) ?? throw new ArgumentException("Path must include a directory.", nameof(path)));
-            var fileName = PathSegment.Parse(System.IO.Path.GetFileName(path));
-            var fileSystem = new RelativeFileSystem(directory);
+            var (fileSystem, fileName) = RelativeFileSystem.FromFilePath(path);
             using var stream = fileSystem.OpenReadFromRoot(fileName);
             return LoadFromFile(stream, path);
         }

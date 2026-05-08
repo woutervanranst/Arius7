@@ -17,11 +17,11 @@ namespace Arius.Core.Shared.FileTree;
 /// Cache strategy:
 /// <list type="bullet">
 ///   <item>Filetree blobs are immutable (content-addressed). A cached file is never stale.</item>
-///   <item><see cref="ValidateAsync"/> compares the latest local snapshot (via
-///     <see cref="SnapshotService.GetDiskCacheDirectory"/>) with the latest remote snapshot.
+///   <item><see cref="ValidateAsync"/> compares the latest local snapshot from
+///     the local snapshot cache with the latest remote snapshot.
 ///     On mismatch, it lists all remote <c>filetrees/</c> blobs and materializes an empty marker
 ///     file on disk for each one not already cached, so that <see cref="ExistsInRemote"/> is
-///     always a <c>File.Exists</c> check on both fast and slow paths.</item>
+///     always a rooted relative filesystem existence check on both fast and slow paths.</item>
 ///   <item>On snapshot mismatch the chunk-index L2 directory is also deleted so
 ///     <see cref="ChunkIndexService"/> is forced to re-download stale shards.</item>
 /// </list>
@@ -306,7 +306,7 @@ public sealed class FileTreeService
         // Materialize empty marker files for all remote filetree blobs not yet cached.
         //   Filetree blobs are immutable and content-addressed, so one remote list gives us a
         //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
-        //   any uncached remote trees now so ExistsInRemote() can stay a cheap local File.Exists()
+        //   any uncached remote trees now so ExistsInRemote() can stay a cheap local file existence
         //   check during the entire build instead of doing a remote existence probe per tree node.
         await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken))
         {
@@ -333,7 +333,7 @@ public sealed class FileTreeService
     /// <summary>
     /// Returns <c>true</c> if the filetree blob for the given <paramref name="hash"/> exists in
     /// the remote (or is already cached locally). After <see cref="ValidateAsync"/> has run, this
-    /// is always a plain <see cref="File.Exists"/> check — empty marker files represent remote
+    /// is always a rooted relative filesystem existence check — empty marker files represent remote
     /// blobs that have not yet been fully downloaded.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when called before <see cref="ValidateAsync"/>.</exception>

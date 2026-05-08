@@ -184,6 +184,7 @@ public class CorePathContractTypingTests
         localFileSource.ShouldNotContain("EnumerateFilesDepthFirst(");
         pricingConfigSource.ShouldNotContain("Directory.GetCurrentDirectory()");
         pricingConfigSource.ShouldNotContain("File.OpenRead(path)");
+        pricingConfigSource.ShouldNotContain("System.IO.Path.");
         encryptionInterfaceSource.ShouldNotContain("string filePath");
         plaintextEncryptionSource.ShouldNotContain("string filePath");
         plaintextEncryptionSource.ShouldNotContain("File.OpenRead(filePath)");

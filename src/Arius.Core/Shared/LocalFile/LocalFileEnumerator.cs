@@ -29,8 +29,8 @@ internal sealed class LocalFileEnumerator
     /// Enumerates all <see cref="FilePair"/> objects under <paramref name="rootDirectory"/>
     /// using a single-pass depth-first walk.
     ///
-    /// When a binary file is encountered, <see cref="File.Exists"/> is used to check for
-    /// its pointer counterpart; the pair is yielded immediately without buffering.
+    /// When a binary file is encountered, its pointer counterpart is resolved from the
+    /// rooted relative filesystem enumeration; the pair is yielded immediately.
     /// When a pointer file is encountered, if its binary exists it is skipped (already
     /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
     /// No dictionaries or state-tracking collections are used.
@@ -69,7 +69,7 @@ internal sealed class LocalFileEnumerator
             }
             else
             {
-                // Binary file: check for pointer via File.Exists
+                // Binary file: check for pointer via the rooted relative filesystem enumeration.
                 var pointerPath = relativePath.ToPointerPath();
                 var hasPointer  = enumeratedPaths.Contains(pointerPath);
                 ContentHash? pointerHash = null;
