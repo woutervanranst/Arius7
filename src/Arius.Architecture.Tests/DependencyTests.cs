@@ -91,6 +91,30 @@ public class DependencyTests
             $"Mediator command/query handlers must live in Arius.Core. Violations: {string.Join(", ", nonCoreHandlerTypes)}");
     }
 
+    [Test]
+    public void Selected_Core_Implementation_Types_Should_Remain_Internal()
+    {
+        var coreAssembly = typeof(Core.AssemblyMarker).Assembly;
+        var typeNames = new[]
+        {
+            "Arius.Core.Shared.FileSystem.LocalDirectory",
+            "Arius.Core.Shared.FileSystem.LocalDirectoryEntry",
+            "Arius.Core.Shared.FileSystem.LocalFileEntry",
+            "Arius.Core.Shared.FileSystem.RelativeFileSystem",
+            "Arius.Core.Shared.LocalFile.BinaryFile",
+            "Arius.Core.Shared.LocalFile.PointerFile",
+            "Arius.Core.Shared.LocalFile.FilePair"
+        };
+
+        foreach (var typeName in typeNames)
+        {
+            var type = coreAssembly.GetType(typeName, throwOnError: false);
+
+            type.ShouldNotBeNull($"Expected type '{typeName}' to exist in Arius.Core.");
+            type!.IsNotPublic.ShouldBeTrue($"Type '{typeName}' should remain internal.");
+        }
+    }
+
     // Helper: produce a human-readable summary of rule violations for failure messages
     private static string DescribeViolations(IArchRule rule)
     {
