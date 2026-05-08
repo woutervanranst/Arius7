@@ -101,17 +101,17 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         var localSnapshot = BuildLocalDirectorySnapshot(localFileSystem, currentRelativeDirectory);
         var cloudEntries = treeEntries ?? [];
 
-        var yieldedDirectoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var yieldedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var yieldedDirectoryNames = new HashSet<PathSegment>();
+        var yieldedFileNames = new HashSet<PathSegment>();
         var recursionTargets = new List<RecursionTarget>();
 
         foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
         {
-            var directoryName = ParseDirectoryEntryName(entry.Name);
+            var directoryName = entry.Name;
             var relativePath = currentRelativeDirectory / directoryName;
-            var existsLocally = localSnapshot.Directories.TryGetValue(directoryName.ToString(), out _);
+            var existsLocally = localSnapshot.Directories.TryGetValue(directoryName, out _);
 
-            yieldedDirectoryNames.Add(directoryName.ToString());
+            yieldedDirectoryNames.Add(directoryName);
             yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
             if (recursive)
@@ -152,7 +152,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         var hashes = visibleCloudFiles
-            .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
+            .Where(candidate => MatchesFilter(candidate.Entry.Name.ToString(), filter))
             .Select(candidate => candidate.Entry.ContentHash)
             .Distinct()
             .ToList();
@@ -162,7 +162,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var candidate in visibleCloudFiles)
         {
-            if (!MatchesFilter(candidate.Entry.Name, filter))
+            if (!MatchesFilter(candidate.Entry.Name.ToString(), filter))
             {
                 continue;
             }
@@ -188,7 +188,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var localFile in localSnapshot.Files.Values)
         {
-            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name, filter))
+            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name.ToString(), filter))
             {
                 continue;
             }
@@ -250,7 +250,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
-                .FirstOrDefault(e => string.Equals(ParseDirectoryEntryName(e.Name).ToString(), segment.ToString(), StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(e => string.Equals(e.Name.ToString(), segment.ToString(), StringComparison.OrdinalIgnoreCase));
 
             currentHash = nextDirectory?.FileTreeHash;
         }
@@ -265,13 +265,13 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             return LocalDirectorySnapshot.Empty;
         }
 
-        var directories = new Dictionary<string, LocalDirectoryState>(StringComparer.OrdinalIgnoreCase);
+        var directories = new Dictionary<PathSegment, LocalDirectoryState>();
         try
         {
             foreach (var directory in localFileSystem.EnumerateDirectories(currentRelativeDirectory)
                          .OrderBy(d => d.Path.Name.ToString(), StringComparer.OrdinalIgnoreCase))
             {
-                directories[directory.Path.Name.ToString()] = new LocalDirectoryState(directory.Path.Name.ToString(), directory.Path);
+                directories[directory.Path.Name] = new LocalDirectoryState(directory.Path.Name, directory.Path);
             }
         }
         catch (Exception ex)
@@ -323,8 +323,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private static LocalDirectory? ParseLocalRoot(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
 
-    private static PathSegment ParseDirectoryEntryName(string name) => PathSegment.Parse(name.TrimEnd('/'));
-
     private static bool MatchesFilter(string fileName, string? filter) =>
         filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);
 
@@ -332,15 +330,15 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private sealed record RecursionTarget(RelativePath RelativeDirectory, FileTreeHash? TreeHash, bool HasLocalDirectory);
 
-    private sealed record LocalDirectoryState(string Name, RelativePath Path);
+    private sealed record LocalDirectoryState(PathSegment Name, RelativePath Path);
 
     private sealed record LocalDirectorySnapshot(
-        IReadOnlyDictionary<string, LocalDirectoryState> Directories,
-        IReadOnlyDictionary<string, LocalFileState> Files)
+        IReadOnlyDictionary<PathSegment, LocalDirectoryState> Directories,
+        IReadOnlyDictionary<PathSegment, LocalFileState> Files)
     {
         public static LocalDirectorySnapshot Empty { get; } =
             new LocalDirectorySnapshot(
-                new Dictionary<string, LocalDirectoryState>(StringComparer.OrdinalIgnoreCase),
-                new Dictionary<string, LocalFileState>(StringComparer.OrdinalIgnoreCase));
+                new Dictionary<PathSegment, LocalDirectoryState>(),
+                new Dictionary<PathSegment, LocalFileState>());
     }
 }

@@ -5,19 +5,19 @@ namespace Arius.Core.Features.ListQuery;
 
 internal static class LocalFileSnapshotBuilder
 {
-    public static Dictionary<string, LocalFileState> BuildFiles(
+    public static Dictionary<PathSegment, LocalFileState> BuildFiles(
         IEnumerable<LocalFileEntry> fileInfos,
         Func<RelativePath, bool> fileExists,
         Func<RelativePath, ContentHash?> readPointerHash)
     {
-        var files = new Dictionary<string, LocalFileState>(StringComparer.OrdinalIgnoreCase);
+        var files = new Dictionary<PathSegment, LocalFileState>();
         var enumeratedPaths = fileInfos.Select(file => file.Path).ToHashSet();
 
         foreach (var file in fileInfos)
         {
             if (TryGetPointerBinaryPath(file.Path, out var binaryPath))
             {
-                var binaryName = binaryPath.Name.ToString();
+                var binaryName = binaryPath.Name;
 
                 if (files.TryGetValue(binaryName, out var existingBinary))
                 {
@@ -48,8 +48,8 @@ internal static class LocalFileSnapshotBuilder
             {
                 var pointerPath = file.Path.ToPointerPath();
                 var hasPointer = enumeratedPaths.Contains(pointerPath);
-                files[file.Path.Name.ToString()] = new LocalFileState(
-                    Name: file.Path.Name.ToString(),
+                files[file.Path.Name] = new LocalFileState(
+                    Name: file.Path.Name,
                     Path: file.Path,
                     BinaryExists: true,
                     PointerExists: hasPointer,
@@ -77,7 +77,7 @@ internal static class LocalFileSnapshotBuilder
 }
 
 internal sealed record LocalFileState(
-    string Name,
+    PathSegment Name,
     RelativePath Path,
     bool BinaryExists,
     bool PointerExists,

@@ -80,6 +80,15 @@ public readonly record struct RelativePath
             return true;
         }
 
+        if (value.Length >= 3
+            && char.IsAsciiLetter(value[0])
+            && value[1] == ':'
+            && (value[2] == '/' || value[2] == '\\'))
+        {
+            path = default;
+            return false;
+        }
+
         if (value.StartsWith('/') || value.StartsWith('\\') || value.EndsWith('/') || value.EndsWith('\\'))
         {
             path = default;

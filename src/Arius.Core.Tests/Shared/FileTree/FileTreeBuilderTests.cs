@@ -47,6 +47,8 @@ public class FileTreeBuilderTests
         await File.WriteAllLinesAsync(stagingRoot.Resolve(FileTreePaths.GetStagingNodePath(directoryId)), lines);
     }
 
+    private static PathSegment FileName(string name) => PathSegment.Parse(name);
+
     [Test]
     public async Task SynchronizeAsync_EmptyManifest_ReturnsNull()
     {
@@ -238,14 +240,14 @@ public class FileTreeBuilderTests
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
             var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
-                Name = "a.txt",
+                Name = FileName("a.txt"),
                 ContentHash = FakeContentHash('a'),
                 Created = now,
                 Modified = now
             });
             var second = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
-                Name = "a.txt",
+                Name = FileName("a.txt"),
                 ContentHash = FakeContentHash('b'),
                 Created = now,
                 Modified = now
@@ -274,14 +276,14 @@ public class FileTreeBuilderTests
         var enumerationAdvancedPastDuplicate = false;
         var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            Name = "a.txt",
+            Name = FileName("a.txt"),
             ContentHash = FakeContentHash('a'),
             Created = now,
             Modified = now
         });
         var duplicate = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            Name = "a.txt",
+            Name = FileName("a.txt"),
             ContentHash = FakeContentHash('b'),
             Created = now,
             Modified = now
@@ -334,7 +336,7 @@ public class FileTreeBuilderTests
                 childId,
                 FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
-                    Name = "a.jpg",
+                    Name = FileName("a.jpg"),
                     ContentHash = FakeContentHash('c'),
                     Created = now,
                     Modified = now
@@ -358,7 +360,7 @@ public class FileTreeBuilderTests
                 childId,
                 FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
                 {
-                    Name = "a.jpg",
+                    Name = FileName("a.jpg"),
                     ContentHash = FakeContentHash('c'),
                     Created = now,
                     Modified = now
@@ -590,8 +592,8 @@ public class FileTreeBuilderTests
         await Task.WhenAll(uploads);
 
         blobs.Uploaded.Count.ShouldBe(2_000);
-        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}/blob-0");
-        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}/blob-1999");
+        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}blob-0");
+        blobs.Uploaded.Keys.ShouldContain($"{BlobPaths.FileTrees}blob-1999");
     }
 
     [Test]
@@ -602,7 +604,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = FileName("file.txt"),
                 ContentHash = FakeContentHash('d'),
                 Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)
@@ -623,7 +625,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = FileName("file.txt"),
                 ContentHash = FakeContentHash('d'),
                 Created = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
@@ -650,7 +652,7 @@ public class FileTreeBuilderTests
         [
             new FileEntry
             {
-                Name = "file.txt",
+                Name = FileName("file.txt"),
                 ContentHash = FakeContentHash('a'),
                 Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                 Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)

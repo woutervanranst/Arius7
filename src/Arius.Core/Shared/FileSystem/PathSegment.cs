@@ -32,7 +32,7 @@ public readonly record struct PathSegment
     /// </summary>
     public static bool TryParse(string? value, out PathSegment segment)
     {
-        if (string.IsNullOrEmpty(value) || value is "." or "..")
+        if (string.IsNullOrWhiteSpace(value) || value is "." or "..")
         {
             segment = default;
             return false;

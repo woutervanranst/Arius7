@@ -46,6 +46,9 @@ public class CorePathContractTypingTests
 
         typeof(FileDispositionEvent).GetProperty(nameof(FileDispositionEvent.RelativePath))!.PropertyType
             .ShouldBe(typeof(RelativePath));
+
+        typeof(LocalFileState).GetProperty(nameof(LocalFileState.Name))!.PropertyType
+            .ShouldBe(typeof(PathSegment));
     }
 
     [Test]
@@ -61,6 +64,42 @@ public class CorePathContractTypingTests
             .ShouldBeNull();
         typeof(ChunkIndexService).GetField("_l2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             .ShouldBeNull();
+    }
+
+    [Test]
+    public void SnapshotApis_KeepBlobNamesTypedInsideCore()
+    {
+        typeof(SnapshotService).GetMethod(nameof(SnapshotService.ListBlobNamesAsync))!
+            .ReturnType
+            .ShouldBe(typeof(Task<IReadOnlyList<RelativePath>>));
+    }
+
+    [Test]
+    public async Task SharedServices_RouteCacheRootCreationThroughRelativeFileSystem()
+    {
+        var coreRoot = GetCoreRoot();
+
+        var chunkIndexSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "ChunkIndex", "ChunkIndexService.cs"));
+        var snapshotSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Snapshot", "SnapshotService.cs"));
+        var fileTreeSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeService.cs"));
+
+        chunkIndexSource.ShouldNotContain("Directory.CreateDirectory(");
+        snapshotSource.ShouldNotContain("Directory.CreateDirectory(");
+        fileTreeSource.ShouldNotContain("Directory.CreateDirectory(");
+    }
+
+    [Test]
+    public async Task SharedServices_DoNotDowngradeTypedBlobPathsBackToStringsInternally()
+    {
+        var coreRoot = GetCoreRoot();
+
+        var snapshotSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Snapshot", "SnapshotService.cs"));
+        var fileTreeSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeService.cs"));
+
+        snapshotSource.ShouldNotContain("candidate.Name.ToString()");
+        snapshotSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
+        fileTreeSource.ShouldNotContain("Select(name => name.ToString())");
+        fileTreeSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
     }
 
     [Test]
@@ -92,6 +131,12 @@ public class CorePathContractTypingTests
         typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
             .GetMethod(nameof(Arius.Core.Shared.LocalFile.LocalFileEnumerator.Enumerate), [typeof(string)])
             .ShouldBeNull();
+    }
+
+    private static string GetCoreRoot()
+    {
+        var assemblyDirectory = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)!;
+        return Path.GetFullPath(Path.Combine(assemblyDirectory, "..", "..", "..", "..", "Arius.Core"));
     }
 
 }

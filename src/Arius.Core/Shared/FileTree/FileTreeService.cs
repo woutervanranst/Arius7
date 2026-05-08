@@ -64,8 +64,7 @@ public sealed class FileTreeService
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _snapshotCacheFileSystem = new RelativeFileSystem(snapshotCacheRoot);
         _chunkIndexCacheFileSystem = new RelativeFileSystem(chunkIndexCacheRoot);
-
-        Directory.CreateDirectory(diskCacheRoot.ToString());
+        _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
         // Note: snapshot cache root is created by SnapshotService; we only read it here.
     }
 
@@ -271,22 +270,22 @@ public sealed class FileTreeService
             return;
 
         // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
-        var latestLocal = _snapshotCacheFileSystem.EnumerateFileNames(RelativePath.Root)
-            .Select(name => name.ToString())
-            .OrderByDescending(name => name, StringComparer.Ordinal)
+        PathSegment? latestLocal = _snapshotCacheFileSystem.EnumerateFileNames(RelativePath.Root)
+            .OrderByDescending(name => name.ToString(), StringComparer.Ordinal)
+            .Cast<PathSegment?>()
             .FirstOrDefault();
 
         // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
-        var remoteSnapshots = new List<string>();
+        var remoteSnapshots = new List<PathSegment>();
         await foreach (var name in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken))
         {
-            var fileName = name.Name.ToString();
-            if (!string.IsNullOrEmpty(fileName))
-                remoteSnapshots.Add(fileName);
+            if (name != RelativePath.Root)
+                remoteSnapshots.Add(name.Name);
         }
 
-        var latestRemote = remoteSnapshots
-            .OrderByDescending(name => name, StringComparer.Ordinal)
+        PathSegment? latestRemote = remoteSnapshots
+            .OrderByDescending(name => name.ToString(), StringComparer.Ordinal)
+            .Cast<PathSegment?>()
             .FirstOrDefault();
 
         // If there are no remote snapshots, the repository is empty — fast path.
@@ -297,8 +296,9 @@ public sealed class FileTreeService
         }
 
         // Fast path: this machine wrote the last snapshot.
-        if (latestLocal is not null &&
-            string.Equals(latestLocal, latestRemote, StringComparison.Ordinal))
+        if (latestLocal is { } localSnapshot &&
+            latestRemote is { } remoteSnapshot &&
+            localSnapshot == remoteSnapshot)
         {
             _validated = true;
             return;
@@ -313,8 +313,7 @@ public sealed class FileTreeService
         await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var hash     = blobName.Name.ToString(); // strip "filetrees/" prefix
-            var relativePath = RelativePath.Parse(hash);
+            var relativePath = RelativePath.Root / blobName.Name;
             if (!_diskCacheFileSystem.FileExists(relativePath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
@@ -345,6 +344,6 @@ public sealed class FileTreeService
         if (!_validated)
             throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
-        return _diskCacheFileSystem.FileExists(RelativePath.Parse(hash.ToString()));
+        return _diskCacheFileSystem.FileExists(FileTreePaths.GetCachePath(hash));
     }
 }

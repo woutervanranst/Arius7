@@ -31,7 +31,7 @@ public class FileTreeServiceTests
     [
         new FileEntry
         {
-            Name        = fileName,
+            Name        = PathSegment.Parse(fileName),
             ContentHash = ContentHash.Parse(NormalizeHash(hash)),
             Created  = s_ts1,
             Modified = s_ts2
@@ -83,7 +83,7 @@ public class FileTreeServiceTests
             var result = await svc.ReadAsync(hash);
 
             result.Count.ShouldBe(1);
-            result[0].Name.ShouldBe("a.txt");
+            result[0].Name.ShouldBe(PathSegment.Parse("a.txt"));
             // No Azure download should have been requested
             blobs.RequestedBlobNames.ShouldBeEmpty();
         }
@@ -114,7 +114,7 @@ public class FileTreeServiceTests
             var result = await svc.ReadAsync(hash);
 
             result.Count.ShouldBe(1);
-            result[0].Name.ShouldBe("photo.jpg");
+            result[0].Name.ShouldBe(PathSegment.Parse("photo.jpg"));
 
             // Azure was called
             blobs.RequestedBlobNames.ShouldContain(blobName);
@@ -155,9 +155,9 @@ public class FileTreeServiceTests
 
             // Both should return the correct blob
             results[0].Count.ShouldBe(1);
-            results[0][0].Name.ShouldBe("concurrent.txt");
+            results[0][0].Name.ShouldBe(PathSegment.Parse("concurrent.txt"));
             results[1].Count.ShouldBe(1);
-            results[1][0].Name.ShouldBe("concurrent.txt");
+            results[1][0].Name.ShouldBe(PathSegment.Parse("concurrent.txt"));
 
             // Disk file must exist and have content (not empty / corrupt)
             var diskPath = ResolveCachePath(cacheDir, hash);
@@ -201,11 +201,11 @@ public class FileTreeServiceTests
 
             var results = await Task.WhenAll(t1, t2);
 
-            results.SelectMany(result => result).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
+            results.SelectMany(result => result).All(entry => entry.Name == PathSegment.Parse("partial.txt")).ShouldBeTrue();
 
             var diskPath = ResolveCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
-            FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe("partial.txt");
+            FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe(PathSegment.Parse("partial.txt"));
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
         }
         finally
@@ -281,7 +281,7 @@ public class FileTreeServiceTests
             {
                 new FileEntry
                 {
-                    Name = "alpha.txt",
+                    Name = PathSegment.Parse("alpha.txt"),
                     ContentHash = ContentHash.Parse(new string('a', 64)),
                     Created = s_ts1,
                     Modified = s_ts2
@@ -292,7 +292,7 @@ public class FileTreeServiceTests
             var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
             var expectedPlaintext = payload.Plaintext.ToArray();
 
-            entries[0] = ((FileEntry)entries[0]) with { Name = "omega.txt" };
+            entries[0] = ((FileEntry)entries[0]) with { Name = PathSegment.Parse("omega.txt") };
 
             await svc.WriteAsync(payload);
 
@@ -329,7 +329,7 @@ public class FileTreeServiceTests
             [
                 new FileEntry
                 {
-                    Name = "photo.jpg",
+                    Name = PathSegment.Parse("photo.jpg"),
                     ContentHash = ContentHash.Parse(new string('a', 64)),
                     Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                     Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
@@ -373,14 +373,14 @@ public class FileTreeServiceTests
             [
                 new FileEntry
                 {
-                    Name = "photo.jpg",
+                    Name = PathSegment.Parse("photo.jpg"),
                     ContentHash = ContentHash.Parse(new string('a', 64)),
                     Created = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero),
                     Modified = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero)
                 },
                 new DirectoryEntry
                 {
-                    Name = "subdir/",
+                    Name = PathSegment.Parse("subdir"),
                     FileTreeHash = FileTreeHash.Parse(new string('e', 64))
                 }
             ];
@@ -448,7 +448,7 @@ public class FileTreeServiceTests
             [
                 new FileEntry
                 {
-                    Name = "readme.txt",
+                    Name = PathSegment.Parse("readme.txt"),
                     ContentHash = ContentHash.Parse(new string('c', 64)),
                     Created = DateTimeOffset.UnixEpoch,
                     Modified = DateTimeOffset.UnixEpoch

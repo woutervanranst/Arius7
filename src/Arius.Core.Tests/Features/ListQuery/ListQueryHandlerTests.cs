@@ -340,12 +340,12 @@ public class ListQueryHandlerTests
 
         result.Count.ShouldBe(2);
 
-        var shared = result["shared.txt"];
+        var shared = result[PathSegment.Parse("shared.txt")];
         shared.BinaryExists.ShouldBeTrue();
         shared.PointerExists.ShouldBeFalse();
         shared.PointerHash.ShouldBeNull();
 
-        var uppercasePointer = result["shared.txt.POINTER.ARIUS"];
+        var uppercasePointer = result[PathSegment.Parse("shared.txt.POINTER.ARIUS")];
         uppercasePointer.BinaryExists.ShouldBeTrue();
         uppercasePointer.PointerExists.ShouldBeFalse();
         uppercasePointer.PointerHash.ShouldBeNull();
@@ -394,8 +394,8 @@ public class ListQueryHandlerTests
             });
 
         result.Count.ShouldBe(2);
-        result["shared.txt"].PointerExists.ShouldBeTrue();
-        result["pointer-only.txt"].BinaryExists.ShouldBeFalse();
+        result[PathSegment.Parse("shared.txt")].PointerExists.ShouldBeTrue();
+        result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
     }
 
     [Test]
@@ -686,7 +686,7 @@ public class ListQueryHandlerTests
 
     private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
     {
-        Name = name,
+        Name = PathSegment.Parse(name),
         ContentHash = hash,
         Created = s_created,
         Modified = s_modified
@@ -694,7 +694,7 @@ public class ListQueryHandlerTests
 
     private static DirectoryEntry DirectoryEntryOf(string name, FileTreeHash hash) => new()
     {
-        Name = name,
+        Name = PathSegment.Parse(name.TrimEnd('/')),
         FileTreeHash = hash
     };
 }

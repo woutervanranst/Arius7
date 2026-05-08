@@ -73,8 +73,7 @@ public sealed class ChunkIndexService : IDisposable
         _l1BudgetBytes = cacheBudgetBytes;
         var l2Root = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
         _l2FileSystem  = new RelativeFileSystem(l2Root);
-
-        Directory.CreateDirectory(l2Root.ToString());
+        _l2FileSystem.CreateDirectory(RelativePath.Root);
     }
 
     // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────

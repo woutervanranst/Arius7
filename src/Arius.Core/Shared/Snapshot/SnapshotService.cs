@@ -137,8 +137,8 @@ public sealed class SnapshotService
         _blobs        = blobs;
         _encryption   = encryption;
         var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
-        Directory.CreateDirectory(diskCacheRoot.ToString());
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
+        _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
     }
 
     // ── Snapshot blob name ────────────────────────────────────────────────────
@@ -152,10 +152,11 @@ public sealed class SnapshotService
 
     /// <summary>Parses a snapshot timestamp from a blob name.</summary>
     public static DateTimeOffset ParseTimestamp(string blobName)
+        => ParseTimestamp(RelativePath.Parse(blobName));
+
+    public static DateTimeOffset ParseTimestamp(RelativePath blobName)
     {
-        var name = blobName.StartsWith(BlobPaths.Snapshots, StringComparison.Ordinal)
-            ? blobName[BlobPaths.Snapshots.Length..]
-            : blobName;
+        var name = GetSnapshotFileName(blobName).ToString();
 
         return DateTimeOffset.ParseExact(name, TimestampFormat, null,
             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal);
@@ -209,11 +210,11 @@ public sealed class SnapshotService
     /// <summary>
     /// Lists all snapshot blob names sorted by timestamp (oldest → newest).
     /// </summary>
-    public async Task<IReadOnlyList<string>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RelativePath>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
     {
-        var names = new List<string>();
+        var names = new List<RelativePath>();
         await foreach (var name in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken))
-            names.Add(name.ToString());
+            names.Add(name);
 
         names.Sort((a, b) => ParseTimestamp(a).CompareTo(ParseTimestamp(b)));
 
@@ -236,24 +237,30 @@ public sealed class SnapshotService
         RelativePath blobName;
         if (version is null)
         {
-            blobName = RelativePath.Parse(names[^1]); // latest (last after sort)
+            blobName = names[^1]; // latest (last after sort)
         }
         else
         {
-            var match = names.LastOrDefault(n =>
+            var foundMatch = false;
+            var match = default(RelativePath);
+            foreach (var candidate in names)
             {
-                var ts = n.StartsWith(BlobPaths.Snapshots) ? n[BlobPaths.Snapshots.Length..] : n;
-                return ts.StartsWith(version, StringComparison.OrdinalIgnoreCase);
-            });
-            if (match is null) return null;
-            blobName = RelativePath.Parse(match);
+                var ts = GetSnapshotFileName(candidate).ToString();
+                if (!ts.StartsWith(version, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                match = candidate;
+                foundMatch = true;
+            }
+
+            if (!foundMatch)
+                return null;
+
+            blobName = match;
         }
 
         // Disk-first: check local plain-JSON cache
-        var localName = blobName.StartsWith(BlobPaths.SnapshotsPrefix)
-            ? blobName.Name.ToString()
-            : blobName.ToString();
-        var localPath = RelativePath.Parse(localName);
+        var localPath = GetDiskCachePath(blobName);
         if (_diskCacheFileSystem.FileExists(localPath))
         {
             var json = await _diskCacheFileSystem.ReadAllBytesAsync(localPath, cancellationToken);
@@ -285,6 +292,13 @@ public sealed class SnapshotService
         await stream.CopyToAsync(ms, cancellationToken);
         return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, cancellationToken);
     }
+
+    private static PathSegment GetSnapshotFileName(RelativePath blobName) =>
+        blobName.StartsWith(BlobPaths.SnapshotsPrefix)
+            ? blobName.Name
+            : PathSegment.Parse(blobName.ToString());
+
+    private static RelativePath GetDiskCachePath(RelativePath blobName) => RelativePath.Root / GetSnapshotFileName(blobName);
 
     private static string GetAriusVersion() =>
         Assembly.GetExecutingAssembly()
