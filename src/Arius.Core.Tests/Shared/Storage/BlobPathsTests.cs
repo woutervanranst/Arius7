@@ -25,7 +25,7 @@ public class BlobPathsTests
     [Test]
     public void ChunkIndexShardPath_RendersCanonicalRelativePath()
     {
-        BlobPaths.ChunkIndexShardPath("ab")
+        BlobPaths.ChunkIndexShardPath(PathSegment.Parse("ab"))
             .ShouldBe(RelativePath.Parse("chunk-index/ab"));
     }
 

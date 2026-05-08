@@ -96,12 +96,12 @@ public static class BlobPaths
     internal static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();
     internal static RelativePath FileTreePath(FileTreeHash hash)     => RelativePath.Root / "filetrees" / hash.ToString();
     internal static RelativePath SnapshotPath(string name)           => RelativePath.Root / "snapshots" / name;
-    internal static RelativePath ChunkIndexShardPath(string prefix)  => RelativePath.Root / "chunk-index" / prefix;
+    internal static RelativePath ChunkIndexShardPath(PathSegment prefix) => RelativePath.Root / "chunk-index" / prefix;
 
     public static string Chunk(ChunkHash hash)           => ChunkPath(hash).ToString();
     public static string ThinChunk(ContentHash hash)     => ThinChunkPath(hash).ToString();
     public static string ChunkRehydrated(ChunkHash hash) => ChunkRehydratedPath(hash).ToString();
     public static string FileTree(FileTreeHash hash)     => FileTreePath(hash).ToString();
     public static string Snapshot(string name)           => SnapshotPath(name).ToString();
-    public static string ChunkIndexShard(string prefix)  => ChunkIndexShardPath(prefix).ToString();
+    public static string ChunkIndexShard(string prefix)  => ChunkIndexShardPath(PathSegment.Parse(prefix)).ToString();
 }

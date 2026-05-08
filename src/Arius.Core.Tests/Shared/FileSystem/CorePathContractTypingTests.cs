@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.FileSystem;
 
@@ -72,6 +73,15 @@ public class CorePathContractTypingTests
         typeof(SnapshotService).GetMethod(nameof(SnapshotService.ListBlobNamesAsync))!
             .ReturnType
             .ShouldBe(typeof(Task<IReadOnlyList<RelativePath>>));
+
+        typeof(Shard).GetMethod(nameof(Shard.PrefixOf))!
+            .ReturnType
+            .ShouldBe(typeof(PathSegment));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ChunkIndexShardPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+            .GetParameters()[0]
+            .ParameterType
+            .ShouldBe(typeof(PathSegment));
     }
 
     [Test]
@@ -95,11 +105,13 @@ public class CorePathContractTypingTests
 
         var snapshotSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Snapshot", "SnapshotService.cs"));
         var fileTreeSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeService.cs"));
+        var chunkIndexSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "ChunkIndex", "ChunkIndexService.cs"));
 
         snapshotSource.ShouldNotContain("candidate.Name.ToString()");
         snapshotSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
         fileTreeSource.ShouldNotContain("Select(name => name.ToString())");
         fileTreeSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
+        chunkIndexSource.ShouldNotContain("RelativePath.Parse(prefix)");
     }
 
     [Test]
