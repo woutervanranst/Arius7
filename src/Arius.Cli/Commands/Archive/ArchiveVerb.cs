@@ -134,7 +134,7 @@ internal static class ArchiveVerb
 
                     CreateHashProgress = (relativePath, fileSize) =>
                     {
-                        if (progressState.TrackedFiles.TryGetValue(RelativePath.Parse(relativePath), out var file))
+                        if (progressState.TrackedFiles.TryGetValue(relativePath, out var file))
                             return new Progress<long>(bytes => file.SetBytesProcessed(bytes));
                         return new Progress<long>();
                     },

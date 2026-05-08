@@ -3,6 +3,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -281,7 +282,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "photos",
+                TargetPath = RelativePath.Parse("photos"),
                 Overwrite = true,
             }),
             CancellationToken.None);
@@ -293,76 +294,7 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
-    public async Task Handle_RootPrefixedTargetPath_FailsRestore()
-    {
-        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
-            $"acct-restore-root-prefixed-target-{Guid.NewGuid():N}",
-            $"ctr-restore-root-prefixed-target-{Guid.NewGuid():N}");
-
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
-        fixture.WriteFile("photos/other.jpg", [4, 5, 6]);
-
-        var archiveResult = await fixture.CreateArchiveHandler().Handle(
-            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
-            {
-                RootDirectory = fixture.LocalRoot,
-                UploadTier = BlobTier.Cool,
-            }),
-            CancellationToken.None);
-
-        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-        var restoreResult = await fixture.CreateRestoreHandler().Handle(
-            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = fixture.RestoreRoot,
-                TargetPath = "/photos",
-                Overwrite = true,
-            }),
-            CancellationToken.None);
-
-        restoreResult.Success.ShouldBeFalse();
-        restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
-        fixture.RestoredExists("photos/other.jpg").ShouldBeFalse();
-    }
-
-    [Test]
-    public async Task Handle_InvalidWindowsAbsoluteTargetPath_FailsRestore()
-    {
-        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
-            $"acct-restore-invalid-windows-target-{Guid.NewGuid():N}",
-            $"ctr-restore-invalid-windows-target-{Guid.NewGuid():N}");
-
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
-
-        var archiveResult = await fixture.CreateArchiveHandler().Handle(
-            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
-            {
-                RootDirectory = fixture.LocalRoot,
-                UploadTier = BlobTier.Cool,
-            }),
-            CancellationToken.None);
-
-        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-        var restoreResult = await fixture.CreateRestoreHandler().Handle(
-            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-            {
-                RootDirectory = fixture.RestoreRoot,
-                TargetPath = "C:/photos",
-                Overwrite = true,
-            }),
-            CancellationToken.None);
-
-        restoreResult.Success.ShouldBeFalse();
-        restoreResult.ErrorMessage.ShouldNotBeNull();
-        restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
-    }
-
-    [Test]
-    public async Task Handle_RootTargetPath_FailsRestore()
+    public async Task Handle_RootTargetPath_RestoresFullSnapshot()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
             $"acct-restore-root-target-{Guid.NewGuid():N}",
@@ -385,15 +317,15 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "/",
+                TargetPath = RelativePath.Root,
                 Overwrite = true,
             }),
             CancellationToken.None);
 
-        restoreResult.Success.ShouldBeFalse();
-        restoreResult.ErrorMessage.ShouldContain("Invalid relative path");
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeFalse();
-        fixture.RestoredExists("docs/readme.txt").ShouldBeFalse();
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
+        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
+        fixture.RestoredExists("docs/readme.txt").ShouldBeTrue();
     }
 
     [Test]
@@ -419,7 +351,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "photos/pic.jpg",
+                TargetPath = RelativePath.Parse("photos/pic.jpg"),
                 Overwrite = true,
                 NoPointers = true,
             }),
@@ -455,7 +387,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreRoot,
-                TargetPath = "photos/pic.jpg",
+                TargetPath = RelativePath.Parse("photos/pic.jpg"),
                 Overwrite = true,
             }),
             CancellationToken.None);

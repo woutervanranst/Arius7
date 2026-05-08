@@ -1,4 +1,5 @@
-﻿using Arius.Core.Shared.Storage;
+﻿using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared.Storage;
 using Mediator;
 
 namespace Arius.Core.Features.RestoreCommand;
@@ -20,9 +21,9 @@ public sealed record RestoreOptions
 
     /// <summary>
     /// Optional path within the snapshot to restore.
-    /// <c>null</c> or empty = full snapshot restore.
+    /// <c>null</c> = full snapshot restore.
     /// </summary>
-    public string? TargetPath { get; init; }
+    public RelativePath? TargetPath { get; init; }
 
     /// <summary>If <c>true</c>, overwrite local files without prompting.</summary>
     public bool Overwrite { get; init; } = false;

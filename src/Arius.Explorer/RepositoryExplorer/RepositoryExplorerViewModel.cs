@@ -11,6 +11,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.FileSystem;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
 using Arius.Explorer.Shared.Services;
@@ -133,7 +134,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             // NOTE no loading indicators here bc this is super quick; the actual loading happens in LoadNodeContentAsync
 
             // Create root node
-            var rootNode = new TreeNodeViewModel(string.Empty, OnNodeSelected)
+            var rootNode = new TreeNodeViewModel(RelativePath.Root, OnNodeSelected)
             {
                 Name       = "Root",
                 IsSelected = true,
@@ -175,7 +176,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             var query = new ListQuery(new ListQueryOptions
             {
-                Prefix = string.IsNullOrWhiteSpace(node.Prefix) ? null : node.Prefix,
+                Prefix = node.Prefix == RelativePath.Root ? null : node.Prefix,
                 Recursive = false,
                 LocalPath = Repository.LocalDirectoryPath,
             });
@@ -274,8 +275,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
             var lookup = node.Items.ToDictionary(
                 item => item.File.RelativePath,
-                item => item,
-                StringComparer.OrdinalIgnoreCase);
+                item => item);
 
             await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(cloudFiles), cancellationToken))
             {
@@ -471,7 +471,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         if (unresolved.Count == 0)
             return;
 
-        var lookup = items.ToDictionary(item => item.File.RelativePath, item => item, StringComparer.OrdinalIgnoreCase);
+        var lookup = items.ToDictionary(item => item.File.RelativePath, item => item);
 
         await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(unresolved), cancellationToken))
         {
@@ -496,10 +496,10 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         nodeLoadCancellation = null;
     }
 
-    private static string ExtractDirectoryName(string relativeName) // TODO move this logic to the TreeNodeViewModel, just like FileItemViewModel
+    private static string ExtractDirectoryName(RelativePath relativeName) // TODO move this logic to the TreeNodeViewModel, just like FileItemViewModel
     {
         // Extract directory name from path like "/folder1/folder2/" -> "folder2"
-        var trimmed = relativeName.TrimEnd('/');
+        var trimmed = relativeName.ToString().TrimEnd('/');
         var lastSlash = trimmed.LastIndexOf('/');
         return lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
     }

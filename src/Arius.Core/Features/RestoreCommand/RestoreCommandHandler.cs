@@ -115,8 +115,7 @@ public sealed class RestoreCommandHandler
 
             // ── Step 2: Tree traversal ────────────────────────────────────────
 
-            var targetPath = ParseTargetPath(opts.TargetPath);
-            var files     = await CollectFilesAsync(snapshot.RootHash, targetPath, cancellationToken);
+            var files = await CollectFilesAsync(snapshot.RootHash, opts.TargetPath, cancellationToken);
 
             _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", files.Count);
 
@@ -548,32 +547,6 @@ public sealed class RestoreCommandHandler
         return currentPath == RelativePath.Root
             || targetPrefix.StartsWith(currentPath)
             || currentPath.StartsWith(targetPrefix);
-    }
-
-    private static RelativePath? ParseTargetPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return null;
-
-        var normalized = path.Replace('\\', '/').Trim();
-        if (normalized.Length == 0)
-            return null;
-
-        if (normalized.Length >= 3
-            && char.IsAsciiLetter(normalized[0])
-            && normalized[1] == ':'
-            && normalized[2] == '/')
-        {
-            throw new FormatException($"Invalid relative path: '{normalized}'.");
-        }
-
-        if (normalized.StartsWith('/'))
-        {
-            throw new FormatException($"Invalid relative path: '{normalized}'.");
-        }
-
-        normalized = normalized.TrimEnd('/');
-        return normalized.Length == 0 ? RelativePath.Root : RelativePath.Parse(normalized);
     }
 
     // ── Large file restore (task 10.7) ────────────────────────────────────────

@@ -2,6 +2,7 @@ using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -67,7 +68,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreRoot,
-                TargetPath = targetChunk.TargetRelativePath,
+                TargetPath = RelativePath.Parse(targetChunk.TargetRelativePath),
                 Overwrite = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
@@ -103,7 +104,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = readyRestoreRoot,
-                TargetPath = targetChunk.TargetRelativePath,
+                TargetPath = RelativePath.Parse(targetChunk.TargetRelativePath),
                 Overwrite = true,
                 ConfirmCleanup = (count, _, _) =>
                 {

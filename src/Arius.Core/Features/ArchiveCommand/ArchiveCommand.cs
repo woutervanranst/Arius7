@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
@@ -44,7 +45,7 @@ public sealed record ArchiveCommandOptions
     /// Returns an <see cref="IProgress{T}"/> that receives cumulative bytes hashed.
     /// When <c>null</c>, no byte-level progress is reported for hashing.
     /// </summary>
-    public Func<string, long, IProgress<long>>? CreateHashProgress { get; init; }
+    public Func<RelativePath, long, IProgress<long>>? CreateHashProgress { get; init; }
 
     /// <summary>
     /// Optional factory invoked when a chunk begins uploading.

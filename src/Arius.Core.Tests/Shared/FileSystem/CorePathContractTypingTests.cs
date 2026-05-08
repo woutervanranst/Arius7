@@ -15,8 +15,14 @@ public class CorePathContractTypingTests
     [Test]
     public void DomainContracts_UseRelativePathForRepositoryPaths()
     {
+        typeof(RestoreOptions).GetProperty(nameof(RestoreOptions.TargetPath))!.PropertyType
+            .ShouldBe(typeof(RelativePath?));
+
         typeof(ListQueryOptions).GetProperty(nameof(ListQueryOptions.Prefix))!.PropertyType
             .ShouldBe(typeof(RelativePath?));
+
+        typeof(ArchiveCommandOptions).GetProperty(nameof(ArchiveCommandOptions.CreateHashProgress))!.PropertyType
+            .ShouldBe(typeof(Func<RelativePath, long, IProgress<long>>));
 
         typeof(RepositoryEntry).GetProperty(nameof(RepositoryEntry.RelativePath))!.PropertyType
             .ShouldBe(typeof(RelativePath));

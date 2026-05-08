@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Media;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.FileSystem;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Arius.Explorer.RepositoryExplorer;
@@ -38,7 +39,7 @@ public partial class FileItemViewModel : ObservableObject
     {
         File = file;
 
-        Name = Path.GetFileName(file.RelativePath);
+        Name = Path.GetFileName(file.RelativePath.ToString());
 
         PointerFileStateColor      = file.HasPointerFile == true ? Brushes.Black : Brushes.Transparent;
         BinaryFileStateColor       = file.BinaryExists == true ? Brushes.Blue : Brushes.White;

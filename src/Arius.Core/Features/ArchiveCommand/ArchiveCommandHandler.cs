@@ -260,7 +260,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         else if (pair.Binary is not null)
                         {
                             await using var fs           = archiveFileSystem.OpenRead(pair.Path);
-                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.Path.ToString(), fileSize) ?? new Progress<long>();
+                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.Path, fileSize) ?? new Progress<long>();
                             await using var ps           = new ProgressStream(fs, hashProgress);
                             contentHash = await _encryption.ComputeHashAsync(ps, ct);
                         }
