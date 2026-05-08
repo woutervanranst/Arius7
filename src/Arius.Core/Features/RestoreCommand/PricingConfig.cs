@@ -85,14 +85,14 @@ internal sealed class PricingConfig
 
         // 1. Working directory override
         if (currentDirectory.FileExistsInRoot(pricingFileName))
-            return LoadFromFile(currentDirectory.OpenReadFromRoot(pricingFileName), currentDirectoryPath);
+            return LoadFromFileSystem(currentDirectory, pricingFileName, currentDirectoryPath);
 
         // 2. ~/.arius/ override
-        var homeDirectory = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var homeDirectory = LocalDirectory.Parse(GetUserHomeDirectory());
         var ariusConfigFileSystem = new RelativeFileSystem(LocalDirectory.Parse(homeDirectory.Resolve(RelativePath.Parse(".arius"))));
         var ariusConfigPath = ariusConfigFileSystem.DescribeRootFile(pricingFileName);
         if (ariusConfigFileSystem.FileExistsInRoot(pricingFileName))
-            return LoadFromFile(ariusConfigFileSystem.OpenReadFromRoot(pricingFileName), ariusConfigPath);
+            return LoadFromFileSystem(ariusConfigFileSystem, pricingFileName, ariusConfigPath);
 
         // 3. Embedded resource default
         return LoadEmbedded();
@@ -125,6 +125,21 @@ internal sealed class PricingConfig
         {
             throw new InvalidOperationException($"Failed to parse pricing config at '{sourceDescription}': {ex.Message}", ex);
         }
+    }
+
+    private static PricingConfig LoadFromFileSystem(RelativeFileSystem fileSystem, PathSegment fileName, string sourceDescription)
+    {
+        using var stream = fileSystem.OpenReadFromRoot(fileName);
+        return LoadFromFile(stream, sourceDescription);
+    }
+
+    private static string GetUserHomeDirectory()
+    {
+        var home = Environment.GetEnvironmentVariable("HOME");
+        if (!string.IsNullOrWhiteSpace(home))
+            return home;
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     }
 
     public static PricingConfig LoadEmbedded()

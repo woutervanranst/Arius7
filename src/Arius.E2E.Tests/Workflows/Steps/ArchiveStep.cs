@@ -13,8 +13,8 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 
         if (CaptureNoOpPreCounts)
         {
-            state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Parse(BlobPaths.Chunks), cancellationToken);
-            state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Parse(BlobPaths.FileTrees), cancellationToken);
+            state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "chunks", cancellationToken);
+            state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "filetrees", cancellationToken);
             state.SnapshotVersionBeforeNoOpArchive = latestBeforeArchive;
         }
 
