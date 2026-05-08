@@ -6,7 +6,7 @@
 
 - local cache roots such as chunk-index L2, filetree cache, and snapshot cache are sometimes typed and sometimes plain strings
 - `IBlobContainerService` still accepts raw blob-name strings, so storage paths are not strongly typed at the boundary
-- `FileTreePaths` still exposes string helpers in Core, unlike the newer `RepositoryPaths` plus `Arius.Tests.Shared/RepositoryCachePaths` split
+- `FileTreePaths` still exposes string helpers in Core, unlike the newer `RepositoryPaths` plus `Arius.Tests.Shared/RepositoryPathStrings` split
 - direct `File.*` and `Directory.*` calls in Core still frequently operate on raw strings that are really repository/cache paths
 
 This design finishes that sweep inside `src/Arius.Core` and converts public command/query/result/event contracts to use `RelativePath` or `PathSegment` when those contracts carry Arius domain paths.
@@ -38,7 +38,7 @@ This refactor applies to `src/Arius.Core`.
 The only non-Core updates allowed in this change are:
 
 - `src/Arius.Core.Tests` updates required by the Core API changes
-- `src/Arius.Tests.Shared` string helper moves that mirror the existing `RepositoryPaths` versus `RepositoryCachePaths` split
+- `src/Arius.Tests.Shared` string helper moves that mirror the existing `RepositoryPaths` versus `RepositoryPathStrings` split
 - minimal adapter and downstream call-site updates in projects that construct or consume changed Arius.Core public contracts, such as parsing `RelativePath` or `PathSegment` before constructing those contracts and avoiding immediate `.ToString()` round-trips in internal consumers
 
 Broad follow-on migrations in Integration tests, E2E tests, Explorer, CLI, AzureBlob, and other projects are out of scope for this pass. Only the minimal contract-construction and downstream typed-value cleanup needed to keep changed Arius.Core call sites correct and idiomatic are in scope.
