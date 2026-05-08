@@ -76,4 +76,53 @@ public class RelativeFileSystemTests : IDisposable
     {
         Should.Throw<FileNotFoundException>(() => _fileSystem.OpenRead(RelativePath.Parse("missing.bin")));
     }
+
+    [Test]
+    public void EnumerateFileNames_ReturnsImmediateChildNamesOnly()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "cache", "nested"));
+        File.WriteAllText(Path.Combine(_root, "cache", "b.txt"), "b");
+        File.WriteAllText(Path.Combine(_root, "cache", "a.txt"), "a");
+        File.WriteAllText(Path.Combine(_root, "cache", "nested", "c.txt"), "c");
+
+        var names = _fileSystem.EnumerateFileNames(RelativePath.Parse("cache")).ToArray();
+
+        names.ShouldBe([PathSegment.Parse("a.txt"), PathSegment.Parse("b.txt")]);
+    }
+
+    [Test]
+    public void EnumerateFileNames_MissingDirectory_ReturnsEmpty()
+    {
+        var names = _fileSystem.EnumerateFileNames(RelativePath.Parse("missing")).ToArray();
+
+        names.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task ReplaceFileAtomicallyAsync_PublishesTempFileToDestination()
+    {
+        var destination = RelativePath.Parse("cache/tree.bin");
+        var temp = RelativePath.Parse("cache/.tree.tmp");
+
+        await _fileSystem.WriteAllBytesAsync(temp, [1, 2, 3], CancellationToken.None);
+
+        await _fileSystem.ReplaceFileAtomicallyAsync(temp, destination, CancellationToken.None);
+
+        _fileSystem.FileExists(temp).ShouldBeFalse();
+        (await _fileSystem.ReadAllBytesAsync(destination, CancellationToken.None)).ShouldBe([1, 2, 3]);
+    }
+
+    [Test]
+    public async Task DeleteFilesInDirectory_RemovesOnlyImmediateFiles()
+    {
+        await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/one.txt"), "1", CancellationToken.None);
+        await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/two.txt"), "2", CancellationToken.None);
+        await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/nested/three.txt"), "3", CancellationToken.None);
+
+        _fileSystem.DeleteFilesInDirectory(RelativePath.Parse("cache"));
+
+        _fileSystem.FileExists(RelativePath.Parse("cache/one.txt")).ShouldBeFalse();
+        _fileSystem.FileExists(RelativePath.Parse("cache/two.txt")).ShouldBeFalse();
+        _fileSystem.FileExists(RelativePath.Parse("cache/nested/three.txt")).ShouldBeTrue();
+    }
 }

@@ -110,7 +110,6 @@ public sealed class SnapshotService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
-    private readonly string                _diskCacheDir;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
 
     /// <summary>
@@ -138,8 +137,7 @@ public sealed class SnapshotService
         _blobs        = blobs;
         _encryption   = encryption;
         var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
-        _diskCacheDir = diskCacheRoot.ToString();
-        Directory.CreateDirectory(_diskCacheDir);
+        Directory.CreateDirectory(diskCacheRoot.ToString());
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
     }
 

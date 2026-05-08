@@ -26,7 +26,6 @@ public sealed class ChunkIndexService : IDisposable
 
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService  _encryption;
-    private readonly string              _l2Dir;
     private readonly RelativeFileSystem  _l2FileSystem;
 
     // ── L1 LRU cache ──────────────────────────────────────────────────────────
@@ -73,10 +72,9 @@ public sealed class ChunkIndexService : IDisposable
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
         var l2Root = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
-        _l2Dir         = l2Root.ToString();
         _l2FileSystem  = new RelativeFileSystem(l2Root);
 
-        Directory.CreateDirectory(_l2Dir);
+        Directory.CreateDirectory(l2Root.ToString());
     }
 
     // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────

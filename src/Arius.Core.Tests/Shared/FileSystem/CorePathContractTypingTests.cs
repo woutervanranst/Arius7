@@ -2,7 +2,10 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Snapshot;
 
 namespace Arius.Core.Tests.Shared.FileSystem;
 
@@ -44,4 +47,20 @@ public class CorePathContractTypingTests
         typeof(FileDispositionEvent).GetProperty(nameof(FileDispositionEvent.RelativePath))!.PropertyType
             .ShouldBe(typeof(RelativePath));
     }
+
+    [Test]
+    public void SharedServices_DoNotKeepRedundantRootedStringCacheFields()
+    {
+        typeof(FileTreeService).GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .ShouldBeNull();
+        typeof(FileTreeService).GetField("_snapshotsDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .ShouldBeNull();
+        typeof(FileTreeService).GetField("_chunkIndexL2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .ShouldBeNull();
+        typeof(SnapshotService).GetField("_diskCacheDir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .ShouldBeNull();
+        typeof(ChunkIndexService).GetField("_l2Dir", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .ShouldBeNull();
+    }
+
 }

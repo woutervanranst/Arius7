@@ -74,6 +74,21 @@ internal sealed class RelativeFileSystem
 
     public bool DirectoryExists(RelativePath path) => Directory.Exists(_root.Resolve(path));
 
+    public IEnumerable<PathSegment> EnumerateFileNames(RelativePath path)
+    {
+        var fullPath = _root.Resolve(path);
+        if (!Directory.Exists(fullPath))
+            yield break;
+
+        foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", SearchOption.TopDirectoryOnly)
+                     .OrderBy(Path.GetFileName, StringComparer.Ordinal))
+        {
+            var fileName = Path.GetFileName(filePath);
+            if (PathSegment.TryParse(fileName, out var segment))
+                yield return segment;
+        }
+    }
+
     /// <summary>
     /// Opens a file for reading within the rooted directory.
     /// </summary>
@@ -90,6 +105,8 @@ internal sealed class RelativeFileSystem
     }
 
     public string ReadAllText(RelativePath path) => File.ReadAllText(_root.Resolve(path));
+
+    public byte[] ReadAllBytes(RelativePath path) => File.ReadAllBytes(_root.Resolve(path));
 
     public Task<string> ReadAllTextAsync(RelativePath path, CancellationToken cancellationToken) =>
         File.ReadAllTextAsync(_root.Resolve(path), cancellationToken);
@@ -109,6 +126,22 @@ internal sealed class RelativeFileSystem
         var fullPath = _root.Resolve(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
+    }
+
+    public async Task ReplaceFileAtomicallyAsync(RelativePath source, RelativePath destination, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var sourcePath = _root.Resolve(source);
+        var destinationPath = _root.Resolve(destination);
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+
+        if (OperatingSystem.IsWindows() && File.Exists(destinationPath))
+            File.Replace(sourcePath, destinationPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+        else
+            File.Move(sourcePath, destinationPath, overwrite: true);
+
+        await Task.CompletedTask;
     }
 
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));
@@ -133,6 +166,16 @@ internal sealed class RelativeFileSystem
         var destinationPath = _root.Resolve(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
         File.Copy(_root.Resolve(source), destinationPath, overwrite);
+    }
+
+    public void DeleteFilesInDirectory(RelativePath path)
+    {
+        var fullPath = _root.Resolve(path);
+        if (!Directory.Exists(fullPath))
+            return;
+
+        foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", SearchOption.TopDirectoryOnly))
+            File.Delete(filePath);
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
