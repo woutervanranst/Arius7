@@ -495,16 +495,20 @@ public class FileTreeBuilderTests
     }
 
     [Test]
+    [NotInParallel("FileTreeBuilderParallelUploadTests")]
     public async Task SynchronizeAsync_StartsMultipleFileTreeUploadsBeforeReturning()
     {
         const string accountName = "acc-parallel";
         const string containerName = "con-parallel";
         var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(accountName, containerName);
+        ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 
         try
         {
+            ThreadPool.SetMinThreads(Math.Max(originalWorkerThreads, 32), originalCompletionPortThreads);
+
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             await using var stagingSession = (await CreateStagingAsync(
                 accountName,
@@ -528,6 +532,8 @@ public class FileTreeBuilderTests
         }
         finally
         {
+            ThreadPool.SetMinThreads(originalWorkerThreads, originalCompletionPortThreads);
+
             if (Directory.Exists(cacheDir))
                 Directory.Delete(cacheDir, recursive: true);
         }
