@@ -23,11 +23,10 @@ internal static class RelativePathPointerExtensions
     /// </summary>
     public static RelativePath ToPointerPath(this RelativePath path)
     {
-        var value = path.ToString();
-        if (value.Length == 0)
+        if (path == RelativePath.Root)
             throw new InvalidOperationException("Root path cannot be converted to a pointer path.");
 
-        return RelativePath.Parse(value + PointerSuffix);
+        return path.AppendSuffix(PointerSuffix);
     }
 
     /// <summary>
@@ -35,11 +34,9 @@ internal static class RelativePathPointerExtensions
     /// </summary>
     public static RelativePath ToBinaryPath(this RelativePath path)
     {
-        var value = path.ToString();
-        if (!value.EndsWith(PointerSuffix, StringComparison.Ordinal))
+        if (!path.EndsWith(PointerSuffix, StringComparison.Ordinal))
             throw new InvalidOperationException("Path is not a pointer path.");
 
-        var binaryPath = value[..^PointerSuffix.Length];
-        return RelativePath.Parse(binaryPath);
+        return path.RemoveSuffix(PointerSuffix, StringComparison.Ordinal);
     }
 }

@@ -93,7 +93,7 @@ public sealed class Shard
     /// <summary>Serializes all entries to a text stream (one line per entry, sorted by content-hash).</summary>
     public void WriteTo(TextWriter writer)
     {
-        foreach (var entry in _entries.Values.OrderBy(e => e.ContentHash))
+        foreach (var entry in _entries.Values.OrderBy(e => e.ContentHash.ToString(), StringComparer.Ordinal))
             writer.WriteLine(entry.Serialize());
     }
 

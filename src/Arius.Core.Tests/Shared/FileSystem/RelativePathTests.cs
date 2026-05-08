@@ -122,4 +122,20 @@ public class RelativePathTests
             .Equals(RelativePath.Parse("photos/pic.jpg"), StringComparison.OrdinalIgnoreCase)
             .ShouldBeTrue();
     }
+
+    [Test]
+    public void AppendSuffix_AppendsToFinalPathText()
+    {
+        RelativePath.Parse("photos/pic.jpg")
+            .AppendSuffix(".pointer.arius")
+            .ShouldBe(RelativePath.Parse("photos/pic.jpg.pointer.arius"));
+    }
+
+    [Test]
+    public void RemoveSuffix_RemovesTrailingText()
+    {
+        RelativePath.Parse("photos/pic.jpg.pointer.arius")
+            .RemoveSuffix(".pointer.arius", StringComparison.Ordinal)
+            .ShouldBe(RelativePath.Parse("photos/pic.jpg"));
+    }
 }

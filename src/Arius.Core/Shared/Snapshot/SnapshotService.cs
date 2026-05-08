@@ -294,7 +294,7 @@ public sealed class SnapshotService
     private static PathSegment GetSnapshotFileName(RelativePath blobName) =>
         blobName.StartsWith(BlobPaths.SnapshotsPrefix)
             ? blobName.Name
-            : PathSegment.Parse(blobName.ToString());
+            : blobName.Name;
 
     private static RelativePath GetDiskCachePath(RelativePath blobName) => RelativePath.Root / GetSnapshotFileName(blobName);
 

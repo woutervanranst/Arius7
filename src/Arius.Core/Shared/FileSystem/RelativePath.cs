@@ -146,6 +146,20 @@ public readonly record struct RelativePath
     public bool Equals(RelativePath other, StringComparison comparisonType) =>
         string.Equals(Value, other.Value, comparisonType);
 
+    public int GetHashCode(StringComparer comparer) =>
+        comparer.GetHashCode(Value);
+
+    public RelativePath AppendSuffix(string suffix) =>
+        Parse(Value + suffix);
+
+    public RelativePath RemoveSuffix(string suffix, StringComparison comparisonType)
+    {
+        if (!Value.EndsWith(suffix, comparisonType))
+            throw new InvalidOperationException($"Path '{Value}' does not end with suffix '{suffix}'.");
+
+        return Parse(Value[..^suffix.Length]);
+    }
+
     public static RelativePath operator /(RelativePath path, PathSegment segment) =>
         path.Value.Length == 0 ? new RelativePath(segment.ToString()) : new RelativePath($"{path.Value}/{segment}");
 
