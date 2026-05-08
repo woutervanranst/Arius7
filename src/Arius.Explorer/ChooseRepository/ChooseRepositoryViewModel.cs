@@ -26,7 +26,7 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
     private readonly Subject<Unit>          credentialsChangedSubject = new();
     private readonly IDisposable            debounceSubscription;
     private readonly TimeSpan               debounceTimeSpan;
-    private readonly SynchronizationContext? synchronizationContext;
+    private readonly SynchronizationContext synchronizationContext;
 
     [ObservableProperty]
     private string windowName = "Choose Repository";
@@ -39,18 +39,16 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         this.mediator          = mediator;
         this.logger            = logger;
         this.debounceTimeSpan  = debounceTimeSpan ?? TimeSpan.FromMilliseconds(500);
-        synchronizationContext = SynchronizationContext.Current;
+        synchronizationContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
         // Set up debouncing for Storage Account credential changes
-        var credentialChanges = credentialsChangedSubject
+        debounceSubscription = credentialsChangedSubject
             .Throttle(this.debounceTimeSpan)
             .Where(_ => !string.IsNullOrWhiteSpace(AccountName) && !string.IsNullOrWhiteSpace(AccountKey))
             .Select(_ => Observable.FromAsync(OnStorageAccountCredentialsChanged))
-            .Switch(); // cancels previous OnStorageAccountCredentialsChanged if new values arrive
-
-        debounceSubscription = synchronizationContext is null
-            ? credentialChanges.Subscribe()
-            : credentialChanges.ObserveOn(synchronizationContext).Subscribe(); // marshal back to UI thread when available
+            .Switch() // cancels previous OnStorageAccountCredentialsChanged if new values arrive
+            .ObserveOn(synchronizationContext) // marshal back to UI thread when available
+            .Subscribe();
     }
 
     private static bool IsValidAzureContainerName(string containerName)
@@ -136,8 +134,8 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 
         try
         {
-            UpdateOnCapturedContext(() => IsLoading = true);
-            UpdateOnCapturedContext(() => StorageAccountError = false);
+            synchronizationContext.Post(_ => IsLoading = true, null);
+            synchronizationContext.Post(_ => StorageAccountError = false, null);
 
             var containers = new List<string>();
 
@@ -148,7 +146,7 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
 
             var updated = new ObservableCollection<string>(containers);
 
-            UpdateOnCapturedContext(() =>
+            synchronizationContext.Post(_ =>
             {
                 ContainerNames = updated;
 
@@ -160,7 +158,7 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
                 {
                     ContainerName = updated.First();
                 }
-            });
+            }, null);
         }
         catch (OperationCanceledException)
         {
@@ -169,27 +167,16 @@ public partial class ChooseRepositoryViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to load container names.");
-            UpdateOnCapturedContext(() =>
+            synchronizationContext.Post(_ =>
             {
                 StorageAccountError = true;
                 ContainerNames      = [];
                 ContainerName       = string.Empty;
-            });
+            }, null);
         }
         finally
         {
-            UpdateOnCapturedContext(() => IsLoading = false);
-        }
-
-        void UpdateOnCapturedContext(Action update)
-        {
-            if (synchronizationContext is null)
-            {
-                update();
-                return;
-            }
-
-            synchronizationContext.Post(_ => update(), null);
+            synchronizationContext.Post(_ => IsLoading = false, null);
         }
     }
 
