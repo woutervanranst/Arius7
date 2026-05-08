@@ -8,9 +8,9 @@ namespace Arius.Core.Shared.Storage;
 /// </summary>
 public sealed class BlobAlreadyExistsException : IOException
 {
-    public string BlobName { get; }
+    public RelativePath BlobName { get; }
 
-    public BlobAlreadyExistsException(string blobName)
+    public BlobAlreadyExistsException(RelativePath blobName)
         : base($"Blob already exists: {blobName}")
     {
         BlobName = blobName;

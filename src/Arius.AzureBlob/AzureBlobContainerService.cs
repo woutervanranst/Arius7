@@ -64,7 +64,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
-            throw new BlobAlreadyExistsException(blobName.ToString());
+            throw new BlobAlreadyExistsException(blobName);
         }
     }
 
@@ -93,7 +93,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
-            throw new BlobAlreadyExistsException(blobName.ToString());
+            throw new BlobAlreadyExistsException(blobName);
         }
     }
 

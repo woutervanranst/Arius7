@@ -76,6 +76,10 @@ public class CorePathContractTypingTests
     [Test]
     public void SnapshotApis_KeepBlobNamesTypedInsideCore()
     {
+        typeof(BlobAlreadyExistsException).GetProperty(nameof(BlobAlreadyExistsException.BlobName))!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
         typeof(SnapshotService).GetMethod(nameof(SnapshotService.BlobName))!
             .ReturnType
             .ShouldBe(typeof(RelativePath));

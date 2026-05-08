@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -218,13 +219,13 @@ public class RoundtripTests(AzuriteFixture azurite)
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
 
-        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
         snapshotCountAfterFirst.ShouldBe(1);
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);
@@ -244,7 +245,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.Snapshots).CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);
@@ -640,8 +641,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.FilesUploaded.ShouldBe(1);
 
         // Find the chunk blob and verify chunk-size metadata was set by the streaming chain
-        var blobs = new List<string>();
-        await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
+        var blobs = new List<RelativePath>();
+        await foreach (var name in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
             blobs.Add(name);
         blobs.Count.ShouldBe(1);
 

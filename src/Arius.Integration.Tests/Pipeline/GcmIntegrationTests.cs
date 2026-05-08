@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;
@@ -32,8 +33,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         archiveResult.FilesUploaded.ShouldBe(1);
 
         // Verify exactly one chunk was uploaded
-        var blobs = new List<string>();
-        await foreach (var b in fix.BlobContainer.ListAsync("chunks/"))
+        var blobs = new List<RelativePath>();
+        await foreach (var b in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
             blobs.Add(b);
         blobs.Count.ShouldBe(1);
 
@@ -76,8 +77,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         archiveResult.FilesUploaded.ShouldBe(2);
 
         // Verify tar chunk was uploaded
-        var tarBlobs = new List<string>();
-        await foreach (var b in fix.BlobContainer.ListAsync("chunks/"))
+        var tarBlobs = new List<RelativePath>();
+        await foreach (var b in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
         {
             var m = await fix.BlobContainer.GetMetadataAsync(b);
             if (m.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
@@ -144,7 +145,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // confirming the mixed-format scenario before restore exercises auto-detection.
         var hasCbc = false;
         var hasGcm = false;
-        await foreach (var blobName in gcmFix.BlobContainer.ListAsync("chunks/"))
+        await foreach (var blobName in gcmFix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
         {
             var header = new byte[8];
             await using var s = await gcmFix.BlobContainer.DownloadAsync(blobName);

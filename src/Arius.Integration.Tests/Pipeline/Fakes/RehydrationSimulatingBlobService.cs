@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.Pipeline.Fakes;
@@ -10,29 +11,28 @@ namespace Arius.Integration.Tests.Pipeline.Fakes;
 /// </summary>
 internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inner) : IBlobContainerService
 {
-    public HashSet<string> ArchiveTierBlobs { get; } = new(StringComparer.Ordinal);
-    public HashSet<string> RehydratingBlobs { get; } = new(StringComparer.Ordinal);
-    public List<(string Source, string Destination)> CopyCalls { get; } = new();
+    public HashSet<RelativePath> ArchiveTierBlobs { get; } = [];
+    public HashSet<RelativePath> RehydratingBlobs { get; } = [];
+    public List<(RelativePath Source, RelativePath Destination)> CopyCalls { get; } = [];
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken ct = default)
         => inner.CreateContainerIfNotExistsAsync(ct);
 
-    public Task UploadAsync(string blobName, Stream content,
+    public Task UploadAsync(RelativePath blobName, Stream content,
         IReadOnlyDictionary<string, string> metadata, BlobTier tier,
         string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         => inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, ct);
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
+    public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null,
         CancellationToken ct = default)
         => inner.OpenWriteAsync(blobName, contentType, ct);
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken ct = default)
+    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.DownloadAsync(blobName, ct);
 
-    public async Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken ct = default)
+    public async Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken ct = default)
     {
         var actual = await inner.GetMetadataAsync(blobName, ct);
-
         if (!actual.Exists)
             return actual;
 
@@ -59,17 +59,17 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return actual;
     }
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken ct = default)
+    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken ct = default)
         => inner.ListAsync(prefix, ct);
 
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata,
+    public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct = default)
         => inner.SetMetadataAsync(blobName, metadata, ct);
 
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken ct = default)
+    public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken ct = default)
         => inner.SetTierAsync(blobName, tier, ct);
 
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName,
+    public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName,
         BlobTier destinationTier, RehydratePriority? rehydratePriority = null,
         CancellationToken ct = default)
     {
@@ -77,6 +77,6 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return Task.CompletedTask;
     }
 
-    public Task DeleteAsync(string blobName, CancellationToken ct = default)
+    public Task DeleteAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.DeleteAsync(blobName, ct);
 }

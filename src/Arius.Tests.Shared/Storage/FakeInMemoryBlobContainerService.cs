@@ -33,7 +33,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         await content.CopyToAsync(ms, cancellationToken);
 
         if (!overwrite && _blobs.ContainsKey(blobKey))
-            throw new BlobAlreadyExistsException(blobKey);
+            throw new BlobAlreadyExistsException(blobName);
 
         _blobs[blobKey] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
         _uploadedBlobNames.Enqueue(blobKey);
@@ -50,11 +50,11 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             else
                 _openWriteAlreadyExists[blobKey] = remaining - 1;
 
-            throw new BlobAlreadyExistsException(blobKey);
+            throw new BlobAlreadyExistsException(blobName);
         }
 
         if (_blobs.ContainsKey(blobKey))
-            throw new BlobAlreadyExistsException(blobKey);
+            throw new BlobAlreadyExistsException(blobName);
 
         return Task.FromResult<Stream>(new CommitOnDisposeStream(bytes =>
         {

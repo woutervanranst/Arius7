@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;
@@ -111,8 +112,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
         // Find the chunk blob name — list chunks/ prefix
-        var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
+        var chunkBlobs = new List<RelativePath>();
+        await foreach (var blob in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
             chunkBlobs.Add(blob);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -167,8 +168,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
         // Find the chunk blob name — list chunks/ prefix
-        var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
+        var chunkBlobs = new List<RelativePath>();
+        await foreach (var blob in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
             chunkBlobs.Add(blob);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -226,8 +227,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
         // Find tar chunk blob
-        var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
+        var chunkBlobs = new List<RelativePath>();
+        await foreach (var blob in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
         {
             var meta = await fix.BlobContainer.GetMetadataAsync(blob);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
@@ -309,8 +310,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
 
         // Find tar chunk blob
-        var chunkBlobs = new List<string>();
-        await foreach (var blob in fix.BlobContainer.ListAsync("chunks/"))
+        var chunkBlobs = new List<RelativePath>();
+        await foreach (var blob in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
         {
             var meta = await fix.BlobContainer.GetMetadataAsync(blob);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)

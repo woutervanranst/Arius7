@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using NSubstitute;
@@ -12,22 +13,22 @@ public class FaultingBlobServiceTests
         var inner = Substitute.For<IBlobContainerService>();
         var sut = new FaultingBlobService(inner, throwAfterN: 1);
 
-        await sut.UploadAsync("chunks/one", new MemoryStream([1]), new Dictionary<string, string>(), BlobTier.Hot);
+        await sut.UploadAsync(RelativePath.Root / "chunks" / "one", new MemoryStream([1]), new Dictionary<string, string>(), BlobTier.Hot);
 
         await Should.ThrowAsync<IOException>(async () =>
-            await sut.UploadAsync("chunks/two", new MemoryStream([2]), new Dictionary<string, string>(), BlobTier.Hot));
+            await sut.UploadAsync(RelativePath.Root / "chunks" / "two", new MemoryStream([2]), new Dictionary<string, string>(), BlobTier.Hot));
     }
 
     [Test]
     public async Task OpenWriteAsync_DoesNotCount_As_A_Completed_Upload()
     {
         var inner = Substitute.For<IBlobContainerService>();
-        inner.OpenWriteAsync("chunks/one", null, default).Returns(Task.FromResult<Stream>(new MemoryStream()));
-        inner.SetMetadataAsync("chunks/one", Arg.Any<IReadOnlyDictionary<string, string>>(), default).Returns(Task.CompletedTask);
+        inner.OpenWriteAsync(RelativePath.Root / "chunks" / "one", null, default).Returns(Task.FromResult<Stream>(new MemoryStream()));
+        inner.SetMetadataAsync(RelativePath.Root / "chunks" / "one", Arg.Any<IReadOnlyDictionary<string, string>>(), default).Returns(Task.CompletedTask);
         var sut = new FaultingBlobService(inner, throwAfterN: 1);
 
-        await using var stream = await sut.OpenWriteAsync("chunks/one");
+        await using var stream = await sut.OpenWriteAsync(RelativePath.Root / "chunks" / "one");
 
-        await sut.SetMetadataAsync("chunks/one", new Dictionary<string, string>());
+        await sut.SetMetadataAsync(RelativePath.Root / "chunks" / "one", new Dictionary<string, string>());
     }
 }

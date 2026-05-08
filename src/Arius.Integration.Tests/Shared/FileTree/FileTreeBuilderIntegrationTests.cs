@@ -74,7 +74,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var entries = await ReadStoredTreeAsync(stream, s_enc);
 
             entries.Count.ShouldBe(1);
-            entries[0].Name.ShouldBe("readme.txt");
+            entries[0].Name.ShouldBe(PathSegment.Parse("readme.txt"));
             entries[0].ShouldBeOfType<FileEntry>().ContentHash.ShouldBe(FakeContentHash('a'));
         }
         finally
@@ -105,7 +105,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Count blobs in filetrees/ after first run
             var blobsAfterRun1 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
                 blobsAfterRun1.Add(b.ToString());
 
             // Second run with same manifest
@@ -117,7 +117,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Blob count should be the same (no new blobs)
             var blobsAfterRun2 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
                 blobsAfterRun2.Add(b.ToString());
 
             blobsAfterRun2.Count.ShouldBe(blobsAfterRun1.Count);
@@ -153,7 +153,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Multiple tree blobs should have been uploaded (one per directory + root)
             var treeBlobNames = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
                 treeBlobNames.Add(b.ToString());
 
             // Expected: filetrees/ for june, 2024, photos, docs, root = at least 4

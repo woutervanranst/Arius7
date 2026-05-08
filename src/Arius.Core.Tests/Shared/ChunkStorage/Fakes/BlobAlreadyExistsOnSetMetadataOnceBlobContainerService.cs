@@ -36,7 +36,7 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref _remainingFailures, 0) == 1)
-            throw new BlobAlreadyExistsException(blobName.ToString());
+            throw new BlobAlreadyExistsException(blobName);
 
         return _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
     }

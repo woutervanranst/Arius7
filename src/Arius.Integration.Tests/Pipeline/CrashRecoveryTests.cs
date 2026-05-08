@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -72,8 +73,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         r1.Success.ShouldBeFalse(); // pipeline should surface the fault
 
         // After the crash, at least one completed chunk should be present with arius-type set.
-        var blobs = new List<string>();
-        await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
+        var blobs = new List<RelativePath>();
+        await foreach (var name in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
             blobs.Add(name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
 
