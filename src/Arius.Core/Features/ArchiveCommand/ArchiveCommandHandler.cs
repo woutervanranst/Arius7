@@ -217,7 +217,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 try
                 {
-                    var  collisions = new Dictionary<string, RelativePath>(StringComparer.OrdinalIgnoreCase);
+                    var  collisions = new Dictionary<RelativePath, RelativePath>(ArchivePathCollisionValidator.OrdinalIgnoreCaseComparer);
                     var  pairs      = _enumerateFilePairs(LocalDirectory.Parse(opts.RootDirectory));
                     long count      = 0;
                     long totalBytes = 0;

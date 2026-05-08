@@ -152,7 +152,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
 
         var hashes = visibleCloudFiles
-            .Where(candidate => MatchesFilter(candidate.Entry.Name.ToString(), filter))
+            .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
             .Select(candidate => candidate.Entry.ContentHash)
             .Distinct()
             .ToList();
@@ -162,7 +162,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var candidate in visibleCloudFiles)
         {
-            if (!MatchesFilter(candidate.Entry.Name.ToString(), filter))
+            if (!MatchesFilter(candidate.Entry.Name, filter))
             {
                 continue;
             }
@@ -188,7 +188,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
         foreach (var localFile in localSnapshot.Files.Values)
         {
-            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name.ToString(), filter))
+            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name, filter))
             {
                 continue;
             }
@@ -250,7 +250,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
-                .FirstOrDefault(e => string.Equals(e.Name.ToString(), segment.ToString(), StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(e => PathSegmentEqualsIgnoreCase(e.Name, segment));
 
             currentHash = nextDirectory?.FileTreeHash;
         }
@@ -269,7 +269,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         try
         {
             foreach (var directory in localFileSystem.EnumerateDirectories(currentRelativeDirectory)
-                         .OrderBy(d => d.Path.Name.ToString(), StringComparer.OrdinalIgnoreCase))
+                         .OrderBy(d => d.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance))
             {
                 directories[directory.Path.Name] = new LocalDirectoryState(directory.Path.Name, directory.Path);
             }
@@ -283,7 +283,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         try
         {
             fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory)
-                .OrderBy(f => f.Path.Name.ToString(), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(f => f.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
                 .ToList();
         }
         catch (Exception ex)
@@ -323,8 +323,19 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private static LocalDirectory? ParseLocalRoot(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
 
-    private static bool MatchesFilter(string fileName, string? filter) =>
-        filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);
+    private static bool MatchesFilter(PathSegment fileName, string? filter) =>
+        filter is null || fileName.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase);
+
+    private static bool PathSegmentEqualsIgnoreCase(PathSegment left, PathSegment right) =>
+        StringComparer.OrdinalIgnoreCase.Equals(left.ToString(), right.ToString());
+
+    private sealed class PathSegmentOrdinalIgnoreCaseComparer : IComparer<PathSegment>
+    {
+        public static PathSegmentOrdinalIgnoreCaseComparer Instance { get; } = new();
+
+        public int Compare(PathSegment x, PathSegment y) =>
+            StringComparer.OrdinalIgnoreCase.Compare(x.ToString(), y.ToString());
+    }
 
     private sealed record CloudFileCandidate(FileEntry Entry, LocalFileState? LocalFile);
 

@@ -144,8 +144,8 @@ public sealed class SnapshotService
     // ── Snapshot blob name ────────────────────────────────────────────────────
 
     /// <summary>Returns the blob name for a snapshot with the given UTC timestamp.</summary>
-    public static string BlobName(DateTimeOffset timestamp) =>
-        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat)).ToString();
+    public static RelativePath BlobName(DateTimeOffset timestamp) =>
+        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
 
     internal static RelativePath BlobPath(DateTimeOffset timestamp) =>
         BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));

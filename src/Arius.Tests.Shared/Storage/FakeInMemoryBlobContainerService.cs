@@ -134,11 +134,20 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     public void ThrowAlreadyExistsOnOpenWrite(string blobName, bool throwOnce = false)
         => _openWriteAlreadyExists[blobName] = throwOnce ? 1 : int.MaxValue;
 
+    public void ThrowAlreadyExistsOnOpenWrite(RelativePath blobName, bool throwOnce = false)
+        => ThrowAlreadyExistsOnOpenWrite(blobName.ToString(), throwOnce);
+
     public void SeedBlob(string blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
         => _blobs[blobName] = new StoredBlob(content, metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata), tier, contentType, isRehydrating);
 
+    public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
+        => SeedBlob(blobName.ToString(), content, tier, metadata, contentType, isRehydrating);
+
     public void SeedMetadata(string blobName, BlobMetadata metadata)
         => _blobs[blobName] = new StoredBlob(Array.Empty<byte>(), new Dictionary<string, string>(metadata.Metadata), metadata.Tier, null, metadata.IsRehydrating);
+
+    public void SeedMetadata(RelativePath blobName, BlobMetadata metadata)
+        => SeedMetadata(blobName.ToString(), metadata);
 
     public void ClearMetadata(string blobName)
     {

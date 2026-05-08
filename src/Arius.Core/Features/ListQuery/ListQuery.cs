@@ -64,7 +64,6 @@ public sealed record RepositoryFileEntry(
 
 /// <summary>
 /// A directory entry emitted by the repository listing.
-/// Directory paths always end with a trailing slash.
 /// </summary>
 public sealed record RepositoryDirectoryEntry(
     RelativePath RelativePath,

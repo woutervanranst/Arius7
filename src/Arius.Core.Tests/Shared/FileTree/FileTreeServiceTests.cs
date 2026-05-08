@@ -761,7 +761,7 @@ public class FileTreeServiceTests
             json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded
-            blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts));
+            blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts).ToString());
         }
         finally
         {

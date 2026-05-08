@@ -89,7 +89,7 @@ public class SnapshotSerializerTests
         var ts   = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var name = SnapshotService.BlobName(ts);
 
-        name.ShouldBe("snapshots/2026-03-22T150000.000Z");
+        name.ShouldBe(Arius.Core.Shared.FileSystem.RelativePath.Parse("snapshots/2026-03-22T150000.000Z"));
     }
 
     [Test]

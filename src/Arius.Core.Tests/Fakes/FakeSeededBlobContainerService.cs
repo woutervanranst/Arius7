@@ -13,6 +13,8 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 {
     private readonly Dictionary<string, byte[]> _blobs = new(StringComparer.Ordinal);
 
+    public void AddBlob(RelativePath blobName, byte[] content) => _blobs[blobName.ToString()] = content;
+
     public void AddBlob(string blobName, byte[] content) => _blobs[blobName] = content;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

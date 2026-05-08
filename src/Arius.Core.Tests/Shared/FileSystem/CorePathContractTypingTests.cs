@@ -76,6 +76,10 @@ public class CorePathContractTypingTests
     [Test]
     public void SnapshotApis_KeepBlobNamesTypedInsideCore()
     {
+        typeof(SnapshotService).GetMethod(nameof(SnapshotService.BlobName))!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
         typeof(SnapshotService).GetMethod(nameof(SnapshotService.ListBlobNamesAsync))!
             .ReturnType
             .ShouldBe(typeof(Task<IReadOnlyList<RelativePath>>));
@@ -131,6 +135,9 @@ public class CorePathContractTypingTests
         listQuerySource.ShouldNotContain("opts.Prefix?.ToString()");
         listQuerySource.ShouldNotContain("currentRelativeDirectory.ToString()");
         listQuerySource.ShouldNotContain("relativePath.ToString()");
+        listQuerySource.ShouldNotContain("candidate.Entry.Name.ToString()");
+        listQuerySource.ShouldNotContain("localFile.Name.ToString()");
+        listQuerySource.ShouldNotContain("e.Name.ToString(), segment.ToString()");
         archiveSource.ShouldNotContain("pair.Path.ToString()");
         archiveSource.ShouldNotContain("hashed.FilePair.Path.ToString()");
         archiveSource.ShouldNotContain("upload.HashedPair.FilePair.Path.ToString()");
