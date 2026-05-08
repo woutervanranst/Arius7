@@ -29,10 +29,6 @@ public class RepositoryPathsTests
             .ShouldBe(PathSegment.Parse("account-container"));
         RepositoryPaths.GetRepoDirectoryName("account", "container")
             .ShouldBe(PathSegment.Parse("account-container"));
-        RepositoryPaths.ChunkIndexCacheRelativePath.ShouldBe(RelativePath.Parse("chunk-index"));
-        RepositoryPaths.FileTreeCacheRelativePath.ShouldBe(RelativePath.Parse("filetrees"));
-        RepositoryPaths.SnapshotCacheRelativePath.ShouldBe(RelativePath.Parse("snapshots"));
-        RepositoryPaths.LogsRelativePath.ShouldBe(RelativePath.Parse("logs"));
 
         RepositoryPaths.GetChunkIndexCacheRoot("account", "container").ToString()
             .ShouldBe(RepositoryCachePaths.GetChunkIndexCacheDirectory("account", "container"));
