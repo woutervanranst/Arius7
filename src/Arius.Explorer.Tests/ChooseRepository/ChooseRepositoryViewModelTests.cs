@@ -118,6 +118,41 @@ public class ChooseRepositoryViewModelTests
     }
 
     [Test]
+    public async Task AccountCredentials_WhenFactoryThrows_WithoutUiSynchronizationContext_KeepsErrorState()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
+
+        mediator
+            .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new InvalidOperationException("boom"));
+
+        var originalContext = SynchronizationContext.Current;
+        var delayedContext = new DelayedSynchronizationContext();
+        SynchronizationContext.SetSynchronizationContext(delayedContext);
+
+        try
+        {
+            using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
+
+            viewModel.AccountName = "account";
+            viewModel.AccountKey = "key";
+
+            await WaitUntilAsync(() => delayedContext.PostedCount >= 4);
+            delayedContext.ExecuteCallbacksInOrder(0, 2, 3, 1);
+
+            viewModel.IsLoading.ShouldBeFalse();
+            viewModel.StorageAccountError.ShouldBeTrue();
+            viewModel.ContainerNames.ShouldBeEmpty();
+            viewModel.ContainerName.ShouldBe(string.Empty);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
+    }
+
+    [Test]
     public void OpenRepositoryCommand_WhenConfigurationIsInvalid_IsDisabled()
     {
         var mediator = Substitute.For<IMediator>();
@@ -295,9 +330,60 @@ public class ChooseRepositoryViewModelTests
         }
     }
 
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMilliseconds = 1000)
+    {
+        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMilliseconds));
+
+        while (!condition())
+        {
+            cancellationTokenSource.Token.ThrowIfCancellationRequested();
+            await Task.Delay(10, cancellationTokenSource.Token);
+        }
+    }
+
     private static async IAsyncEnumerable<string> EmptyAsyncEnumerable()
     {
         await Task.CompletedTask;
         yield break;
+    }
+
+    private sealed class DelayedSynchronizationContext : SynchronizationContext
+    {
+        private readonly List<(SendOrPostCallback Callback, object? State)> callbacks = [];
+        private readonly Lock callbacksLock = new();
+
+        public int PostedCount
+        {
+            get
+            {
+                lock (callbacksLock)
+                {
+                    return callbacks.Count;
+                }
+            }
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            lock (callbacksLock)
+            {
+                callbacks.Add((d, state));
+            }
+        }
+
+        public void ExecuteCallbacksInOrder(params int[] indices)
+        {
+            List<(SendOrPostCallback Callback, object? State)> snapshot;
+            lock (callbacksLock)
+            {
+                snapshot = [.. callbacks];
+            }
+
+            foreach (var index in indices)
+            {
+                var (callback, state) = snapshot[index];
+                callback(state);
+            }
+        }
     }
 }
