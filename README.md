@@ -303,6 +303,25 @@ For large files, content-hash equals chunk-hash. For tar-bundled files, chunk-ha
 the tar-hash. A 3-tier cache (in-memory LRU, local disk at
 `~/.arius/cache/<repo-id>/chunk-index/`, remote blob) makes lookups fast.
 
+## Toolchain
+
+### Updating the toolchain
+
+* OpenSpec
+
+https://github.com/Fission-AI/OpenSpec#updating-openspec
+
+```
+npm install -g @fission-ai/openspec@latest
+openspec update
+```
+
+* Superpowers
+
+```
+what version of superpowers are you on? if it is not 5.1.0 , clear the package cache
+```
+
 ## License
 
 [MIT](LICENSE)
