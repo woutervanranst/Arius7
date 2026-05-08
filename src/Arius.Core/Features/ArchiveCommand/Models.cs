@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 
@@ -54,7 +55,7 @@ internal sealed record TarEntry(
 /// with responsibility for describing the sealed tar file, its chunk hash, its size, and its member entries.
 /// </summary>
 internal sealed record SealedTar(
-    string          TarFilePath,       // temp file on disk
+    RelativePath    TarFilePath,       // temp file under the tar workspace root
     ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
     long            UncompressedSize,  // sum of file sizes
     IReadOnlyList<TarEntry> Entries    // per-file info for thin chunk creation

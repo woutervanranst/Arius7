@@ -191,6 +191,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
             var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
+            var             tarWorkspace    = new RelativeFileSystem(LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), "arius", "tar-staging", Guid.NewGuid().ToString("N"))));
+            tarWorkspace.CreateDirectory(RelativePath.Root);
 
             // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
             // Used by the dedup stage to detect duplicates within the same run before the
@@ -267,13 +269,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         else
                         {
                             // No binary and no pointer hash → skip
-                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.Path.ToString());
+                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.Path);
                             return;
                         }
 
                         await _mediator.Publish(new FileHashedEvent(pair.Path, contentHash), ct);
 
-                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.Path.ToString(), contentHash.Short8, fileSize.Bytes().Humanize());
+                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.Path, contentHash.Short8, fileSize.Bytes().Humanize());
 
                         await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
                     })
@@ -294,12 +296,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
-                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.Path.ToString());
+                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.Path);
                                 continue;
                             }
 
                             // Known dedup: add to manifest only
-                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.Path.ToString());
+                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.Path);
                             await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
@@ -308,7 +310,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
                         {
                             // Already in index OR already queued in this run → dedup hit
-                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.Path.ToString(), hashed.ContentHash.Short8);
+                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.Path, hashed.ContentHash.Short8);
                             await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             if (!opts.NoPointers)
@@ -323,7 +325,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var upload = new FileToUpload(hashed, fileSize);
                             var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
                             _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                                hashed.FilePair.Path.ToString(), route, hashed.ContentHash.Short8,
+                                hashed.FilePair.Path, route, hashed.ContentHash.Short8,
                                 fileSize.Bytes().Humanize());
 
                             if (fileSize >= opts.SmallFileThreshold)
@@ -347,7 +349,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
                 async (upload, ct) =>
                 {
-                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.Path.ToString(), upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize());
+                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.Path, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize());
 
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
@@ -372,7 +374,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
 
-                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.Path.ToString(), upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
+                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.Path, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
                 });
 
             // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
@@ -381,11 +383,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 try
                 {
-                    var         tarEntries     = new List<TarEntry>();
-                    string?     currentTarPath = null;
+                    var           tarEntries     = new List<TarEntry>();
+                    RelativePath? currentTarPath = null;
                     TarWriter?  tarWriter      = null;
                     FileStream? tarStream      = null;
                     long        currentSize    = 0;
+                    var         tarSequence    = 0;
 
                     async Task SealCurrentTar()
                     {
@@ -397,7 +400,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         // Compute tar hash
                         ChunkHash tarHash;
-                        await using (var fs = File.OpenRead(currentTarPath!))
+                        await using (var fs = tarWorkspace.OpenRead(currentTarPath!.Value))
                         {
                             tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(fs, cancellationToken));
                         }
@@ -406,9 +409,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)
-                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.Path.ToString(), te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.Path, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
-                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath!, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
+                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath.Value, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                         tarEntries.Clear();
                         currentTarPath = null;
@@ -422,8 +425,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         // Initialize new tar if needed
                         if (tarWriter is null)
                         {
-                            currentTarPath = Path.GetTempFileName();
-                            tarStream      = new FileStream(currentTarPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+                            currentTarPath = RelativePath.Root / $"bundle-{tarSequence++:D6}.tar";
+                            tarStream      = (FileStream)tarWorkspace.CreateFile(currentTarPath.Value);
                             tarWriter      = new TarWriter(tarStream, leaveOpen: false);
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
@@ -468,7 +471,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
 
-                        await using var fs             = File.OpenRead(sealed_.TarFilePath);
+                        await using var fs             = tarWorkspace.OpenRead(sealed_.TarFilePath);
                         var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealed_.TarHash, sealed_.UncompressedSize);
                         var             uploadResult   = await _chunkStorage.UploadTarAsync(sealed_.TarHash, fs, sealed_.UncompressedSize, opts.UploadTier, tarProgress, ct);
                         var             compressedSize = uploadResult.StoredSize;
@@ -501,7 +504,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                     finally
                     {
-                        try { File.Delete(sealed_.TarFilePath); } catch { /* ignore */ }
+                        try { tarWorkspace.DeleteFile(sealed_.TarFilePath); } catch { /* ignore */ }
                     }
                 });
 

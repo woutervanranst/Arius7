@@ -110,7 +110,7 @@ internal sealed class LocalFileEnumerator
             var content = fileSystem.ReadAllText(path).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
-                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path.ToString());
+                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path);
                 return null;
             }
 
@@ -118,7 +118,7 @@ internal sealed class LocalFileEnumerator
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", path.ToString());
+            _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", path);
             return null;
         }
     }

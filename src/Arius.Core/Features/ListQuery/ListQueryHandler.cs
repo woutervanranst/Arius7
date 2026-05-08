@@ -48,7 +48,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             _accountName,
             _containerName,
             opts.Version ?? "latest",
-            opts.Prefix?.ToString() ?? "(none)",
+            opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)",
             opts.Filter ?? "(none)",
             opts.Recursive,
             opts.LocalPath ?? "(none)");
@@ -276,7 +276,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", currentRelativeDirectory.ToString());
+            _logger.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", currentRelativeDirectory);
         }
 
         IEnumerable<LocalFileEntry> fileInfos;
@@ -288,7 +288,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not enumerate files in: {Directory}", currentRelativeDirectory.ToString());
+            _logger.LogWarning(ex, "Could not enumerate files in: {Directory}", currentRelativeDirectory);
             fileInfos = [];
         }
 
@@ -307,7 +307,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             var content = fileSystem.ReadAllText(relativePath).Trim();
             if (!ContentHash.TryParse(content, out var hash))
             {
-                _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relativePath.ToString());
+                _logger.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", relativePath);
                 return null;
             }
 
@@ -315,7 +315,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not read pointer file: {RelPath}", relativePath.ToString());
+            _logger.LogWarning(ex, "Could not read pointer file: {RelPath}", relativePath);
             return null;
         }
     }

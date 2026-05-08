@@ -116,6 +116,10 @@ public class CorePathContractTypingTests
         var snapshotSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Snapshot", "SnapshotService.cs"));
         var fileTreeSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "FileTree", "FileTreeService.cs"));
         var chunkIndexSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "ChunkIndex", "ChunkIndexService.cs"));
+        var listQuerySource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "ListQuery", "ListQueryHandler.cs"));
+        var archiveSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "ArchiveCommand", "ArchiveCommandHandler.cs"));
+        var archiveModelsSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "ArchiveCommand", "Models.cs"));
+        var localFileSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "LocalFile", "LocalFileEnumerator.cs"));
 
         snapshotSource.ShouldNotContain("candidate.Name.ToString()");
         snapshotSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
@@ -124,6 +128,18 @@ public class CorePathContractTypingTests
         fileTreeSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
         fileTreeSource.ShouldNotContain("RelativePath.Parse(hashText)");
         chunkIndexSource.ShouldNotContain("RelativePath.Parse(prefix)");
+        listQuerySource.ShouldNotContain("opts.Prefix?.ToString()");
+        listQuerySource.ShouldNotContain("currentRelativeDirectory.ToString()");
+        listQuerySource.ShouldNotContain("relativePath.ToString()");
+        archiveSource.ShouldNotContain("pair.Path.ToString()");
+        archiveSource.ShouldNotContain("hashed.FilePair.Path.ToString()");
+        archiveSource.ShouldNotContain("upload.HashedPair.FilePair.Path.ToString()");
+        archiveSource.ShouldNotContain("Path.GetTempFileName()");
+        archiveSource.ShouldNotContain("File.OpenRead(currentTarPath");
+        archiveSource.ShouldNotContain("File.OpenRead(sealed_.TarFilePath)");
+        archiveSource.ShouldNotContain("File.Delete(sealed_.TarFilePath)");
+        archiveModelsSource.ShouldNotContain("string          TarFilePath");
+        localFileSource.ShouldNotContain("path.ToString()");
     }
 
     [Test]
