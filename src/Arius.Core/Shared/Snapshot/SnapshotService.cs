@@ -156,9 +156,9 @@ public sealed class SnapshotService
 
     public static DateTimeOffset ParseTimestamp(RelativePath blobName)
     {
-        var name = GetSnapshotFileName(blobName).ToString();
+        var name = GetSnapshotFileName(blobName);
 
-        return DateTimeOffset.ParseExact(name, TimestampFormat, null,
+        return DateTimeOffset.ParseExact(name.ToString(), TimestampFormat, null,
             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal);
     }
 
@@ -278,9 +278,8 @@ public sealed class SnapshotService
 
     private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
     {
-        var fileName = manifest.Timestamp.UtcDateTime.ToString(TimestampFormat);
-        var path     = RelativePath.Parse(fileName);
-        var json     = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
+        var path = RelativePath.Root / PathSegment.Parse(manifest.Timestamp.UtcDateTime.ToString(TimestampFormat));
+        var json = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
         await _diskCacheFileSystem.WriteAllBytesAsync(path, json, cancellationToken);
     }
 

@@ -22,14 +22,7 @@ internal static class FileTreePaths
     /// Example: <c>~/.arius/<container>/filetrees/0123abcd...</c>
     /// </summary>
     public static RelativePath GetCachePath(FileTreeHash hash)
-        => GetCachePath(hash.ToString());
-
-    /// <summary>
-    /// Returns the persisted cache file path for one filetree hash text.
-    /// Example: <c>~/.arius/<container>/filetrees/0123abcd...</c>
-    /// </summary>
-    public static RelativePath GetCachePath(string hashText)
-        => RelativePath.Parse(hashText);
+        => RelativePath.Root / PathSegment.Parse(hash.ToString());
 
 
     // -- FileTree Staging Paths ---

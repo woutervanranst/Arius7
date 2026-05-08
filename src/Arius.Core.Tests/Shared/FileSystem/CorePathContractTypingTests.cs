@@ -82,6 +82,10 @@ public class CorePathContractTypingTests
             .GetParameters()[0]
             .ParameterType
             .ShouldBe(typeof(PathSegment));
+
+        typeof(FileTreePaths)
+            .GetMethod(nameof(FileTreePaths.GetCachePath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public, [typeof(string)])
+            .ShouldBeNull();
     }
 
     [Test]
@@ -109,8 +113,10 @@ public class CorePathContractTypingTests
 
         snapshotSource.ShouldNotContain("candidate.Name.ToString()");
         snapshotSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
+        snapshotSource.ShouldNotContain("RelativePath.Parse(fileName)");
         fileTreeSource.ShouldNotContain("Select(name => name.ToString())");
         fileTreeSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
+        fileTreeSource.ShouldNotContain("RelativePath.Parse(hashText)");
         chunkIndexSource.ShouldNotContain("RelativePath.Parse(prefix)");
     }
 
