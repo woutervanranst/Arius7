@@ -320,7 +320,7 @@ public class ChooseRepositoryViewModelTests
 
             while (!condition())
             {
-                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token);
+                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token).ConfigureAwait(false);
                 while (signal.Reader.TryRead(out _))
                 {
                     if (condition())
