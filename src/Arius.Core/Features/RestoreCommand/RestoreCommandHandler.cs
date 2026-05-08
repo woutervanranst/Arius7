@@ -560,7 +560,7 @@ public sealed class RestoreCommandHandler
         CancellationToken cancellationToken)
     {
         {
-            var progress = opts.CreateDownloadProgress?.Invoke(file.RelativePath.ToString(), compressedSize, DownloadKind.LargeFile);
+            var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
             await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
             await using var fileStream   = fs.CreateFile(file.RelativePath);
 
@@ -604,7 +604,7 @@ public sealed class RestoreCommandHandler
     {
         var restored = 0;
 
-        var progress = opts.CreateDownloadProgress?.Invoke(chunkHash.ToString(), compressedSize, DownloadKind.TarBundle);
+        var progress = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
         await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         var tarReader = new TarReader(payloadStream, leaveOpen: false);
 

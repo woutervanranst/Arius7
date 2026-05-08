@@ -211,4 +211,6 @@ internal sealed class RelativeFileSystem
     public Stream OpenReadFromRoot(PathSegment fileName) => OpenRead(RelativePath.Root / fileName);
 
     public RelativePath RootFile(PathSegment fileName) => RelativePath.Root / fileName;
+
+    public string DescribeRootFile(PathSegment fileName) => _root.Resolve(RootFile(fileName));
 }

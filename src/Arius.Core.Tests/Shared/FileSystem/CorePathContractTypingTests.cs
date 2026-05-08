@@ -2,7 +2,9 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -23,6 +25,12 @@ public class CorePathContractTypingTests
 
         typeof(ArchiveCommandOptions).GetProperty(nameof(ArchiveCommandOptions.CreateHashProgress))!.PropertyType
             .ShouldBe(typeof(Func<RelativePath, long, IProgress<long>>));
+
+        typeof(RestoreOptions).GetProperty(nameof(RestoreOptions.CreateLargeFileDownloadProgress))!.PropertyType
+            .ShouldBe(typeof(Func<RelativePath, long, IProgress<long>>));
+
+        typeof(RestoreOptions).GetProperty(nameof(RestoreOptions.CreateTarBundleDownloadProgress))!.PropertyType
+            .ShouldBe(typeof(Func<Arius.Core.Shared.Hashes.ChunkHash, long, IProgress<long>>));
 
         typeof(RepositoryEntry).GetProperty(nameof(RepositoryEntry.RelativePath))!.PropertyType
             .ShouldBe(typeof(RelativePath));
@@ -56,6 +64,19 @@ public class CorePathContractTypingTests
 
         typeof(LocalFileState).GetProperty(nameof(LocalFileState.Name))!.PropertyType
             .ShouldBe(typeof(PathSegment));
+
+        typeof(RepositoryPaths)
+            .GetMethod("GetRepoDirectoryName", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(RepositoryPaths)
+            .GetMethod("GetRepoDirectoryName", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+            .ReturnType
+            .ShouldBe(typeof(PathSegment));
+
+        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
+            .GetMethod("NormalizePath", [typeof(string)])
+            .ShouldBeNull();
     }
 
     [Test]
@@ -130,6 +151,10 @@ public class CorePathContractTypingTests
         var archiveSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "ArchiveCommand", "ArchiveCommandHandler.cs"));
         var archiveModelsSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "ArchiveCommand", "Models.cs"));
         var localFileSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "LocalFile", "LocalFileEnumerator.cs"));
+        var pricingConfigSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "RestoreCommand", "PricingConfig.cs"));
+        var encryptionInterfaceSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Encryption", "IEncryptionService.cs"));
+        var plaintextEncryptionSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Encryption", "PlaintextPassthroughService.cs"));
+        var passphraseEncryptionSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Shared", "Encryption", "PassphraseEncryptionService.cs"));
 
         snapshotSource.ShouldNotContain("candidate.Name.ToString()");
         snapshotSource.ShouldNotContain("RelativePath.Parse(blobName.Name.ToString())");
@@ -152,9 +177,26 @@ public class CorePathContractTypingTests
         archiveSource.ShouldNotContain("File.OpenRead(currentTarPath");
         archiveSource.ShouldNotContain("File.OpenRead(sealed_.TarFilePath)");
         archiveSource.ShouldNotContain("File.Delete(sealed_.TarFilePath)");
+        var restoreSource = await File.ReadAllTextAsync(Path.Combine(coreRoot, "Features", "RestoreCommand", "RestoreCommandHandler.cs"));
+        restoreSource.ShouldNotContain("file.RelativePath.ToString()");
         archiveModelsSource.ShouldNotContain("string          TarFilePath");
         localFileSource.ShouldNotContain("path.ToString()");
         localFileSource.ShouldNotContain("EnumerateFilesDepthFirst(");
+        pricingConfigSource.ShouldNotContain("Directory.GetCurrentDirectory()");
+        pricingConfigSource.ShouldNotContain("File.OpenRead(path)");
+        encryptionInterfaceSource.ShouldNotContain("string filePath");
+        plaintextEncryptionSource.ShouldNotContain("string filePath");
+        plaintextEncryptionSource.ShouldNotContain("File.OpenRead(filePath)");
+        passphraseEncryptionSource.ShouldNotContain("string filePath");
+        passphraseEncryptionSource.ShouldNotContain("File.OpenRead(filePath)");
+    }
+
+    [Test]
+    public void EncryptionService_DoesNotExposeRawFilePathHashing()
+    {
+        typeof(IEncryptionService)
+            .GetMethod(nameof(IEncryptionService.ComputeHashAsync), [typeof(string), typeof(IProgress<long>), typeof(CancellationToken)])
+            .ShouldBeNull();
     }
 
     [Test]

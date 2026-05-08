@@ -81,7 +81,7 @@ internal sealed class PricingConfig
     {
         var currentDirectory = RelativeFileSystem.FromCurrentDirectory();
         var pricingFileName = PathSegment.Parse("pricing.json");
-        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), pricingFileName.ToString());
+        var currentDirectoryPath = currentDirectory.DescribeRootFile(pricingFileName);
 
         // 1. Working directory override
         if (currentDirectory.FileExistsInRoot(pricingFileName))
@@ -90,7 +90,7 @@ internal sealed class PricingConfig
         // 2. ~/.arius/ override
         var homeDirectory = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         var ariusConfigFileSystem = new RelativeFileSystem(LocalDirectory.Parse(homeDirectory.Resolve(RelativePath.Parse(".arius"))));
-        var ariusConfigPath = Path.Combine(homeDirectory.ToString(), ".arius", pricingFileName.ToString());
+        var ariusConfigPath = ariusConfigFileSystem.DescribeRootFile(pricingFileName);
         if (ariusConfigFileSystem.FileExistsInRoot(pricingFileName))
             return LoadFromFile(ariusConfigFileSystem.OpenReadFromRoot(pricingFileName), ariusConfigPath);
 
@@ -102,8 +102,11 @@ internal sealed class PricingConfig
     {
         try
         {
-            using var fs = File.OpenRead(path);
-            return LoadFromFile(fs, path);
+            var directory = LocalDirectory.Parse(System.IO.Path.GetDirectoryName(path) ?? throw new ArgumentException("Path must include a directory.", nameof(path)));
+            var fileName = PathSegment.Parse(System.IO.Path.GetFileName(path));
+            var fileSystem = new RelativeFileSystem(directory);
+            using var stream = fileSystem.OpenReadFromRoot(fileName);
+            return LoadFromFile(stream, path);
         }
         catch (JsonException ex)
         {

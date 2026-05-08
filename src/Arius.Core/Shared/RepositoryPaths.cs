@@ -22,12 +22,16 @@ public static class RepositoryPaths
     /// Returns the stable repository directory name for one archive/container pair.
     /// Example: <c>archive-container</c>
     /// </summary>
-    public static string GetRepoDirectoryName(string accountName, string containerName) => $"{accountName}-{containerName}";
+    public static PathSegment GetRepositoryDirectoryName(string accountName, string containerName) =>
+        PathSegment.Parse($"{accountName}-{containerName}");
+
+    internal static PathSegment GetRepoDirectoryName(string accountName, string containerName) =>
+        GetRepositoryDirectoryName(accountName, containerName);
 
     internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return LocalDirectory.Parse(Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName)));
+        var homeRoot = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / ".arius" / GetRepoDirectoryName(accountName, containerName)));
     }
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) =>

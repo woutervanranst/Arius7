@@ -122,11 +122,4 @@ internal sealed class LocalFileEnumerator
             return null;
         }
     }
-
-    // ── Task 7.5: Path normalization ──────────────────────────────────────────
-
-    /// <summary>Normalizes a path to forward slashes, no leading slash.</summary>
-    public static string NormalizePath(string path) =>
-        path.Replace('\\', '/').TrimStart('/');
-
 }

@@ -453,8 +453,8 @@ public sealed class ProgressState
 
     /// <summary>
     /// Per-chunk metadata for tar bundles (file count + original size), populated by
-    /// <c>ChunkDownloadStartedHandler</c> before <c>CreateDownloadProgress</c> is called.
-    /// Used by the <c>CreateDownloadProgress</c> factory to build display names.
+    /// <c>ChunkDownloadStartedHandler</c> before the tar-bundle download progress callback is called.
+    /// Used by the tar-bundle download progress factory to build display names.
     /// </summary>
     internal ConcurrentDictionary<ChunkHash, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new();
 

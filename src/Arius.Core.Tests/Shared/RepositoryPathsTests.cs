@@ -13,7 +13,7 @@ public class RepositoryPathsTests
         var root = Path.Combine(home, ".arius", "account-container");
 
         RepositoryCachePaths.GetRepositoryDirectory("account", "container").ShouldBe(root);
-        RepositoryPaths.GetRepoDirectoryName("account", "container").ShouldBe("account-container");
+        RepositoryPaths.GetRepositoryDirectoryName("account", "container").ShouldBe(PathSegment.Parse("account-container"));
         RepositoryCachePaths.GetChunkIndexCacheDirectory("account", "container").ShouldBe(Path.Combine(root, "chunk-index"));
         RepositoryCachePaths.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
         RepositoryCachePaths.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
@@ -25,6 +25,10 @@ public class RepositoryPathsTests
     {
         RepositoryPaths.GetRepositoryRoot("account", "container").ToString()
             .ShouldBe(RepositoryCachePaths.GetRepositoryDirectory("account", "container"));
+        RepositoryPaths.GetRepositoryDirectoryName("account", "container")
+            .ShouldBe(PathSegment.Parse("account-container"));
+        RepositoryPaths.GetRepoDirectoryName("account", "container")
+            .ShouldBe(PathSegment.Parse("account-container"));
         RepositoryPaths.ChunkIndexCacheRelativePath.ShouldBe(RelativePath.Parse("chunk-index"));
         RepositoryPaths.FileTreeCacheRelativePath.ShouldBe(RelativePath.Parse("filetrees"));
         RepositoryPaths.SnapshotCacheRelativePath.ShouldBe(RelativePath.Parse("snapshots"));

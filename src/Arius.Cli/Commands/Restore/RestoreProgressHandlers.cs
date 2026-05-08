@@ -144,7 +144,7 @@ public sealed class RehydrationStatusHandler(ProgressState state) : INotificatio
 
 /// <summary>
 /// Stores tar bundle metadata (file count + original size) in <see cref="ProgressState.TarBundleMetadata"/>
-/// before the <c>CreateDownloadProgress</c> callback is invoked, so the CLI can build display labels.
+/// before the tar-bundle download progress callback is invoked, so the CLI can build display labels.
 /// </summary>
 public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotificationHandler<ChunkDownloadStartedEvent>
 {

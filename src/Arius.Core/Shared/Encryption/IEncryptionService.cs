@@ -42,12 +42,4 @@ public interface IEncryptionService
     /// </summary>
     Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// File-path variant of <see cref="ComputeHashAsync(Stream, CancellationToken)"/>.
-    /// Opens the file for reading and optionally reports cumulative bytes read.
-    /// </summary>
-    Task<ContentHash> ComputeHashAsync(
-        string filePath,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default);
 }

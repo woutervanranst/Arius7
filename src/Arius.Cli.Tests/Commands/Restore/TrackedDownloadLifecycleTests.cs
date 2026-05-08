@@ -15,7 +15,7 @@ public class TrackedDownloadLifecycleTests
     {
         var state = new ProgressState();
 
-        // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
+        // Simulate CreateLargeFileDownloadProgress adding a TrackedDownload for a large file
         // Key is RelativePath (the identifier passed from RestoreCommandHandler for large files)
         var td = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
@@ -47,7 +47,7 @@ public class TrackedDownloadLifecycleTests
         var state = new ProgressState();
         var chunkHash = FakeChunkHash('a').ToString();
 
-        // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
+        // Simulate CreateTarBundleDownloadProgress adding a TrackedDownload for a tar bundle
         var td = new TrackedDownload(chunkHash, DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
         state.TrackedDownloads.TryAdd(chunkHash, td);
 
