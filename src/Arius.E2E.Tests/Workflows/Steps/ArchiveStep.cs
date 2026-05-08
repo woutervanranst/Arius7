@@ -1,4 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -12,8 +13,8 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.C
 
         if (CaptureNoOpPreCounts)
         {
-            state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks,    cancellationToken);
-            state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken);
+            state.ChunkBlobCountBeforeNoOpArchive    = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Parse(BlobPaths.Chunks), cancellationToken);
+            state.FileTreeBlobCountBeforeNoOpArchive = await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Parse(BlobPaths.FileTrees), cancellationToken);
             state.SnapshotVersionBeforeNoOpArchive = latestBeforeArchive;
         }
 

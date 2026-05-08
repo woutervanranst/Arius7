@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;
@@ -89,9 +90,9 @@ public class RepositorySessionTests
         await using var provider = services.BuildServiceProvider();
         var blobContainerService = provider.GetRequiredService<IBlobContainerService>();
 
-        var metadata = await blobContainerService.GetMetadataAsync("missing");
-        var blobs = new List<string>();
-        await foreach (var blob in blobContainerService.ListAsync("chunks/"))
+        var metadata = await blobContainerService.GetMetadataAsync(RelativePath.Parse("missing"));
+        var blobs = new List<RelativePath>();
+        await foreach (var blob in blobContainerService.ListAsync(RelativePath.Parse("chunks")))
         {
             blobs.Add(blob);
         }
@@ -99,8 +100,8 @@ public class RepositorySessionTests
         metadata.Exists.ShouldBeFalse();
         blobs.ShouldBeEmpty();
         await blobContainerService.CreateContainerIfNotExistsAsync();
-        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.DownloadAsync("blob"));
-        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.OpenWriteAsync("blob"));
-        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.UploadAsync("blob", Stream.Null, new Dictionary<string, string>(), BlobTier.Cool));
+        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.DownloadAsync(RelativePath.Parse("blob")));
+        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.OpenWriteAsync(RelativePath.Parse("blob")));
+        await Should.ThrowAsync<NotSupportedException>(() => blobContainerService.UploadAsync(RelativePath.Parse("blob"), Stream.Null, new Dictionary<string, string>(), BlobTier.Cool));
     }
 }

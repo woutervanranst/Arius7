@@ -83,12 +83,12 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         initialResult.ChunksPendingRehydration.ShouldBeGreaterThan(0, $"{Name}: pending restore should report pending chunks.");
         initialResult.FilesRestored.ShouldBe(0, $"{Name}: pending restore should not restore files before rehydration is ready.");
 
-        var pendingRehydratedBlobCount = await CountBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydrated, cancellationToken);
+        var pendingRehydratedBlobCount = await CountBlobsAsync(azureBlobContainer, RelativePath.Parse(BlobPaths.ChunksRehydrated), cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
         // 5. Replace the pending staged blob with the preserved readable blob so the next restore
         // observes the post-rehydration path without waiting on Azure's real archive-tier timing.
-        await DeleteBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydrated, cancellationToken);
+        await DeleteBlobsAsync(azureBlobContainer, RelativePath.Parse(BlobPaths.ChunksRehydrated), cancellationToken);
         await UploadReadyRehydratedChunkAsync(azureBlobContainer, targetChunk, cancellationToken);
 
         var cleanupDeletedChunks = 0;
@@ -170,7 +170,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 if (entry!.IsLargeChunk)
                     continue;
 
-                var             chunkBlobName  = BlobPaths.Chunk(entry.ChunkHash);
+                var             chunkBlobName  = RelativePath.Parse(BlobPaths.Chunk(entry.ChunkHash));
                 await using var chunkStream    = await fixture.BlobContainer.DownloadAsync(chunkBlobName, cancellationToken);
                 using var       preservedChunk = new MemoryStream();
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
@@ -186,20 +186,20 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         static async Task MoveChunksToArchiveAsync(AzureBlobContainerService blobContainer, ChunkHash chunkHash, CancellationToken cancellationToken)
         {
-            var blobName = BlobPaths.Chunk(chunkHash);
+            var blobName = RelativePath.Parse(BlobPaths.Chunk(chunkHash));
             await blobContainer.SetTierAsync(blobName, BlobTier.Archive, cancellationToken);
         }
 
         static Task UploadReadyRehydratedChunkAsync(AzureBlobContainerService blobContainer, ArchiveTierTargetChunk targetChunk, CancellationToken cancellationToken)
         {
-            var rehydratedBlobName = BlobPaths.ChunkRehydrated(targetChunk.ChunkHash);
+            var rehydratedBlobName = RelativePath.Parse(BlobPaths.ChunkRehydrated(targetChunk.ChunkHash));
 
             return blobContainer.UploadAsync(rehydratedBlobName, new MemoryStream(targetChunk.PreservedChunkBytes), targetChunk.Metadata, BlobTier.Hot, overwrite: true, cancellationToken: cancellationToken);
         }
 
-        static async Task DeleteBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken)
+        static async Task DeleteBlobsAsync(IBlobContainerService blobContainer, RelativePath prefix, CancellationToken cancellationToken)
         {
-            var blobNames = new List<string>();
+            var blobNames = new List<RelativePath>();
 
             await foreach (var blobName in blobContainer.ListAsync(prefix, cancellationToken))
                 blobNames.Add(blobName);
@@ -208,7 +208,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 await blobContainer.DeleteAsync(blobName, cancellationToken);
         }
 
-        static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, string prefix, CancellationToken cancellationToken) 
+        static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, RelativePath prefix, CancellationToken cancellationToken)
             => await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
 
         static async Task AssertArchiveTierRestoreOutcomeAsync(ArchiveTierTargetChunk targetChunk, IEncryptionService encryption, string readyRestoreRoot)

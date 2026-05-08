@@ -26,6 +26,4 @@ internal sealed class CbcEncryptionServiceAdapter(string passphrase) : IEncrypti
     public Task<ContentHash> ComputeHashAsync(Stream data, CancellationToken ct = default) =>
         _inner.ComputeHashAsync(data, ct);
 
-    public Task<ContentHash> ComputeHashAsync(string filePath, IProgress<long>? progress = null, CancellationToken ct = default) =>
-        _inner.ComputeHashAsync(filePath, progress, ct);
 }
