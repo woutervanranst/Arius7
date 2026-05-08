@@ -90,4 +90,48 @@ public class PricingConfigTests
             File.Delete(path);
         }
     }
+
+    [Test]
+    public void Load_CurrentDirectoryOverride_ReturnsParsedRates()
+    {
+        var json = """
+        {
+            "archive": {
+                "retrievalPerGB": 7.0,
+                "retrievalHighPerGB": 8.0,
+                "readOpsPer10000": 9.0,
+                "readOpsHighPer10000": 10.0
+            },
+            "hot": { "writeOpsPer10000": 0.7, "storagePerGBPerMonth": 0.08 },
+            "cool": { "writeOpsPer10000": 0.2, "storagePerGBPerMonth": 0.01 },
+            "cold": { "writeOpsPer10000": 0.3, "storagePerGBPerMonth": 0.005 }
+        }
+        """;
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pricing-load-{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(tempRoot, "pricing.json"), json);
+            Directory.SetCurrentDirectory(tempRoot);
+
+            var config = PricingConfig.Load();
+
+            config.Archive.RetrievalPerGB.ShouldBe(7.0);
+            config.Archive.RetrievalHighPerGB.ShouldBe(8.0);
+            config.Archive.ReadOpsPer10000.ShouldBe(9.0);
+            config.Archive.ReadOpsHighPer10000.ShouldBe(10.0);
+            config.Hot.WriteOpsPer10000.ShouldBe(0.7);
+            config.Hot.StoragePerGBPerMonth.ShouldBe(0.08);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

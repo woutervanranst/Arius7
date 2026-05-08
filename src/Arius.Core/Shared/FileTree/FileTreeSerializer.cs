@@ -27,7 +27,7 @@ public static class FileTreeSerializer
 
         var sb = new StringBuilder();
 
-        foreach (var entry in entries.OrderBy(e => e.Name.ToString(), StringComparer.Ordinal))
+        foreach (var entry in entries.OrderBy(e => e.Name, PathSegmentOrdinalComparer.Instance))
         {
             if (entry is FileEntry fileEntry)
                 sb.AppendLine(SerializePersistedFileEntryLine(fileEntry));
@@ -38,6 +38,13 @@ public static class FileTreeSerializer
         }
 
         return s_utf8.GetBytes(sb.ToString());
+    }
+
+    private sealed class PathSegmentOrdinalComparer : IComparer<PathSegment>
+    {
+        public static PathSegmentOrdinalComparer Instance { get; } = new();
+
+        public int Compare(PathSegment x, PathSegment y) => x.Compare(y, StringComparer.Ordinal);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -78,16 +79,18 @@ internal sealed class PricingConfig
     /// <exception cref="InvalidOperationException">Thrown when a found override file cannot be parsed.</exception>
     public static PricingConfig Load()
     {
+        var currentDirectory = RelativeFileSystem.FromCurrentDirectory();
+        var pricingFileName = PathSegment.Parse("pricing.json");
+
         // 1. Working directory override
-        var cwdPath = Path.Combine(Directory.GetCurrentDirectory(), "pricing.json");
-        if (File.Exists(cwdPath))
-            return LoadFromFile(cwdPath);
+        if (currentDirectory.FileExistsInRoot(pricingFileName))
+            return LoadFromFile(currentDirectory.OpenReadFromRoot(pricingFileName), currentDirectory.RootFile(pricingFileName).ToString());
 
         // 2. ~/.arius/ override
-        var homeDir   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var ariusPath = Path.Combine(homeDir, ".arius", "pricing.json");
-        if (File.Exists(ariusPath))
-            return LoadFromFile(ariusPath);
+        var homeDirectory = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var ariusConfigFileSystem = new RelativeFileSystem(LocalDirectory.Parse(homeDirectory.Resolve(RelativePath.Parse(".arius"))));
+        if (ariusConfigFileSystem.FileExistsInRoot(pricingFileName))
+            return LoadFromFile(ariusConfigFileSystem.OpenReadFromRoot(pricingFileName), ariusConfigFileSystem.RootFile(pricingFileName).ToString());
 
         // 3. Embedded resource default
         return LoadEmbedded();
@@ -97,13 +100,27 @@ internal sealed class PricingConfig
     {
         try
         {
-            using var fs     = File.OpenRead(path);
-            var       result = JsonSerializer.Deserialize<PricingConfig>(fs, _jsonOptions);
-            return result ?? throw new InvalidOperationException($"Pricing file deserialized to null: {path}");
+            using var fs = File.OpenRead(path);
+            return LoadFromFile(fs, path);
         }
         catch (JsonException ex)
         {
             throw new InvalidOperationException($"Failed to parse pricing config at '{path}': {ex.Message}", ex);
+        }
+    }
+
+    private static PricingConfig LoadFromFile(Stream stream, string sourceDescription)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        try
+        {
+            var result = JsonSerializer.Deserialize<PricingConfig>(stream, _jsonOptions);
+            return result ?? throw new InvalidOperationException($"Pricing file deserialized to null: {sourceDescription}");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException($"Failed to parse pricing config at '{sourceDescription}': {ex.Message}", ex);
         }
     }
 

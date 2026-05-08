@@ -145,6 +145,7 @@ public class CorePathContractTypingTests
         archiveSource.ShouldNotContain("pair.Path.ToString()");
         archiveSource.ShouldNotContain("hashed.FilePair.Path.ToString()");
         archiveSource.ShouldNotContain("upload.HashedPair.FilePair.Path.ToString()");
+        archiveSource.ShouldNotContain("Path.GetTempPath()");
         archiveSource.ShouldNotContain("Path.GetTempFileName()");
         archiveSource.ShouldNotContain("File.OpenRead(currentTarPath");
         archiveSource.ShouldNotContain("File.OpenRead(sealed_.TarFilePath)");

@@ -114,4 +114,12 @@ public class RelativePathTests
         RelativePath.Parse("photos/pic.jpg.POINTER.ARIUS").IsPointerPath().ShouldBeFalse();
         RelativePath.Parse("photos/pic.jpg").IsPointerPath().ShouldBeFalse();
     }
+
+    [Test]
+    public void Equals_UsesRequestedComparison()
+    {
+        RelativePath.Parse("Photos/Pic.jpg")
+            .Equals(RelativePath.Parse("photos/pic.jpg"), StringComparison.OrdinalIgnoreCase)
+            .ShouldBeTrue();
+    }
 }

@@ -192,4 +192,16 @@ internal sealed class RelativeFileSystem
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
+
+    public static RelativeFileSystem FromCurrentDirectory() =>
+        new(LocalDirectory.Parse(Directory.GetCurrentDirectory()));
+
+    public static RelativeFileSystem CreateTemporaryWorkspace(string workspaceName) =>
+        new(LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), "arius", workspaceName, Guid.NewGuid().ToString("N"))));
+
+    public bool FileExistsInRoot(PathSegment fileName) => FileExists(RelativePath.Root / fileName);
+
+    public Stream OpenReadFromRoot(PathSegment fileName) => OpenRead(RelativePath.Root / fileName);
+
+    public RelativePath RootFile(PathSegment fileName) => RelativePath.Root / fileName;
 }

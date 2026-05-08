@@ -43,7 +43,7 @@ internal static class ArchivePathCollisionValidator
         public static RelativePathOrdinalIgnoreCaseComparer Instance { get; } = new();
 
         public bool Equals(RelativePath x, RelativePath y) =>
-            StringComparer.OrdinalIgnoreCase.Equals(x.ToString(), y.ToString());
+            x.Equals(y, StringComparison.OrdinalIgnoreCase);
 
         public int GetHashCode(RelativePath obj) =>
             StringComparer.OrdinalIgnoreCase.GetHashCode(obj.ToString());

@@ -48,5 +48,28 @@ public readonly record struct PathSegment
         return true;
     }
 
+    public bool Contains(string value, StringComparison comparisonType) =>
+        Value.Contains(value, comparisonType);
+
+    public bool StartsWith(string value, StringComparison comparisonType) =>
+        Value.StartsWith(value, comparisonType);
+
+    public bool EndsWith(string value, StringComparison comparisonType) =>
+        Value.EndsWith(value, comparisonType);
+
+    public bool Equals(PathSegment other, StringComparison comparisonType) =>
+        string.Equals(Value, other.Value, comparisonType);
+
+    public int Compare(PathSegment other, StringComparer comparer) =>
+        comparer.Compare(Value, other.Value);
+
+    public PathSegment RemoveSuffix(string suffix, StringComparison comparisonType)
+    {
+        if (!Value.EndsWith(suffix, comparisonType))
+            throw new InvalidOperationException($"Path segment '{Value}' does not end with suffix '{suffix}'.");
+
+        return Parse(Value[..^suffix.Length]);
+    }
+
     public override string ToString() => Value;
 }

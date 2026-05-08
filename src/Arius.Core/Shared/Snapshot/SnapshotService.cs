@@ -245,8 +245,7 @@ public sealed class SnapshotService
             var match = default(RelativePath);
             foreach (var candidate in names)
             {
-                var ts = GetSnapshotFileName(candidate).ToString();
-                if (!ts.StartsWith(version, StringComparison.OrdinalIgnoreCase))
+                if (!GetSnapshotFileName(candidate).StartsWith(version, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 match = candidate;

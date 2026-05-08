@@ -269,7 +269,7 @@ public sealed class FileTreeService
 
         // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
         PathSegment? latestLocal = _snapshotCacheFileSystem.EnumerateFileNames(RelativePath.Root)
-            .OrderByDescending(name => name.ToString(), StringComparer.Ordinal)
+            .OrderByDescending(name => name, PathSegmentOrdinalComparer.Instance)
             .Cast<PathSegment?>()
             .FirstOrDefault();
 
@@ -282,7 +282,7 @@ public sealed class FileTreeService
         }
 
         PathSegment? latestRemote = remoteSnapshots
-            .OrderByDescending(name => name.ToString(), StringComparer.Ordinal)
+            .OrderByDescending(name => name, PathSegmentOrdinalComparer.Instance)
             .Cast<PathSegment?>()
             .FirstOrDefault();
 
@@ -343,5 +343,12 @@ public sealed class FileTreeService
             throw new InvalidOperationException($"{nameof(ExistsInRemote)} must not be called before {nameof(ValidateAsync)}.");
 
         return _diskCacheFileSystem.FileExists(FileTreePaths.GetCachePath(hash));
+    }
+
+    private sealed class PathSegmentOrdinalComparer : IComparer<PathSegment>
+    {
+        public static PathSegmentOrdinalComparer Instance { get; } = new();
+
+        public int Compare(PathSegment x, PathSegment y) => x.Compare(y, StringComparer.Ordinal);
     }
 }

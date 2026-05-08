@@ -140,6 +140,12 @@ public readonly record struct RelativePath
         return Value.Length == prefix.Value.Length || Value[prefix.Value.Length] == '/';
     }
 
+    public bool EndsWith(string suffix, StringComparison comparisonType) =>
+        Value.EndsWith(suffix, comparisonType);
+
+    public bool Equals(RelativePath other, StringComparison comparisonType) =>
+        string.Equals(Value, other.Value, comparisonType);
+
     public static RelativePath operator /(RelativePath path, PathSegment segment) =>
         path.Value.Length == 0 ? new RelativePath(segment.ToString()) : new RelativePath($"{path.Value}/{segment}");
 

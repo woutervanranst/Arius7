@@ -324,17 +324,17 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
 
     private static bool MatchesFilter(PathSegment fileName, string? filter) =>
-        filter is null || fileName.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase);
+        filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);
 
     private static bool PathSegmentEqualsIgnoreCase(PathSegment left, PathSegment right) =>
-        StringComparer.OrdinalIgnoreCase.Equals(left.ToString(), right.ToString());
+        left.Equals(right, StringComparison.OrdinalIgnoreCase);
 
     private sealed class PathSegmentOrdinalIgnoreCaseComparer : IComparer<PathSegment>
     {
         public static PathSegmentOrdinalIgnoreCaseComparer Instance { get; } = new();
 
         public int Compare(PathSegment x, PathSegment y) =>
-            StringComparer.OrdinalIgnoreCase.Compare(x.ToString(), y.ToString());
+            x.Compare(y, StringComparer.OrdinalIgnoreCase);
     }
 
     private sealed record CloudFileCandidate(FileEntry Entry, LocalFileState? LocalFile);

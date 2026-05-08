@@ -65,7 +65,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
-        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path.ToString()) % (uint)_lockStripes.Length];
+        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
         await nodeLock.WaitAsync(cancellationToken);
 
         try
