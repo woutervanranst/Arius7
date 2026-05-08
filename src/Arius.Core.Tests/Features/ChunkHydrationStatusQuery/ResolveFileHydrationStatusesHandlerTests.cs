@@ -3,6 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
@@ -53,7 +54,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry($"{chunkType}.bin", contentHash, 100, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse($"{chunkType}.bin"), contentHash, 100, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -61,7 +62,7 @@ public class ResolveFileHydrationStatusesHandlerTests
             results.Add(result);
 
         results.Count.ShouldBe(1);
-        results.ShouldContain(result => result.RelativePath == $"{chunkType}.bin" && result.Status == testCase.ExpectedStatus);
+        results.ShouldContain(result => result.RelativePath == RelativePath.Parse($"{chunkType}.bin") && result.Status == testCase.ExpectedStatus);
     }
 
     [Test]
@@ -97,8 +98,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry("thin.bin", thinContentHash, 50, null, null, true, false, null, null),
-            new RepositoryFileEntry("tar.bin", tarContentHash, 75, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse("thin.bin"), thinContentHash, 50, null, null, true, false, null, null),
+            new RepositoryFileEntry(RelativePath.Parse("tar.bin"), tarContentHash, 75, null, null, true, false, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -106,8 +107,8 @@ public class ResolveFileHydrationStatusesHandlerTests
             results.Add(result);
 
         results.Count.ShouldBe(2);
-        results.ShouldContain(result => result.RelativePath == "thin.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
-        results.ShouldContain(result => result.RelativePath == "tar.bin" && result.Status == ChunkHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == RelativePath.Parse("thin.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
+        results.ShouldContain(result => result.RelativePath == RelativePath.Parse("tar.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ThinChunk(thinContentHash));
         blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
     }

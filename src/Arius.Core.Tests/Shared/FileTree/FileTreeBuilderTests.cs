@@ -578,7 +578,7 @@ public class FileTreeBuilderTests
             .Select(async i =>
             {
                 using var content = new MemoryStream();
-                await blobs.UploadAsync($"{BlobPaths.FileTrees}/blob-{i}", content, new Dictionary<string, string>(), BlobTier.Hot);
+                await blobs.UploadAsync(BlobPaths.FileTreesPrefix / $"blob-{i}", content, new Dictionary<string, string>(), BlobTier.Hot);
             })
             .ToArray();
 

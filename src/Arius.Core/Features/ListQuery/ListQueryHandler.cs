@@ -48,7 +48,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             _accountName,
             _containerName,
             opts.Version ?? "latest",
-            opts.Prefix ?? "(none)",
+            opts.Prefix?.ToString() ?? "(none)",
             opts.Filter ?? "(none)",
             opts.Recursive,
             opts.LocalPath ?? "(none)");
@@ -62,7 +62,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                     : $"Snapshot '{opts.Version}' not found.");
         }
 
-        var prefix = ParsePrefix(opts.Prefix);
+        var prefix = opts.Prefix;
         var localRoot = ParseLocalRoot(opts.LocalPath);
         var localFileSystem = localRoot is { } root ? new RelativeFileSystem(root) : null;
         var (treeHash, relativeDirectory) = await ResolveStartingPointAsync(
@@ -112,7 +112,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             var existsLocally = localSnapshot.Directories.TryGetValue(directoryName.ToString(), out _);
 
             yieldedDirectoryNames.Add(directoryName.ToString());
-            yield return new RepositoryDirectoryEntry(RenderDirectoryPath(relativePath), entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
+            yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
 
             if (recursive)
             {
@@ -130,7 +130,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 continue;
             }
 
-            yield return new RepositoryDirectoryEntry(RenderDirectoryPath(localDirectory.Path), TreeHash: null, ExistsInCloud: false, ExistsLocally: true);
+            yield return new RepositoryDirectoryEntry(localDirectory.Path, TreeHash: null, ExistsInCloud: false, ExistsLocally: true);
 
             if (recursive)
             {
@@ -174,7 +174,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
                 originalSize = shardEntry.OriginalSize;
 
             yield return new RepositoryFileEntry(
-                RelativePath: relativePath.ToString(),
+                RelativePath: relativePath,
                 ContentHash: candidate.Entry.ContentHash,
                 OriginalSize: originalSize,
                 Created: candidate.Entry.Created,
@@ -195,7 +195,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
             var relativePath = localFile.Path;
             yield return new RepositoryFileEntry(
-                RelativePath: relativePath.ToString(),
+                RelativePath: relativePath,
                 ContentHash: null,
                 OriginalSize: localFile.FileSize,
                 Created: localFile.Created,
@@ -320,35 +320,10 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         }
     }
 
-    private static RelativePath? ParsePrefix(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        var normalized = path.Replace('\\', '/').Trim();
-        if (normalized.Length == 0)
-        {
-            return null;
-        }
-
-        if (normalized.StartsWith('/'))
-        {
-            throw new FormatException($"Invalid relative path: '{normalized}'.");
-        }
-
-        normalized = normalized.TrimEnd('/');
-        return normalized.Length == 0 ? RelativePath.Root : RelativePath.Parse(normalized);
-    }
-
     private static LocalDirectory? ParseLocalRoot(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
 
     private static PathSegment ParseDirectoryEntryName(string name) => PathSegment.Parse(name.TrimEnd('/'));
-
-    private static string RenderDirectoryPath(RelativePath path) =>
-        path == RelativePath.Root ? "/" : $"{path}/";
 
     private static bool MatchesFilter(string fileName, string? filter) =>
         filter is null || fileName.Contains(filter, StringComparison.OrdinalIgnoreCase);

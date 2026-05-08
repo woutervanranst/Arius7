@@ -85,6 +85,12 @@ public static class BlobPaths
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
     public const string ChunkIndex        = "chunk-index/";
 
+    internal static RelativePath ChunksPrefix           => RelativePath.Root / "chunks";
+    internal static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
+    internal static RelativePath FileTreesPrefix        => RelativePath.Root / "filetrees";
+    internal static RelativePath SnapshotsPrefix        => RelativePath.Root / "snapshots";
+    internal static RelativePath ChunkIndexPrefix       => RelativePath.Root / "chunk-index";
+
     internal static RelativePath ChunkPath(ChunkHash hash)           => RelativePath.Root / "chunks" / hash.ToString();
     internal static RelativePath ThinChunkPath(ContentHash hash)     => RelativePath.Root / "chunks" / hash.ToString();
     internal static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();

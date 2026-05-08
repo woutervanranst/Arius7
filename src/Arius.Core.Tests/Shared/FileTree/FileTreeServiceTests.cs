@@ -1,6 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -295,7 +296,7 @@ public class FileTreeServiceTests
             var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
             (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
 
-            var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTree(payload.Hash));
+            var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTreePath(payload.Hash));
             await using var gzipStream = new System.IO.Compression.GZipStream(new MemoryStream(blobBytes), System.IO.Compression.CompressionMode.Decompress);
             using var plaintextStream = new MemoryStream();
             await gzipStream.CopyToAsync(plaintextStream);
@@ -337,7 +338,7 @@ public class FileTreeServiceTests
 
             await service.WriteAsync(payload);
 
-            var blobName = BlobPaths.FileTree(payload.Hash);
+            var blobName = BlobPaths.FileTreePath(payload.Hash);
             var uploadedBytes = await ReadBlobBytesAsync(blobs, blobName);
             var prefix = System.Text.Encoding.ASCII.GetString(uploadedBytes[..6]);
             prefix.ShouldBe("ArGCM1");
@@ -463,7 +464,7 @@ public class FileTreeServiceTests
         }
     }
 
-    private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, string blobName)
+    private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, RelativePath blobName)
     {
         await using var stream = await blobs.DownloadAsync(blobName);
         using var ms = new MemoryStream();

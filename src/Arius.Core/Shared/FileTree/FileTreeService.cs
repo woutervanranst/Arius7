@@ -156,7 +156,7 @@ public sealed class FileTreeService
 
         async Task<IReadOnlyList<FileTreeEntry>> DownloadAndCacheAsync(FileTreeHash hash, string diskPath)
         {
-            var             blobName = BlobPaths.FileTreePath(hash).ToString();
+            var             blobName = BlobPaths.FileTreePath(hash);
             await using var stream   = await _blobs.DownloadAsync(blobName, CancellationToken.None);
             var             entries  = await DeserializeStorageAsync(stream, CancellationToken.None);
 
@@ -182,7 +182,7 @@ public sealed class FileTreeService
     public async Task WriteAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
         var hashText     = payload.Hash.ToString();
-        var blobName     = BlobPaths.FileTreePath(payload.Hash).ToString();
+        var blobName     = BlobPaths.FileTreePath(payload.Hash);
         var storageBytes = await SerializeStorageAsync(payload.Plaintext, cancellationToken);
         var contentType  = _encryption.IsEncrypted
             ? ContentTypes.FileTreeGcmEncrypted
@@ -290,9 +290,9 @@ public sealed class FileTreeService
 
         // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
         var remoteSnapshots = new List<string>();
-        await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
+        await foreach (var name in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken))
         {
-            var fileName = Path.GetFileName(name);
+            var fileName = name.Name.ToString();
             if (!string.IsNullOrEmpty(fileName))
                 remoteSnapshots.Add(fileName);
         }
@@ -322,10 +322,10 @@ public sealed class FileTreeService
         //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
         //   any uncached remote trees now so ExistsInRemote() can stay a cheap local File.Exists()
         //   check during the entire build instead of doing a remote existence probe per tree node.
-        await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTrees, cancellationToken))
+        await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var hash     = Path.GetFileName(blobName); // strip "filetrees/" prefix
+            var hash     = blobName.Name.ToString(); // strip "filetrees/" prefix
             var relativePath = RelativePath.Parse(hash);
             if (!_diskCacheFileSystem.FileExists(relativePath))
             {

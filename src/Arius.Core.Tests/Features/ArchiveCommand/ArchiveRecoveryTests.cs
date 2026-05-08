@@ -67,7 +67,7 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
         env.Blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        var finalMeta = await env.Blobs.GetMetadataAsync(blobName);
+        var finalMeta = await env.Blobs.GetMetadataAsync(BlobPaths.ChunkPath(ChunkHash.Parse(blobName[BlobPaths.Chunks.Length..])));
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
@@ -203,11 +203,11 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         scannedEvents.ShouldHaveSingleItem();
-        scannedEvents[0].RelativePath.ShouldBe("photos/pic.jpg");
+        scannedEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
         scannedEvents[0].FileSize.ShouldBe(1234);
 
         hashingEvents.ShouldHaveSingleItem();
-        hashingEvents[0].RelativePath.ShouldBe("photos/pic.jpg");
+        hashingEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
         hashingEvents[0].FileSize.ShouldBe(1234);
     }
 

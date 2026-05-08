@@ -41,7 +41,7 @@ public class ChunkStorageServiceUploadTests
         result.StoredSize.ShouldBeGreaterThan(0L);
         result.AlreadyExisted.ShouldBeFalse();
 
-        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk(LargeChunkHash));
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(LargeChunkHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe(content.Length.ToString());
         metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
@@ -92,7 +92,7 @@ public class ChunkStorageServiceUploadTests
         result.StoredSize.ShouldBeGreaterThan(0L);
         blobs.LastOpenWriteContentType.ShouldBe(ContentTypes.TarPlaintext);
 
-        var metadata = await blobs.GetMetadataAsync(BlobPaths.Chunk(TarChunkHash));
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(TarChunkHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeTar);
         metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
         metadata.Metadata.ContainsKey(BlobMetadataKeys.OriginalSize).ShouldBeFalse();
@@ -132,7 +132,7 @@ public class ChunkStorageServiceUploadTests
         result.AlreadyExisted.ShouldBeFalse();
         blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        var metadata = await blobs.GetMetadataAsync(blobName);
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(RetryChunkHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
@@ -196,13 +196,13 @@ public class ChunkStorageServiceUploadTests
         created.ShouldBeTrue();
 
         var blobName = BlobPaths.ThinChunk(ThinContentHash);
-        var metadata = await blobs.GetMetadataAsync(blobName);
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(ThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
         metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
         metadata.Tier.ShouldBe(BlobTier.Cool);
 
-        await using var payload = await blobs.DownloadAsync(blobName);
+        await using var payload = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
         using var reader = new StreamReader(payload);
         (await reader.ReadToEndAsync()).ShouldBe(ThinParentChunkHash.ToString());
     }
@@ -256,7 +256,7 @@ public class ChunkStorageServiceUploadTests
         created.ShouldBeTrue();
         blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        var metadata = await blobs.GetMetadataAsync(blobName);
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(RetryThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
     }
 

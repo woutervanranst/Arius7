@@ -106,7 +106,7 @@ public class ChunkStorageServiceReadTests
 
         await service.StartRehydrationAsync(chunkHash, RehydratePriority.High, CancellationToken.None);
 
-        var rehydrated = await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(chunkHash));
+        var rehydrated = await blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(chunkHash));
         rehydrated.Exists.ShouldBeTrue();
         rehydrated.Tier.ShouldBe(BlobTier.Cold);
     }
@@ -130,8 +130,8 @@ public class ChunkStorageServiceReadTests
 
         result.DeletedChunkCount.ShouldBe(2);
         result.FreedBytes.ShouldBe(plan.TotalBytes);
-        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(firstChunkHash))).Exists.ShouldBeFalse();
-        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(secondChunkHash))).Exists.ShouldBeFalse();
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(firstChunkHash))).Exists.ShouldBeFalse();
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(secondChunkHash))).Exists.ShouldBeFalse();
     }
 
     [Test]

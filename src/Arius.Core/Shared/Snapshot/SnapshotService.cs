@@ -149,6 +149,9 @@ public sealed class SnapshotService
     public static string BlobName(DateTimeOffset timestamp) =>
         BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat)).ToString();
 
+    internal static RelativePath BlobPath(DateTimeOffset timestamp) =>
+        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
+
     /// <summary>Parses a snapshot timestamp from a blob name.</summary>
     public static DateTimeOffset ParseTimestamp(string blobName)
     {
@@ -189,7 +192,7 @@ public sealed class SnapshotService
 
         // Then Azure (gzip + optional encrypt)
         var bytes    = await SnapshotSerializer.SerializeAsync(manifest, _encryption, cancellationToken);
-        var blobName = BlobName(ts);
+        var blobName = BlobPath(ts);
 
         await _blobs.UploadAsync(
             blobName,
@@ -211,8 +214,8 @@ public sealed class SnapshotService
     public async Task<IReadOnlyList<string>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
     {
         var names = new List<string>();
-        await foreach (var name in _blobs.ListAsync(BlobPaths.Snapshots, cancellationToken))
-            names.Add(name);
+        await foreach (var name in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken))
+            names.Add(name.ToString());
 
         names.Sort((a, b) => ParseTimestamp(a).CompareTo(ParseTimestamp(b)));
 
@@ -232,10 +235,10 @@ public sealed class SnapshotService
         var names = await ListBlobNamesAsync(cancellationToken);
         if (names.Count == 0) return null;
 
-        string blobName;
+        RelativePath blobName;
         if (version is null)
         {
-            blobName = names[^1]; // latest (last after sort)
+            blobName = RelativePath.Parse(names[^1]); // latest (last after sort)
         }
         else
         {
@@ -245,11 +248,13 @@ public sealed class SnapshotService
                 return ts.StartsWith(version, StringComparison.OrdinalIgnoreCase);
             });
             if (match is null) return null;
-            blobName = match;
+            blobName = RelativePath.Parse(match);
         }
 
         // Disk-first: check local plain-JSON cache
-        var localName = blobName.StartsWith(BlobPaths.Snapshots) ? blobName[BlobPaths.Snapshots.Length..] : blobName;
+        var localName = blobName.StartsWith(BlobPaths.SnapshotsPrefix)
+            ? blobName.Name.ToString()
+            : blobName.ToString();
         var localPath = RelativePath.Parse(localName);
         if (_diskCacheFileSystem.FileExists(localPath))
         {
@@ -275,7 +280,7 @@ public sealed class SnapshotService
     }
 
     private async Task<SnapshotManifest> LoadFromAzureAsync(
-        string blobName, CancellationToken cancellationToken)
+        RelativePath blobName, CancellationToken cancellationToken)
     {
         await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
         var ms = new MemoryStream();

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.FileSystem;
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -32,7 +33,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     // ── Upload ────────────────────────────────────────────────────────────────
 
     public async Task UploadAsync(
-        string                              blobName,
+        RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
         BlobTier                            tier,
@@ -40,7 +41,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         bool                                overwrite         = false,
         CancellationToken                   cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
 
         var uploadOptions = new BlobUploadOptions
         {
@@ -63,16 +64,16 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
-            throw new BlobAlreadyExistsException(blobName);
+            throw new BlobAlreadyExistsException(blobName.ToString());
         }
     }
 
     public async Task<Stream> OpenWriteAsync(
-        string            blobName,
+        RelativePath      blobName,
         string?           contentType       = null,
         CancellationToken cancellationToken = default)
     {
-        var blobClient = _container.GetBlockBlobClient(blobName);
+        var blobClient = _container.GetBlockBlobClient(blobName.ToString());
 
         var openWriteOptions = new BlockBlobOpenWriteOptions
         {
@@ -92,17 +93,17 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
-            throw new BlobAlreadyExistsException(blobName);
+            throw new BlobAlreadyExistsException(blobName.ToString());
         }
     }
 
     // ── Download ──────────────────────────────────────────────────────────────
 
     public async Task<Stream> DownloadAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
         var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
     }
@@ -110,10 +111,10 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     // ── HEAD ──────────────────────────────────────────────────────────────────
 
     public async Task<BlobMetadata> GetMetadataAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
         try
         {
             var props = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
@@ -136,45 +137,45 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── List ──────────────────────────────────────────────────────────────────
 
-    public async IAsyncEnumerable<string> ListAsync(string prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var item in _container.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: prefix, cancellationToken: cancellationToken))
-            yield return item.Name;
+        await foreach (var item in _container.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: prefix.ToString(), cancellationToken: cancellationToken))
+            yield return RelativePath.Parse(item.Name);
     }
 
     // ── Metadata update ───────────────────────────────────────────────────────
 
     public async Task SetMetadataAsync(
-        string                              blobName,
+        RelativePath                        blobName,
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken                   cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
         await blobClient.SetMetadataAsync(
             new Dictionary<string, string>(metadata),
             cancellationToken: cancellationToken);
     }
 
     public async Task SetTierAsync(
-        string            blobName,
+        RelativePath      blobName,
         BlobTier          tier,
         CancellationToken cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
         await blobClient.SetAccessTierAsync(ToAzureTier(tier), cancellationToken: cancellationToken);
     }
 
     // ── Copy (rehydration) ────────────────────────────────────────────────────
 
     public async Task CopyAsync(
-        string                    sourceBlobName,
-        string                    destinationBlobName,
+        RelativePath              sourceBlobName,
+        RelativePath              destinationBlobName,
         BlobTier                  destinationTier,
         CoreRehydratePriority?    rehydratePriority = null,
         CancellationToken         cancellationToken = default)
     {
-        var sourceUri = _container.GetBlobClient(sourceBlobName).Uri;
-        var destBlob  = _container.GetBlobClient(destinationBlobName);
+        var sourceUri = _container.GetBlobClient(sourceBlobName.ToString()).Uri;
+        var destBlob  = _container.GetBlobClient(destinationBlobName.ToString());
 
         var copyOptions = new BlobCopyFromUriOptions
         {
@@ -190,10 +191,10 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     // ── Delete ────────────────────────────────────────────────────────────────
 
     public async Task DeleteAsync(
-        string            blobName,
+        RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
-        var blobClient = _container.GetBlobClient(blobName);
+        var blobClient = _container.GetBlobClient(blobName.ToString());
         await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
     }
 

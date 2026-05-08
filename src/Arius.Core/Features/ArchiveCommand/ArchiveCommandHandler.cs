@@ -226,7 +226,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         count++;
                         var fileSize = pair.Binary?.Size ?? 0L;
                         totalBytes += fileSize;
-                        await _mediator.Publish(new FileScannedEvent(pair.Path.ToString(), fileSize), cancellationToken);
+                        await _mediator.Publish(new FileScannedEvent(pair.Path, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
                     }
 
@@ -249,7 +249,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         var fileSize = pair.Binary?.Size ?? 0L;
 
-                        await _mediator.Publish(new FileHashingEvent(pair.Path.ToString(), fileSize), ct);
+                        await _mediator.Publish(new FileHashingEvent(pair.Path, fileSize), ct);
 
                         ContentHash contentHash;
                         if (pair is { Binary: null, Pointer: { Hash: not null } })
@@ -271,7 +271,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             return;
                         }
 
-                        await _mediator.Publish(new FileHashedEvent(pair.Path.ToString(), contentHash), ct);
+                        await _mediator.Publish(new FileHashedEvent(pair.Path, contentHash), ct);
 
                         _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.Path.ToString(), contentHash.Short8, fileSize.Bytes().Humanize());
 
