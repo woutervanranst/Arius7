@@ -1,7 +1,9 @@
+using System.Globalization;
 using Arius.Core.Features.RestoreCommand;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
+[NotInParallel("PricingConfigGlobalState")]
 public class PricingConfigTests
 {
     [Test]
@@ -133,5 +135,102 @@ public class PricingConfigTests
             if (Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    [Test]
+    public void Load_HomeAriusOverride_IsUsedWhenCurrentDirectoryOverrideMissing()
+    {
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var originalHome = Environment.GetEnvironmentVariable("HOME");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pricing-home-{Guid.NewGuid():N}");
+        var cwdRoot = Path.Combine(tempRoot, "cwd");
+        var homeRoot = Path.Combine(tempRoot, "home");
+
+        Directory.CreateDirectory(cwdRoot);
+        Directory.CreateDirectory(Path.Combine(homeRoot, ".arius"));
+
+        try
+        {
+            File.WriteAllText(Path.Combine(homeRoot, ".arius", "pricing.json"), OverrideJson(3.0, 4.0, 5.0, 6.0, 0.3, 0.04));
+            Directory.SetCurrentDirectory(cwdRoot);
+            Environment.SetEnvironmentVariable("HOME", homeRoot);
+
+            var config = PricingConfig.Load();
+
+            config.Archive.RetrievalPerGB.ShouldBe(3.0);
+            config.Archive.RetrievalHighPerGB.ShouldBe(4.0);
+            config.Archive.ReadOpsPer10000.ShouldBe(5.0);
+            config.Archive.ReadOpsHighPer10000.ShouldBe(6.0);
+            config.Hot.WriteOpsPer10000.ShouldBe(0.3);
+            config.Hot.StoragePerGBPerMonth.ShouldBe(0.04);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+            Environment.SetEnvironmentVariable("HOME", originalHome);
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public void Load_CurrentDirectoryOverride_WinsOverHomeAriusOverride()
+    {
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var originalHome = Environment.GetEnvironmentVariable("HOME");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pricing-precedence-{Guid.NewGuid():N}");
+        var cwdRoot = Path.Combine(tempRoot, "cwd");
+        var homeRoot = Path.Combine(tempRoot, "home");
+
+        Directory.CreateDirectory(cwdRoot);
+        Directory.CreateDirectory(Path.Combine(homeRoot, ".arius"));
+
+        try
+        {
+            File.WriteAllText(Path.Combine(cwdRoot, "pricing.json"), OverrideJson(7.0, 8.0, 9.0, 10.0, 0.7, 0.08));
+            File.WriteAllText(Path.Combine(homeRoot, ".arius", "pricing.json"), OverrideJson(3.0, 4.0, 5.0, 6.0, 0.3, 0.04));
+            Directory.SetCurrentDirectory(cwdRoot);
+            Environment.SetEnvironmentVariable("HOME", homeRoot);
+
+            var config = PricingConfig.Load();
+
+            config.Archive.RetrievalPerGB.ShouldBe(7.0);
+            config.Archive.RetrievalHighPerGB.ShouldBe(8.0);
+            config.Archive.ReadOpsPer10000.ShouldBe(9.0);
+            config.Archive.ReadOpsHighPer10000.ShouldBe(10.0);
+            config.Hot.WriteOpsPer10000.ShouldBe(0.7);
+            config.Hot.StoragePerGBPerMonth.ShouldBe(0.08);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+            Environment.SetEnvironmentVariable("HOME", originalHome);
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    private static string OverrideJson(
+        double retrievalPerGb,
+        double retrievalHighPerGb,
+        double readOpsPer10000,
+        double readOpsHighPer10000,
+        double hotWriteOpsPer10000,
+        double hotStoragePerGbPerMonth)
+    {
+        static string Format(double value) => value.ToString(CultureInfo.InvariantCulture);
+
+        return
+        $@"{{
+    ""archive"": {{
+        ""retrievalPerGB"": {Format(retrievalPerGb)},
+        ""retrievalHighPerGB"": {Format(retrievalHighPerGb)},
+        ""readOpsPer10000"": {Format(readOpsPer10000)},
+        ""readOpsHighPer10000"": {Format(readOpsHighPer10000)}
+    }},
+    ""hot"": {{ ""writeOpsPer10000"": {Format(hotWriteOpsPer10000)}, ""storagePerGBPerMonth"": {Format(hotStoragePerGbPerMonth)} }},
+    ""cool"": {{ ""writeOpsPer10000"": 0.2, ""storagePerGBPerMonth"": 0.01 }},
+    ""cold"": {{ ""writeOpsPer10000"": 0.3, ""storagePerGBPerMonth"": 0.005 }}
+}}";
     }
 }

@@ -196,8 +196,8 @@ internal sealed class RelativeFileSystem
     public static RelativeFileSystem FromCurrentDirectory() =>
         new(LocalDirectory.Parse(Directory.GetCurrentDirectory()));
 
-    public static RelativeFileSystem CreateTemporaryWorkspace(string workspaceName) =>
-        new(LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), "arius", workspaceName, Guid.NewGuid().ToString("N"))));
+    public static RelativeFileSystem CreateTemporaryWorkspace(PathSegment workspaceName) =>
+        new(LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), "arius", workspaceName.ToString(), Guid.NewGuid().ToString("N"))));
 
     public bool FileExistsInRoot(PathSegment fileName) => FileExists(RelativePath.Root / fileName);
 

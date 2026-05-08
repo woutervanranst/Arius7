@@ -111,4 +111,10 @@ public class SnapshotSerializerTests
 
         parsed.ShouldBe(ts);
     }
+
+    [Test]
+    public void ParseTimestamp_NonSnapshotMultiSegmentPath_Throws()
+    {
+        Should.Throw<FormatException>(() => SnapshotService.ParseTimestamp(Arius.Core.Shared.FileSystem.RelativePath.Parse("other/2024-01-15T093045.000Z")));
+    }
 }

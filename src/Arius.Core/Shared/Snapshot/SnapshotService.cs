@@ -292,9 +292,9 @@ public sealed class SnapshotService
     }
 
     private static PathSegment GetSnapshotFileName(RelativePath blobName) =>
-        blobName.StartsWith(BlobPaths.SnapshotsPrefix)
+        blobName.Parent is { } parent && (parent == RelativePath.Root || parent == BlobPaths.SnapshotsPrefix)
             ? blobName.Name
-            : blobName.Name;
+            : throw new FormatException($"Invalid snapshot blob name: '{blobName}'.");
 
     private static RelativePath GetDiskCachePath(RelativePath blobName) => RelativePath.Root / GetSnapshotFileName(blobName);
 

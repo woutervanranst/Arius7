@@ -81,16 +81,18 @@ internal sealed class PricingConfig
     {
         var currentDirectory = RelativeFileSystem.FromCurrentDirectory();
         var pricingFileName = PathSegment.Parse("pricing.json");
+        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), pricingFileName.ToString());
 
         // 1. Working directory override
         if (currentDirectory.FileExistsInRoot(pricingFileName))
-            return LoadFromFile(currentDirectory.OpenReadFromRoot(pricingFileName), currentDirectory.RootFile(pricingFileName).ToString());
+            return LoadFromFile(currentDirectory.OpenReadFromRoot(pricingFileName), currentDirectoryPath);
 
         // 2. ~/.arius/ override
         var homeDirectory = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         var ariusConfigFileSystem = new RelativeFileSystem(LocalDirectory.Parse(homeDirectory.Resolve(RelativePath.Parse(".arius"))));
+        var ariusConfigPath = Path.Combine(homeDirectory.ToString(), ".arius", pricingFileName.ToString());
         if (ariusConfigFileSystem.FileExistsInRoot(pricingFileName))
-            return LoadFromFile(ariusConfigFileSystem.OpenReadFromRoot(pricingFileName), ariusConfigFileSystem.RootFile(pricingFileName).ToString());
+            return LoadFromFile(ariusConfigFileSystem.OpenReadFromRoot(pricingFileName), ariusConfigPath);
 
         // 3. Embedded resource default
         return LoadEmbedded();

@@ -191,7 +191,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
             var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
-            var             tarWorkspace    = RelativeFileSystem.CreateTemporaryWorkspace("tar-staging");
+            var             tarWorkspace    = RelativeFileSystem.CreateTemporaryWorkspace(PathSegment.Parse("tar-staging"));
             tarWorkspace.CreateDirectory(RelativePath.Root);
 
             // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
