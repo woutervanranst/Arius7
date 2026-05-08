@@ -15,19 +15,20 @@ namespace Arius.Core.Tests.Shared.FileTree;
 public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
+    private static LocalDirectory CacheRoot(string accountName, string containerName) => RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
 
     private static async Task<(FileTreeStagingSession Session, string StagingRoot)> CreateStagingAsync(
         string accountName,
         string containerName,
         params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
     {
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(accountName, containerName);
+        var cacheDir = CacheRoot(accountName, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
             await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
 
-        return (session, session.StagingRoot);
+        return (session, session.StagingRoot.ToString());
     }
 
     private static FileTreeBuilder CreateBuilder(
@@ -41,9 +42,9 @@ public class FileTreeBuilderTests
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
-    private static async Task WriteNodeLinesAsync(string stagingRoot, string directoryId, params string[] lines)
+    private static async Task WriteNodeLinesAsync(LocalDirectory stagingRoot, PathSegment directoryId, params string[] lines)
     {
-        await File.WriteAllLinesAsync(FileTreePaths.GetStagingNodePath(stagingRoot, directoryId), lines);
+        await File.WriteAllLinesAsync(stagingRoot.Resolve(FileTreePaths.GetStagingNodePath(directoryId)), lines);
     }
 
     [Test]
@@ -60,7 +61,7 @@ public class FileTreeBuilderTests
             var blobs   = new FakeRecordingBlobContainerService();
             var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
             await fileTreeService.ValidateAsync();
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(CacheRoot(accountName, containerName));
             var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             root.ShouldBeNull();
@@ -91,7 +92,7 @@ public class FileTreeBuilderTests
             await fileTreeService.ValidateAsync();
             await using (stagingSession)
             {
-                var root = await builder.SynchronizeAsync(stagingRoot);
+                var root = await builder.SynchronizeAsync(LocalDirectory.Parse(stagingRoot));
 
                 root.ShouldNotBeNull();
                 blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -114,7 +115,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(CacheRoot(acct, cont));
             using (var writer = new FileTreeStagingWriter(stagingSession.StagingRoot))
             {
                 await writer.AppendFileEntryAsync(RelativePath.Parse("docs/readme.txt"), FakeContentHash('b'), now, now);
@@ -234,7 +235,7 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
             var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
             {
                 Name = "a.txt",
@@ -250,7 +251,7 @@ public class FileTreeBuilderTests
                 Modified = now
             });
 
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var stagingSession = await FileTreeStagingSession.OpenAsync(CacheRoot(accountName, containerName));
             await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
 
             var blobs = new FakeRecordingBlobContainerService();
@@ -319,10 +320,10 @@ public class FileTreeBuilderTests
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var childId = FileTreePaths.GetStagingDirectoryId("photos");
-            var rootId = FileTreePaths.GetStagingDirectoryId(string.Empty);
+            var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
+            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
 
-            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(CacheRoot(accountName, containerName));
             await WriteNodeLinesAsync(
                 stagingSession1.StagingRoot,
                 rootId,
@@ -347,7 +348,7 @@ public class FileTreeBuilderTests
             await stagingSession1.DisposeAsync();
             Directory.Delete(cacheDir, recursive: true);
 
-            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(cacheDir);
+            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(CacheRoot(accountName, containerName));
             await WriteNodeLinesAsync(
                 stagingSession2.StagingRoot,
                 rootId,

@@ -49,7 +49,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
     private readonly string                         _containerName;
-    private readonly Func<string, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
+    private readonly Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
     private readonly Func<string, IEnumerable<FilePair>> _enumerateFilePairs;
 
     public ArchiveCommandHandler(
@@ -78,7 +78,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession,
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession,
         Func<string, IEnumerable<FilePair>>? enumerateFilePairs)
     {
         _blobs           = blobs;
@@ -98,7 +98,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             => new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>).Enumerate(rootDirectory);
     }
 
-    private static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken)
+    private static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(LocalDirectory fileTreeCacheDirectory, CancellationToken cancellationToken)
         => await FileTreeStagingSession.OpenAsync(fileTreeCacheDirectory, cancellationToken);
 
     /// <summary>
@@ -153,7 +153,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesDeduped  = 0;
         long totalSize     = 0;
 
-        var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(_accountName, _containerName).ToString();
+        var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(_accountName, _containerName);
         var archiveFileSystem = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
         IFileTreeStagingSession stagingSession;
 

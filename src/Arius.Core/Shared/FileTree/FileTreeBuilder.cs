@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -44,9 +45,9 @@ public sealed class FileTreeBuilder
     /// filetree blobs and returning the root tree hash. Returns <c>null</c> if the staging root
     /// contains no file entries.
     /// </summary>
-    public async Task<FileTreeHash?> SynchronizeAsync(string stagingRoot, CancellationToken cancellationToken = default)
+    internal async Task<FileTreeHash?> SynchronizeAsync(LocalDirectory stagingRoot, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(stagingRoot);
+        var stagingFileSystem = new RelativeFileSystem(stagingRoot);
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var workerCancellationToken = linkedCts.Token;
@@ -72,8 +73,7 @@ public sealed class FileTreeBuilder
         try
         {
             // Recursively build the FileTree starting from the root
-            var rootPath = string.Empty;
-            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(rootPath), workerCancellationToken);
+            var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(RelativePath.Root), workerCancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
             return rootHash;
@@ -93,7 +93,7 @@ public sealed class FileTreeBuilder
         }
 
 
-        async Task<FileTreeHash?> BuildDirectoryAsync(string directoryId, CancellationToken ct)
+        async Task<FileTreeHash?> BuildDirectoryAsync(PathSegment directoryId, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -108,7 +108,7 @@ public sealed class FileTreeBuilder
                 new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = SiblingSubtreeWorkers },
                 async (item, ct2) =>
                 {
-                    var childHash = await BuildDirectoryAsync(item.directoryEntry.DirectoryNameHash, ct2);
+                    var childHash = await BuildDirectoryAsync(PathSegment.Parse(item.directoryEntry.DirectoryNameHash), ct2);
                     if (childHash is not null)
                     {
                         directoryEntries[item.index] = new DirectoryEntry
@@ -132,13 +132,13 @@ public sealed class FileTreeBuilder
             return hash;
         }
 
-        async IAsyncEnumerable<string> ReadNodeLinesAsync(string directoryId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        async IAsyncEnumerable<string> ReadNodeLinesAsync(PathSegment directoryId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {
-            var path = FileTreePaths.GetStagingNodePath(stagingRoot, directoryId);
-            if (!File.Exists(path))
+            var path = FileTreePaths.GetStagingNodePath(directoryId);
+            if (!stagingFileSystem.FileExists(path))
                 yield break; // empty directory
 
-            await foreach (var line in File.ReadLinesAsync(path, ct))
+            await foreach (var line in stagingFileSystem.ReadLinesAsync(path, ct))
                 yield return line;
         }
 

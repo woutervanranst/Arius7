@@ -41,6 +41,9 @@ public class FileTreeServiceTests
     private static string NormalizeHash(string hash)
         => hash.Length == 64 ? hash : hash[0].ToString().PadRight(64, char.ToLowerInvariant(hash[0]));
 
+    private static string ResolveCachePath(string cacheDir, FileTreeHash hash)
+        => Path.Combine(cacheDir, FileTreePaths.GetCachePath(hash).ToString());
+
     private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, string cacheDir, string snapshotsDir)
         MakeService(string acct, string cont)
     {
@@ -71,7 +74,7 @@ public class FileTreeServiceTests
         {
             var entries   = MakeEntries();
             var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
+            var diskPath = ResolveCachePath(cacheDir, hash);
 
             // Pre-populate disk cache with plaintext
             var plaintext = FileTreeSerializer.Serialize(entries);
@@ -117,7 +120,7 @@ public class FileTreeServiceTests
             blobs.RequestedBlobNames.ShouldContain(blobName);
 
             // Disk file was written (write-through)
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
+            var diskPath = ResolveCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
         }
@@ -157,7 +160,7 @@ public class FileTreeServiceTests
             results[1][0].Name.ShouldBe("concurrent.txt");
 
             // Disk file must exist and have content (not empty / corrupt)
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
+            var diskPath = ResolveCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
 
@@ -200,7 +203,7 @@ public class FileTreeServiceTests
 
             results.SelectMany(result => result).All(entry => entry.Name == "partial.txt").ShouldBeTrue();
 
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
+            var diskPath = ResolveCachePath(cacheDir, hash);
             File.Exists(diskPath).ShouldBeTrue();
             FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe("partial.txt");
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
@@ -257,7 +260,7 @@ public class FileTreeServiceTests
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
+            var diskPath = ResolveCachePath(cacheDir, payload.Hash);
             File.Exists(diskPath).ShouldBeTrue();
             (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
         }
@@ -293,7 +296,7 @@ public class FileTreeServiceTests
 
             await svc.WriteAsync(payload);
 
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
+            var diskPath = ResolveCachePath(cacheDir, payload.Hash);
             (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
 
             var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTreePath(payload.Hash));
@@ -418,7 +421,7 @@ public class FileTreeServiceTests
             await Should.NotThrowAsync(() => svc.WriteAsync(payload));
 
             // Disk file should still be written
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, payload.Hash);
+            var diskPath = ResolveCachePath(cacheDir, payload.Hash);
             File.Exists(diskPath).ShouldBeTrue();
         }
         finally
@@ -577,8 +580,8 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Empty marker files created for remote filetrees
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, firstRemoteHash)).ShouldBeTrue();
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, secondRemoteHash)).ShouldBeTrue();
+            File.Exists(ResolveCachePath(cacheDir, firstRemoteHash)).ShouldBeTrue();
+            File.Exists(ResolveCachePath(cacheDir, secondRemoteHash)).ShouldBeTrue();
 
             // L2 dummy file deleted
             File.Exists(dummyL2File).ShouldBeFalse();
@@ -609,7 +612,7 @@ public class FileTreeServiceTests
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, existingHash);
+            var diskPath = ResolveCachePath(cacheDir, existingHash);
             await File.WriteAllBytesAsync(diskPath, existingContent);
 
             blobs.SeedBlob(BlobPaths.FileTree(existingHash), [], contentType: null);
@@ -648,7 +651,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Slow path should create marker for remote blob
-            File.Exists(FileTreePaths.GetCachePath(cacheDir, remoteHash)).ShouldBeTrue();
+            File.Exists(ResolveCachePath(cacheDir, remoteHash)).ShouldBeTrue();
         }
         finally
         {
@@ -688,7 +691,7 @@ public class FileTreeServiceTests
         {
             await svc.ValidateAsync();
             var hash = FakeFileTreeHash('a');
-            var diskPath = FileTreePaths.GetCachePath(cacheDir, hash);
+            var diskPath = ResolveCachePath(cacheDir, hash);
             await File.WriteAllBytesAsync(diskPath, []);
 
             svc.ExistsInRemote(hash).ShouldBeTrue();

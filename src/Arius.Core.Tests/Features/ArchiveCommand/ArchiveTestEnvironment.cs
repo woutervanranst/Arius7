@@ -66,7 +66,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         CancellationToken cancellationToken = default,
         bool removeLocal = false,
         bool noPointers = false,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
         Func<string, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
         Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
@@ -75,7 +75,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>> stagingSessionFactory = openStagingSession is not null
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> stagingSessionFactory = openStagingSession is not null
             ? openStagingSession
             : OpenStagingSessionAsync;
         var handler         = new ArchiveCommandHandler(
@@ -92,7 +92,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             stagingSessionFactory,
             enumerateFilePairs);
 
-        static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(string path, CancellationToken ct)
+        static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(LocalDirectory path, CancellationToken ct)
             => await FileTreeStagingSession.OpenAsync(path, ct);
 
         return await handler.Handle(

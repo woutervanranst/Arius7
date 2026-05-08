@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 
@@ -225,12 +226,12 @@ public class FileTreeSerializerTests
     [Test]
     public void ParseStagedNodeEntryLine_DirectoryLine_ReturnsStagedDirectoryEntry()
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         var parsed = FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D photos/");
 
         var entry = parsed.ShouldBeOfType<StagedDirectoryEntry>();
-        entry.DirectoryNameHash.ShouldBe(directoryId);
+        entry.DirectoryNameHash.ShouldBe(directoryId.ToString());
         entry.Name.ShouldBe("photos/");
     }
 
@@ -253,7 +254,7 @@ public class FileTreeSerializerTests
     [Arguments("photos\\")]
     public void ParseStagedNodeEntryLine_NonCanonicalDirectoryName_Throws(string directoryName)
     {
-        var directoryId = FileTreePaths.GetStagingDirectoryId("photos");
+        var directoryId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
 
         Should.Throw<FormatException>(() =>
             FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {directoryName}"));

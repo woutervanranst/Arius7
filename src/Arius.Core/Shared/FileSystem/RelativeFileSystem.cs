@@ -114,6 +114,12 @@ internal sealed class RelativeFileSystem
     public Task<byte[]> ReadAllBytesAsync(RelativePath path, CancellationToken cancellationToken) =>
         File.ReadAllBytesAsync(_root.Resolve(path), cancellationToken);
 
+    public async IAsyncEnumerable<string> ReadLinesAsync(RelativePath path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var line in File.ReadLinesAsync(_root.Resolve(path), cancellationToken))
+            yield return line;
+    }
+
     public async Task WriteAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = _root.Resolve(path);
@@ -176,6 +182,13 @@ internal sealed class RelativeFileSystem
 
         foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", SearchOption.TopDirectoryOnly))
             File.Delete(filePath);
+    }
+
+    public void DeleteDirectory(RelativePath path, bool recursive)
+    {
+        var fullPath = _root.Resolve(path);
+        if (Directory.Exists(fullPath))
+            Directory.Delete(fullPath, recursive);
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));

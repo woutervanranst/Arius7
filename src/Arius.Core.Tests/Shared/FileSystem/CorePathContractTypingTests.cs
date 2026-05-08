@@ -63,4 +63,19 @@ public class CorePathContractTypingTests
             .ShouldBeNull();
     }
 
+    [Test]
+    public void FileTreeStagingApis_UseTypedLocalRootsAndRelativePaths()
+    {
+        typeof(IFileTreeStagingSession).GetProperty(nameof(IFileTreeStagingSession.StagingRoot))!.PropertyType
+            .ShouldBe(typeof(LocalDirectory));
+
+        typeof(FileTreeStagingSession)
+            .GetMethod(nameof(FileTreeStagingSession.OpenAsync), System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static, [typeof(LocalDirectory), typeof(CancellationToken)])!
+            .ShouldNotBeNull();
+
+        typeof(FileTreeBuilder)
+            .GetMethod(nameof(FileTreeBuilder.SynchronizeAsync), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, [typeof(LocalDirectory), typeof(CancellationToken)])!
+            .ShouldNotBeNull();
+    }
+
 }
