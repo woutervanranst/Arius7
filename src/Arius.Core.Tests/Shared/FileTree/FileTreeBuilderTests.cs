@@ -26,7 +26,7 @@ public class FileTreeBuilderTests
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Created, file.Modified);
+            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Created, file.Modified);
 
         return (session, session.StagingRoot.ToString());
     }

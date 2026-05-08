@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
@@ -34,10 +35,10 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
     {
         var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(Account, containerName);
-        var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+        var session = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(cacheDir));
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
-            await writer.AppendFileEntryAsync(file.Path, file.Hash, file.Timestamp, file.Timestamp);
+            await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Timestamp, file.Timestamp);
 
         return session;
     }
@@ -64,7 +65,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             var resolvedRootHash = rootHash!.Value;
 
             // Verify the blob exists in blob storage
-            var blobName = BlobPaths.FileTree(resolvedRootHash);
+            var blobName = BlobPaths.FileTreePath(resolvedRootHash);
             var meta     = await blobs.GetMetadataAsync(blobName);
             meta.Exists.ShouldBeTrue();
 
@@ -104,8 +105,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Count blobs in filetrees/ after first run
             var blobsAfterRun1 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTrees))
-                blobsAfterRun1.Add(b);
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                blobsAfterRun1.Add(b.ToString());
 
             // Second run with same manifest
             var builder2 = CreateBuilder(blobs, container.Name, out var fileTreeService2);
@@ -116,8 +117,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Blob count should be the same (no new blobs)
             var blobsAfterRun2 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTrees))
-                blobsAfterRun2.Add(b);
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                blobsAfterRun2.Add(b.ToString());
 
             blobsAfterRun2.Count.ShouldBe(blobsAfterRun1.Count);
         }
@@ -152,8 +153,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Multiple tree blobs should have been uploaded (one per directory + root)
             var treeBlobNames = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTrees))
-                treeBlobNames.Add(b);
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                treeBlobNames.Add(b.ToString());
 
             // Expected: filetrees/ for june, 2024, photos, docs, root = at least 4
             treeBlobNames.Count.ShouldBeGreaterThanOrEqualTo(4);

@@ -41,17 +41,6 @@ internal sealed class FileTreeStagingWriter : IDisposable
         }, cancellationToken);
     }
 
-    public async Task AppendFileEntryAsync(
-        string filePath,
-        ContentHash contentHash,
-        DateTimeOffset created,
-        DateTimeOffset modified,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(filePath);
-        await AppendFileEntryAsync(RelativePath.Parse(filePath), contentHash, created, modified, cancellationToken);
-    }
-
     private async Task AppendFileEntryAsync(RelativePath directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);

@@ -76,6 +76,22 @@ public class CorePathContractTypingTests
         typeof(FileTreeBuilder)
             .GetMethod(nameof(FileTreeBuilder.SynchronizeAsync), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, [typeof(LocalDirectory), typeof(CancellationToken)])!
             .ShouldNotBeNull();
+
+        typeof(FileTreeStagingWriter)
+            .GetMethod(nameof(FileTreeStagingWriter.AppendFileEntryAsync), [typeof(RelativePath), typeof(Arius.Core.Shared.Hashes.ContentHash), typeof(DateTimeOffset), typeof(DateTimeOffset), typeof(CancellationToken)])
+            .ShouldNotBeNull();
+
+        typeof(FileTreeStagingWriter)
+            .GetMethod(nameof(FileTreeStagingWriter.AppendFileEntryAsync), [typeof(string), typeof(Arius.Core.Shared.Hashes.ContentHash), typeof(DateTimeOffset), typeof(DateTimeOffset), typeof(CancellationToken)])
+            .ShouldBeNull();
+
+        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
+            .GetMethod(nameof(Arius.Core.Shared.LocalFile.LocalFileEnumerator.Enumerate), [typeof(LocalDirectory)])
+            .ShouldNotBeNull();
+
+        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
+            .GetMethod(nameof(Arius.Core.Shared.LocalFile.LocalFileEnumerator.Enumerate), [typeof(string)])
+            .ShouldBeNull();
     }
 
 }

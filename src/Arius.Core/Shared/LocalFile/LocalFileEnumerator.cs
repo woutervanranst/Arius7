@@ -35,9 +35,9 @@ internal sealed class LocalFileEnumerator
     /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
     /// No dictionaries or state-tracking collections are used.
     /// </summary>
-    public IEnumerable<FilePair> Enumerate(string rootDirectory)
+    public IEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory)
     {
-        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootDirectory));
+        var fileSystem = new RelativeFileSystem(rootDirectory);
         var files = fileSystem.EnumerateFiles().ToList();
         var enumeratedPaths = files.Select(file => file.Path).ToHashSet();
 

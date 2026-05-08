@@ -67,7 +67,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         bool removeLocal = false,
         bool noPointers = false,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
-        Func<string, IEnumerable<FilePair>>? enumerateFilePairs = null)
+        Func<LocalDirectory, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
         Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName));

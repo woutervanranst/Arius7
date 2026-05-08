@@ -50,7 +50,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly string                         _accountName;
     private readonly string                         _containerName;
     private readonly Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
-    private readonly Func<string, IEnumerable<FilePair>> _enumerateFilePairs;
+    private readonly Func<LocalDirectory, IEnumerable<FilePair>> _enumerateFilePairs;
 
     public ArchiveCommandHandler(
         IBlobContainerService           blobs,
@@ -79,7 +79,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         string                          accountName,
         string                          containerName,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession,
-        Func<string, IEnumerable<FilePair>>? enumerateFilePairs)
+        Func<LocalDirectory, IEnumerable<FilePair>>? enumerateFilePairs)
     {
         _blobs           = blobs;
         _encryption      = encryption;
@@ -94,7 +94,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _openStagingSession = openStagingSession;
         _enumerateFilePairs = enumerateFilePairs ?? EnumerateFilePairs;
 
-        IEnumerable<FilePair> EnumerateFilePairs(string rootDirectory)
+        IEnumerable<FilePair> EnumerateFilePairs(LocalDirectory rootDirectory)
             => new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>).Enumerate(rootDirectory);
     }
 
@@ -216,7 +216,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 try
                 {
                     var  collisions = new Dictionary<string, RelativePath>(StringComparer.OrdinalIgnoreCase);
-                    var  pairs      = _enumerateFilePairs(opts.RootDirectory);
+                    var  pairs      = _enumerateFilePairs(LocalDirectory.Parse(opts.RootDirectory));
                     long count      = 0;
                     long totalBytes = 0;
 
