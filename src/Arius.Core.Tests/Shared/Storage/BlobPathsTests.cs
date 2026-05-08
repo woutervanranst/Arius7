@@ -12,7 +12,22 @@ public class BlobPathsTests
         var chunkHash = ChunkHash.Parse(new string('a', 64));
 
         BlobPaths.ChunkPath(chunkHash).ShouldBe(RelativePath.Parse($"chunks/{chunkHash}"));
-        BlobPaths.Chunk(chunkHash).ShouldBe($"chunks/{chunkHash}");
+    }
+
+    [Test]
+    public void ThinChunkPath_RendersCanonicalRelativePath()
+    {
+        var contentHash = ContentHash.Parse(new string('c', 64));
+
+        BlobPaths.ThinChunkPath(contentHash).ShouldBe(RelativePath.Parse($"chunks/{contentHash}"));
+    }
+
+    [Test]
+    public void ChunkRehydratedPath_RendersCanonicalRelativePath()
+    {
+        var chunkHash = ChunkHash.Parse(new string('d', 64));
+
+        BlobPaths.ChunkRehydratedPath(chunkHash).ShouldBe(RelativePath.Parse($"chunks-rehydrated/{chunkHash}"));
     }
 
     [Test]
@@ -35,6 +50,5 @@ public class BlobPathsTests
         var fileTreeHash = FileTreeHash.Parse(new string('b', 64));
 
         BlobPaths.FileTreePath(fileTreeHash).ShouldBe(RelativePath.Parse($"filetrees/{fileTreeHash}"));
-        BlobPaths.FileTree(fileTreeHash).ShouldBe($"filetrees/{fileTreeHash}");
     }
 }

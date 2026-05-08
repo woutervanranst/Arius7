@@ -50,8 +50,8 @@ public class FileTreeServiceTests
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir     = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir     = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
     }
@@ -104,7 +104,7 @@ public class FileTreeServiceTests
         {
             var entries   = MakeEntries("photo.jpg", "deadbeef");
             var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPathStrings.FileTree(hash);
 
             // Pre-populate Azure (storage serialization)
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -141,7 +141,7 @@ public class FileTreeServiceTests
         {
             var entries   = MakeEntries("concurrent.txt", "cc001122");
             var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPathStrings.FileTree(hash);
 
             // Pre-populate Azure only — no local cache
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -181,15 +181,15 @@ public class FileTreeServiceTests
         var blobs = new SlowDownloadBlobContainerService();
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
         {
             var entries = MakeEntries("partial.txt", "a1b2c3d4");
             var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPaths.FileTree(hash);
+            var blobName = BlobPathStrings.FileTree(hash);
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
@@ -222,8 +222,8 @@ public class FileTreeServiceTests
         var blobs = new ThrowingDownloadBlobContainerService(expected);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -256,7 +256,7 @@ public class FileTreeServiceTests
             await svc.WriteAsync(payload);
 
             // Azure was uploaded
-            var blobName = BlobPaths.FileTree(payload.Hash);
+            var blobName = BlobPathStrings.FileTree(payload.Hash);
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
@@ -319,8 +319,8 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -363,8 +363,8 @@ public class FileTreeServiceTests
         var blobs = new FakeInMemoryBlobContainerService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, acct, cont);
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -411,7 +411,7 @@ public class FileTreeServiceTests
             var entries   = MakeEntries();
             var plaintext = FileTreeSerializer.Serialize(entries);
             var payload   = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
-            var blobName = BlobPaths.FileTree(payload.Hash);
+            var blobName = BlobPathStrings.FileTree(payload.Hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -439,8 +439,8 @@ public class FileTreeServiceTests
         var encryption = new PlaintextPassthroughService();
         var chunkIndex = new ChunkIndexService(blobs, encryption, account, container);
         var service = new FileTreeService(blobs, encryption, chunkIndex, account, container);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(account, container);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(account, container);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(account, container);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(account, container);
         try
         {
             await service.ValidateAsync();
@@ -459,7 +459,7 @@ public class FileTreeServiceTests
             var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
             await service.EnsureStoredAsync(payload);
 
-            blobs.Uploaded.ShouldContain(BlobPaths.FileTree(payload.Hash));
+            blobs.Uploaded.ShouldContain(BlobPathStrings.FileTree(payload.Hash));
         }
         finally
         {
@@ -504,7 +504,7 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, timestamp), []);
 
             // Seed a remote snapshot with the same timestamp
-            blobs.SeedBlob(BlobPaths.Snapshot(timestamp), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.Snapshot(timestamp), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -525,13 +525,42 @@ public class FileTreeServiceTests
         const string acct = "tc-val-unsorted", cont = "container";
         var blobs = new UnsortedSnapshotBlobContainerService(
             [
-                BlobPaths.Snapshot("2024-06-15T100000.000Z"),
-                BlobPaths.Snapshot("2024-01-01T000000.000Z")
+                BlobPathStrings.Snapshot("2024-06-15T100000.000Z"),
+                BlobPathStrings.Snapshot("2024-01-01T000000.000Z")
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
+        Directory.CreateDirectory(snapshotsDir);
+
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-06-15T100000.000Z"), []);
+
+            await svc.ValidateAsync();
+
+            blobs.FileTreesListed.ShouldBeFalse();
+        }
+        finally
+        {
+            await CleanupAsync(cacheDir, snapshotsDir);
+        }
+    }
+
+    [Test]
+    public async Task ValidateAsync_IgnoresSiblingSnapshotLikePrefixes()
+    {
+        const string acct = "tc-val-sibling-prefix", cont = "container";
+        var blobs = new UnsortedSnapshotBlobContainerService(
+            [
+                BlobPathStrings.Snapshot("2024-06-15T100000.000Z"),
+                "snapshots-old/2024-07-01T100000.000Z"
+            ]);
+        var index = new ChunkIndexService(blobs, s_enc, acct, cont);
+        var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         Directory.CreateDirectory(snapshotsDir);
 
         try
@@ -557,7 +586,7 @@ public class FileTreeServiceTests
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
 
         // Determine the L2 dir and pre-populate it with a dummy file
-        var chunkL2Dir = RepositoryCachePaths.GetChunkIndexCacheDirectory(acct, cont);
+        var chunkL2Dir = RepositoryPathStrings.GetChunkIndexCacheDirectory(acct, cont);
         Directory.CreateDirectory(chunkL2Dir);
         var dummyL2File = Path.Combine(chunkL2Dir, "dummy-shard.dat");
         await File.WriteAllTextAsync(dummyL2File, "stale");
@@ -571,11 +600,11 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
-            blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Two remote filetree blobs
-            blobs.SeedBlob(BlobPaths.FileTree(firstRemoteHash), [], contentType: null);
-            blobs.SeedBlob(BlobPaths.FileTree(secondRemoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.FileTree(firstRemoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.FileTree(secondRemoteHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -608,14 +637,14 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
-            blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
             var diskPath = ResolveCachePath(cacheDir, existingHash);
             await File.WriteAllBytesAsync(diskPath, existingContent);
 
-            blobs.SeedBlob(BlobPaths.FileTree(existingHash), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.FileTree(existingHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -643,10 +672,10 @@ public class FileTreeServiceTests
             // No local snapshot markers (snapshotsDir is empty)
 
             // Remote snapshot exists
-            blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Remote filetree blob
-            blobs.SeedBlob(BlobPaths.FileTree(remoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.FileTree(remoteHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -745,7 +774,7 @@ public class FileTreeServiceTests
         const string acct = "tc-marker", cont = "container";
         var blobs        = new FakeInMemoryBlobContainerService();
         var snapshotSvc  = new SnapshotService(blobs, s_enc, acct, cont);
-        var snapshotsDir = RepositoryCachePaths.GetSnapshotCacheDirectory(acct, cont);
+        var snapshotsDir = RepositoryPathStrings.GetSnapshotCacheDirectory(acct, cont);
         try
         {
             var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -781,8 +810,8 @@ public class FileTreeServiceTests
             var someHash = FakeFileTreeHash('5');
 
             // Remote snapshot mismatch forces slow path on first call
-            blobs.SeedBlob(BlobPaths.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
-            blobs.SeedBlob(BlobPaths.FileTree(someHash), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPathStrings.FileTree(someHash), [], contentType: null);
 
             await svc.ValidateAsync();
 

@@ -167,7 +167,7 @@ public sealed class PipelineFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // Clean up any cache dirs created by this test's container (unique name)
-        var cacheDir = RepositoryCachePaths.GetRepositoryDirectory(Account, Container.Name);
+        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(Account, Container.Name);
         if (Directory.Exists(cacheDir))
             Directory.Delete(cacheDir, recursive: true);
 

@@ -34,7 +34,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
     {
-        var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(Account, containerName);
+        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, containerName);
         var session = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(cacheDir));
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
@@ -80,7 +80,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             // clean up disk cache
-            var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -124,7 +124,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }
@@ -161,7 +161,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryCachePaths.GetFileTreeCacheDirectory(Account, container.Name);
+            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
             if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
         }
     }

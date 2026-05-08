@@ -33,8 +33,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
         Directory.CreateDirectory(_rootDirectory);
-        Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -43,7 +43,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName);
 
     public string RootDirectory => _rootDirectory;
 
@@ -69,8 +69,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
         Func<LocalDirectory, IEnumerable<FilePair>>? enumerateFilePairs = null)
     {
-        Directory.CreateDirectory(RepositoryCachePaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryCachePaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);

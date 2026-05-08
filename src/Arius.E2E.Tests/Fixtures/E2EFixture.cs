@@ -90,7 +90,7 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        var cacheDir = RepositoryCachePaths.GetRepositoryDirectory(accountName, containerName);
+        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(accountName, containerName);
 
         lock (RepositoryCacheLeaseLock)
         {

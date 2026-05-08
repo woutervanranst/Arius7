@@ -9,6 +9,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.IO;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
@@ -170,7 +171,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 if (entry!.IsLargeChunk)
                     continue;
 
-                var             chunkBlobName  = RelativePath.Parse(BlobPaths.Chunk(entry.ChunkHash));
+                var             chunkBlobName  = BlobPaths.ChunkPath(entry.ChunkHash);
                 await using var chunkStream    = await fixture.BlobContainer.DownloadAsync(chunkBlobName, cancellationToken);
                 using var       preservedChunk = new MemoryStream();
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
@@ -186,13 +187,13 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         static async Task MoveChunksToArchiveAsync(AzureBlobContainerService blobContainer, ChunkHash chunkHash, CancellationToken cancellationToken)
         {
-            var blobName = RelativePath.Parse(BlobPaths.Chunk(chunkHash));
+            var blobName = BlobPaths.ChunkPath(chunkHash);
             await blobContainer.SetTierAsync(blobName, BlobTier.Archive, cancellationToken);
         }
 
         static Task UploadReadyRehydratedChunkAsync(AzureBlobContainerService blobContainer, ArchiveTierTargetChunk targetChunk, CancellationToken cancellationToken)
         {
-            var rehydratedBlobName = RelativePath.Parse(BlobPaths.ChunkRehydrated(targetChunk.ChunkHash));
+            var rehydratedBlobName = BlobPaths.ChunkRehydratedPath(targetChunk.ChunkHash);
 
             return blobContainer.UploadAsync(rehydratedBlobName, new MemoryStream(targetChunk.PreservedChunkBytes), targetChunk.Metadata, BlobTier.Hot, overwrite: true, cancellationToken: cancellationToken);
         }

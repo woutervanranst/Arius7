@@ -7,6 +7,7 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared;
 using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
@@ -73,19 +74,19 @@ public class ResolveFileHydrationStatusesHandlerTests
         var tarContentHash  = FakeContentHash('f');
 
         var blobs = new FakeMetadataOnlyBlobContainerService();
-        blobs.Metadata[BlobPaths.ThinChunk(thinContentHash)] = new BlobMetadata
+        blobs.Metadata[BlobPathStrings.ThinChunk(thinContentHash)] = new BlobMetadata
         {
             Exists   = true,
             Tier     = BlobTier.Hot,
             Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin }
         };
-        blobs.Metadata[BlobPaths.Chunk(tarChunkHash)] = new BlobMetadata
+        blobs.Metadata[BlobPathStrings.Chunk(tarChunkHash)] = new BlobMetadata
         {
             Exists   = true,
             Tier     = BlobTier.Archive,
             Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar }
         };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(tarChunkHash)] = new BlobMetadata { Exists = false };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(tarChunkHash)] = new BlobMetadata { Exists = false };
 
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-hydration-thin-special", "ctr-hydration-thin-special", cacheBudgetBytes: 1024 * 1024);
         index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
@@ -109,8 +110,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         results.Count.ShouldBe(2);
         results.ShouldContain(result => result.RelativePath == RelativePath.Parse("thin.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
         results.ShouldContain(result => result.RelativePath == RelativePath.Parse("tar.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
-        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ThinChunk(thinContentHash));
-        blobs.RequestedBlobNames.ShouldContain(BlobPaths.Chunk(tarChunkHash));
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPathStrings.ThinChunk(thinContentHash));
+        blobs.RequestedBlobNames.ShouldContain(BlobPathStrings.Chunk(tarChunkHash));
     }
 
     private static HydrationStatusCase StatusCaseFor(HydrationBlobState state)
@@ -122,7 +123,7 @@ public class ResolveFileHydrationStatusesHandlerTests
                 ChunkHydrationStatus.Available,
                 (blobs, chunkHash, chunkType) =>
                 {
-                    blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
+                    blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata
                     {
                         Exists   = true,
                         Tier     = BlobTier.Hot,
@@ -134,27 +135,27 @@ public class ResolveFileHydrationStatusesHandlerTests
                 ChunkHydrationStatus.NeedsRehydration,
                 (blobs, chunkHash, chunkType) =>
                 {
-                    blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
+                    blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata
                     {
                         Exists   = true,
                         Tier     = BlobTier.Archive,
                         Metadata = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
                     };
-                    blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
+                    blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
                 }),
             HydrationBlobState.Rehydrating => new HydrationStatusCase(
                 "rehydrating",
                 ChunkHydrationStatus.RehydrationPending,
                 (blobs, chunkHash, chunkType) =>
                 {
-                    blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata
+                    blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata
                     {
                         Exists        = true,
                         Tier          = BlobTier.Archive,
                         IsRehydrating = true,
                         Metadata      = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = chunkType }
                     };
-                    blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
+                    blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
                 }),
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
         };

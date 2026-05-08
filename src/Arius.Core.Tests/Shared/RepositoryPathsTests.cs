@@ -12,11 +12,11 @@ public class RepositoryPathsTests
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var root = Path.Combine(home, ".arius", "account-container");
 
-        RepositoryCachePaths.GetRepositoryDirectory("account", "container").ShouldBe(root);
+        RepositoryPathStrings.GetRepositoryDirectory("account", "container").ShouldBe(root);
         RepositoryPaths.GetRepositoryDirectoryName("account", "container").ShouldBe(PathSegment.Parse("account-container"));
-        RepositoryCachePaths.GetChunkIndexCacheDirectory("account", "container").ShouldBe(Path.Combine(root, "chunk-index"));
-        RepositoryCachePaths.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
-        RepositoryCachePaths.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
+        RepositoryPathStrings.GetChunkIndexCacheDirectory("account", "container").ShouldBe(Path.Combine(root, "chunk-index"));
+        RepositoryPathStrings.GetFileTreeCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "filetrees"));
+        RepositoryPathStrings.GetSnapshotCacheDirectory("account", "container").ShouldBe(Path.Combine(root,   "snapshots"));
         RepositoryPaths.GetLogsRoot("account", "container").ToString().ShouldBe(Path.Combine(root, "logs"));
     }
 
@@ -24,18 +24,18 @@ public class RepositoryPathsTests
     public void RepositoryCacheHelpers_ExposeTypedRootsAndRelativeSegments()
     {
         RepositoryPaths.GetRepositoryRoot("account", "container").ToString()
-            .ShouldBe(RepositoryCachePaths.GetRepositoryDirectory("account", "container"));
+            .ShouldBe(RepositoryPathStrings.GetRepositoryDirectory("account", "container"));
         RepositoryPaths.GetRepositoryDirectoryName("account", "container")
             .ShouldBe(PathSegment.Parse("account-container"));
         RepositoryPaths.GetRepoDirectoryName("account", "container")
             .ShouldBe(PathSegment.Parse("account-container"));
 
         RepositoryPaths.GetChunkIndexCacheRoot("account", "container").ToString()
-            .ShouldBe(RepositoryCachePaths.GetChunkIndexCacheDirectory("account", "container"));
+            .ShouldBe(RepositoryPathStrings.GetChunkIndexCacheDirectory("account", "container"));
         RepositoryPaths.GetFileTreeCacheRoot("account", "container").ToString()
-            .ShouldBe(RepositoryCachePaths.GetFileTreeCacheDirectory("account", "container"));
+            .ShouldBe(RepositoryPathStrings.GetFileTreeCacheDirectory("account", "container"));
         RepositoryPaths.GetSnapshotCacheRoot("account", "container").ToString()
-            .ShouldBe(RepositoryCachePaths.GetSnapshotCacheDirectory("account", "container"));
+            .ShouldBe(RepositoryPathStrings.GetSnapshotCacheDirectory("account", "container"));
         RepositoryPaths.GetLogsRoot("account", "container").ToString()
             .ShouldBe(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".arius", "account-container", "logs"));
 

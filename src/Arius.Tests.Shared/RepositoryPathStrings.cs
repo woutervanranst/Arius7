@@ -2,7 +2,7 @@ using Arius.Core.Shared;
 
 namespace Arius.Tests.Shared;
 
-public static class RepositoryCachePaths
+public static class RepositoryPathStrings
 {
     public static string GetRepositoryDirectory(string accountName, string containerName) =>
         RepositoryPaths.GetRepositoryRoot(accountName, containerName).ToString();

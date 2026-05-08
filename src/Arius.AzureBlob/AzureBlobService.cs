@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.FileSystem;
 using Azure;
 using Azure.Identity;
 using Azure.Storage.Blobs;
@@ -13,6 +14,7 @@ namespace Arius.AzureBlob;
 public sealed class AzureBlobService(BlobServiceClient serviceClient, string accountName, string authMode) : IBlobService
 {
     private const string PreflightProbeBlobName = ".arius-preflight-probe";
+    private const string SnapshotsPrefix = "snapshots/";
 
     public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -24,11 +26,11 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             var hasSnapshot = false;
 
             await foreach (var page in containerClient
-                               .GetBlobsByHierarchyAsync(BlobTraits.None, BlobStates.None, "/", BlobPaths.Snapshots, cancellationToken)
-                               .AsPages(pageSizeHint: 1)
-                               .ConfigureAwait(false))
+                                .GetBlobsAsync(BlobTraits.None, BlobStates.None, SnapshotsPrefix, cancellationToken)
+                                .AsPages(pageSizeHint: 1)
+                                .ConfigureAwait(false))
             {
-                if (page.Values.Any(item => item.IsBlob))
+                if (page.Values.Any(item => HasPrefix(item.Name, BlobPaths.SnapshotsPrefix)))
                 {
                     hasSnapshot = true;
                     break;
@@ -113,4 +115,7 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
 
         return new AzureBlobContainerService(containerClient);
     }
+
+    private static bool HasPrefix(string blobName, RelativePath prefix) =>
+        RelativePath.TryParse(blobName, out var path) && path.StartsWith(prefix);
 }

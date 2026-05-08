@@ -4,6 +4,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 using Arius.Core.Tests.Shared.Streaming;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
@@ -56,8 +57,8 @@ public class ChunkStorageServiceUploadTests
         var content = new byte[1024];
         Random.Shared.NextBytes(content);
 
-        await blobs.SeedTarBlobAsync(BlobPaths.Chunk(TarChunkHash), [content], BlobTier.Cold);
-        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(TarChunkHash));
+        await blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(TarChunkHash), [content], BlobTier.Cold);
+        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(TarChunkHash));
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
@@ -69,7 +70,7 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeTrue();
         result.StoredSize.ShouldBeGreaterThan(0L);
-        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.Chunk(TarChunkHash));
+        blobs.DeletedBlobNames.ShouldNotContain(BlobPathStrings.Chunk(TarChunkHash));
     }
 
     [Test]
@@ -115,7 +116,7 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
-        var blobName = BlobPaths.Chunk(RetryChunkHash);
+        var blobName = BlobPathStrings.Chunk(RetryChunkHash);
 
         await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         blobs.ClearMetadata(blobName);
@@ -145,7 +146,7 @@ public class ChunkStorageServiceUploadTests
         Random.Shared.NextBytes(content);
         var reports = new List<long>();
         var progress = new SyncProgress<long>(value => reports.Add(value));
-        var blobName = BlobPaths.Chunk(RetryChunkHash);
+        var blobName = BlobPathStrings.Chunk(RetryChunkHash);
         await using var chunkedContent = new ChunkedReadMemoryStream(content, maxChunkSize: 512);
 
         var result = await service.UploadLargeAsync(
@@ -195,7 +196,7 @@ public class ChunkStorageServiceUploadTests
 
         created.ShouldBeTrue();
 
-        var blobName = BlobPaths.ThinChunk(ThinContentHash);
+        var blobName = BlobPathStrings.ThinChunk(ThinContentHash);
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(ThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
@@ -212,7 +213,7 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        var blobName = BlobPaths.ThinChunk(ExistingThinContentHash);
+        var blobName = BlobPathStrings.ThinChunk(ExistingThinContentHash);
 
         blobs.SeedBlob(
             blobName,
@@ -242,7 +243,7 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
-        var blobName = BlobPaths.ThinChunk(RetryThinContentHash);
+        var blobName = BlobPathStrings.ThinChunk(RetryThinContentHash);
 
         blobs.SeedBlob(blobName, System.Text.Encoding.UTF8.GetBytes(RetryThinParentChunkHash.ToString()), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
 

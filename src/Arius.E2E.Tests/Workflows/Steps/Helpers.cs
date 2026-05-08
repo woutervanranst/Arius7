@@ -6,6 +6,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.Tests.Shared;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
@@ -98,7 +99,7 @@ internal static class Helpers
     {
         var contentHash  = await AssertDuplicateContentHashAsync(state, expectedState, SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathA, SyntheticRepositoryDefinitionFactory.SmallDuplicateStablePathB, cancellationToken);
         var entry        = await LookupChunkAsync(state, contentHash, cancellationToken);
-        var thinBlobName = RelativePath.Parse(BlobPaths.ThinChunk(contentHash));
+        var thinBlobName = BlobPaths.ThinChunkPath(contentHash);
 
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash), "Small bundled files should resolve to their parent tar chunk hash.");

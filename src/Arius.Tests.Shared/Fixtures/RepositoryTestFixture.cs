@@ -236,7 +236,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        var cacheDir = RepositoryCachePaths.GetRepositoryDirectory(accountName, containerName);
+        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(accountName, containerName);
 
         try
         {

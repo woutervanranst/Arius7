@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Storage;
@@ -22,9 +23,9 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var meta    = new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge };
         var chunkHash = FakeChunkHash('a');
 
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.Chunk(chunkHash)), new MemoryStream(content), meta, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.ChunkPath(chunkHash), new MemoryStream(content), meta, BlobTier.Hot);
 
-        await using var stream = await svc.DownloadAsync(RelativePath.Parse(BlobPaths.Chunk(chunkHash)));
+        await using var stream = await svc.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
 
@@ -44,9 +45,9 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
             [BlobMetadataKeys.OriginalSize] = "1234"
         };
 
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.Chunk(chunkHash)), new MemoryStream([1, 2, 3]), meta, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.ChunkPath(chunkHash), new MemoryStream([1, 2, 3]), meta, BlobTier.Hot);
 
-        var result = await svc.GetMetadataAsync(RelativePath.Parse(BlobPaths.Chunk(chunkHash)));
+        var result = await svc.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash));
 
         result.Exists.ShouldBeTrue();
         result.ContentLength.ShouldBe(3);
@@ -72,9 +73,9 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var fileTreeHash = FakeFileTreeHash('c');
 
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.FileTree(fileTreeHash)), new MemoryStream([0xFF]), new Dictionary<string, string>(), BlobTier.Cool);
+        await svc.UploadAsync(BlobPaths.FileTreePath(fileTreeHash), new MemoryStream([0xFF]), new Dictionary<string, string>(), BlobTier.Cool);
 
-        var meta = await svc.GetMetadataAsync(RelativePath.Parse(BlobPaths.FileTree(fileTreeHash)));
+        var meta = await svc.GetMetadataAsync(BlobPaths.FileTreePath(fileTreeHash));
         // Azurite may report Hot as the effective tier for Cool; just verify the blob exists
         meta.Exists.ShouldBeTrue();
     }
@@ -90,17 +91,17 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var secondChunkHash = FakeChunkHash('e');
         var fileTreeHash = FakeFileTreeHash('f');
 
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.Chunk(firstChunkHash)), new MemoryStream([1]), empty, BlobTier.Hot);
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.Chunk(secondChunkHash)), new MemoryStream([2]), empty, BlobTier.Hot);
-        await svc.UploadAsync(RelativePath.Parse(BlobPaths.FileTree(fileTreeHash)), new MemoryStream([3]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.ChunkPath(firstChunkHash), new MemoryStream([1]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.ChunkPath(secondChunkHash), new MemoryStream([2]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.FileTreePath(fileTreeHash), new MemoryStream([3]), empty, BlobTier.Hot);
 
         var chunks = new List<RelativePath>();
         await foreach (var name in svc.ListAsync(RelativePath.Root / "chunks"))
             chunks.Add(name);
 
-        chunks.ShouldContain(RelativePath.Parse(BlobPaths.Chunk(firstChunkHash)));
-        chunks.ShouldContain(RelativePath.Parse(BlobPaths.Chunk(secondChunkHash)));
-        chunks.ShouldNotContain(RelativePath.Parse(BlobPaths.FileTree(fileTreeHash)));
+        chunks.ShouldContain(BlobPaths.ChunkPath(firstChunkHash));
+        chunks.ShouldContain(BlobPaths.ChunkPath(secondChunkHash));
+        chunks.ShouldNotContain(BlobPaths.FileTreePath(fileTreeHash));
     }
 
     // ── SetMetadata ───────────────────────────────────────────────────────────

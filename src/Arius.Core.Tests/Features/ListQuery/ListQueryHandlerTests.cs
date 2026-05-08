@@ -7,6 +7,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging.Testing;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
@@ -680,7 +681,7 @@ public class ListQueryHandlerTests
             await gzipStream.WriteAsync(payload.Plaintext);
         }
 
-        blobs.AddBlob(BlobPaths.FileTree(payload.Hash), ms.ToArray());
+        blobs.AddBlob(BlobPathStrings.FileTree(payload.Hash), ms.ToArray());
         return payload.Hash;
     }
 

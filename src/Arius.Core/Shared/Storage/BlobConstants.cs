@@ -71,37 +71,31 @@ public static class ContentTypes
 public static class BlobPaths
 {
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
-    public const string Chunks            = "chunks/";
+    private const string Chunks            = "chunks/";
 
     /// <summary>Temporary Hot-tier copies for in-progress rehydration.</summary>
-    public const string ChunksRehydrated  = "chunks-rehydrated/";
+    private const string ChunksRehydrated  = "chunks-rehydrated/";
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
-    public const string FileTrees         = "filetrees/";
+    private const string FileTrees         = "filetrees/";
 
     /// <summary>Snapshot manifests.</summary>
-    public const string Snapshots         = "snapshots/";
+    private const string Snapshots         = "snapshots/";
 
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
-    public const string ChunkIndex        = "chunk-index/";
+    private const string ChunkIndex        = "chunk-index/";
 
-    internal static RelativePath ChunksPrefix           => RelativePath.Root / "chunks";
-    internal static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
-    internal static RelativePath FileTreesPrefix        => RelativePath.Root / "filetrees";
-    internal static RelativePath SnapshotsPrefix        => RelativePath.Root / "snapshots";
-    internal static RelativePath ChunkIndexPrefix       => RelativePath.Root / "chunk-index";
+    public static RelativePath ChunksPrefix           => RelativePath.Root / "chunks";
+    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
+    public static RelativePath FileTreesPrefix        => RelativePath.Root / "filetrees";
+    public static RelativePath SnapshotsPrefix        => RelativePath.Root / "snapshots";
+    public static RelativePath ChunkIndexPrefix       => RelativePath.Root / "chunk-index";
 
-    internal static RelativePath ChunkPath(ChunkHash hash)           => RelativePath.Root / "chunks" / hash.ToString();
-    internal static RelativePath ThinChunkPath(ContentHash hash)     => RelativePath.Root / "chunks" / hash.ToString();
-    internal static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();
-    internal static RelativePath FileTreePath(FileTreeHash hash)     => RelativePath.Root / "filetrees" / hash.ToString();
-    internal static RelativePath SnapshotPath(string name)           => RelativePath.Root / "snapshots" / name;
-    internal static RelativePath ChunkIndexShardPath(PathSegment prefix) => RelativePath.Root / "chunk-index" / prefix;
+    public static RelativePath ChunkPath(ChunkHash hash)           => RelativePath.Root / "chunks" / hash.ToString();
+    public static RelativePath ThinChunkPath(ContentHash hash)     => RelativePath.Root / "chunks" / hash.ToString();
+    public static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();
+    public static RelativePath FileTreePath(FileTreeHash hash)     => RelativePath.Root / "filetrees" / hash.ToString();
+    public static RelativePath SnapshotPath(string name)           => RelativePath.Root / "snapshots" / name;
+    public static RelativePath ChunkIndexShardPath(PathSegment prefix) => RelativePath.Root / "chunk-index" / prefix;
 
-    public static string Chunk(ChunkHash hash)           => ChunkPath(hash).ToString();
-    public static string ThinChunk(ContentHash hash)     => ThinChunkPath(hash).ToString();
-    public static string ChunkRehydrated(ChunkHash hash) => ChunkRehydratedPath(hash).ToString();
-    public static string FileTree(FileTreeHash hash)     => FileTreePath(hash).ToString();
-    public static string Snapshot(string name)           => SnapshotPath(name).ToString();
-    public static string ChunkIndexShard(string prefix)  => ChunkIndexShardPath(PathSegment.Parse(prefix)).ToString();
 }

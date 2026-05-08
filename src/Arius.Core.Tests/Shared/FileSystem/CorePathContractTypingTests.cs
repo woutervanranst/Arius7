@@ -113,7 +113,62 @@ public class CorePathContractTypingTests
             .ReturnType
             .ShouldBe(typeof(PathSegment));
 
-        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ChunkIndexShardPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ChunkPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetField("Chunks", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(BlobPaths).GetField("ChunksRehydrated", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(BlobPaths).GetField("FileTrees", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(BlobPaths).GetField("Snapshots", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(BlobPaths).GetField("ChunkIndex", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+            .ShouldBeNull();
+
+        typeof(BlobPaths).GetProperty(nameof(BlobPaths.ChunksPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetProperty(nameof(BlobPaths.ChunksRehydratedPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetProperty(nameof(BlobPaths.FileTreesPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetProperty(nameof(BlobPaths.SnapshotsPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetProperty(nameof(BlobPaths.ChunkIndexPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .PropertyType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ThinChunkPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ChunkRehydratedPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.FileTreePath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.SnapshotPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
+            .ReturnType
+            .ShouldBe(typeof(RelativePath));
+
+        typeof(BlobPaths).GetMethod(nameof(BlobPaths.ChunkIndexShardPath), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!
             .GetParameters()[0]
             .ParameterType
             .ShouldBe(typeof(PathSegment));

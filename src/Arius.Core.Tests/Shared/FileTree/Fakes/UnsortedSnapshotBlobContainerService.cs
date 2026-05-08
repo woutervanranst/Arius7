@@ -34,8 +34,12 @@ internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string>
         {
             foreach (var snapshot in snapshots)
             {
+                var snapshotPath = RelativePath.Parse(snapshot);
+                if (!snapshotPath.StartsWith(prefix))
+                    continue;
+
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return RelativePath.Parse(snapshot);
+                yield return snapshotPath;
                 await Task.Yield();
             }
 

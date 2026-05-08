@@ -2,6 +2,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
 
@@ -14,13 +15,13 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPaths.Chunk(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash)]);
     }
 
     [Test]
@@ -28,14 +29,14 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Cool };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Cool };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPaths.Chunk(chunkHash), BlobPaths.ChunkRehydrated(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash), BlobPathStrings.ChunkRehydrated(chunkHash)]);
     }
 
     [Test]
@@ -43,8 +44,8 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
@@ -57,14 +58,14 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPaths.Chunk(chunkHash), BlobPaths.ChunkRehydrated(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash), BlobPathStrings.ChunkRehydrated(chunkHash)]);
     }
 
     [Test]
@@ -72,8 +73,8 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
@@ -86,8 +87,8 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
-        blobs.Metadata[BlobPaths.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
+        blobs.Metadata[BlobPathStrings.ChunkRehydrated(chunkHash)] = new BlobMetadata { Exists = false };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
@@ -100,12 +101,12 @@ public class ChunkStorageHydrationStatusTests
     {
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
-        blobs.Metadata[BlobPaths.Chunk(chunkHash)] = new BlobMetadata { Exists = false };
+        blobs.Metadata[BlobPathStrings.Chunk(chunkHash)] = new BlobMetadata { Exists = false };
         var service = new ChunkStorageService(blobs, new Arius.Core.Shared.Encryption.PlaintextPassthroughService());
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Unknown);
-        blobs.RequestedBlobNames.ShouldBe([BlobPaths.Chunk(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash)]);
     }
 }

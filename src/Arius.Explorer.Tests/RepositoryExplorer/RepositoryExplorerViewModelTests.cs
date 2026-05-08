@@ -98,7 +98,9 @@ public class RepositoryExplorerViewModelTests
         viewModel.SelectedTreeNode.ShouldNotBeNull();
         viewModel.SelectedTreeNode.Name.ShouldBe("Root");
         viewModel.SelectedTreeNode.Folders.Count.ShouldBe(1);
-        viewModel.SelectedTreeNode.Folders[0].Name.ShouldBe("folder2");
+        var nestedFolder = viewModel.SelectedTreeNode.Folders[0];
+        nestedFolder.Prefix.ShouldBe(RelativePath.Parse("folder1/folder2"));
+        nestedFolder.Name.ShouldBe("folder2");
         viewModel.SelectedTreeNode.Items[0].HydrationStatus.ShouldBe(ChunkHydrationStatus.Available);
         viewModel.SelectedItemsText.ShouldContain("2 item(s)");
     }

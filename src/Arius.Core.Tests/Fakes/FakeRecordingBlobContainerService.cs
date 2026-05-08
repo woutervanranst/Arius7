@@ -41,11 +41,13 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var prefixText = prefix.ToString();
-        foreach (var blobName in _remoteBlobs.Where(name => name.StartsWith(prefixText, StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal))
+        foreach (var blobName in _remoteBlobs
+                     .Select(RelativePath.Parse)
+                     .Where(name => name.StartsWith(prefix))
+                     .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return RelativePath.Parse(blobName);
+            yield return blobName;
             await Task.Yield();
         }
     }

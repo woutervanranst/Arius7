@@ -5,6 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.LocalFile;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Mediator;
 using NSubstitute;
 
@@ -22,8 +23,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
 
-        await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), content, uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(chunkHash));
+        await env.Blobs.SeedLargeBlobAsync(BlobPathStrings.Chunk(chunkHash), content, uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(chunkHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -41,8 +42,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
 
         var tarHash = ComputeTarHash(env, contentHash, content);
-        await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
+        await env.Blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(tarHash), [content], uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(tarHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -56,7 +57,8 @@ public class ArchiveRecoveryTests
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
         var contentHash = env.Encryption.ComputeHash(content);
-        var blobName = BlobPaths.Chunk(ChunkHash.Parse(contentHash));
+        var chunkHash = ChunkHash.Parse(contentHash);
+        var blobName = BlobPathStrings.Chunk(chunkHash);
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         env.Blobs.ClearMetadata(blobName);
@@ -67,7 +69,7 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
         env.Blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        var finalMeta = await env.Blobs.GetMetadataAsync(BlobPaths.ChunkPath(ChunkHash.Parse(blobName[BlobPaths.Chunks.Length..])));
+        var finalMeta = await env.Blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash));
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
