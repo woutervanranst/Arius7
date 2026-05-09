@@ -1,7 +1,7 @@
+using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.LocalFile;
 
-namespace Arius.Core.Tests.Shared.LocalFile;
+namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 // ── 7.6 FilePair assembly tests ───────────────────────────────────────────────
 

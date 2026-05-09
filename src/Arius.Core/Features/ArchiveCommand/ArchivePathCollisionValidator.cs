@@ -1,6 +1,6 @@
 using Arius.Core.Shared.FileSystem;
 
-namespace Arius.Core.Shared.LocalFile;
+namespace Arius.Core.Features.ArchiveCommand;
 
 /// <summary>
 /// Detects archive input paths that collide under ordinal case-insensitive comparison.

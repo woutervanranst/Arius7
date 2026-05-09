@@ -73,7 +73,7 @@ public class CorePathContractTypingTests
             .ReturnType
             .ShouldBe(typeof(PathSegment));
 
-        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
+        typeof(LocalFileEnumerator)
             .GetMethod("NormalizePath", [typeof(string)])
             .ShouldBeNull();
     }
@@ -276,12 +276,12 @@ public class CorePathContractTypingTests
             .GetMethod(nameof(FileTreeStagingWriter.AppendFileEntryAsync), [typeof(string), typeof(Arius.Core.Shared.Hashes.ContentHash), typeof(DateTimeOffset), typeof(DateTimeOffset), typeof(CancellationToken)])
             .ShouldBeNull();
 
-        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
-            .GetMethod(nameof(Arius.Core.Shared.LocalFile.LocalFileEnumerator.Enumerate), [typeof(LocalDirectory)])
+        typeof(LocalFileEnumerator)
+            .GetMethod(nameof(LocalFileEnumerator.Enumerate), [typeof(LocalDirectory)])
             .ShouldNotBeNull();
 
-        typeof(Arius.Core.Shared.LocalFile.LocalFileEnumerator)
-            .GetMethod(nameof(Arius.Core.Shared.LocalFile.LocalFileEnumerator.Enumerate), [typeof(string)])
+        typeof(LocalFileEnumerator)
+            .GetMethod(nameof(LocalFileEnumerator.Enumerate), [typeof(string)])
             .ShouldBeNull();
     }
 

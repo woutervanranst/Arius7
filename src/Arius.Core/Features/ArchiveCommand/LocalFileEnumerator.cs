@@ -2,7 +2,7 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.Shared.LocalFile;
+namespace Arius.Core.Features.ArchiveCommand;
 
 // ── Task 7.2, 7.3, 7.4, 7.5: File enumeration service ────────────────────────
 

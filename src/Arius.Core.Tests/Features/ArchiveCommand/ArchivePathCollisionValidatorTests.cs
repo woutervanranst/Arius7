@@ -1,6 +1,6 @@
-using Arius.Core.Shared.LocalFile;
+using Arius.Core.Features.ArchiveCommand;
 
-namespace Arius.Core.Tests.Shared.LocalFile;
+namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 public class ArchivePathCollisionValidatorTests
 {

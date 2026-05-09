@@ -1,8 +1,56 @@
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.LocalFile;
 
 namespace Arius.Core.Features.ArchiveCommand;
+
+// -- Models
+
+/// <summary>
+/// Represents Arius's local archive-time view of one repository path.
+/// It exists to unify binary-only, pointer-only, and binary-plus-pointer cases behind one domain model,
+/// with responsibility for carrying the validated relative path and its optional binary and pointer components.
+/// </summary>
+internal sealed record FilePair
+{
+    public required RelativePath Path { get; init; }
+
+    public BinaryFile? Binary { get; init; }
+
+    public PointerFile? Pointer { get; init; }
+}
+
+/// <summary>
+/// Represents the binary side of an archive-time file pair.
+/// It exists so archive code can work with validated relative paths and captured file metadata instead of full host paths,
+/// with responsibility for describing the binary file that may need hashing, upload, or restoration.
+/// </summary>
+internal sealed record BinaryFile
+{
+    public required RelativePath Path { get; init; }
+
+    public required long Size { get; init; }
+
+    public required DateTimeOffset Created { get; init; }
+
+    public required DateTimeOffset Modified { get; init; }
+}
+
+/// <summary>
+/// Represents a pointer file discovered beside or instead of a binary file.
+/// It exists so Arius can model thin-archive state explicitly, with responsibility for carrying the pointer path,
+/// the binary path it refers to, and the parsed content hash when the pointer content is valid.
+/// </summary>
+internal sealed record PointerFile
+{
+    public required RelativePath Path { get; init; }
+
+    public required RelativePath BinaryPath { get; init; }
+
+    public ContentHash? Hash { get; init; }
+}
+
+
+
 
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 
