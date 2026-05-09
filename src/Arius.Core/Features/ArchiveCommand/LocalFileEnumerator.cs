@@ -14,8 +14,6 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// </summary>
 internal sealed class LocalFileEnumerator
 {
-    private const string PointerSuffix = ".pointer.arius";
-
     private readonly ILogger<LocalFileEnumerator>? _logger;
 
     public LocalFileEnumerator(ILogger<LocalFileEnumerator>? logger = null)

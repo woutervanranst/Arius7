@@ -55,7 +55,7 @@ internal sealed record PointerFile
 // ── Pipeline intermediate models ──────────────────────────────────────────────
 
 /// <summary>
-/// Represents a <see cref="Shared.LocalFile.FilePair"/> after Arius has computed its content hash.
+/// Represents a <see cref="FilePair"/> after Arius has computed its content hash.
 /// It exists to give the archive pipeline a stable handoff between hashing and deduplication,
 /// with responsibility for pairing the local file model with the resolved content identity.
 /// </summary>
