@@ -98,10 +98,13 @@ public class DependencyTests
     {
         var internalTypes = new[]
         {
+            // FileSystem types
             typeof(LocalDirectory),
             typeof(LocalDirectoryEntry),
             typeof(LocalFileEntry),
             typeof(RelativeFileSystem),
+
+            // Archive feature types
             typeof(BinaryFile),
             typeof(PointerFile),
             typeof(FilePair)
