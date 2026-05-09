@@ -55,7 +55,7 @@ internal sealed class LocalFileEnumerator
                 var pointerHash = ReadPointerHash(fileSystem, relativePath);
                 yield return new FilePair
                 {
-                    Path = binaryPath,
+                    RelativePath = binaryPath,
                     Binary = null,
                     Pointer = new PointerFile
                     {
@@ -77,7 +77,7 @@ internal sealed class LocalFileEnumerator
 
                 yield return new FilePair
                 {
-                    Path = relativePath,
+                    RelativePath = relativePath,
                     Binary = new BinaryFile
                     {
                         Path = relativePath,

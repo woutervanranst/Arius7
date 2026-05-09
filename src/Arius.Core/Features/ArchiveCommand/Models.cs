@@ -12,7 +12,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// </summary>
 internal sealed record FilePair
 {
-    public required RelativePath Path { get; init; }
+    public required RelativePath RelativePath { get; init; }
 
     public BinaryFile? Binary { get; init; }
 

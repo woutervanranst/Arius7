@@ -9,8 +9,8 @@ public class ArchivePathCollisionValidatorTests
     {
         var pairs = new[]
         {
-            new FilePair { Path = RelativePath.Parse("photos/pic.jpg"), Binary = CreateBinary("photos/pic.jpg"), Pointer = null },
-            new FilePair { Path = RelativePath.Parse("photos/pic2.jpg"), Binary = CreateBinary("photos/pic2.jpg"), Pointer = null }
+            new FilePair { RelativePath = RelativePath.Parse("photos/pic.jpg"), Binary = CreateBinary("photos/pic.jpg"), Pointer = null },
+            new FilePair { RelativePath = RelativePath.Parse("photos/pic2.jpg"), Binary = CreateBinary("photos/pic2.jpg"), Pointer = null }
         };
 
         ArchivePathCollisionValidator.Validate(pairs);
@@ -21,8 +21,8 @@ public class ArchivePathCollisionValidatorTests
     {
         var pairs = new[]
         {
-            new FilePair { Path = RelativePath.Parse("photos/pic.jpg"), Binary = CreateBinary("photos/pic.jpg"), Pointer = null },
-            new FilePair { Path = RelativePath.Parse("Photos/pic.jpg"), Binary = CreateBinary("Photos/pic.jpg"), Pointer = null }
+            new FilePair { RelativePath = RelativePath.Parse("photos/pic.jpg"), Binary = CreateBinary("photos/pic.jpg"), Pointer = null },
+            new FilePair { RelativePath = RelativePath.Parse("Photos/pic.jpg"), Binary = CreateBinary("Photos/pic.jpg"), Pointer = null }
         };
 
         var exception = Should.Throw<InvalidOperationException>(() => ArchivePathCollisionValidator.Validate(pairs));

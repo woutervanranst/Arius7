@@ -20,7 +20,7 @@ internal static class ArchivePathCollisionValidator
 
         foreach (var pair in pairs)
         {
-            Observe(firstByKey, pair.Path);
+            Observe(firstByKey, pair.RelativePath);
         }
     }
 

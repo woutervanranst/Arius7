@@ -94,7 +94,7 @@ public class ArchiveRecoveryTests
             [
                 new FilePair
                 {
-                    Path = RelativePath.Parse("photos/pic.jpg"),
+                    RelativePath = RelativePath.Parse("photos/pic.jpg"),
                     Binary = new BinaryFile
                     {
                         Path = RelativePath.Parse("photos/pic.jpg"),
@@ -106,7 +106,7 @@ public class ArchiveRecoveryTests
                 },
                 new FilePair
                 {
-                    Path = RelativePath.Parse("Photos/pic.jpg"),
+                    RelativePath = RelativePath.Parse("Photos/pic.jpg"),
                     Binary = new BinaryFile
                     {
                         Path = RelativePath.Parse("Photos/pic.jpg"),
@@ -189,7 +189,7 @@ public class ArchiveRecoveryTests
             [
                 new FilePair
                 {
-                    Path = RelativePath.Parse("photos/pic.jpg"),
+                    RelativePath = RelativePath.Parse("photos/pic.jpg"),
                     Binary = new BinaryFile
                     {
                         Path = RelativePath.Parse("photos/pic.jpg"),

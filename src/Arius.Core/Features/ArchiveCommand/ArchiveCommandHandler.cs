@@ -223,11 +223,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     foreach (var pair in pairs)
                     {
-                        ArchivePathCollisionValidator.Observe(collisions, pair.Path);
+                        ArchivePathCollisionValidator.Observe(collisions, pair.RelativePath);
                         count++;
                         var fileSize = pair.Binary?.Size ?? 0L;
                         totalBytes += fileSize;
-                        await _mediator.Publish(new FileScannedEvent(pair.Path, fileSize), cancellationToken);
+                        await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
                     }
 
@@ -250,7 +250,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     {
                         var fileSize = pair.Binary?.Size ?? 0L;
 
-                        await _mediator.Publish(new FileHashingEvent(pair.Path, fileSize), ct);
+                        await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
                         ContentHash contentHash;
                         if (pair is { Binary: null, Pointer: { Hash: not null } })
@@ -260,21 +260,21 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         }
                         else if (pair.Binary is not null)
                         {
-                            await using var fs           = archiveFileSystem.OpenRead(pair.Path);
-                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.Path, fileSize) ?? new Progress<long>();
+                            await using var fs           = archiveFileSystem.OpenRead(pair.RelativePath);
+                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
                             await using var ps           = new ProgressStream(fs, hashProgress);
                             contentHash = await _encryption.ComputeHashAsync(ps, ct);
                         }
                         else
                         {
                             // No binary and no pointer hash → skip
-                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.Path);
+                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
                             return;
                         }
 
-                        await _mediator.Publish(new FileHashedEvent(pair.Path, contentHash), ct);
+                        await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
 
-                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.Path, contentHash.Short8, fileSize.Bytes().Humanize());
+                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
 
                         await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
                     })
@@ -295,12 +295,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
                             {
-                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.Path);
+                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
                                 continue;
                             }
 
                             // Known dedup: add to manifest only
-                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.Path);
+                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
                             await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
@@ -309,11 +309,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
                         {
                             // Already in index OR already queued in this run → dedup hit
-                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.Path, hashed.ContentHash.Short8);
+                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                             await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             if (!opts.NoPointers)
-                                pendingPointers.Add((hashed.FilePair.Path, hashed.ContentHash));
+                                pendingPointers.Add((hashed.FilePair.RelativePath, hashed.ContentHash));
                         }
                         else
                         {
@@ -324,7 +324,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var upload = new FileToUpload(hashed, fileSize);
                             var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
                             _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                                hashed.FilePair.Path, route, hashed.ContentHash.Short8,
+                                hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8,
                                 fileSize.Bytes().Humanize());
 
                             if (fileSize >= opts.SmallFileThreshold)
@@ -348,12 +348,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
                 async (upload, ct) =>
                 {
-                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.Path, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize());
+                    _logger.LogInformation("[upload] Start: {Path} ({Hash}, {Size})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize());
 
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
-                    await using var fs             = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.Path);
+                    await using var fs             = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.RelativePath);
                     var             uploadProgress = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
                     var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, fs, upload.FileSize, opts.UploadTier, uploadProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
@@ -366,14 +366,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     Interlocked.Increment(ref filesUploaded);
 
                     if (!opts.NoPointers)
-                        pendingPointers.Add((upload.HashedPair.FilePair.Path, upload.HashedPair.ContentHash));
+                        pendingPointers.Add((upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash));
 
                     if (opts.RemoveLocal)
-                        pendingDeletes.Add(upload.HashedPair.FilePair.Path);
+                        pendingDeletes.Add(upload.HashedPair.FilePair.RelativePath);
 
                     await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
 
-                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.Path, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
+                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
                 });
 
             // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
@@ -408,7 +408,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
                         foreach (var te in tarEntries)
-                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.Path, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
                         await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath.Value, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
@@ -432,7 +432,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         // Write entry named by content-hash (not original path)
                         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
-                        await using (var fs = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.Path))
+                        await using (var fs = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.RelativePath))
                         {
                             tarEntry.DataStream = fs;
                             await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
@@ -491,10 +491,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await WriteFileTreeEntry(entry.HashedPair, stagingWriter, ct);
 
                             if (!opts.NoPointers)
-                                pendingPointers.Add((entry.HashedPair.FilePair.Path, entry.ContentHash));
+                                pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
 
                             if (opts.RemoveLocal)
-                                pendingDeletes.Add(entry.HashedPair.FilePair.Path);
+                                pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
                         }
 
                         await _mediator.Publish(new TarBundleUploadedEvent(sealed_.TarHash, compressedSize, sealed_.Entries.Count), ct);
@@ -632,7 +632,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         }
 
         // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
-        var fileTreePath = pair.Path;
+        var fileTreePath = pair.RelativePath;
 
         await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
     }

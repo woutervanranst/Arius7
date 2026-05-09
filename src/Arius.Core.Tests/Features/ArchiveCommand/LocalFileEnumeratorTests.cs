@@ -44,7 +44,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.Count.ShouldBe(1);
         var pair = pairs[0];
-        pair.Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
+        pair.RelativePath.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
         pair.Binary.ShouldNotBeNull();
         pair.Pointer.ShouldNotBeNull();
         pair.Pointer!.Hash.ShouldNotBeNull();
@@ -61,7 +61,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].Path.ShouldBe(RelativePath.Parse("documents/report.pdf"));
+        pairs[0].RelativePath.ShouldBe(RelativePath.Parse("documents/report.pdf"));
         pairs[0].Binary.ShouldNotBeNull();
         pairs[0].Pointer.ShouldBeNull();
     }
@@ -89,7 +89,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
         var pair = _enumerator.Enumerate(_rootDirectory).Single();
 
-        pair.Path.ShouldBe(RelativePath.Parse("music/song.mp3"));
+        pair.RelativePath.ShouldBe(RelativePath.Parse("music/song.mp3"));
     }
 
     // ── Invalid pointer content ───────────────────────────────────────────────
@@ -135,9 +135,9 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
 
         pairs.Count.ShouldBe(3);
-        pairs.Select(p => p.Path.ToString()).ShouldContain("a.txt");
-        pairs.Select(p => p.Path.ToString()).ShouldContain("photos/b.jpg");
-        pairs.Select(p => p.Path.ToString()).ShouldContain("photos/2024/c.jpg");
+        pairs.Select(p => p.RelativePath.ToString()).ShouldContain("a.txt");
+        pairs.Select(p => p.RelativePath.ToString()).ShouldContain("photos/b.jpg");
+        pairs.Select(p => p.RelativePath.ToString()).ShouldContain("photos/2024/c.jpg");
     }
 
     // ── File metadata ─────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].Path.ShouldBe(RelativePath.Parse("données/résumé.pdf"));
+        pairs[0].RelativePath.ShouldBe(RelativePath.Parse("données/résumé.pdf"));
     }
 
     [Test]
@@ -173,7 +173,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
 
         pairs.Count.ShouldBe(1);
-        pairs[0].Path.ShouldBe(RelativePath.Parse("my files/my document.pdf"));
+        pairs[0].RelativePath.ShouldBe(RelativePath.Parse("my files/my document.pdf"));
     }
 
     [Test]
@@ -213,15 +213,15 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.POINTER.ARIUS", new string('a', 64));
 
-        var pairs = _enumerator.Enumerate(_rootDirectory).OrderBy(pair => pair.Path.ToString(), StringComparer.Ordinal).ToList();
+        var pairs = _enumerator.Enumerate(_rootDirectory).OrderBy(pair => pair.RelativePath.ToString(), StringComparer.Ordinal).ToList();
 
         pairs.Count.ShouldBe(2);
 
-        pairs[0].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
+        pairs[0].RelativePath.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
         pairs[0].Binary.ShouldNotBeNull();
         pairs[0].Pointer.ShouldBeNull();
 
-        pairs[1].Path.ShouldBe(RelativePath.Parse("photos/vacation.jpg.POINTER.ARIUS"));
+        pairs[1].RelativePath.ShouldBe(RelativePath.Parse("photos/vacation.jpg.POINTER.ARIUS"));
         pairs[1].Binary.ShouldNotBeNull();
         pairs[1].Pointer.ShouldBeNull();
     }
