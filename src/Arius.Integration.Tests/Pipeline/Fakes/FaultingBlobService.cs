@@ -1,4 +1,3 @@
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.Pipeline.Fakes;

@@ -1,7 +1,6 @@
 using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;

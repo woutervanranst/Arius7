@@ -1,4 +1,3 @@
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.LocalFile;
 
 namespace Arius.Core.Tests.Shared.LocalFile;

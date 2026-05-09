@@ -1,7 +1,5 @@
 using Arius.AzureBlob;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Storage;

@@ -1,6 +1,5 @@
 using Arius.Cli.Commands.Restore;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.FileSystem;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 

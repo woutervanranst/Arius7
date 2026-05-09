@@ -1,5 +1,4 @@
 using Arius.Core.Shared;
-using Arius.Core.Shared.FileSystem;
 using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared;

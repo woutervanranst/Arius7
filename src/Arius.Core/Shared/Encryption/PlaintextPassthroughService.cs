@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.Encryption;
 

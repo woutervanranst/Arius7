@@ -1,6 +1,5 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.FileSystem;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 

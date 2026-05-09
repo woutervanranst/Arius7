@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Cli.Tests;
 

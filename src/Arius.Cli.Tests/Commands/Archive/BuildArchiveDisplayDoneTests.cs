@@ -1,5 +1,4 @@
 using Arius.Cli.Commands.Archive;
-using Arius.Core.Shared.FileSystem;
 using Spectre.Console;
 
 namespace Arius.Cli.Tests.Commands.Archive;

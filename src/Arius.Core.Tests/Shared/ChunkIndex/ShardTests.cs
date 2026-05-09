@@ -1,5 +1,4 @@
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;

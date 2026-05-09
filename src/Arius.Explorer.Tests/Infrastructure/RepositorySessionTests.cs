@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.Settings;

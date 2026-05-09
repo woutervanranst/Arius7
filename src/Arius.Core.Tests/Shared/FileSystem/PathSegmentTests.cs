@@ -1,5 +1,3 @@
-using Arius.Core.Shared.FileSystem;
-
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class PathSegmentTests
