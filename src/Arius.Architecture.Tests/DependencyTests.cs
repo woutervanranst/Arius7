@@ -1,5 +1,7 @@
 using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.FileSystem;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;
@@ -94,24 +96,43 @@ public class DependencyTests
     [Test]
     public void Selected_Core_Implementation_Types_Should_Remain_Internal()
     {
-        var coreAssembly = typeof(Core.AssemblyMarker).Assembly;
-        var typeNames = new[]
+        var internalTypes = new[]
         {
-            "Arius.Core.Shared.FileSystem.LocalDirectory",
-            "Arius.Core.Shared.FileSystem.LocalDirectoryEntry",
-            "Arius.Core.Shared.FileSystem.LocalFileEntry",
-            "Arius.Core.Shared.FileSystem.RelativeFileSystem",
-            "Arius.Core.Shared.LocalFile.BinaryFile",
-            "Arius.Core.Shared.LocalFile.PointerFile",
-            "Arius.Core.Shared.LocalFile.FilePair"
+            typeof(LocalDirectory),
+            typeof(LocalDirectoryEntry),
+            typeof(LocalFileEntry),
+            typeof(RelativeFileSystem),
+            typeof(BinaryFile),
+            typeof(PointerFile),
+            typeof(FilePair)
         };
 
-        foreach (var typeName in typeNames)
+        foreach (var type in internalTypes)
         {
-            var type = coreAssembly.GetType(typeName, throwOnError: false);
+            type.IsNotPublic.ShouldBeTrue($"Type '{type.FullName}' should remain internal.");
+        }
+    }
 
-            type.ShouldNotBeNull($"Expected type '{typeName}' to exist in Arius.Core.");
-            type!.IsNotPublic.ShouldBeTrue($"Type '{typeName}' should remain internal.");
+    [Test]
+    public void Archive_Local_File_Models_Should_Only_Be_Used_By_ArchiveCommand()
+    {
+        var coreAssembly = Architecture.Assemblies.First(a => a.FullName.Contains("Arius.Core") && !a.FullName.Contains("Tests"));
+        var archiveNamespace = typeof(ArchiveCommandHandler).Namespace!;
+        var archiveLocalFileModelNames = new[]
+        {
+            typeof(BinaryFile).FullName!,
+            typeof(PointerFile).FullName!,
+            typeof(FilePair).FullName!
+        };
+
+        foreach (var modelName in archiveLocalFileModelNames)
+        {
+            IArchRule rule = Classes().That().ResideInAssembly(coreAssembly)
+                .And().DoNotResideInNamespace(archiveNamespace)
+                .Should().NotDependOnAnyTypesThat().HaveFullName(modelName);
+
+            rule.HasNoViolations(Architecture).ShouldBeTrue(
+                $"Only {archiveNamespace} may depend on {modelName}. Violations: {DescribeViolations(rule)}");
         }
     }
 

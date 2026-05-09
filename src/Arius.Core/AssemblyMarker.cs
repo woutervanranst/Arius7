@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Arius.Core.Tests")]
+[assembly: InternalsVisibleTo("Arius.Architecture.Tests")]
 [assembly: InternalsVisibleTo("Arius.Integration.Tests")]
 [assembly: InternalsVisibleTo("Arius.Tests.Shared")]
 
