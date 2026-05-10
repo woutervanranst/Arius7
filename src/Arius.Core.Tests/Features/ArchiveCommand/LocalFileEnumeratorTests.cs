@@ -257,4 +257,27 @@ public class LocalFileEnumeratorTests : IDisposable
         firstYielded.ShouldBeTrue();
         countConsumed.ShouldBe(5);
     }
+
+    [Test]
+    public void Enumerate_YieldsBeforeEnumerationCompletes()
+    {
+        CreateFile("a.txt");
+        CreateFile("b.txt");
+
+        using var iterator = _enumerator.Enumerate(_rootDirectory).GetEnumerator();
+
+        iterator.MoveNext().ShouldBeTrue();
+
+        var firstPath = iterator.Current.RelativePath;
+        var secondPath = firstPath == RelativePath.Parse("a.txt")
+            ? RelativePath.Parse("b.txt")
+            : RelativePath.Parse("a.txt");
+
+        CreateFile(secondPath.ToString() + ".pointer.arius", new string('a', 64));
+
+        iterator.MoveNext().ShouldBeTrue();
+        iterator.Current.RelativePath.ShouldBe(secondPath);
+        iterator.Current.Pointer.ShouldNotBeNull();
+        iterator.Current.Pointer!.Hash.ShouldBe(ContentHash.Parse(new string('a', 64)));
+    }
 }
