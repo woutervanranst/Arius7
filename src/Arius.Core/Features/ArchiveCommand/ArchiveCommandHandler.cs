@@ -153,7 +153,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long totalSize     = 0;
 
         var stagingCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(_accountName, _containerName);
-        var archiveFileSystem = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
+        var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
         IFileTreeStagingSession stagingSession;
 
         FileTreeHash? snapshotRootHash = null;
@@ -258,9 +258,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         }
                         else if (pair.Binary is not null)
                         {
-                            await using var fs           = archiveFileSystem.OpenRead(pair.RelativePath);
-                            var             hashProgress = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
-                            await using var ps           = new ProgressStream(fs, hashProgress);
+                            await using var s  = fs.OpenRead(pair.RelativePath);
+                            var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                            await using var ps = new ProgressStream(s, p);
                             contentHash = await _encryption.ComputeHashAsync(ps, ct);
                         }
                         else
@@ -351,9 +351,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
-                    await using var fs             = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.RelativePath);
-                    var             uploadProgress = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
-                    var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, fs, upload.FileSize, opts.UploadTier, uploadProgress, ct);
+                    await using var s              = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
+                    var             p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
+                    var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
                     var             compressedSize = uploadResult.StoredSize;
 
                     var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, upload.FileSize, compressedSize);
@@ -430,9 +430,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         // Write entry named by content-hash (not original path)
                         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
-                        await using (var fs = archiveFileSystem.OpenRead(upload.HashedPair.FilePair.RelativePath))
+                        await using (var s = fs.OpenRead(upload.HashedPair.FilePair.RelativePath))
                         {
-                            tarEntry.DataStream = fs;
+                            tarEntry.DataStream = s;
                             await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
                         }
 
@@ -557,7 +557,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (path, hash) = item;
-                    await archiveFileSystem.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
+                    await fs.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
                 });
             }
 
@@ -569,7 +569,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     try
                     {
-                        archiveFileSystem.DeleteFile(path);
+                        fs.DeleteFile(path);
                     }
                     catch (Exception ex)
                     {
