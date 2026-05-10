@@ -236,7 +236,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_WithPrefixAndLocalPath_UppercasePointerSuffixIsTreatedAsRegularFile()
+    public async Task Handle_WithPrefixAndLocalPath_UppercasePointerSuffixIsTreatedAsPointerFile()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
@@ -280,12 +280,12 @@ public class ListQueryHandlerTests
                 }
             }
 
-            results.Count.ShouldBe(4);
+            results.Count.ShouldBe(3);
 
             var shared = results.Single(file => file.RelativePath == RelativePath.Parse("docs/shared.txt"));
             shared.ExistsInCloud.ShouldBeTrue();
             shared.ExistsLocally.ShouldBeTrue();
-            shared.HasPointerFile.ShouldBe(false);
+            shared.HasPointerFile.ShouldBe(true);
             shared.BinaryExists.ShouldBe(true);
 
             var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/cloud-only.txt"));
@@ -296,11 +296,6 @@ public class ListQueryHandlerTests
             localOnly.ExistsInCloud.ShouldBeFalse();
             localOnly.ExistsLocally.ShouldBeTrue();
 
-            var uppercasePointer = results.Single(file => file.RelativePath == RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"));
-            uppercasePointer.ExistsInCloud.ShouldBeFalse();
-            uppercasePointer.ExistsLocally.ShouldBeTrue();
-            uppercasePointer.HasPointerFile.ShouldBe(false);
-            uppercasePointer.BinaryExists.ShouldBe(true);
         }
         finally
         {
@@ -312,7 +307,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public void BuildFiles_UppercasePointerSuffix_TreatsFileAsRegularBinary()
+    public void BuildFiles_UppercasePointerSuffix_TreatsFileAsPointerFile()
     {
         var files = new[]
         {
@@ -337,17 +332,12 @@ public class ListQueryHandlerTests
             path => path.ToString() == "docs/shared.txt",
             path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
 
-        result.Count.ShouldBe(2);
+        result.Count.ShouldBe(1);
 
         var shared = result[PathSegment.Parse("shared.txt")];
         shared.BinaryExists.ShouldBeTrue();
-        shared.PointerExists.ShouldBeFalse();
-        shared.PointerHash.ShouldBeNull();
-
-        var uppercasePointer = result[PathSegment.Parse("shared.txt.POINTER.ARIUS")];
-        uppercasePointer.BinaryExists.ShouldBeTrue();
-        uppercasePointer.PointerExists.ShouldBeFalse();
-        uppercasePointer.PointerHash.ShouldBeNull();
+        shared.PointerExists.ShouldBeTrue();
+        shared.PointerHash.ShouldBe(FakeContentHash('2'));
     }
 
     [Test]

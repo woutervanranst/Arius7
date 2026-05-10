@@ -16,7 +16,7 @@ internal static class RelativePathPointerExtensions
     /// Determines whether a relative path refers to a pointer file.
     /// </summary>
     public static bool IsPointerPath(this RelativePath path) =>
-        path.EndsWith(PointerSuffix, StringComparison.Ordinal);
+        path.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Converts a binary-file path into its pointer-file path.
@@ -34,9 +34,9 @@ internal static class RelativePathPointerExtensions
     /// </summary>
     public static RelativePath ToBinaryPath(this RelativePath path)
     {
-        if (!path.EndsWith(PointerSuffix, StringComparison.Ordinal))
+        if (!path.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Path is not a pointer path.");
 
-        return path.RemoveSuffix(PointerSuffix, StringComparison.Ordinal);
+        return path.RemoveSuffix(PointerSuffix, StringComparison.OrdinalIgnoreCase);
     }
 }
