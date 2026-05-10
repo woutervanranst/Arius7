@@ -88,6 +88,12 @@ public class RelativePathTests
     }
 
     [Test]
+    public void ToPointerPath_PointerPath_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => RelativePath.Parse("photos/pic.jpg.pointer.arius").ToPointerPath());
+    }
+
+    [Test]
     public void ToBinaryPath_RemovesPointerSuffix()
     {
         RelativePath.Parse("photos/pic.jpg.pointer.arius").ToBinaryPath().ToString().ShouldBe("photos/pic.jpg");
@@ -103,6 +109,18 @@ public class RelativePathTests
     public void ToBinaryPath_UppercasePointerSuffix_RemovesPointerSuffix()
     {
         RelativePath.Parse("photos/pic.jpg.POINTER.ARIUS").ToBinaryPath().ToString().ShouldBe("photos/pic.jpg");
+    }
+
+    [Test]
+    public void ToBinaryPath_RootEquivalentPointerPath_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => RelativePath.Parse(".pointer.arius").ToBinaryPath());
+    }
+
+    [Test]
+    public void ToBinaryPath_DoubleSuffixPointerPath_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => RelativePath.Parse("photos/pic.jpg.pointer.arius.pointer.arius").ToBinaryPath());
     }
 
     [Test]

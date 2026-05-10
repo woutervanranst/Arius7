@@ -26,6 +26,10 @@ internal static class RelativePathPointerExtensions
         if (path == RelativePath.Root)
             throw new InvalidOperationException("Root path cannot be converted to a pointer path.");
 
+        var value = path.ToString();
+        if (value.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Path is already a pointer path.");
+
         return path.AppendSuffix(PointerSuffix);
     }
 
@@ -37,6 +41,13 @@ internal static class RelativePathPointerExtensions
         if (!path.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Path is not a pointer path.");
 
-        return path.RemoveSuffix(PointerSuffix, StringComparison.OrdinalIgnoreCase);
+        var binaryPath = path.ToString()[..^PointerSuffix.Length];
+        if (binaryPath.Length == 0)
+            throw new InvalidOperationException("Pointer path must target a non-root binary path.");
+
+        if (binaryPath.EndsWith(PointerSuffix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Pointer path cannot contain the pointer suffix twice.");
+
+        return RelativePath.Parse(binaryPath);
     }
 }
