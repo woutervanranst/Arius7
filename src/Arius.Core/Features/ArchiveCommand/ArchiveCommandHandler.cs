@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
@@ -385,7 +386,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             return;
 
                         var sealedStream = tarStream!;
-                        var sealedTar    = (SealedTar?)null;
 
                         try
                         {
@@ -403,9 +403,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             foreach (var te in tarEntries)
                                 _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
-                            sealedTar = new SealedTar(sealedStream, tarHash, currentSize, tarEntries.ToList());
-                            await sealedTarChannel.Writer.WriteAsync(sealedTar, cancellationToken);
-                            sealedTar = null;
+                            var sealedBytes = sealedStream.ToArray();
+                            await sealedTarChannel.Writer.WriteAsync(new SealedTar(sealedBytes, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                             tarEntries.Clear();
                             tarWriter      = null;
@@ -414,9 +413,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         }
                         finally
                         {
-                            if (sealedTar is not null)
-                                await sealedTar.DisposeAsync();
-                            else if (tarStream is not null)
+                            if (tarStream is not null)
                                 await sealedStream.DisposeAsync();
                         }
                     }
@@ -473,12 +470,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 new ParallelOptions { MaxDegreeOfParallelism = TarUploadWorkers, CancellationToken = cancellationToken },
                 async (sealed_, ct) =>
                 {
-                    await using var sealedTar = sealed_;
+                    var sealedTar = sealed_;
 
                     await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
 
+                    if (!MemoryMarshal.TryGetArray(sealedTar.Content, out var segment) || segment.Array is null)
+                        throw new InvalidOperationException("Sealed tar content must be backed by an array.");
+
+                    using var tarStream = new MemoryStream(segment.Array, segment.Offset, segment.Count, writable: false);
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
-                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, sealedTar.Content, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
+                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
 
                     var proportionalFactor = sealedTar.UncompressedSize > 0

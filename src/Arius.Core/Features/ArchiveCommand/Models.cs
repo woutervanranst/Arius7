@@ -105,23 +105,9 @@ internal sealed record TarEntry(
 /// It exists to hand off the in-memory tar payload together with the per-entry metadata needed for thin chunks,
 /// with responsibility for describing the sealed tar content, its chunk hash, its size, and its member entries.
 /// </summary>
-internal sealed class SealedTar : IAsyncDisposable
-{
-    public SealedTar(MemoryStream content, ChunkHash tarHash, long uncompressedSize, IReadOnlyList<TarEntry> entries)
-    {
-        Content          = content;
-        TarHash          = tarHash;
-        UncompressedSize = uncompressedSize;
-        Entries          = entries;
-    }
-
-    public MemoryStream Content { get; }
-
-    public ChunkHash TarHash { get; }
-
-    public long UncompressedSize { get; }
-
-    public IReadOnlyList<TarEntry> Entries { get; }
-
-    public async ValueTask DisposeAsync() => await Content.DisposeAsync();
-}
+internal sealed record SealedTar(
+    ReadOnlyMemory<byte> Content,
+    ChunkHash            TarHash,
+    long                 UncompressedSize,
+    IReadOnlyList<TarEntry> Entries
+);
