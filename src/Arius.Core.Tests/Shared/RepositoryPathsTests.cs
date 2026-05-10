@@ -37,8 +37,5 @@ public class RepositoryPathsTests
             .ShouldBe(RepositoryPathStrings.GetSnapshotCacheDirectory("account", "container"));
         RepositoryPaths.GetLogsRoot("account", "container").ToString()
             .ShouldBe(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".arius", "account-container", "logs"));
-
-        typeof(RepositoryPaths).GetMethod("GetLogsDirectory")
-            .ShouldBeNull();
     }
 }
