@@ -129,7 +129,7 @@ public class FileTreeBuilderTests
             var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
             root.ShouldNotBeNull();
-            blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
+            blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(2);
         }
         finally
         {
