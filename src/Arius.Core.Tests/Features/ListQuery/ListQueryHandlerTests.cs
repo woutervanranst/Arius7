@@ -236,7 +236,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_WithPrefixAndLocalPath_UppercasePointerSuffixIsTreatedAsPointerFile()
+    public async Task Handle_WithPrefixAndLocalPath_PointerSuffixComparisonIsCaseInsensitive()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
@@ -307,7 +307,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public void BuildFiles_UppercasePointerSuffix_TreatsFileAsPointerFile()
+    public void BuildFiles_PointerSuffixComparisonIsCaseInsensitive()
     {
         var files = new[]
         {

@@ -208,7 +208,7 @@ public class LocalFileEnumeratorTests : IDisposable
     }
 
     [Test, Skip("Tracked by #82: restore should handle cross-OS path conflicts gracefully.")]
-    public void Enumerate_UppercasePointerSuffix_IsTreatedAsComparablePointerDuringEnumeration()
+    public void Enumerate_PointerSuffixComparison_IsCaseInsensitive()
     {
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.POINTER.ARIUS", new string('a', 64));
