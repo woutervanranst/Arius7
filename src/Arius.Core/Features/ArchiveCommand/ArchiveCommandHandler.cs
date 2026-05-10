@@ -34,6 +34,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     private const int HashWorkers     = 4;
     private const int UploadWorkers   = 4;
+    private const int TarUploadWorkers = 1;
     private const int ChannelCapacity = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
@@ -184,8 +185,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
             var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
-            var             tarWorkspace    = RelativeFileSystem.CreateTemporaryWorkspace(PathSegment.Parse("tar-staging"));
-            tarWorkspace.CreateDirectory(RelativePath.Root);
 
             // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
             // Used by the dedup stage to detect duplicates within the same run before the
@@ -197,7 +196,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
             var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
             var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(ChannelCapacity / 2);
+            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
             var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
 
             // ── Register queue-depth getters (task 2.3) ──────────────────────
@@ -373,43 +372,53 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogInformation("[phase] tar-build");
             var tarBuilderTask = Task.Run(async () =>
             {
+                var           tarEntries  = new List<TarEntry>();
+                TarWriter?    tarWriter   = null;
+                MemoryStream? tarStream   = null;
+                long          currentSize = 0;
+
                 try
                 {
-                    var           tarEntries     = new List<TarEntry>();
-                    RelativePath? currentTarPath = null;
-                    TarWriter?  tarWriter      = null;
-                    FileStream? tarStream      = null;
-                    long        currentSize    = 0;
-                    var         tarSequence    = 0;
-
                     async Task SealCurrentTar()
                     {
                         if (tarWriter is null) 
                             return;
 
-                        await tarWriter.DisposeAsync();
-                        tarStream!.Dispose();
+                        var sealedStream = tarStream!;
+                        var sealedTar    = (SealedTar?)null;
 
-                        // Compute tar hash
-                        ChunkHash tarHash;
-                        await using (var fs = tarWorkspace.OpenRead(currentTarPath!.Value))
+                        try
                         {
-                            tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(fs, cancellationToken));
+                            await tarWriter.DisposeAsync();
+                            tarWriter = null;
+                            sealedStream.Position = 0;
+
+                            // Compute tar hash
+                            var tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(sealedStream, cancellationToken));
+                            sealedStream.Position = 0;
+
+                            await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
+
+                            _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
+                            foreach (var te in tarEntries)
+                                _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
+
+                            sealedTar = new SealedTar(sealedStream, tarHash, currentSize, tarEntries.ToList());
+                            await sealedTarChannel.Writer.WriteAsync(sealedTar, cancellationToken);
+                            sealedTar = null;
+
+                            tarEntries.Clear();
+                            tarWriter      = null;
+                            tarStream      = null;
+                            currentSize    = 0;
                         }
-
-                        await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
-
-                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
-                        foreach (var te in tarEntries)
-                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
-
-                        await sealedTarChannel.Writer.WriteAsync(new SealedTar(currentTarPath.Value, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
-
-                        tarEntries.Clear();
-                        currentTarPath = null;
-                        tarWriter      = null;
-                        tarStream      = null;
-                        currentSize    = 0;
+                        finally
+                        {
+                            if (sealedTar is not null)
+                                await sealedTar.DisposeAsync();
+                            else if (tarStream is not null)
+                                await sealedStream.DisposeAsync();
+                        }
                     }
 
                     await foreach (var upload in smallChannel.Reader.ReadAllAsync(cancellationToken))
@@ -417,9 +426,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         // Initialize new tar if needed
                         if (tarWriter is null)
                         {
-                            currentTarPath = RelativePath.Root / $"bundle-{tarSequence++:D6}.tar";
-                            tarStream      = (FileStream)tarWorkspace.CreateFile(currentTarPath.Value);
-                            tarWriter      = new TarWriter(tarStream, leaveOpen: false);
+                            tarStream      = new MemoryStream();
+                            tarWriter      = new TarWriter(tarStream, leaveOpen: true);
                             await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
                         }
 
@@ -448,6 +456,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
                 finally
                 {
+                    if (tarWriter is not null)
+                    {
+                        await tarWriter.DisposeAsync();
+                        tarStream?.Dispose();
+                    }
+
                     sealedTarChannel.Writer.Complete();
                 }
             }, cancellationToken);
@@ -456,48 +470,42 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogInformation("[phase] tar-upload");
             var tarUploadTask = Parallel.ForEachAsync(
                 sealedTarChannel.Reader.ReadAllAsync(cancellationToken),
-                new ParallelOptions { MaxDegreeOfParallelism = UploadWorkers, CancellationToken = cancellationToken },
+                new ParallelOptions { MaxDegreeOfParallelism = TarUploadWorkers, CancellationToken = cancellationToken },
                 async (sealed_, ct) =>
                 {
-                    try
+                    await using var sealedTar = sealed_;
+
+                    await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
+
+                    var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
+                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, sealedTar.Content, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
+                    var             compressedSize = uploadResult.StoredSize;
+
+                    var proportionalFactor = sealedTar.UncompressedSize > 0
+                        ? (double)compressedSize / sealedTar.UncompressedSize
+                        : 1.0;
+
+                    // Create thin chunks for each entry
+                    foreach (var entry in sealedTar.Entries)
                     {
-                        await _mediator.Publish(new ChunkUploadingEvent(sealed_.TarHash, sealed_.UncompressedSize), ct);
+                        var proportional = (long)(entry.OriginalSize * proportionalFactor);
+                        await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, ct);
 
-                        await using var fs             = tarWorkspace.OpenRead(sealed_.TarFilePath);
-                        var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealed_.TarHash, sealed_.UncompressedSize);
-                        var             uploadResult   = await _chunkStorage.UploadTarAsync(sealed_.TarHash, fs, sealed_.UncompressedSize, opts.UploadTier, tarProgress, ct);
-                        var             compressedSize = uploadResult.StoredSize;
+                        _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
+                        await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), ct);
 
-                        var proportionalFactor = sealed_.UncompressedSize > 0
-                            ? (double)compressedSize / sealed_.UncompressedSize
-                            : 1.0;
+                        await WriteFileTreeEntry(entry.HashedPair, stagingWriter, ct);
 
-                        // Create thin chunks for each entry
-                        foreach (var entry in sealed_.Entries)
-                        {
-                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional, ct);
+                        if (!opts.NoPointers)
+                            pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
 
-                            _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional));
-                            await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealed_.TarHash, entry.OriginalSize, proportional), ct);
-
-                            await WriteFileTreeEntry(entry.HashedPair, stagingWriter, ct);
-
-                            if (!opts.NoPointers)
-                                pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
-
-                            if (opts.RemoveLocal)
-                                pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
-                        }
-
-                        await _mediator.Publish(new TarBundleUploadedEvent(sealed_.TarHash, compressedSize, sealed_.Entries.Count), ct);
-                        _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealed_.TarHash.Short8, sealed_.Entries.Count, compressedSize.Bytes().Humanize());
-                        Interlocked.Add(ref filesUploaded, sealed_.Entries.Count);
+                        if (opts.RemoveLocal)
+                            pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
                     }
-                    finally
-                    {
-                        try { tarWorkspace.DeleteFile(sealed_.TarFilePath); } catch { /* ignore */ }
-                    }
+
+                    await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
+                    _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
+                    Interlocked.Add(ref filesUploaded, sealedTar.Entries.Count);
                 });
 
             // Wait for all upload stages to complete

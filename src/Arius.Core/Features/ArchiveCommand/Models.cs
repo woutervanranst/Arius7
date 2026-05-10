@@ -102,12 +102,26 @@ internal sealed record TarEntry(
 
 /// <summary>
 /// Represents a completed tar chunk that is ready to upload.
-/// It exists to hand off the on-disk tar payload together with the per-entry metadata needed for thin chunks,
-/// with responsibility for describing the sealed tar file, its chunk hash, its size, and its member entries.
+/// It exists to hand off the in-memory tar payload together with the per-entry metadata needed for thin chunks,
+/// with responsibility for describing the sealed tar content, its chunk hash, its size, and its member entries.
 /// </summary>
-internal sealed record SealedTar(
-    RelativePath    TarFilePath,       // temp file under the tar workspace root
-    ChunkHash       TarHash,           // hash of the tar body (before gzip+encrypt)
-    long            UncompressedSize,  // sum of file sizes
-    IReadOnlyList<TarEntry> Entries    // per-file info for thin chunk creation
-);
+internal sealed class SealedTar : IAsyncDisposable
+{
+    public SealedTar(MemoryStream content, ChunkHash tarHash, long uncompressedSize, IReadOnlyList<TarEntry> entries)
+    {
+        Content          = content;
+        TarHash          = tarHash;
+        UncompressedSize = uncompressedSize;
+        Entries          = entries;
+    }
+
+    public MemoryStream Content { get; }
+
+    public ChunkHash TarHash { get; }
+
+    public long UncompressedSize { get; }
+
+    public IReadOnlyList<TarEntry> Entries { get; }
+
+    public async ValueTask DisposeAsync() => await Content.DisposeAsync();
+}
