@@ -63,8 +63,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         CancellationToken cancellationToken = default,
         bool removeLocal = false,
         bool noPointers = false,
-        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
-        Func<LocalDirectory, IEnumerable<FilePair>>? enumerateFilePairs = null)
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
         Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
@@ -86,8 +85,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             _logger,
             AccountName,
             _containerName,
-            stagingSessionFactory,
-            enumerateFilePairs);
+            stagingSessionFactory);
 
         static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(LocalDirectory path, CancellationToken ct)
             => await FileTreeStagingSession.OpenAsync(path, ct);

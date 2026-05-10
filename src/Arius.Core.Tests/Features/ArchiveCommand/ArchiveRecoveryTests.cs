@@ -117,7 +117,7 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_UsesTypedBinaryMetadataForScanAndHashProgress()
+    public async Task Archive_UsesEnumeratedBinaryMetadataForScanAndHashProgress()
     {
         using var env = new ArchiveTestEnvironment();
 
@@ -139,33 +139,17 @@ public class ArchiveRecoveryTests
                 }
             });
 
-        var content = env.WriteRandomFile("photos/pic.jpg", 32);
-        var result = await env.ArchiveAsync(
-            BlobTier.Cool,
-            enumerateFilePairs: _ =>
-            [
-                new FilePair
-                {
-                    RelativePath = RelativePath.Parse("photos/pic.jpg"),
-                    Binary = new BinaryFile
-                    {
-                        Path = RelativePath.Parse("photos/pic.jpg"),
-                        Size = 1234,
-                        Created = DateTimeOffset.UnixEpoch,
-                        Modified = DateTimeOffset.UnixEpoch
-                    },
-                    Pointer = null
-                }
-            ]);
+        env.WriteRandomFile("photos/pic.jpg", 32);
+        var result = await env.ArchiveAsync(BlobTier.Cool);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         scannedEvents.ShouldHaveSingleItem();
         scannedEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
-        scannedEvents[0].FileSize.ShouldBe(1234);
+        scannedEvents[0].FileSize.ShouldBe(32);
 
         hashingEvents.ShouldHaveSingleItem();
         hashingEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
-        hashingEvents[0].FileSize.ShouldBe(1234);
+        hashingEvents[0].FileSize.ShouldBe(32);
     }
 
     [Test]
