@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
-using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
@@ -474,10 +473,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
 
-                    if (!MemoryMarshal.TryGetArray(sealedTar.Content, out var segment) || segment.Array is null)
-                        throw new InvalidOperationException("Sealed tar content must be backed by an array.");
-
-                    using var tarStream = new MemoryStream(segment.Array, segment.Offset, segment.Count, writable: false);
+                    using var tarStream = new MemoryStream(sealedTar.Content, writable: false);
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;

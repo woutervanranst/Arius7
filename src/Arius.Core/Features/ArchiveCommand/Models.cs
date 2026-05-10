@@ -106,7 +106,7 @@ internal sealed record TarEntry(
 /// with responsibility for describing the sealed tar content, its chunk hash, its size, and its member entries.
 /// </summary>
 internal sealed record SealedTar(
-    ReadOnlyMemory<byte> Content,
+    byte[]               Content,
     ChunkHash            TarHash,
     long                 UncompressedSize,
     IReadOnlyList<TarEntry> Entries
