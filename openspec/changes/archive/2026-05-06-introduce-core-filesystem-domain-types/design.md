@@ -121,12 +121,6 @@ internal sealed class RelativeFileSystem
 
 No interface is introduced initially. If tests or alternate filesystem implementations later require substitution, extract an interface from the concrete class at that point.
 
-### Cross-OS path collisions fail before snapshot publication
-
-`RelativePath` equality remains ordinal and case-preserving. Linux can enumerate both `photos/pic.jpg` and `Photos/pic.jpg`, but Arius must reject such input before publishing a snapshot because it cannot restore both paths safely on Windows or common macOS configurations.
-
-Collision checks should use ordinal case-insensitive comparison over complete `RelativePath` values and over sibling filetree entry names where appropriate. The failure should identify the colliding paths and stop the archive before snapshot creation.
-
 ### Public contracts convert at the boundary
 
 Public command/query/result contracts remain strings. Handlers parse incoming strings into `LocalDirectory` and `RelativePath` near the start of the operation and convert internal paths back to strings when publishing public events or returning public result DTOs.

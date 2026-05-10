@@ -17,14 +17,14 @@
 - [x] 3.1 Add internal `BinaryFile`, `PointerFile`, and `FilePair` records with relative paths only and no host full-path fields.
 - [x] 3.2 Refactor local file enumeration to produce archive-time `FilePair` values using `RelativeFileSystem.EnumerateFiles()` and pointer path helpers.
 - [x] 3.3 Add tests for binary-only, pointer-only, binary+pointer, invalid pointer content, inaccessible file handling, and streaming/no-materialization enumeration behavior.
-- [x] 3.4 Add archive path collision validation that rejects ordinal case-insensitive relative path collisions before snapshot publication, with tests for Linux-only casing conflicts.
+- [x] 3.4 Archive no longer rejects ordinal case-insensitive relative path collisions during enumeration; defer any collision failure to restore-time behavior.
 
 ## 4. Archive And Filetree Refactor
 
 - [x] 4.1 Refactor `ArchiveCommandHandler` internals to consume `RelativePath`, `BinaryFile`, `PointerFile`, `FilePair`, and `RelativeFileSystem` while preserving public string contracts and event payload shapes.
 - [x] 4.2 Refactor file hashing, upload, pointer writing, local binary removal, and progress callbacks to use relative paths internally and convert to strings only at public/logging boundaries.
 - [x] 4.3 Refactor `FileTreeStagingWriter`, filetree entry construction, and traversal helpers to accept validated `RelativePath` and `PathSegment` values instead of ad hoc path strings.
-- [x] 4.4 Add/update archive and filetree tests for canonical path staging, invalid staged path rejection, case-collision failure, and filetree traversal by relative path composition.
+- [x] 4.4 Add/update archive and filetree tests for canonical path staging, invalid staged path rejection, and filetree traversal by relative path composition.
 
 ## 5. List And Restore Refactor
 

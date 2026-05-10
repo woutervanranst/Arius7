@@ -47,17 +47,6 @@ During enumeration, the system SHALL publish a `FileScannedEvent(string Relative
 - **WHEN** all files have been enumerated and the channel is about to be completed
 - **THEN** the system SHALL publish `ScanCompleteEvent` with the total file count and total bytes
 
-### Requirement: Archive path collision validation
-The archive pipeline SHALL validate discovered relative paths for ordinal case-insensitive collisions before publishing a snapshot.
-
-#### Scenario: Case-insensitive collision discovered
-- **WHEN** enumeration discovers `photos/pic.jpg` and `Photos/pic.jpg` in the same archive input
-- **THEN** the archive SHALL fail before snapshot publication and report the colliding paths
-
-#### Scenario: No case-insensitive collision
-- **WHEN** enumeration discovers `photos/pic.jpg` and `photos/pic2.jpg`
-- **THEN** the archive SHALL proceed past path collision validation
-
 ### Requirement: Streaming hash computation
 The system SHALL compute content hashes by streaming file data through the hash function without loading the entire file into memory. The hash function SHALL be SHA256(data) in plaintext mode or SHA256(passphrase + data) in encrypted mode (literal byte concatenation). Pointer file hashes SHALL NEVER be trusted as a cache — every binary file SHALL be re-hashed on every archive run. During hashing, the system SHALL publish `FileHashingEvent` with the file's relative path and file size (in bytes) to enable per-file progress display. When `ArchiveOptions.CreateHashProgress` is provided, the file stream SHALL be wrapped in `ProgressStream` before being passed to `ComputeHashAsync`.
 

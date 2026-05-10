@@ -84,49 +84,6 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_CaseInsensitivePathCollision_FailsBeforeSnapshotPublication()
-    {
-        using var env = new ArchiveTestEnvironment();
-
-        var result = await env.ArchiveAsync(
-            BlobTier.Cool,
-            enumerateFilePairs: _ =>
-            [
-                new FilePair
-                {
-                    RelativePath = RelativePath.Parse("photos/pic.jpg"),
-                    Binary = new BinaryFile
-                    {
-                        Path = RelativePath.Parse("photos/pic.jpg"),
-                        Size = 32,
-                        Created = DateTimeOffset.UnixEpoch,
-                        Modified = DateTimeOffset.UnixEpoch
-                    },
-                    Pointer = null
-                },
-                new FilePair
-                {
-                    RelativePath = RelativePath.Parse("Photos/pic.jpg"),
-                    Binary = new BinaryFile
-                    {
-                        Path = RelativePath.Parse("Photos/pic.jpg"),
-                        Size = 32,
-                        Created = DateTimeOffset.UnixEpoch,
-                        Modified = DateTimeOffset.UnixEpoch
-                    },
-                    Pointer = null
-                }
-            ]);
-
-        result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldNotBeNull();
-        result.ErrorMessage.ShouldContain("case-insensitive", Case.Insensitive);
-        result.ErrorMessage.ShouldContain("photos/pic.jpg");
-        result.ErrorMessage.ShouldContain("Photos/pic.jpg");
-        result.RootHash.ShouldBeNull();
-    }
-
-    [Test]
     public async Task Archive_NewContent_EmitsConsistentPhaseTimingLogs()
     {
         using var env = new ArchiveTestEnvironment();

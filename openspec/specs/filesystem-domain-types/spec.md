@@ -107,17 +107,6 @@ Archive, list, restore, filetree, blob-name, and cache-path feature code SHALL N
 - **WHEN** restore logic materializes a file under the restore root
 - **THEN** it SHALL call the filesystem boundary with a `RelativePath` instead of constructing a full path string in the feature handler
 
-### Requirement: Cross-OS case collision rejection
-Arius.Core SHALL preserve ordinal relative path identity internally, but SHALL reject a repository state with two relative paths that collide under ordinal case-insensitive comparison before publishing a snapshot.
-
-#### Scenario: Linux-only casing conflict
-- **WHEN** an archive input contains both `photos/pic.jpg` and `Photos/pic.jpg`
-- **THEN** the archive SHALL fail before snapshot publication with an error that identifies the colliding paths
-
-#### Scenario: Distinct non-colliding paths
-- **WHEN** an archive input contains `photos/pic.jpg` and `photos/pic2.jpg`
-- **THEN** the archive SHALL proceed past case-collision validation
-
 ### Requirement: Boundary string contracts
 Public Arius.Core command, query, result, and event contracts SHALL remain string-based for path values unless a separate change explicitly modifies those contracts.
 

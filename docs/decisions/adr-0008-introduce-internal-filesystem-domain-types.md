@@ -158,12 +158,10 @@ If a caller wants to display a directory marker such as a trailing slash, that f
 * Good, because public contracts use the same stable domain primitive as Core instead of repeatedly converting path strings at every boundary.
 * Good, because `RelativeFileSystem` makes direct host filesystem calls visible and centralized without committing Arius to a virtual filesystem abstraction.
 * Good, because `RelativePath.Root / "photos" / "pic.jpg"` gives tests and focused Core code readable path construction while still validating every segment.
-* Good, because case-insensitive collision checks make unsafe cross-OS archives fail before snapshot publication.
 * Bad, because one generic `RelativePath` can still mix repository paths and blob/cache paths. If real mistakes appear, add semantic wrappers later rather than front-loading ceremony.
 * Bad, because making `RelativePath` and `PathSegment` public creates a compatibility surface that should be kept stable.
 * Bad, because typed public feature contracts can ripple into CLI, UI, tests, or external consumers when a contract is changed from string to `RelativePath`.
 * Bad, because the refactor is broad and will touch archive, restore, list, filetree, storage helper, cache helper, and tests.
-* Bad, because Linux-only repositories with case-only path differences will be rejected. This is deliberate because Arius archives are intended to be portable.
 
 ### Confirmation
 
@@ -172,7 +170,6 @@ Implementation must be confirmed by tests and code review:
 * Unit tests for `RelativePath` parsing, root handling, segment-aware prefix behavior, `/ string` composition, invalid segment rejection, and pointer path derivation.
 * Tests for `BinaryFile`, `PointerFile`, and `FilePair` enumeration cases: binary-only, pointer-only, binary plus pointer, invalid pointer content, inaccessible files, and streaming/no-materialization behavior.
 * Tests proving `RelativeFileSystem` strips the configured root, prevents root escape, and centralizes local filesystem operations behind `RelativePath` arguments.
-* Archive tests proving case-insensitive path collisions fail before snapshot publication.
 * List and restore tests proving prefix traversal is segment-aware and public path outputs use `RelativePath` / `PathSegment` where the contract value is an Arius domain path or path segment.
 * A code sweep of `src/Arius.Core` for path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary, with intentional exceptions documented.
 

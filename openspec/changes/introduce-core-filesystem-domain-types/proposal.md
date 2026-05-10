@@ -8,18 +8,17 @@ Arius.Core currently represents archive-relative paths, pointer paths, local fil
 - Add archive-time file model types: `BinaryFile`, `PointerFile`, and `FilePair`.
 - Add a small `RelativeFileSystem` boundary rooted at a local directory so feature code no longer calls `File.*`, `Directory.*`, or `Path.*` directly.
 - Refactor archive, list, restore, filetree, blob-name, and cache-path internals away from path-like raw strings while keeping public command/query/result contracts string-based.
-- Detect case-insensitive `RelativePath` collisions before publishing repository state so archives remain restorable on Windows, macOS, and Linux.
 - Treat restore-time files as `RelativePath`-based restore candidates rather than reusing archive-time `BinaryFile`/`PointerFile`/`FilePair` objects.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `filesystem-domain-types`: Internal path and file-domain type system for Arius.Core, including `RelativePath`, pointer path derivation, archive-time file pairs, local filesystem quarantine, and cross-OS path collision handling.
+- `filesystem-domain-types`: Internal path and file-domain type system for Arius.Core, including `RelativePath`, pointer path derivation, archive-time file pairs, and local filesystem quarantine.
 
 ### Modified Capabilities
 
-- `archive-pipeline`: Archive enumeration and filetree staging operate on validated relative domain paths and reject case-insensitive path collisions before snapshot publication.
+- `archive-pipeline`: Archive enumeration and filetree staging operate on validated relative domain paths.
 - `restore-pipeline`: Restore resolves snapshot entries through relative domain paths and uses the filesystem boundary to materialize files and pointer files under the requested root.
 - `list-query`: Listing traversal and local/cloud merge use relative domain paths internally while preserving string output contracts.
 - `file-tree-service`: Filetree staging and traversal consume validated relative paths and filetree entry names rather than ad hoc string path manipulation.
