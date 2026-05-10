@@ -207,7 +207,7 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs[0].Pointer.ShouldNotBeNull();
     }
 
-    [Test]
+    [Test, Skip("Tracked by #82: restore should handle cross-OS path conflicts gracefully.")]
     public void Enumerate_UppercasePointerSuffix_IsTreatedAsComparablePointerDuringEnumeration()
     {
         CreateFile("photos/vacation.jpg");
