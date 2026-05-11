@@ -3,7 +3,6 @@ using Arius.Core.Features.RestoreCommand;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
-[NotInParallel("PricingConfigGlobalState")]
 public class PricingConfigTests
 {
     [Test]
@@ -89,19 +88,19 @@ public class PricingConfigTests
         double hotWriteOpsPer10000 = 0.1,
         double hotStoragePerGbPerMonth = 0.02)
     {
-        var baseConfig = new PricingConfig
+        return new PricingConfig
         {
             Archive = new ArchivePricingTier
             {
-                RetrievalPerGB      = 1.0,
-                RetrievalHighPerGB  = 5.0,
-                ReadOpsPer10000     = 2.0,
-                ReadOpsHighPer10000 = 10.0,
+                RetrievalPerGB      = retrievalPerGb,
+                RetrievalHighPerGB  = retrievalHighPerGb,
+                ReadOpsPer10000     = readOpsPer10000,
+                ReadOpsHighPer10000 = readOpsHighPer10000,
             },
             Hot = new TierPricingConfig
             {
-                WriteOpsPer10000     = 0.1,
-                StoragePerGBPerMonth = 0.02,
+                WriteOpsPer10000     = hotWriteOpsPer10000,
+                StoragePerGBPerMonth = hotStoragePerGbPerMonth,
             },
             Cool = new TierPricingConfig
             {
@@ -112,22 +111,6 @@ public class PricingConfigTests
             {
                 WriteOpsPer10000     = 0.3,
                 StoragePerGBPerMonth = 0.005,
-            },
-        };
-
-        return baseConfig with
-        {
-            Archive = baseConfig.Archive with
-            {
-                RetrievalPerGB      = retrievalPerGb,
-                RetrievalHighPerGB  = retrievalHighPerGb,
-                ReadOpsPer10000     = readOpsPer10000,
-                ReadOpsHighPer10000 = readOpsHighPer10000,
-            },
-            Hot = baseConfig.Hot with
-            {
-                WriteOpsPer10000     = hotWriteOpsPer10000,
-                StoragePerGBPerMonth = hotStoragePerGbPerMonth,
             },
         };
     }
