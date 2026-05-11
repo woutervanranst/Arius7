@@ -1,4 +1,3 @@
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Azure;
 using Azure.Identity;
@@ -13,8 +12,6 @@ namespace Arius.AzureBlob;
 /// </summary>
 public sealed class AzureBlobService(BlobServiceClient serviceClient, string accountName, string authMode) : IBlobService
 {
-    private const string PreflightProbeBlobName = ".arius-preflight-probe";
-
     public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var container in serviceClient.GetBlobContainersAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
@@ -35,7 +32,8 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            return page?.Values.Any() ?? false;
+            // We agree that a container is an Arius archive if it contains any blobs under the "snapshots/" prefix, excluding the edge case should a "snapshots/" blob exist without any actual snapshots.
+            return page?.Values.Any(i => i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
         }
     }
 
@@ -44,13 +42,15 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
         PreflightMode preflightMode,
         CancellationToken cancellationToken = default)
     {
+        const string preflightProbeBlobName = ".arius-preflight-probe";
+
         var containerClient = serviceClient.GetBlobContainerClient(containerName);
 
         try
         {
             if (preflightMode == PreflightMode.ReadWrite)
             {
-                var probeBlob = containerClient.GetBlobClient(PreflightProbeBlobName);
+                var probeBlob = containerClient.GetBlobClient(preflightProbeBlobName);
                 await using var emptyStream = new MemoryStream();
                 await probeBlob.UploadAsync(emptyStream, overwrite: true, cancellationToken).ConfigureAwait(false);
                 await probeBlob.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
