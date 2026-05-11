@@ -1,4 +1,3 @@
-using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
@@ -6,6 +5,8 @@ using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
 using Mediator;
 using NSubstitute;
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -122,8 +123,8 @@ public class ArchiveRecoveryTests
         using var env = new ArchiveTestEnvironment();
 
         var mediator = env.Mediator;
-        var scannedEvents = new List<FileScannedEvent>();
-        var hashingEvents = new List<FileHashingEvent>();
+        var scannedEvents = new ConcurrentBag<FileScannedEvent>();
+        var hashingEvents = new ConcurrentBag<FileHashingEvent>();
         mediator
             .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
             .Do(callInfo =>
@@ -143,13 +144,13 @@ public class ArchiveRecoveryTests
         var result = await env.ArchiveAsync(BlobTier.Cool);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        scannedEvents.ShouldHaveSingleItem();
-        scannedEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
-        scannedEvents[0].FileSize.ShouldBe(32);
+        var scannedEvent = scannedEvents.ShouldHaveSingleItem();
+        scannedEvent.RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
+        scannedEvent.FileSize.ShouldBe(32);
 
-        hashingEvents.ShouldHaveSingleItem();
-        hashingEvents[0].RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
-        hashingEvents[0].FileSize.ShouldBe(32);
+        var hashingEvent = hashingEvents.ShouldHaveSingleItem();
+        hashingEvent.RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
+        hashingEvent.FileSize.ShouldBe(32);
     }
 
     [Test]
