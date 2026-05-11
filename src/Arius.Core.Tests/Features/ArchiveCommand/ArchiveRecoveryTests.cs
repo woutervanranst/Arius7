@@ -118,6 +118,26 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_WritesFileTreeEntryWithBinaryFileTimestamps()
+    {
+        using var env = new ArchiveTestEnvironment();
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        var created = new DateTimeOffset(2021, 4, 5, 6, 7, 8, TimeSpan.Zero);
+        var modified = new DateTimeOffset(2022, 5, 6, 7, 8, 9, TimeSpan.Zero);
+
+        env.WriteRandomFile(relativePath.ToString(), 128);
+        env.SetTimestamps(relativePath, created, modified);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var entry = await env.ReadRootFileEntryAsync(relativePath);
+        entry.Created.ShouldBe(created);
+        entry.Modified.ShouldBe(modified);
+    }
+
+    [Test]
     public async Task Archive_UsesEnumeratedBinaryMetadataForScanAndHashProgress()
     {
         using var env = new ArchiveTestEnvironment();

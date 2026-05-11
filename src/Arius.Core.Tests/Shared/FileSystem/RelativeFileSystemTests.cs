@@ -70,6 +70,37 @@ public class RelativeFileSystemTests : IDisposable
     }
 
     [Test]
+    public async Task GetTimestamps_ReturnsCreationAndLastWriteTimesForRelativePath()
+    {
+        var path = RelativePath.Parse("docs/report.txt");
+        var created = new DateTimeOffset(2024, 6, 15, 10, 20, 30, TimeSpan.Zero);
+        var modified = new DateTimeOffset(2025, 7, 16, 11, 21, 31, TimeSpan.Zero);
+        var fullPath = Path.Combine(_root, "docs", "report.txt");
+
+        await _fileSystem.WriteAllTextAsync(path, "report", CancellationToken.None);
+        _fileSystem.SetTimestamps(path, created, modified);
+
+        var expectedCreated = new DateTimeOffset(File.GetCreationTimeUtc(fullPath), TimeSpan.Zero);
+        var expectedModified = new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero);
+
+        var timestamps = _fileSystem.GetTimestamps(path);
+
+        timestamps.Created.ShouldBe(expectedCreated);
+        timestamps.Modified.ShouldBe(expectedModified);
+    }
+
+    [Test]
+    public void GetTimestamps_MissingFile_Throws()
+    {
+        var path = RelativePath.Parse("missing.bin");
+
+        var expected = Should.Throw<FileNotFoundException>(() => _fileSystem.OpenRead(path));
+        var actual = Should.Throw<FileNotFoundException>(() => _fileSystem.GetTimestamps(path));
+
+        actual.FileName.ShouldBe(expected.FileName);
+    }
+
+    [Test]
     public void OpenRead_MissingFile_Throws()
     {
         Should.Throw<FileNotFoundException>(() => _fileSystem.OpenRead(RelativePath.Parse("missing.bin")));

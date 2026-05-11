@@ -295,6 +295,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         var files = LocalFileSnapshotBuilder.BuildFiles(
             fileInfos,
             localFileSystem.FileExists,
+            localFileSystem.GetTimestamps,
             path => ReadPointerHash(localFileSystem, path));
 
         return new LocalDirectorySnapshot(directories, files);

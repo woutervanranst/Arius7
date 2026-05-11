@@ -48,10 +48,8 @@ internal sealed class RelativeFileSystem
             var fileInfo = new FileInfo(filePath);
             yield return new LocalFileEntry
             {
-                Path     = relativePath,
-                Size     = fileInfo.Length,
-                Created  = new DateTimeOffset(fileInfo.CreationTimeUtc,  TimeSpan.Zero),
-                Modified = new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero)
+                Path = relativePath,
+                Size = fileInfo.Length
             };
         }
     }
@@ -146,6 +144,20 @@ internal sealed class RelativeFileSystem
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));
 
     public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
+
+    /// <summary>
+    /// Reads creation and last-write timestamps for a file within the rooted directory.
+    /// </summary>
+    public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)
+    {
+        var fullPath = _root.Resolve(path);
+        using var _ = File.OpenRead(fullPath);
+        var fileInfo = new FileInfo(fullPath);
+
+        return (
+            new DateTimeOffset(fileInfo.CreationTimeUtc, TimeSpan.Zero),
+            new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero));
+    }
 
     /// <summary>
     /// Sets creation and last-write timestamps for a file within the rooted directory.

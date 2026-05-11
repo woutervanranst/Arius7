@@ -143,15 +143,13 @@ public class LocalFileEnumeratorTests : IDisposable
     // ── File metadata ─────────────────────────────────────────────────────────
 
     [Test]
-    public void Enumerate_BinaryFile_HasFileSizeAndTimestamps()
+    public void Enumerate_BinaryFile_HasFileSize()
     {
         CreateFile("data.bin", "hello world");
 
         var pair = _enumerator.Enumerate(_rootDirectory).Single();
 
         pair.Binary!.Size.ShouldBe(11); // "hello world" = 11 bytes
-        pair.Binary.Created.ShouldBeGreaterThan(DateTimeOffset.MinValue);
-        pair.Binary.Modified.ShouldBeGreaterThan(DateTimeOffset.MinValue);
     }
 
     [Test]

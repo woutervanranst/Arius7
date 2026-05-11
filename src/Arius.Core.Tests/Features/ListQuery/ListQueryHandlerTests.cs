@@ -314,22 +314,19 @@ public class ListQueryHandlerTests
             new LocalFileEntry
             {
                 Path = RelativePath.Parse("docs/shared.txt"),
-                Size = 12,
-                Created = s_created,
-                Modified = s_modified
+                Size = 12
             },
             new LocalFileEntry
             {
                 Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"),
-                Size = 64,
-                Created = s_created,
-                Modified = s_modified
+                Size = 64
             }
         };
 
         var result = LocalFileSnapshotBuilder.BuildFiles(
             files,
             path => path.ToString() == "docs/shared.txt",
+            _ => (s_created, s_modified),
             path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
 
         result.Count.ShouldBe(1);
@@ -348,23 +345,17 @@ public class ListQueryHandlerTests
             new LocalFileEntry
             {
                 Path = RelativePath.Parse("docs/shared.txt"),
-                Size = 12,
-                Created = s_created,
-                Modified = s_modified
+                Size = 12
             },
             new LocalFileEntry
             {
                 Path = RelativePath.Parse("docs/shared.txt.pointer.arius"),
-                Size = 64,
-                Created = s_created,
-                Modified = s_modified
+                Size = 64
             },
             new LocalFileEntry
             {
                 Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius"),
-                Size = 64,
-                Created = s_created,
-                Modified = s_modified
+                Size = 64
             }
         };
 
@@ -375,6 +366,7 @@ public class ListQueryHandlerTests
                 "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected file existence probe for {path}"),
                 _ => false
             },
+            _ => (s_created, s_modified),
             path => path.ToString() switch
             {
                 "docs/shared.txt.pointer.arius" => FakeContentHash('2'),

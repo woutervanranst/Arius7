@@ -293,7 +293,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                             // Known dedup: add to manifest only
                             _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
+                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
                         }
@@ -302,7 +302,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            await WriteFileTreeEntry(hashed, stagingWriter, cancellationToken);
+                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             if (!opts.NoPointers)
                                 pendingPointers.Add((hashed.FilePair.RelativePath, hashed.ContentHash));
@@ -354,7 +354,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, ct);
 
-                    await WriteFileTreeEntry(upload.HashedPair, stagingWriter, ct);
+                    await WriteFileTreeEntry(upload.HashedPair, fs, stagingWriter, ct);
                     Interlocked.Increment(ref filesUploaded);
 
                     if (!opts.NoPointers)
@@ -491,7 +491,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
                         await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), ct);
 
-                        await WriteFileTreeEntry(entry.HashedPair, stagingWriter, ct);
+                        await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, ct);
 
                         if (!opts.NoPointers)
                             pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
@@ -612,28 +612,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task WriteFileTreeEntry(HashedFilePair hashed, FileTreeStagingWriter writer, CancellationToken ct)
+    private static async Task WriteFileTreeEntry(HashedFilePair hashed, RelativeFileSystem fileSystem, FileTreeStagingWriter writer, CancellationToken ct)
     {
         var pair = hashed.FilePair;
-
-        // Use binary metadata if available, otherwise pointer metadata
-        DateTimeOffset created, modified;
-        if (pair.Binary is not null)
-        {
-            created  = pair.Binary.Created;
-            modified = pair.Binary.Modified;
-        }
-        else if (pair.Pointer is not null)
-        {
-            created  = pair.Pointer.Created;
-            modified = pair.Pointer.Modified;
-        }
-        else
-            throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
+        var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path
+            ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
 
         // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
         var fileTreePath = pair.RelativePath;
 
+        var (created, modified) = fileSystem.GetTimestamps(metadataPath);
         await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
     }
 

@@ -58,11 +58,37 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return content;
     }
 
+    public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
+        => new RelativeFileSystem(LocalDirectory.Parse(_rootDirectory)).SetTimestamps(path, created, modified);
+
+    public async Task<FileEntry> ReadRootFileEntryAsync(RelativePath path)
+    {
+        var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
+        var snapshotSvc = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
+        var snapshot = await snapshotSvc.ResolveAsync();
+        snapshot.ShouldNotBeNull();
+
+        var entries = await fileTreeService.ReadAsync(snapshot.RootHash);
+
+        if (path.Parent is not { } parentPath)
+            return entries.OfType<FileEntry>().Single(entry => entry.Name == path.Name);
+
+        foreach (var segment in parentPath.Segments)
+        {
+            var directory = entries.OfType<DirectoryEntry>().Single(entry => entry.Name == segment);
+            entries = await fileTreeService.ReadAsync(directory.FileTreeHash);
+        }
+
+        return entries.OfType<FileEntry>().Single(entry => entry.Name == path.Name);
+    }
+
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
         bool removeLocal = false,
         bool noPointers = false,
+        long? smallFileThreshold = null,
+        Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
         Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
@@ -95,8 +121,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
             {
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
+                SmallFileThreshold = smallFileThreshold ?? 1024 * 1024,
                 RemoveLocal = removeLocal,
                 NoPointers = noPointers,
+                CreateUploadProgress = createUploadProgress,
             }),
             cancellationToken);
     }

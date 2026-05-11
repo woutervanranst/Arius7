@@ -8,6 +8,7 @@ internal static class LocalFileSnapshotBuilder
     public static Dictionary<PathSegment, LocalFileState> BuildFiles(
         IEnumerable<LocalFileEntry> fileInfos,
         Func<RelativePath, bool> fileExists,
+        Func<RelativePath, (DateTimeOffset Created, DateTimeOffset Modified)> getTimestamps,
         Func<RelativePath, ContentHash?> readPointerHash)
     {
         var files = new Dictionary<PathSegment, LocalFileState>();
@@ -48,6 +49,7 @@ internal static class LocalFileSnapshotBuilder
             {
                 var pointerPath = file.Path.ToPointerPath();
                 var hasPointer = enumeratedPaths.Contains(pointerPath);
+                var (created, modified) = getTimestamps(file.Path);
                 files[file.Path.Name] = new LocalFileState(
                     Name: file.Path.Name,
                     Path: file.Path,
@@ -55,8 +57,8 @@ internal static class LocalFileSnapshotBuilder
                     PointerExists: hasPointer,
                     PointerHash: hasPointer ? readPointerHash(pointerPath) : null,
                     FileSize: file.Size,
-                    Created: file.Created,
-                    Modified: file.Modified);
+                    Created: created,
+                    Modified: modified);
             }
         }
 
