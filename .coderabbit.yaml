@@ -28,6 +28,10 @@ reviews:
       instructions: >
         CLI entry point. Validate command argument handling and user-facing
         error messages.
+    - path: src/Arius.Explorer/**
+      instructions: >
+        Windows WPF app. Focus on user experience, responsiveness, and accessibility.
+        Check for proper error handling in the UI layer.
     - path: "**/*.Tests/**"
       instructions: >
         Test projects. Focus on test coverage gaps and assertion quality
