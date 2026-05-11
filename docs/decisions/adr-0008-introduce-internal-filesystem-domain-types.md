@@ -109,15 +109,11 @@ Archive-time local file state will be modeled with internal `BinaryFile`, `Point
 internal sealed record BinaryFile
 {
     public required RelativePath Path { get; init; }
-    public required long Size { get; init; }
-    public required DateTimeOffset Created { get; init; }
-    public required DateTimeOffset Modified { get; init; }
 }
 
 internal sealed record PointerFile
 {
     public required RelativePath Path { get; init; }
-    public required RelativePath BinaryPath { get; init; }
     public ContentHash? Hash { get; init; }
 }
 
