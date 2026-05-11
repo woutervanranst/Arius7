@@ -97,8 +97,10 @@ internal sealed record TarEntry(
 /// It exists to hand off the in-memory tar payload together with the per-entry metadata needed for thin chunks,
 /// with responsibility for describing the sealed tar content, its chunk hash, its size, and its member entries.
 /// </summary>
+using System.Collections.Immutable;
+
 internal sealed record SealedTar(
-    byte[]               Content,
+    ImmutableArray<byte> Content,
     ChunkHash            TarHash,           // hash of the tar body (before gzip+encrypt)
     long                 UncompressedSize,  // sum of file sizes
     IReadOnlyList<TarEntry> Entries         // per-file info for thin chunk
