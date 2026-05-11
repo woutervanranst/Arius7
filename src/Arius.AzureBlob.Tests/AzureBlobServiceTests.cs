@@ -32,12 +32,13 @@ public class AzureBlobServiceTests
     }
 
     [Test]
-    public async Task GetContainerNamesAsync_YieldsContainersWhenSnapshotsAreFoldedIntoHierarchyPrefixes()
+    public async Task GetContainerNamesAsync_DoesNotYieldContainersWithoutSnapshotBlobs()
     {
         var service = new AzureBlobService(
             new FakeBlobServiceClient(
                 [
-                    new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-01T120000.000Z"]),
+                    new FakeContainer("not-a-repo", exists: true, ["random/file.txt"]),
+                    new FakeContainer("empty", exists: true, []),
                 ]),
             "account",
             "key");
@@ -48,38 +49,17 @@ public class AzureBlobServiceTests
             results.Add(name);
         }
 
-        results.ShouldBe(["repo-a"]);
+        results.ShouldBeEmpty();
     }
 
     [Test]
-    public async Task GetContainerNamesAsync_DoesNotTreatSiblingSnapshotPrefixesAsRepositories()
+    public async Task GetContainerNamesAsync_DoesNotTreatBlobNamedSnapshotsAsRepository()
     {
         var service = new AzureBlobService(
             new FakeBlobServiceClient(
                 [
                     new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-01T120000.000Z"]),
-                    new FakeContainer("snapshot-like", exists: true, ["snapshots-old/2026-04-01T120000.000Z"]),
-                ]),
-            "account",
-            "key");
-
-        var results = new List<string>();
-        await foreach (var name in service.GetContainerNamesAsync(CancellationToken.None))
-        {
-            results.Add(name);
-        }
-
-        results.ShouldBe(["repo-a"]);
-    }
-
-    [Test]
-    public async Task GetContainerNamesAsync_DoesNotTreatSnapshotPrefixWithoutSlashAsRepository()
-    {
-        var service = new AzureBlobService(
-            new FakeBlobServiceClient(
-                [
-                    new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-01T120000.000Z"]),
-                    new FakeContainer("snapshot-like", exists: true, ["snapshots2026-04-01T120000.000Z"]),
+                    new FakeContainer("snapshot-like", exists: true, ["snapshots"]),
                 ]),
             "account",
             "key");
