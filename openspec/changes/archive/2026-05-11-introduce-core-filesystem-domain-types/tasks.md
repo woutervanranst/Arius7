@@ -17,18 +17,18 @@
 - [x] 3.1 Add internal `BinaryFile`, `PointerFile`, and `FilePair` records with relative paths only and no host full-path fields.
 - [x] 3.2 Refactor local file enumeration to produce archive-time `FilePair` values using `RelativeFileSystem.EnumerateFiles()` and pointer path helpers.
 - [x] 3.3 Add tests for binary-only, pointer-only, binary+pointer, invalid pointer content, inaccessible file handling, and streaming/no-materialization enumeration behavior.
-- [x] 3.4 Archive no longer rejects ordinal case-insensitive relative path collisions during enumeration; defer any collision failure to restore-time behavior.
+- [x] 3.4 Archive does not introduce separate case-insensitive path-collision rejection during enumeration; broader cross-OS conflict handling remains outside this change.
 
 ## 4. Archive And Filetree Refactor
 
-- [x] 4.1 Refactor `ArchiveCommandHandler` internals to consume `RelativePath`, `BinaryFile`, `PointerFile`, `FilePair`, and `RelativeFileSystem` while preserving public string contracts and event payload shapes.
-- [x] 4.2 Refactor file hashing, upload, pointer writing, local binary removal, and progress callbacks to use relative paths internally and convert to strings only at public/logging boundaries.
+- [x] 4.1 Refactor `ArchiveCommandHandler` internals to consume `RelativePath`, `BinaryFile`, `PointerFile`, `FilePair`, and `RelativeFileSystem` while allowing public contracts to expose `RelativePath` where adopted.
+- [x] 4.2 Refactor file hashing, upload, pointer writing, local binary removal, and progress callbacks to use relative paths internally and convert to strings only at public/logging boundaries where needed.
 - [x] 4.3 Refactor `FileTreeStagingWriter`, filetree entry construction, and traversal helpers to accept validated `RelativePath` and `PathSegment` values instead of ad hoc path strings.
 - [x] 4.4 Add/update archive and filetree tests for canonical path staging, invalid staged path rejection, and filetree traversal by relative path composition.
 
 ## 5. List And Restore Refactor
 
-- [x] 5.1 Refactor `ListQueryHandler` to parse prefix/local path strings at the boundary, traverse with `RelativePath`, and perform local/cloud merge through `RelativeFileSystem` while returning existing string DTOs.
+- [x] 5.1 Refactor `ListQueryHandler` to parse host path strings at the boundary, traverse with `RelativePath`, and perform local/cloud merge through `RelativeFileSystem` while allowing public APIs to expose `RelativePath` where adopted.
 - [x] 5.2 Add/update list tests for segment-aware prefix matching, local/cloud merge with relative paths, pointer presence reporting, and no-local-path behavior.
 - [x] 5.3 Refactor `RestoreCommandHandler` to parse target/root strings at the boundary and represent restore candidates with relative paths, content hashes, timestamps, and chunk metadata rather than archive-time file-pair objects.
 - [x] 5.4 Refactor restore conflict checks, streaming writes, directory creation, local hashing, pointer-file creation, and progress identifiers to use `RelativePath` and `RelativeFileSystem` internally.
@@ -43,6 +43,6 @@
 ## 7. Sweep And Verification
 
 - [x] 7.1 Sweep `src/Arius.Core` for remaining path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary; refactor or document intentional exceptions.
-- [x] 7.2 Run Arius.Core-focused unit tests and update any affected tests to assert behavior through public string contracts and internal relative path behavior where appropriate.
+- [x] 7.2 Run Arius.Core-focused unit tests and update any affected tests to assert behavior through public contracts and internal relative path behavior where appropriate.
 - [x] 7.3 Run broader relevant test projects after the refactor (`Arius.Core.Tests`, `Arius.Cli.Tests`, `Arius.Architecture.Tests`, and integration tests if affected).
 - [x] 7.4 Run the .NET slopwatch quality gate after code changes and address any shortcuts or suppressed failures it reports.
