@@ -1,8 +1,10 @@
 ---
 status: "accepted"
-date: 2026-05-07
-decision-makers: "Wouter Van Ranst"
-consulted: "OpenCode"
+date: 2026-05-11
+decision-makers: ["Wouter Van Ranst"]
+consulted: ["OpenCode"]
+informed: ["Arius maintainers"]
+confidence: "high"
 ---
 
 # Introduce strong filesystem domain types in Arius.Core with a narrow public surface
@@ -13,7 +15,7 @@ Arius.Core currently uses raw strings for several different path concepts: archi
 
 Arius archives should be portable across Windows, macOS, and Linux. That makes path handling part of the domain model, not just implementation plumbing: archive paths need one canonical representation, path prefix checks need to be segment-aware, and restore must gracefully handle names that are valid on the source platform but unsafe on the target platform. Archive should not fail on Linux merely because a path would be awkward on Windows; cross-OS restore conflicts are tracked separately in [GitHub issue #82](https://github.com/woutervanranst/Arius7/issues/82).
 
-The earlier `feat/path-helpers` branch showed that a typed path model improves correctness and developer experience, especially with a `RelativePath` type and `/` path composition operator. It also exposed the wrong boundary: too many operational types leaked outward and a broad filesystem wrapper started to look like a Zio-style filesystem abstraction. This decision keeps the useful domain model, allows stable path primitives in public APIs, and keeps archive-time and local-filesystem operational types internal.
+The question for this ADR is how Arius.Core should represent internal filesystem paths and local filesystem access so path handling is portable, safe, and not overly abstracted.
 
 ## Decision Drivers
 
@@ -36,6 +38,26 @@ The earlier `feat/path-helpers` branch showed that a typed path model improves c
 ## Decision Outcome
 
 Chosen option: "Introduce a small filesystem domain model centered on public path primitives, internal archive-time file records, and a concrete rooted filesystem boundary", because it captures Arius path semantics without building a broad filesystem abstraction.
+
+Confidence: high. The selected model keeps path semantics explicit while avoiding a broad virtual filesystem abstraction; the remaining risk is refactor scope, not uncertainty about the direction.
+
+The practical effect of this decision should be visible at a glance:
+
+Before:
+
+```csharp
+var path = rawPath.Replace('\\', '/');
+var pointerPath = path + ".pointer.arius";
+var fullPath = Path.Combine(root, path);
+```
+
+After:
+
+```csharp
+var path = RelativePath.Root / "photos" / "2024" / "pic.jpg";
+var pointerPath = path.ToPointerPath();
+using var stream = relativeFileSystem.OpenRead(path);
+```
 
 The core domain path type will be a public `RelativePath` in `Arius.Core.Shared.FileSystem`. It represents a canonical relative path using `/` separators. It rejects rooted paths, empty non-root paths, empty segments, `.` and `..`, backslashes, control characters, and malformed separators. `RelativePath.Root` represents the empty root path. Prefix operations must be segment-aware so `photos` does not match `photoshop`.
 
@@ -150,7 +172,7 @@ Repository directory contracts should stop encoding directory-ness in a trailing
 
 If a caller wants to display a directory marker such as a trailing slash, that formatting belongs in the presentation layer, not in the canonical path value carried by Core contracts.
 
-### Consequences
+### Consequences and Tradeoffs
 
 * Good, because archive, list, restore, filetree, blob, and cache code can share one canonical relative path model instead of repeating string normalization.
 * Good, because stable path primitives are available to tests and domain-adjacent code without `InternalsVisibleTo` workarounds.
@@ -185,7 +207,7 @@ Examples include separate `RepositoryPath`, `BlobPath`, `CachePath`, `LocalRootP
 * Good, because it gives stronger compile-time separation between path worlds.
 * Good, because repository paths cannot accidentally be passed where blob paths are expected.
 * Bad, because it adds many names and conversions before Arius has evidence that those mixups are common.
-* Bad, because the previous branch showed that many path types can ripple widely and make everyday code harder to read.
+* Bad, because many path types can ripple widely and make everyday code harder to read.
 * Bad, because `LocalRootPath` and `RootedPath` were mechanically useful but confusing as central concepts.
 
 ### Adopt or emulate a virtual filesystem abstraction
@@ -196,7 +218,7 @@ Examples include using Zio or building an `ILocalFileSystem`-style interface wit
 * Good, because it can model path spaces explicitly.
 * Bad, because Arius does not currently need a replaceable virtual filesystem.
 * Bad, because a broad API would hide IO costs and make the abstraction larger than the problem.
-* Bad, because the earlier Zio-inspired approach felt too drastic for the current codebase.
+* Bad, because a Zio-inspired approach is too drastic for the current codebase.
 
 ### Small filesystem domain model with narrow public primitives
 
@@ -206,7 +228,7 @@ This is the chosen option.
 * Good, because it keeps `RelativePath` as the domain coordinate system: archive strips the root, filetrees are built from relative paths, list traverses relative paths, and restore adds a root back only at the filesystem boundary.
 * Good, because `RelativePath` and `PathSegment` can be used directly in tests, storage boundaries, and domain-adjacent APIs without broad `InternalsVisibleTo` expansion.
 * Good, because it removes scattered `System.IO` usage without pretending filesystem behavior belongs on domain value objects.
-* Good, because it preserves the useful parts of the previous branch while avoiding its public API and abstraction-size problems.
+* Good, because it keeps the useful domain model while avoiding public API and abstraction-size problems.
 * Bad, because it still requires a substantial refactor and careful staged implementation.
 * Bad, because public path primitives require discipline to keep operational filesystem/archive types out of public contracts.
 
