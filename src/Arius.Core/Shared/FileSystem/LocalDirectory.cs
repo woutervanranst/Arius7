@@ -84,11 +84,20 @@ internal readonly record struct LocalDirectory
 
     private bool IsContained(string fullPath)
     {
-        if (string.Equals(fullPath, Value, StringComparison.Ordinal))
+        var comparison = Path.DirectorySeparatorChar == '\\'
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (string.Equals(fullPath, Value, comparison))
             return true;
 
-        var rootWithSeparator = Value + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(rootWithSeparator, StringComparison.Ordinal);
+        var pathRoot = Path.GetPathRoot(Value);
+        var rootWithSeparator = Value.EndsWith(Path.DirectorySeparatorChar)
+            || string.Equals(Value, pathRoot, comparison)
+                ? Value
+                : Value + Path.DirectorySeparatorChar;
+
+        return fullPath.StartsWith(rootWithSeparator, comparison);
     }
 
     private static string TrimTrailingDirectorySeparator(string path)
