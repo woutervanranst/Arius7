@@ -63,8 +63,13 @@ public class ChooseRepositoryViewModelTests
     }
 
     [Test]
-    public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst()
+    public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst() // NOTE: Flaky test
     {
+        /* NOTE: This is a flaky test. Root cause:
+         * - The waiter subscribed to the original ContainerNames instance once.
+         * - ChooseRepositoryViewModel replaces ContainerNames with a new ObservableCollection.
+         * - In CI, the waiter could miss the new collection’s change notifications and time out, surfacing as OperationCanceledException.
+         */
         var mediator = Substitute.For<IMediator>();
         var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
