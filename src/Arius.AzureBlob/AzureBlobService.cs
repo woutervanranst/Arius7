@@ -30,7 +30,7 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
         static async Task<bool> IsAriusArchive(BlobContainerClient containerClient, CancellationToken cancellationToken)
         {
             var page = await containerClient
-                .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix + "/", cancellationToken)
+                .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix.ToBlobPrefix(), cancellationToken)
                 .AsPages(pageSizeHint: 1)
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);

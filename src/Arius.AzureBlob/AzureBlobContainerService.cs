@@ -139,7 +139,11 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var item in _container.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: prefix.ToString(), cancellationToken: cancellationToken))
+        await foreach (var item in _container.GetBlobsAsync(
+                           traits: BlobTraits.None,
+                           states: BlobStates.None,
+                           prefix: prefix.ToBlobPrefix(),
+                           cancellationToken: cancellationToken))
             yield return RelativePath.Parse(item.Name);
     }
 
