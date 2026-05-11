@@ -185,29 +185,4 @@ internal sealed class RelativeFileSystem
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
-
-    public static RelativeFileSystem FromCurrentDirectory() =>
-        new(LocalDirectory.Parse(Directory.GetCurrentDirectory()));
-
-    public static RelativeFileSystem CreateTemporaryWorkspace(PathSegment workspaceName) =>
-        new(LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), "arius", workspaceName.ToString(), Guid.NewGuid().ToString("N"))));
-
-    public static (RelativeFileSystem FileSystem, PathSegment FileName) FromFilePath(string filePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-
-        var directoryPath = Path.GetDirectoryName(filePath)
-            ?? throw new ArgumentException("Path must include a directory.", nameof(filePath));
-        var fileName = PathSegment.Parse(Path.GetFileName(filePath));
-
-        return (new RelativeFileSystem(LocalDirectory.Parse(directoryPath)), fileName);
-    }
-
-    public bool FileExistsInRoot(PathSegment fileName) => FileExists(RelativePath.Root / fileName);
-
-    public Stream OpenReadFromRoot(PathSegment fileName) => OpenRead(RelativePath.Root / fileName);
-
-    public RelativePath RootFile(PathSegment fileName) => RelativePath.Root / fileName;
-
-    public string DescribeRootFile(PathSegment fileName) => _root.Resolve(RootFile(fileName));
 }
