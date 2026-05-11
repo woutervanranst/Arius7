@@ -301,7 +301,7 @@ public sealed class RestoreCommandHandler
                 }
 
                 // Build cost estimate via the calculator (pricing config loaded from override or embedded default)
-                var costEstimate = RestoreCostCalculator.Compute(
+                var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
                     chunksAvailable: available.Count,
                     chunksAlreadyRehydrated: 0,
                     chunksNeedingRehydration: needsRehydration.Count,
