@@ -15,27 +15,6 @@ internal sealed class RelativeFileSystem
     }
 
     /// <summary>
-    /// Enumerates all files under the rooted directory as repository-relative entries.
-    /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles()
-    {
-        foreach (var filePath in Directory.EnumerateFiles(_root.ToString(), "*", SearchOption.AllDirectories))
-        {
-            if (!_root.TryGetRelativePath(filePath, out var relativePath))
-                continue;
-
-            var fileInfo = new FileInfo(filePath);
-            yield return new LocalFileEntry
-            {
-                Path = relativePath,
-                Size = fileInfo.Length,
-                Created = new DateTimeOffset(fileInfo.CreationTimeUtc, TimeSpan.Zero),
-                Modified = new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero)
-            };
-        }
-    }
-
-    /// <summary>
     /// Enumerates immediate child directories of the provided relative path.
     /// </summary>
     public IEnumerable<LocalDirectoryEntry> EnumerateDirectories(RelativePath path)
@@ -50,11 +29,18 @@ internal sealed class RelativeFileSystem
     }
 
     /// <summary>
+    /// Enumerates all files under the rooted directory as repository-relative entries.
+    /// </summary>
+    public IEnumerable<LocalFileEntry> EnumerateFiles() => EnumerateFiles(_root.ToString(), SearchOption.AllDirectories);
+
+    /// <summary>
     /// Enumerates immediate child files of the provided relative path.
     /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path)
+    public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path) => EnumerateFiles(_root.Resolve(path), SearchOption.TopDirectoryOnly);
+
+    private IEnumerable<LocalFileEntry> EnumerateFiles(string fullPath, SearchOption searchOption)
     {
-        foreach (var filePath in Directory.EnumerateFiles(_root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
+        foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", searchOption))
         {
             if (!_root.TryGetRelativePath(filePath, out var relativePath))
                 continue;
@@ -62,9 +48,9 @@ internal sealed class RelativeFileSystem
             var fileInfo = new FileInfo(filePath);
             yield return new LocalFileEntry
             {
-                Path = relativePath,
-                Size = fileInfo.Length,
-                Created = new DateTimeOffset(fileInfo.CreationTimeUtc, TimeSpan.Zero),
+                Path     = relativePath,
+                Size     = fileInfo.Length,
+                Created  = new DateTimeOffset(fileInfo.CreationTimeUtc,  TimeSpan.Zero),
                 Modified = new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero)
             };
         }
