@@ -33,7 +33,7 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
                 .ConfigureAwait(false);
 
             // We agree that a container is an Arius archive if it contains any blobs under the "snapshots/" prefix, excluding the edge case should a "snapshots/" blob exist without any actual snapshots.
-            return page?.Values.Any(i => i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
+            return page?.Values.Any(i => !i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
         }
     }
 
