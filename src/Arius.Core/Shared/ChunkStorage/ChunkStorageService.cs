@@ -111,7 +111,7 @@ public sealed class ChunkStorageService : IChunkStorageService
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = _encryption.WrapForEncryption(countingStream);
-                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
+                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.SmallestSize, leaveOpen: true);
                 var progressStream = progress is null
                     ? null
                     : new ProgressStream(content, new CallbackProgress(bytesRead =>

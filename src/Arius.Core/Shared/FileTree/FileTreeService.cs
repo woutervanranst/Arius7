@@ -205,7 +205,7 @@ public sealed class FileTreeService
         var ms        = new MemoryStream();
 
         await using (var encStream = _encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzipStream.WriteAsync(plaintext, cancellationToken);
         }

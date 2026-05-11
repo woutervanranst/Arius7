@@ -479,7 +479,7 @@ public class FileTreeServiceTests
         var ms = new MemoryStream();
 
         await using (var encStream = encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzipStream.WriteAsync(plaintext);
         }

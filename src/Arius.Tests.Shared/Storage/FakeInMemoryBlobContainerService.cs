@@ -192,7 +192,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     private static async Task<byte[]> GzipAsync(byte[] content)
     {
         await using var compressed = new MemoryStream();
-        await using (var gzip = new GZipStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzip.WriteAsync(content);
         }

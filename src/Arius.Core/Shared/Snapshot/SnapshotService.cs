@@ -68,7 +68,7 @@ public static class SnapshotSerializer
 
         // gzip first, then optional encrypt
         await using (var encStream = encryption.WrapForEncryption(ms))
-        await using (var gzip     = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzip     = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzip.WriteAsync(json, cancellationToken);
         }
