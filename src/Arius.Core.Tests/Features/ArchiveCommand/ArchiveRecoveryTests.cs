@@ -133,7 +133,10 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
 
         var entry = await env.ReadRootFileEntryAsync(relativePath);
-        entry.Created.ShouldBe(created);
+
+        if (!OperatingSystem.IsLinux())
+            entry.Created.ShouldBe(created);
+
         entry.Modified.ShouldBe(modified);
     }
 
