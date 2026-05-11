@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -79,20 +78,16 @@ internal sealed class PricingConfig
     /// <exception cref="InvalidOperationException">Thrown when a found override file cannot be parsed.</exception>
     public static PricingConfig Load()
     {
-        var currentDirectory = RelativeFileSystem.FromCurrentDirectory();
-        var pricingFileName = PathSegment.Parse("pricing.json");
-        var currentDirectoryPath = currentDirectory.DescribeRootFile(pricingFileName);
+        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), "pricing.json");
 
         // 1. Working directory override
-        if (currentDirectory.FileExistsInRoot(pricingFileName))
-            return LoadFromFileSystem(currentDirectory, pricingFileName, currentDirectoryPath);
+        if (File.Exists(currentDirectoryPath))
+            return LoadFromFile(currentDirectoryPath);
 
         // 2. ~/.arius/ override
-        var homeDirectory = LocalDirectory.Parse(GetUserHomeDirectory());
-        var ariusConfigFileSystem = new RelativeFileSystem(LocalDirectory.Parse(homeDirectory.Resolve(RelativePath.Parse(".arius"))));
-        var ariusConfigPath = ariusConfigFileSystem.DescribeRootFile(pricingFileName);
-        if (ariusConfigFileSystem.FileExistsInRoot(pricingFileName))
-            return LoadFromFileSystem(ariusConfigFileSystem, pricingFileName, ariusConfigPath);
+        var ariusConfigPath = Path.Combine(GetUserHomeDirectory(), ".arius", "pricing.json");
+        if (File.Exists(ariusConfigPath))
+            return LoadFromFile(ariusConfigPath);
 
         // 3. Embedded resource default
         return LoadEmbedded();
@@ -102,8 +97,7 @@ internal sealed class PricingConfig
     {
         try
         {
-            var (fileSystem, fileName) = RelativeFileSystem.FromFilePath(path);
-            using var stream = fileSystem.OpenReadFromRoot(fileName);
+            using var stream = File.OpenRead(path);
             return LoadFromFile(stream, path);
         }
         catch (JsonException ex)
@@ -125,12 +119,6 @@ internal sealed class PricingConfig
         {
             throw new InvalidOperationException($"Failed to parse pricing config at '{sourceDescription}': {ex.Message}", ex);
         }
-    }
-
-    private static PricingConfig LoadFromFileSystem(RelativeFileSystem fileSystem, PathSegment fileName, string sourceDescription)
-    {
-        using var stream = fileSystem.OpenReadFromRoot(fileName);
-        return LoadFromFile(stream, sourceDescription);
     }
 
     private static string GetUserHomeDirectory()
