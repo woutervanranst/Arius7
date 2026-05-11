@@ -5,25 +5,24 @@ decision-makers: "Wouter Van Ranst"
 consulted: "OpenCode"
 ---
 
-# Introduce filesystem domain types in Arius.Core with a narrow public surface
+# Introduce strong filesystem domain types in Arius.Core with a narrow public surface
 
 ## Context and Problem Statement
 
 Arius.Core currently uses raw strings for several different path concepts: archive-relative binary file paths, pointer file paths, filetree entry names, local filesystem paths, blob virtual names, and local cache paths. The result is repeated separator normalization, pointer suffix manipulation, root stripping/re-rooting, and direct `File.*`, `Directory.*`, and `Path.*` usage spread through archive, list, restore, filetree, storage, and cache code.
 
-Arius archives should be portable across Windows, macOS, and Linux. That makes path handling part of the domain model, not just implementation plumbing: archive paths need one canonical representation, path prefix checks need to be segment-aware, and case-only collisions that are valid on Linux but unsafe on Windows must be rejected before publishing repository state.
+Arius archives should be portable across Windows, macOS, and Linux. That makes path handling part of the domain model, not just implementation plumbing: archive paths need one canonical representation, path prefix checks need to be segment-aware, and restore must gracefully handle names that are valid on the source platform but unsafe on the target platform. Archive should not fail on Linux merely because a path would be awkward on Windows; cross-OS restore conflicts are tracked separately in [GitHub issue #82](https://github.com/woutervanranst/Arius7/issues/82).
 
 The earlier `feat/path-helpers` branch showed that a typed path model improves correctness and developer experience, especially with a `RelativePath` type and `/` path composition operator. It also exposed the wrong boundary: too many operational types leaked outward and a broad filesystem wrapper started to look like a Zio-style filesystem abstraction. This decision keeps the useful domain model, allows stable path primitives in public APIs, and keeps archive-time and local-filesystem operational types internal.
 
 ## Decision Drivers
 
-* Arius.Core should make invalid archive paths unrepresentable or fail-fast close to the boundary.
+* Arius.Core should make invalid paths unrepresentable or fail-fast close to the boundary.
 * Archive/list/restore/filetree code should operate on domain-relative paths, not host full-path strings.
 * Public command/query/result/event contracts should use stable Arius domain primitives when the value is genuinely an Arius domain path or path segment.
-* Stable domain primitives should not be forced internal when that creates conversion friction without protecting a meaningful boundary.
 * Developer experience should stay lightweight; path construction in tests and focused Core code should not require verbose `PathSegment.Parse("...")` chains.
-* Arius archives should remain cross-OS restorable, even when a source filesystem allows names another target OS cannot represent safely.
-* Direct local filesystem APIs should be quarantined so they do not incentivize new stringly path code.
+* Arius archives should preserve source-platform paths faithfully; target-platform conflicts should be handled during restore rather than by rejecting archival on more permissive filesystems.
+* Direct local filesystem APIs should be abstracted so they do not incentivize new stringly path code.
 * Adapters should own parsing and formatting of foreign string representations, while Core owns typed Arius path semantics.
 * The solution should be smaller than a virtual filesystem library and should not require StronglyTypedId, Vogen, Zio, or code generation unless a later implementation need proves otherwise.
 
@@ -40,7 +39,7 @@ Chosen option: "Introduce a small filesystem domain model centered on public pat
 
 The core domain path type will be a public `RelativePath` in `Arius.Core.Shared.FileSystem`. It represents a canonical relative path using `/` separators. It rejects rooted paths, empty non-root paths, empty segments, `.` and `..`, backslashes, control characters, and malformed separators. `RelativePath.Root` represents the empty root path. Prefix operations must be segment-aware so `photos` does not match `photoshop`.
 
-`RelativePath` is public because it is an Arius domain primitive, similar in kind to `ContentHash`, `ChunkHash`, and `FileTreeHash`. Archive strips a local root into relative paths, filetrees are built from relative paths, list traverses relative paths, restore re-roots relative paths, and blob/cache logical names often use the same slash-normalized relative path shape. Keeping this type internal creates unnecessary conversion pressure in tests, storage boundaries, and domain-adjacent public contracts without materially improving encapsulation.
+`RelativePath` is a public Arius domain primitive. Archive strips a local root into relative paths, filetrees are built from relative paths, list traverses relative paths, restore re-roots relative paths, and blob/cache logical names often use the same slash-normalized relative path shape.
 
 `RelativePath` will preserve the developer experience from the earlier branch:
 
@@ -54,7 +53,7 @@ The `/ string` operator appends exactly one validated segment. It is not an impl
 
 Use `RelativePath` when a value can legally contain multiple segments or denotes a subtree root, logical prefix, or repository-relative path. Use `PathSegment` only when the value is semantically exactly one name component.
 
-The public filesystem-domain surface is intentionally narrow by default:
+The filesystem-domain surface is intentionally narrow by default:
 
 ```text
 Public:
@@ -62,9 +61,9 @@ Public:
 - PathSegment
 
 Internal:
-- BinaryFile
-- PointerFile
-- FilePair
+- ArchiveCommand.BinaryFile
+- ArchiveCommand.PointerFile
+- ArchiveCommand.FilePair
 - LocalDirectory
 - RelativeFileSystem
 - LocalFileEntry
@@ -82,7 +81,7 @@ path.ToPointerPath()
 path.ToBinaryPath()
 ```
 
-Archive-time local file state will be modeled with internal `BinaryFile`, `PointerFile`, and `FilePair` records. These are archive-time objects only and must not carry host full-path strings.
+Archive-time local file state will be modeled with internal `BinaryFile`, `PointerFile`, and `FilePair` records in the archive command vertical slice. 
 
 ```csharp
 internal sealed record BinaryFile
@@ -102,17 +101,17 @@ internal sealed record PointerFile
 
 internal sealed record FilePair
 {
-    public required RelativePath Path { get; init; }
+    public required RelativePath RelativePath { get; init; }
     public BinaryFile? Binary { get; init; }
     public PointerFile? Pointer { get; init; }
 }
 ```
 
-`FilePair.Path` is always the binary path, including pointer-only files. A pair may be binary-only, pointer-only, or contain both.
+`FilePair.RelativePath` is always the binary path, including pointer-only files. A pair may be binary-only, pointer-only, or contain both. These types belong to the archive pipeline slice, not to shared filesystem infrastructure or public contracts.
 
-Restore-time files must not reuse `BinaryFile`, `PointerFile`, or `FilePair`. Restore should use its own restore candidate model based on `RelativePath`, `ContentHash`, timestamps, and chunk metadata. Restore can still use centralized pointer path derivation when writing pointer files.
+Other feature slices must not reuse `BinaryFile`, `PointerFile`, or `FilePair`. Restore should use its own restore candidate model based on `RelativePath`, `ContentHash`, timestamps, and chunk metadata. Restore can still use centralized pointer path derivation when writing pointer files.
 
-Local filesystem access will be quarantined behind a concrete internal `RelativeFileSystem` rooted at a `LocalDirectory`. This avoids the confusing `LocalRootPath`/`RootedPath` model from the earlier branch and avoids introducing an `ILocalFileSystem` interface until there is a real need for substitution.
+Local filesystem access will be abstracted behind a concrete internal `RelativeFileSystem` rooted at a `LocalDirectory`. The key interface shape is intentionally small and should grow only when Core needs another rooted filesystem operation:
 
 ```csharp
 internal sealed class RelativeFileSystem
@@ -134,7 +133,7 @@ internal sealed class RelativeFileSystem
 
 `LocalDirectory` is a typed root token, not a domain path. `RelativeFileSystem` converts `LocalDirectory + RelativePath` to host paths, enforces containment under the root, and is the only place that should use direct `System.IO` APIs for Arius local filesystem domain work.
 
-`RelativePath` will also be used for slash-normalized logical paths such as blob virtual names and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
+`RelativePath` will also be used for slash-normalized logical paths such as azure blob virtual paths and cache-relative paths where it improves correctness. Storage interfaces may accept `RelativePath` because the type is public; backend SDK boundaries still convert to raw strings.
 
 The ownership rule is semantic, not directional:
 
@@ -158,20 +157,16 @@ If a caller wants to display a directory marker such as a trailing slash, that f
 * Good, because public contracts use the same stable domain primitive as Core instead of repeatedly converting path strings at every boundary.
 * Good, because `RelativeFileSystem` makes direct host filesystem calls visible and centralized without committing Arius to a virtual filesystem abstraction.
 * Good, because `RelativePath.Root / "photos" / "pic.jpg"` gives tests and focused Core code readable path construction while still validating every segment.
+* Good, because archive remains permissive toward source-platform-valid paths while restore owns target-platform conflict handling.
 * Bad, because one generic `RelativePath` can still mix repository paths and blob/cache paths. If real mistakes appear, add semantic wrappers later rather than front-loading ceremony.
 * Bad, because making `RelativePath` and `PathSegment` public creates a compatibility surface that should be kept stable.
 * Bad, because typed public feature contracts can ripple into CLI, UI, tests, or external consumers when a contract is changed from string to `RelativePath`.
+* Bad, because cross-OS path conflicts still need restore-time policy and UX work; see [GitHub issue #82](https://github.com/woutervanranst/Arius7/issues/82).
 * Bad, because the refactor is broad and will touch archive, restore, list, filetree, storage helper, cache helper, and tests.
 
 ### Confirmation
 
-Implementation must be confirmed by tests and code review:
-
-* Unit tests for `RelativePath` parsing, root handling, segment-aware prefix behavior, `/ string` composition, invalid segment rejection, and pointer path derivation.
-* Tests for `BinaryFile`, `PointerFile`, and `FilePair` enumeration cases: binary-only, pointer-only, binary plus pointer, invalid pointer content, inaccessible files, and streaming/no-materialization behavior.
-* Tests proving `RelativeFileSystem` strips the configured root, prevents root escape, and centralizes local filesystem operations behind `RelativePath` arguments.
-* List and restore tests proving prefix traversal is segment-aware and public path outputs use `RelativePath` / `PathSegment` where the contract value is an Arius domain path or path segment.
-* A code sweep of `src/Arius.Core` for path-like raw strings and direct `File.*`, `Directory.*`, and `Path.*` usage outside the filesystem boundary, with intentional exceptions documented.
+Implementation must be confirmed by tests and code review covering the behavioral boundaries: path validation and composition, pointer path derivation, archive-time file pairing, rooted filesystem containment, segment-aware list/restore traversal, and the quarantine of direct local filesystem IO. The archived OpenSpec change records the detailed implementation tasks and final scope decisions.
 
 ## Pros and Cons of the Options
 
@@ -217,4 +212,4 @@ This is the chosen option.
 
 ## More Information
 
-This ADR is reflected in the OpenSpec change `introduce-core-filesystem-domain-types` under `openspec/changes/archive/2026-05-06-introduce-core-filesystem-domain-types/`. The OpenSpec proposal, design, specs, and tasks describe the planned implementation sequence, but this ADR is intended to stand on its own as the architectural decision.
+This ADR is reflected in the OpenSpec change `introduce-core-filesystem-domain-types` under `openspec/changes/archive/2026-05-11-introduce-core-filesystem-domain-types/`. The OpenSpec proposal, design, specs, and tasks describe the implementation sequence and final scope decisions, while this ADR stands on its own as the architectural decision.
