@@ -78,56 +78,30 @@ internal sealed class PricingConfig
     /// <exception cref="InvalidOperationException">Thrown when a found override file cannot be parsed.</exception>
     public static PricingConfig Load()
     {
-        var currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), "pricing.json");
-
         // 1. Working directory override
-        if (File.Exists(currentDirectoryPath))
-            return LoadFromFile(currentDirectoryPath);
+        var cwdPath = Path.Combine(Directory.GetCurrentDirectory(), "pricing.json");
+        if (File.Exists(cwdPath))
+            return LoadFromFile(cwdPath);
 
         // 2. ~/.arius/ override
-        var ariusConfigPath = Path.Combine(GetUserHomeDirectory(), ".arius", "pricing.json");
-        if (File.Exists(ariusConfigPath))
-            return LoadFromFile(ariusConfigPath);
-
-        // 3. Embedded resource default
-        return LoadEmbedded();
+        var homeDir   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var ariusPath = Path.Combine(homeDir, ".arius", "pricing.json");
+        if (File.Exists(ariusPath))
+            return LoadFromFile(ariusPath);
     }
 
     public static PricingConfig LoadFromFile(string path)
     {
         try
         {
-            using var stream = File.OpenRead(path);
-            return LoadFromFile(stream, path);
+            using var fs     = File.OpenRead(path);
+            var       result = JsonSerializer.Deserialize<PricingConfig>(fs, _jsonOptions);
+            return result ?? throw new InvalidOperationException($"Pricing file deserialized to null: {path}");
         }
         catch (JsonException ex)
         {
             throw new InvalidOperationException($"Failed to parse pricing config at '{path}': {ex.Message}", ex);
         }
-    }
-
-    private static PricingConfig LoadFromFile(Stream stream, string sourceDescription)
-    {
-        ArgumentNullException.ThrowIfNull(stream);
-
-        try
-        {
-            var result = JsonSerializer.Deserialize<PricingConfig>(stream, _jsonOptions);
-            return result ?? throw new InvalidOperationException($"Pricing file deserialized to null: {sourceDescription}");
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException($"Failed to parse pricing config at '{sourceDescription}': {ex.Message}", ex);
-        }
-    }
-
-    private static string GetUserHomeDirectory()
-    {
-        var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrWhiteSpace(home))
-            return home;
-
-        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     }
 
     public static PricingConfig LoadEmbedded()
