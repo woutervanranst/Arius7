@@ -14,7 +14,6 @@ namespace Arius.AzureBlob;
 public sealed class AzureBlobService(BlobServiceClient serviceClient, string accountName, string authMode) : IBlobService
 {
     private const string PreflightProbeBlobName = ".arius-preflight-probe";
-    private const string SnapshotsPrefix = "snapshots/";
 
     public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -23,24 +22,20 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             cancellationToken.ThrowIfCancellationRequested();
 
             var containerClient = serviceClient.GetBlobContainerClient(container.Name);
-            var hasSnapshot = false;
 
-            await foreach (var page in containerClient
-                                .GetBlobsAsync(BlobTraits.None, BlobStates.None, SnapshotsPrefix, cancellationToken)
-                                .AsPages(pageSizeHint: 1)
-                                .ConfigureAwait(false))
-            {
-                if (page.Values.Any(item => HasPrefix(item.Name, BlobPaths.SnapshotsPrefix)))
-                {
-                    hasSnapshot = true;
-                    break;
-                }
-            }
-
-            if (hasSnapshot)
-            {
+            if (await IsAriusArchive(containerClient, cancellationToken).ConfigureAwait(false))
                 yield return container.Name;
-            }
+        }
+
+        static async Task<bool> IsAriusArchive(BlobContainerClient containerClient, CancellationToken cancellationToken)
+        {
+            var page = await containerClient
+                .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix + "/", cancellationToken)
+                .AsPages(pageSizeHint: 1)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            return page?.Values.Any() ?? false;
         }
     }
 
@@ -115,7 +110,4 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
 
         return new AzureBlobContainerService(containerClient);
     }
-
-    private static bool HasPrefix(string blobName, RelativePath prefix) =>
-        RelativePath.TryParse(blobName, out var path) && path.StartsWith(prefix);
 }
