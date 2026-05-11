@@ -6,7 +6,7 @@ namespace Arius.Core.Features.RestoreCommand;
 /// <summary>
 /// Pricing rates for archive-tier read operations.
 /// </summary>
-internal sealed class ArchivePricingTier
+internal sealed record ArchivePricingTier
 {
     /// <summary>EUR per GB of data retrieved from Archive at Standard priority.</summary>
     [JsonPropertyName("retrievalPerGB")]
@@ -28,7 +28,7 @@ internal sealed class ArchivePricingTier
 /// <summary>
 /// Pricing rates for a target storage tier (Hot/Cool/Cold).
 /// </summary>
-internal sealed class TierPricingConfig
+internal sealed record TierPricingConfig
 {
     /// <summary>EUR per 10,000 write operations.</summary>
     [JsonPropertyName("writeOpsPer10000")]
@@ -42,7 +42,7 @@ internal sealed class TierPricingConfig
 /// <summary>
 /// Root pricing configuration loaded from <c>pricing.json</c>.
 /// </summary>
-internal sealed class PricingConfig
+internal sealed record PricingConfig
 {
     [JsonPropertyName("archive")]
     public ArchivePricingTier Archive { get; init; } = new();

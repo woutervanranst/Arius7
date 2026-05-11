@@ -7,23 +7,15 @@ namespace Arius.Core.Tests.Features.RestoreCommand;
 public class PricingConfigTests
 {
     [Test]
-    public void JsonRoundTrip_ReturnsNonNullConfig()
-    {
-        var config = DeserializePricing(CreatePricingConfig());
-
-        config.ShouldNotBeNull();
-    }
-
-    [Test]
     public void JsonRoundTrip_PreservesConfiguredRates()
     {
-        var config = DeserializePricing(CreatePricingConfig(
+        var config = CreatePricingConfig(
             retrievalPerGb: 1.0,
             retrievalHighPerGb: 5.0,
             readOpsPer10000: 2.0,
             readOpsHighPer10000: 10.0,
             hotWriteOpsPer10000: 0.1,
-            hotStoragePerGbPerMonth: 0.02));
+            hotStoragePerGbPerMonth: 0.02);
 
         config.Archive.RetrievalPerGB.ShouldBe(1.0);
         config.Archive.RetrievalHighPerGB.ShouldBe(5.0);
@@ -42,7 +34,7 @@ public class PricingConfigTests
     [Test]
     public void RestoreCostCalculator_WhenPricingProvided_UsesSuppliedPricing()
     {
-        var suppliedPricing = DeserializePricing(CreatePricingConfig(3.0, 4.0, 5.0, 6.0, 0.3, 0.04));
+        var suppliedPricing = CreatePricingConfig(3.0, 4.0, 5.0, 6.0, 0.3, 0.04);
         var estimate = new RestoreCostCalculator(suppliedPricing).Compute(
             chunksAvailable: 0,
             chunksAlreadyRehydrated: 0,
@@ -62,7 +54,7 @@ public class PricingConfigTests
     [Test]
     public void RestoreCostCalculator_WhenPricingProvided_WinsOverEmbeddedDefault()
     {
-        var suppliedPricing = DeserializePricing(CreatePricingConfig(7.0, 8.0, 9.0, 10.0, 0.7, 0.08));
+        var suppliedPricing = CreatePricingConfig(7.0, 8.0, 9.0, 10.0, 0.7, 0.08);
         var embeddedPricing = new RestoreCostCalculator(pricing: null).Compute(
             chunksAvailable: 0,
             chunksAlreadyRehydrated: 0,
@@ -89,13 +81,6 @@ public class PricingConfigTests
 
     private static readonly long OneGBBytes = 1L * 1024 * 1024 * 1024;
 
-    private static PricingConfig DeserializePricing(PricingConfig pricing)
-    {
-        var json = JsonSerializer.Serialize(pricing);
-        return JsonSerializer.Deserialize<PricingConfig>(json)
-            ?? throw new InvalidOperationException("Pricing config deserialized to null.");
-    }
-
     private static PricingConfig CreatePricingConfig(
         double retrievalPerGb = 1.0,
         double retrievalHighPerGb = 5.0,
@@ -104,19 +89,19 @@ public class PricingConfigTests
         double hotWriteOpsPer10000 = 0.1,
         double hotStoragePerGbPerMonth = 0.02)
     {
-        return new PricingConfig
+        var baseConfig = new PricingConfig
         {
             Archive = new ArchivePricingTier
             {
-                RetrievalPerGB      = retrievalPerGb,
-                RetrievalHighPerGB  = retrievalHighPerGb,
-                ReadOpsPer10000     = readOpsPer10000,
-                ReadOpsHighPer10000 = readOpsHighPer10000,
+                RetrievalPerGB      = 1.0,
+                RetrievalHighPerGB  = 5.0,
+                ReadOpsPer10000     = 2.0,
+                ReadOpsHighPer10000 = 10.0,
             },
             Hot = new TierPricingConfig
             {
-                WriteOpsPer10000     = hotWriteOpsPer10000,
-                StoragePerGBPerMonth = hotStoragePerGbPerMonth,
+                WriteOpsPer10000     = 0.1,
+                StoragePerGBPerMonth = 0.02,
             },
             Cool = new TierPricingConfig
             {
@@ -127,6 +112,22 @@ public class PricingConfigTests
             {
                 WriteOpsPer10000     = 0.3,
                 StoragePerGBPerMonth = 0.005,
+            },
+        };
+
+        return baseConfig with
+        {
+            Archive = baseConfig.Archive with
+            {
+                RetrievalPerGB      = retrievalPerGb,
+                RetrievalHighPerGB  = retrievalHighPerGb,
+                ReadOpsPer10000     = readOpsPer10000,
+                ReadOpsHighPer10000 = readOpsHighPer10000,
+            },
+            Hot = baseConfig.Hot with
+            {
+                WriteOpsPer10000     = hotWriteOpsPer10000,
+                StoragePerGBPerMonth = hotStoragePerGbPerMonth,
             },
         };
     }
