@@ -88,6 +88,9 @@ internal sealed class PricingConfig
         var ariusPath = Path.Combine(homeDir, ".arius", "pricing.json");
         if (File.Exists(ariusPath))
             return LoadFromFile(ariusPath);
+
+        // 3. Embedded resource default
+        return LoadEmbedded();
     }
 
     public static PricingConfig LoadFromFile(string path)
