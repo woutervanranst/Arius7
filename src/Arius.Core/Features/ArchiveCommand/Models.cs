@@ -99,7 +99,7 @@ internal sealed record TarEntry(
 /// </summary>
 internal sealed record SealedTar(
     byte[]               Content,
-    ChunkHash            TarHash,
-    long                 UncompressedSize,
-    IReadOnlyList<TarEntry> Entries
+    ChunkHash            TarHash,           // hash of the tar body (before gzip+encrypt)
+    long                 UncompressedSize,  // sum of file sizes
+    IReadOnlyList<TarEntry> Entries         // per-file info for thin chunk
 );
