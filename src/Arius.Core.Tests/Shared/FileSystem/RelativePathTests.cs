@@ -94,6 +94,12 @@ public class RelativePathTests
     }
 
     [Test]
+    public void ToPointerPath_Root_Throws()
+    {
+        Should.Throw<InvalidOperationException>(() => RelativePath.Root.ToPointerPath());
+    }
+
+    [Test]
     public void ToBinaryPath_RemovesPointerSuffix()
     {
         RelativePath.Parse("photos/pic.jpg.pointer.arius").ToBinaryPath().ToString().ShouldBe("photos/pic.jpg");
