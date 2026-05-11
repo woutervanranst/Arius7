@@ -45,11 +45,9 @@ internal sealed class RelativeFileSystem
             if (!_root.TryGetRelativePath(filePath, out var relativePath))
                 continue;
 
-            var fileInfo = new FileInfo(filePath);
             yield return new LocalFileEntry
             {
-                Path = relativePath,
-                Size = fileInfo.Length
+                Path = relativePath
             };
         }
     }
@@ -151,12 +149,11 @@ internal sealed class RelativeFileSystem
     public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)
     {
         var fullPath = _root.Resolve(path);
-        using var _ = File.OpenRead(fullPath);
-        var fileInfo = new FileInfo(fullPath);
+        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
         return (
-            new DateTimeOffset(fileInfo.CreationTimeUtc, TimeSpan.Zero),
-            new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero));
+            new DateTimeOffset(File.GetCreationTimeUtc(handle), TimeSpan.Zero),
+            new DateTimeOffset(File.GetLastWriteTimeUtc(handle), TimeSpan.Zero));
     }
 
     /// <summary>
@@ -165,8 +162,9 @@ internal sealed class RelativeFileSystem
     public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
     {
         var fullPath = _root.Resolve(path);
-        File.SetCreationTimeUtc(fullPath, created.UtcDateTime);
-        File.SetLastWriteTimeUtc(fullPath, modified.UtcDateTime);
+        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        File.SetCreationTimeUtc(handle, created.UtcDateTime);
+        File.SetLastWriteTimeUtc(handle, modified.UtcDateTime);
     }
 
     /// <summary>

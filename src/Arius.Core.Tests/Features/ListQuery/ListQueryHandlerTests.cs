@@ -313,19 +313,18 @@ public class ListQueryHandlerTests
         {
             new LocalFileEntry
             {
-                Path = RelativePath.Parse("docs/shared.txt"),
-                Size = 12
+                Path = RelativePath.Parse("docs/shared.txt")
             },
             new LocalFileEntry
             {
-                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"),
-                Size = 64
+                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
             }
         };
 
         var result = LocalFileSnapshotBuilder.BuildFiles(
             files,
             path => path.ToString() == "docs/shared.txt",
+            path => path.ToString() == "docs/shared.txt" ? 12 : throw new InvalidOperationException($"Unexpected size request for {path}"),
             _ => (s_created, s_modified),
             path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
 
@@ -335,6 +334,7 @@ public class ListQueryHandlerTests
         shared.BinaryExists.ShouldBeTrue();
         shared.PointerExists.ShouldBeTrue();
         shared.PointerHash.ShouldBe(FakeContentHash('2'));
+        shared.FileSize.ShouldBe(12);
     }
 
     [Test]
@@ -344,18 +344,15 @@ public class ListQueryHandlerTests
         {
             new LocalFileEntry
             {
-                Path = RelativePath.Parse("docs/shared.txt"),
-                Size = 12
+                Path = RelativePath.Parse("docs/shared.txt")
             },
             new LocalFileEntry
             {
-                Path = RelativePath.Parse("docs/shared.txt.pointer.arius"),
-                Size = 64
+                Path = RelativePath.Parse("docs/shared.txt.pointer.arius")
             },
             new LocalFileEntry
             {
-                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius"),
-                Size = 64
+                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
             }
         };
 
@@ -365,6 +362,13 @@ public class ListQueryHandlerTests
             {
                 "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected file existence probe for {path}"),
                 _ => false
+            },
+            path => path.ToString() switch
+            {
+                "docs/shared.txt" => 12,
+                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
+                "docs/pointer-only.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
+                _ => throw new InvalidOperationException($"Unexpected size request for {path}")
             },
             _ => (s_created, s_modified),
             path => path.ToString() switch
@@ -377,6 +381,8 @@ public class ListQueryHandlerTests
         result.Count.ShouldBe(2);
         result[PathSegment.Parse("shared.txt")].PointerExists.ShouldBeTrue();
         result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
+        result[PathSegment.Parse("shared.txt")].FileSize.ShouldBe(12);
+        result[PathSegment.Parse("pointer-only.txt")].FileSize.ShouldBeNull();
     }
 
     [Test]

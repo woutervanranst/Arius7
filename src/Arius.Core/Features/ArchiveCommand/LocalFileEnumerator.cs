@@ -77,7 +77,6 @@ internal sealed class LocalFileEnumerator
                     Binary = new BinaryFile
                     {
                         Path = relativePath,
-                        Size = file.Size
                     },
                     Pointer = hasPointer
                         ? new PointerFile

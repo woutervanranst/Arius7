@@ -48,7 +48,6 @@ public class LocalFileEnumeratorTests : IDisposable
         pair.Binary.ShouldNotBeNull();
         pair.Pointer.ShouldNotBeNull();
         pair.Pointer!.Hash.ShouldNotBeNull();
-        pair.Binary!.Size.ShouldBeGreaterThan(0);
     }
 
     // ── Binary only ───────────────────────────────────────────────────────────
@@ -138,18 +137,6 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs.Select(p => p.RelativePath.ToString()).ShouldContain("a.txt");
         pairs.Select(p => p.RelativePath.ToString()).ShouldContain("photos/b.jpg");
         pairs.Select(p => p.RelativePath.ToString()).ShouldContain("photos/2024/c.jpg");
-    }
-
-    // ── File metadata ─────────────────────────────────────────────────────────
-
-    [Test]
-    public void Enumerate_BinaryFile_HasFileSize()
-    {
-        CreateFile("data.bin", "hello world");
-
-        var pair = _enumerator.Enumerate(_rootDirectory).Single();
-
-        pair.Binary!.Size.ShouldBe(11); // "hello world" = 11 bytes
     }
 
     [Test]

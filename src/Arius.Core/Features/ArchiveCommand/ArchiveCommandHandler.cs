@@ -217,7 +217,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     foreach (var pair in pairs)
                     {
                         count++;
-                        var fileSize = pair.Binary?.Size ?? 0L;
+                        var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
                         totalBytes += fileSize;
                         await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
@@ -240,7 +240,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
                     async (pair, ct) =>
                     {
-                        var fileSize = pair.Binary?.Size ?? 0L;
+                        var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
 
                         await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
@@ -311,7 +311,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Needs upload → mark in-flight, route by size
                             inFlightHashes.TryAdd(hashed.ContentHash, true);
-                            var fileSize = hashed.FilePair.Binary?.Size ?? 0;
+                            var fileSize = fs.GetFileSize(hashed.FilePair.RelativePath);
                             Interlocked.Add(ref totalSize, fileSize);
                             var upload = new FileToUpload(hashed, fileSize);
                             var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";

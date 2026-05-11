@@ -30,8 +30,6 @@ internal sealed record FilePair
 internal sealed record BinaryFile
 {
     public required RelativePath Path { get; init; }
-
-    public required long Size { get; init; }
 }
 
 /// <summary>
