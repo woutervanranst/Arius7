@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Formats.Tar;
 using System.Threading.Channels;
 using Arius.Core.Shared;
@@ -403,7 +404,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
                             var sealedBytes = sealedStream.ToArray();
-                            await sealedTarChannel.Writer.WriteAsync(new SealedTar(sealedBytes, tarHash, currentSize, tarEntries.ToList()), cancellationToken);
+                            await sealedTarChannel.Writer.WriteAsync(new SealedTar([..sealedBytes], tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                             tarEntries.Clear();
                             tarWriter      = null;
@@ -473,7 +474,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
 
-                    using var tarStream = new MemoryStream(sealedTar.Content, writable: false);
+                    using var tarStream = new MemoryStream([.. sealedTar.Content], writable: false);
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
