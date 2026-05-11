@@ -623,11 +623,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             created  = pair.Binary.Created;
             modified = pair.Binary.Modified;
         }
-        else
+        else if (pair.Pointer is not null)
         {
-            created  = DateTimeOffset.UtcNow;
-            modified = DateTimeOffset.UtcNow;
+            created  = pair.Pointer.Created;
+            modified = pair.Pointer.Modified;
         }
+        else
+            throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
 
         // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
         var fileTreePath = pair.RelativePath;
