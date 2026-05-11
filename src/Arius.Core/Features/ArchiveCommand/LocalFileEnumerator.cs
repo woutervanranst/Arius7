@@ -57,7 +57,6 @@ internal sealed class LocalFileEnumerator
                     Pointer = new PointerFile
                     {
                         Path       = relativePath,
-                        BinaryPath = binaryPath,
                         Hash       = pointerHash
                     }
                 };
@@ -86,7 +85,6 @@ internal sealed class LocalFileEnumerator
                         ? new PointerFile
                         {
                             Path       = pointerPath,
-                            BinaryPath = relativePath,
                             Hash       = pointerHash
                         }
                         : null
