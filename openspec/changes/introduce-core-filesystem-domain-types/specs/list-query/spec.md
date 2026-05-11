@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Path prefix filter
-The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The handler SHALL parse the public prefix string into a validated relative domain path before traversal. The filter SHALL navigate to the target subtree by descending through the Merkle tree, reading tree blobs via `FileTreeService.ReadAsync` (only downloading tree blobs on the path to the target prefix on cache miss). Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further. Prefix matching and traversal SHALL be segment-aware and SHALL NOT rely on raw string prefix matching.
+The system SHALL support filtering by path prefix to list entries within a specific subdirectory. The handler SHALL work with validated relative domain paths before traversal. The filter SHALL navigate to the target subtree by descending through the Merkle tree. Once at the target directory, entries are streamed from that point. Prefix and Recursive are orthogonal: `Prefix` navigates to a starting directory, `Recursive` controls whether to descend further. Prefix matching and traversal SHALL be segment-aware and SHALL NOT rely on raw string prefix matching.
 
 #### Scenario: Filter by directory prefix
 - **WHEN** `arius ls --prefix photos/2024/` is run

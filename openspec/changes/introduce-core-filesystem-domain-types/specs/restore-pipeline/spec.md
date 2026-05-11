@@ -1,19 +1,19 @@
 ## MODIFIED Requirements
 
 ### Requirement: Tree traversal to target path
-The system SHALL walk the merkle tree from the root to the requested path using validated relative domain paths, reading tree blobs through `FileTreeService.ReadAsync` (cache-first with disk write-through), replacing direct `_blobs.DownloadAsync` calls. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed. Restore traversal SHALL produce restore-time file candidates based on relative paths, content hashes, timestamps, and chunk metadata rather than archive-time FilePair objects.
+The system SHALL walk the merkle tree from the root to the requested path using validated relative domain paths. Tree blobs SHALL be parsed as text format: each line is either `<hash> F <created> <modified> <name>` (file entry) or `<hash> D <name>` (directory entry). For `F` lines, the system SHALL split on the first 4 spaces to extract hash, type, created, modified, and name (remainder). For `D` lines, the system SHALL split on the first 2 spaces to extract hash, type, and name (remainder). For a file restore, traversal stops at the file's directory. For a directory restore, the system SHALL enumerate the full subtree. For a full restore, the entire tree SHALL be traversed. Restore traversal SHALL produce restore-time file candidates based on relative paths, content hashes, timestamps, and chunk metadata rather than archive-time FilePair objects.
 
 #### Scenario: Restore single file
 - **WHEN** restoring `photos/2024/june/vacation.jpg`
-- **THEN** the system SHALL read tree blobs for `/`, `photos/`, `photos/2024/`, `photos/2024/june/` via `FileTreeService.ReadAsync` and locate the file entry
+- **THEN** the system SHALL read tree blobs for `/`, `photos/`, `photos/2024/`, `photos/2024/june/` and locate the file entry
 
 #### Scenario: Restore directory
 - **WHEN** restoring `photos/2024/`
-- **THEN** the system SHALL traverse the full subtree under `photos/2024/` reading tree blobs via `FileTreeService.ReadAsync` and collect all file entries
+- **THEN** the system SHALL traverse the full subtree under `photos/2024/` and collect all file entries
 
 #### Scenario: Restore full snapshot
 - **WHEN** restoring with `--full`
-- **THEN** the system SHALL traverse the entire tree reading all tree blobs via `FileTreeService.ReadAsync` and collect all file entries
+- **THEN** the system SHALL traverse the entire tree and collect all file entries
 
 #### Scenario: Parse file entry from tree blob
 - **WHEN** a tree blob line is `abc123... F 2026-03-25T10:00:00.0000000+00:00 2026-03-25T12:30:00.0000000+00:00 my vacation photo.jpg`
@@ -22,10 +22,6 @@ The system SHALL walk the merkle tree from the root to the requested path using 
 #### Scenario: Parse directory entry from tree blob
 - **WHEN** a tree blob line is `def456... D 2024 trip/`
 - **THEN** the system SHALL parse hash as `def456...`, type as directory, and name as `2024 trip/`
-
-#### Scenario: Cached tree blob reuse during restore
-- **WHEN** a tree blob was downloaded during a previous `ls` or `restore` invocation
-- **THEN** `FileTreeService.ReadAsync` SHALL return the cached version from disk without contacting Azure
 
 ### Requirement: Streaming restore (no local cache)
 The system SHALL restore files by streaming chunks directly to their final relative path under the requested restore root without intermediate local caching. For large files: download → decrypt → gunzip → write to final path through the filesystem domain boundary. For tar bundles: download → decrypt → gunzip → iterate tar entries → extract needed files by content-hash name → write to final relative paths through the filesystem domain boundary. Peak temp disk usage SHALL be zero (fully streaming). All files needing a given chunk SHALL be grouped and extracted in a single streaming pass.
