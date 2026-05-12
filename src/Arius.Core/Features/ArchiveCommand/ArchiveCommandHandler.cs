@@ -572,7 +572,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to delete local file: {Path}", path.ToString());
+                        _logger.LogWarning(ex, "Failed to delete local file: {Path}", path);
                     }
                 }
             }
