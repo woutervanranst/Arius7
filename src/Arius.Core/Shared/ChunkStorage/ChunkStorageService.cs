@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.Streaming;
@@ -17,80 +18,29 @@ public sealed class ChunkStorageService : IChunkStorageService
         _encryption = encryption;
     }
 
-    public Task<ChunkUploadResult> UploadLargeAsync(
-        ChunkHash chunkHash,
-        Stream content,
-        long sourceSize,
-        BlobTier tier,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        UploadChunkAsync(
-            chunkHash,
-            content,
-            sourceSize,
-            tier,
-            progress,
-            BlobMetadataKeys.TypeLarge,
-            isTar: false,
-            cancellationToken);
+    public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeLarge, isTar: false, cancellationToken);
 
-    public Task<ChunkUploadResult> UploadTarAsync(
-        ChunkHash chunkHash,
-        Stream content,
-        long sourceSize,
-        BlobTier tier,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        UploadChunkAsync(
-            chunkHash,
-            content,
-            sourceSize,
-            tier,
-            progress,
-            BlobMetadataKeys.TypeTar,
-            isTar: true,
-            cancellationToken);
+    public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
 
-    public Task<bool> UploadThinAsync(
-        ContentHash contentHash,
-        ChunkHash parentChunkHash,
-        long originalSize,
-        long compressedSize,
-        CancellationToken cancellationToken = default) =>
-        UploadThinCoreAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken);
+    public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long compressedSize, CancellationToken cancellationToken = default) 
+        => UploadThinCoreAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken);
 
-    public Task<Stream> DownloadAsync(
-        ChunkHash chunkHash,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        DownloadCoreAsync(chunkHash, progress, cancellationToken);
+    public Task<Stream>               DownloadAsync(ChunkHash chunkHash, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => DownloadCoreAsync(chunkHash, progress, cancellationToken);
+    public Task<ChunkHydrationStatus> GetHydrationStatusAsync(ChunkHash chunkHash, CancellationToken cancellationToken = default)                         
+        => GetHydrationStatusCoreAsync(chunkHash, cancellationToken);
 
-    public Task<ChunkHydrationStatus> GetHydrationStatusAsync(
-        ChunkHash chunkHash,
-        CancellationToken cancellationToken = default) =>
-        GetHydrationStatusCoreAsync(chunkHash, cancellationToken);
+    public Task StartRehydrationAsync(ChunkHash chunkHash, RehydratePriority priority, CancellationToken cancellationToken = default) 
+        => _blobs.CopyAsync(BlobPaths.ChunkPath(chunkHash), BlobPaths.ChunkRehydratedPath(chunkHash), BlobTier.Cold, priority, cancellationToken);
 
-    public Task StartRehydrationAsync(
-        ChunkHash chunkHash,
-        RehydratePriority priority,
-        CancellationToken cancellationToken = default) =>
-        _blobs.CopyAsync(BlobPaths.Chunk(chunkHash), BlobPaths.ChunkRehydrated(chunkHash), BlobTier.Cold, priority, cancellationToken);
+    public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(CancellationToken cancellationToken = default) 
+        => PlanCleanupCoreAsync(cancellationToken);
 
-    public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(
-        CancellationToken cancellationToken = default) =>
-        PlanCleanupCoreAsync(cancellationToken);
-
-    private async Task<ChunkUploadResult> UploadChunkAsync(
-        ChunkHash chunkHash,
-        Stream content,
-        long sourceSize,
-        BlobTier tier,
-        IProgress<long>? progress,
-        string ariusType,
-        bool isTar,
-        CancellationToken cancellationToken)
+    private async Task<ChunkUploadResult> UploadChunkAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress, string ariusType, bool isTar, CancellationToken cancellationToken)
     {
-        var blobName = BlobPaths.Chunk(chunkHash);
+        var blobName = BlobPaths.ChunkPath(chunkHash);
         var contentType = GetChunkContentType(isTar);
 
         if (!content.CanSeek)
@@ -110,7 +60,7 @@ public sealed class ChunkStorageService : IChunkStorageService
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = _encryption.WrapForEncryption(countingStream);
-                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.Optimal, leaveOpen: true);
+                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.SmallestSize, leaveOpen: true);
                 var progressStream = progress is null
                     ? null
                     : new ProgressStream(content, new CallbackProgress(bytesRead =>
@@ -125,7 +75,7 @@ public sealed class ChunkStorageService : IChunkStorageService
                 var source = progressStream ?? content;
                 await source.CopyToAsync(gzipStream, cancellationToken);
 
-                await gzipStream.DisposeAsync();
+                await gzipStream.DisposeAsync(); // NOTE: leave Dispose to get a correct BytesWritten
                 await encryptionStream.DisposeAsync();
                 storedSize = countingStream.BytesWritten;
             }
@@ -146,7 +96,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         }
         catch (BlobAlreadyExistsException)
         {
-            // DESIGN DECISION: The Metadata is written only after a succesful upload, so we can assume that if the blob has this metadata, the upload completed successfully
+            // DESIGN DECISION: The Metadata is written only after a successful upload, so we can assume that if the blob has this metadata, the upload completed successfully
             var existing = await _blobs.GetMetadataAsync(blobName, cancellationToken);
             if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
                 return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true);
@@ -172,7 +122,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         long compressedSize,
         CancellationToken cancellationToken)
     {
-        var blobName = BlobPaths.ThinChunk(contentHash);
+        var blobName = BlobPaths.ThinChunkPath(contentHash);
         var metadata = new Dictionary<string, string>
         {
             [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
@@ -218,14 +168,14 @@ public sealed class ChunkStorageService : IChunkStorageService
 
     private async Task<ChunkHydrationStatus> GetHydrationStatusCoreAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
     {
-        var chunkMeta = await _blobs.GetMetadataAsync(BlobPaths.Chunk(chunkHash), cancellationToken).ConfigureAwait(false);
+        var chunkMeta = await _blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash), cancellationToken).ConfigureAwait(false);
         if (!chunkMeta.Exists)
             return ChunkHydrationStatus.Unknown;
 
         if (chunkMeta.Tier != BlobTier.Archive)
             return ChunkHydrationStatus.Available;
 
-        var rehydratedMeta = await _blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(chunkHash), cancellationToken).ConfigureAwait(false);
+        var rehydratedMeta = await _blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(chunkHash), cancellationToken).ConfigureAwait(false);
         if (rehydratedMeta.Exists)
             return rehydratedMeta.Tier == BlobTier.Archive
                 ? ChunkHydrationStatus.RehydrationPending
@@ -236,21 +186,22 @@ public sealed class ChunkStorageService : IChunkStorageService
             : ChunkHydrationStatus.NeedsRehydration;
     }
 
-    private async Task<string> SelectReadableChunkBlobAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
+    private async Task<RelativePath> SelectReadableChunkBlobAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
     {
-        var rehydratedMeta = await _blobs.GetMetadataAsync(BlobPaths.ChunkRehydrated(chunkHash), cancellationToken);
+        var rehydratedPath = BlobPaths.ChunkRehydratedPath(chunkHash);
+        var rehydratedMeta = await _blobs.GetMetadataAsync(rehydratedPath, cancellationToken);
         if (rehydratedMeta.Exists && rehydratedMeta.Tier != BlobTier.Archive)
-            return BlobPaths.ChunkRehydrated(chunkHash);
+            return rehydratedPath;
 
-        return BlobPaths.Chunk(chunkHash);
+        return BlobPaths.ChunkPath(chunkHash);
     }
 
     private async Task<IRehydratedChunkCleanupPlan> PlanCleanupCoreAsync(CancellationToken cancellationToken)
     {
-        var blobNames = new List<string>();
+        var blobNames = new List<RelativePath>();
         long totalBytes = 0;
 
-        await foreach (var blobName in _blobs.ListAsync(BlobPaths.ChunksRehydrated, cancellationToken))
+        await foreach (var blobName in _blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken))
         {
             blobNames.Add(blobName);
             var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
@@ -265,9 +216,9 @@ public sealed class ChunkStorageService : IChunkStorageService
         private const int DeleteWorkers = 16;
 
         private readonly IBlobContainerService _blobs;
-        private readonly IReadOnlyList<string> _blobNames;
+        private readonly IReadOnlyList<RelativePath> _blobNames;
 
-        public RehydratedChunkCleanupPlan(IBlobContainerService blobs, IReadOnlyList<string> blobNames, long totalBytes)
+        public RehydratedChunkCleanupPlan(IBlobContainerService blobs, IReadOnlyList<RelativePath> blobNames, long totalBytes)
         {
             _blobs = blobs;
             _blobNames = blobNames;

@@ -14,9 +14,9 @@ internal sealed class FaultingAndBlockingFileTreeUploadBlobContainerService : IB
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
-        if (!blobName.StartsWith(BlobPaths.FileTrees, StringComparison.Ordinal))
+        if (!blobName.StartsWith(BlobPaths.FileTreesPrefix))
             return;
 
         if (Interlocked.Increment(ref _fileTreeUploads) == 1)
@@ -25,20 +25,20 @@ internal sealed class FaultingAndBlockingFileTreeUploadBlobContainerService : IB
         await _blockedUploads.Task.WaitAsync(cancellationToken);
     }
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+    public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
-    public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
-        AsyncEnumerable.Empty<string>();
+    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default) =>
+        AsyncEnumerable.Empty<RelativePath>();
 
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -24,13 +24,14 @@ public class ChunkUploadingHandlerDualLookupTests
             State = TarState.Sealing,
         };
         state.TrackedTars.TryAdd(competingTar.BundleNumber, competingTar);
+        var path = RelativePath.Parse("big.bin");
 
-        await hashingH.Handle(new FileHashingEvent("big.bin", 10_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent("big.bin", FakeContentHash('a')), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent(path, 10_000_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('a')), CancellationToken.None);
 
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('a'), 10_000_000), CancellationToken.None);
 
-        state.TrackedFiles["big.bin"].State.ShouldBe(FileState.Uploading);
+        state.TrackedFiles[path].State.ShouldBe(FileState.Uploading);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
         state.FilesUnique.ShouldBe(1L);
     }

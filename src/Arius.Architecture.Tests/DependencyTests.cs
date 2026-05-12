@@ -1,5 +1,7 @@
 using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.FileSystem;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;
@@ -89,6 +91,52 @@ public class DependencyTests
 
         nonCoreHandlerTypes.ShouldBeEmpty(
             $"Mediator command/query handlers must live in Arius.Core. Violations: {string.Join(", ", nonCoreHandlerTypes)}");
+    }
+
+    [Test]
+    public void Selected_Core_Implementation_Types_Should_Remain_Internal()
+    {
+        var internalTypes = new[]
+        {
+            // FileSystem types
+            typeof(LocalDirectory),
+            typeof(LocalDirectoryEntry),
+            typeof(LocalFileEntry),
+            typeof(RelativeFileSystem),
+
+            // Archive feature types
+            typeof(BinaryFile),
+            typeof(PointerFile),
+            typeof(FilePair)
+        };
+
+        foreach (var type in internalTypes)
+        {
+            type.IsNotPublic.ShouldBeTrue($"Type '{type.FullName}' should remain internal.");
+        }
+    }
+
+    [Test]
+    public void Archive_Local_File_Models_Should_Only_Be_Used_By_ArchiveCommand()
+    {
+        var coreAssembly = Architecture.Assemblies.First(a => a.FullName.Contains("Arius.Core") && !a.FullName.Contains("Tests"));
+        var archiveNamespace = typeof(ArchiveCommandHandler).Namespace!;
+        var archiveLocalFileModelNames = new[]
+        {
+            typeof(BinaryFile).FullName!,
+            typeof(PointerFile).FullName!,
+            typeof(FilePair).FullName!
+        };
+
+        foreach (var modelName in archiveLocalFileModelNames)
+        {
+            IArchRule rule = Classes().That().ResideInAssembly(coreAssembly)
+                .And().DoNotResideInNamespace(archiveNamespace)
+                .Should().NotDependOnAnyTypesThat().HaveFullName(modelName);
+
+            rule.HasNoViolations(Architecture).ShouldBeTrue(
+                $"Only {archiveNamespace} may depend on {modelName}. Violations: {DescribeViolations(rule)}");
+        }
     }
 
     // Helper: produce a human-readable summary of rule violations for failure messages

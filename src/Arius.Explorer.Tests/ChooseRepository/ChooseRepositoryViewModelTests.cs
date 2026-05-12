@@ -63,8 +63,13 @@ public class ChooseRepositoryViewModelTests
     }
 
     [Test]
-    public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst()
+    public async Task AccountCredentials_WhenQuerySucceeds_LoadsContainerNamesAndSelectsFirst() // NOTE: Flaky test
     {
+        /* NOTE: This is a flaky test. Root cause:
+         * - The waiter subscribed to the original ContainerNames instance once.
+         * - ChooseRepositoryViewModel replaces ContainerNames with a new ObservableCollection.
+         * - In CI, the waiter could miss the new collection’s change notifications and time out, surfacing as OperationCanceledException.
+         */
         var mediator = Substitute.For<IMediator>();
         var logger = new FakeLogger<ChooseRepositoryViewModel>();
 
@@ -115,6 +120,48 @@ public class ChooseRepositoryViewModelTests
         viewModel.StorageAccountError.ShouldBeTrue();
         viewModel.ContainerNames.ShouldBeEmpty();
         viewModel.ContainerName.ShouldBe(string.Empty);
+    }
+
+    [Test]
+    public async Task AccountCredentials_WhenFactoryThrows_WithoutUiSynchronizationContext_KeepsErrorState()
+    {
+        var mediator = Substitute.For<IMediator>();
+        var logger = new FakeLogger<ChooseRepositoryViewModel>();
+
+        mediator
+            .CreateStream<string>(Arg.Is<ContainerNamesQuery>(q => q.AccountName == "account" && q.AccountKey == "key"), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new InvalidOperationException("boom"));
+
+        await Task.Run(async () =>
+        {
+            var originalContext = SynchronizationContext.Current;
+            var delayedContext = new DelayedSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(delayedContext);
+
+            try
+            {
+                using var viewModel = new ChooseRepositoryViewModel(mediator, logger, TimeSpan.FromMilliseconds(1));
+
+                viewModel.AccountName = "account";
+                viewModel.AccountKey = "key";
+
+                await WaitForAsync(viewModel, () =>
+                    viewModel.StorageAccountError &&
+                    !viewModel.IsLoading &&
+                    viewModel.ContainerNames.Count == 0 &&
+                    viewModel.ContainerName == string.Empty).ConfigureAwait(false);
+
+                viewModel.IsLoading.ShouldBeFalse();
+                viewModel.StorageAccountError.ShouldBeTrue();
+                viewModel.ContainerNames.ShouldBeEmpty();
+                viewModel.ContainerName.ShouldBe(string.Empty);
+                delayedContext.PostedCount.ShouldBe(0);
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(originalContext);
+            }
+        });
     }
 
     [Test]
@@ -278,7 +325,7 @@ public class ChooseRepositoryViewModelTests
 
             while (!condition())
             {
-                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token);
+                await signal.Reader.WaitToReadAsync(cancellationTokenSource.Token).ConfigureAwait(false);
                 while (signal.Reader.TryRead(out _))
                 {
                     if (condition())
@@ -299,5 +346,30 @@ public class ChooseRepositoryViewModelTests
     {
         await Task.CompletedTask;
         yield break;
+    }
+
+    private sealed class DelayedSynchronizationContext : SynchronizationContext
+    {
+        private readonly List<(SendOrPostCallback Callback, object? State)> callbacks = [];
+        private readonly Lock callbacksLock = new();
+
+        public int PostedCount
+        {
+            get
+            {
+                lock (callbacksLock)
+                {
+                    return callbacks.Count;
+                }
+            }
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            lock (callbacksLock)
+            {
+                callbacks.Add((d, state));
+            }
+        }
     }
 }

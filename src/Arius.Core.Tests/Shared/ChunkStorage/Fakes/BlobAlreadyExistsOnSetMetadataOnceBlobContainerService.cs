@@ -12,27 +12,27 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
     private readonly FakeInMemoryBlobContainerService _inner = new();
     private int _remainingFailures = 1;
 
-    public ICollection<string> DeletedBlobNames => _inner.DeletedBlobNames;
+    public ICollection<RelativePath> DeletedBlobNames => _inner.DeletedBlobNames;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
         _inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
-    public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+    public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
         _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+    public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.DownloadAsync(blobName, cancellationToken);
 
-    public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default) =>
         _inner.ListAsync(prefix, cancellationToken);
 
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
+    public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref _remainingFailures, 0) == 1)
             throw new BlobAlreadyExistsException(blobName);
@@ -40,12 +40,12 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
         return _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
     }
 
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
+    public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
         _inner.SetTierAsync(blobName, tier, cancellationToken);
 
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
+    public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
         _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
 
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.DeleteAsync(blobName, cancellationToken);
 }

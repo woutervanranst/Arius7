@@ -9,7 +9,7 @@ public class TrackedFileBytesProcessedTests
     [Test]
     public async Task BytesProcessed_UpdatesCorrectlyUnderContention()
     {
-        var file = new TrackedFile("test.bin", 1_000_000L);
+        var file = new TrackedFile(RelativePath.Parse("test.bin"), 1_000_000L);
 
         const int iterations = 10_000;
         long      finalValue = 0;

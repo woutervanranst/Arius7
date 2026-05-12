@@ -256,7 +256,7 @@ The builder still waits for the upload workers to drain before `SynchronizeAsync
 
 When `WriteAsync(...)` runs, it does two writes for the same finished node:
 
-1. blob write: it gzip-compresses the canonical plaintext bytes, wraps the stream for encryption when encryption is enabled, and uploads the result to `BlobPaths.FileTree(hash)`
+1. blob write: it gzip-compresses the canonical plaintext bytes, wraps the stream for encryption when encryption is enabled, and uploads the result to `BlobPaths.FileTreePath(hash)`
 2. disk write: it writes the canonical plaintext bytes to the final non-staging cache file `filetrees/{hash}`
 
 If the blob already exists, `BlobAlreadyExistsException` is tolerated. This makes filetree upload idempotent across crash recovery and concurrent runs.

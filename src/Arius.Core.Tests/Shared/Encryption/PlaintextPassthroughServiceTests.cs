@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Streaming;
 using Arius.Core.Tests.Shared.Streaming;
 
 namespace Arius.Core.Tests.Shared.Encryption;
@@ -36,19 +37,20 @@ public class PlaintextPassthroughServiceTests
     }
 
     [Test]
-    public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
+    public async Task ComputeHashAsync_FileStream_MatchesStreamVariant()
     {
         var path = Path.GetTempFileName();
         await File.WriteAllBytesAsync(path, "streaming determinism"u8.ToArray());
 
         try
         {
-            await using var stream = File.OpenRead(path);
+            await using var firstStream = File.OpenRead(path);
+            await using var secondStream = File.OpenRead(path);
 
-            var fromPath   = await _svc.ComputeHashAsync(path);
-            var fromStream = await _svc.ComputeHashAsync(stream);
+            var firstHash = await _svc.ComputeHashAsync(firstStream);
+            var secondHash = await _svc.ComputeHashAsync(secondStream);
 
-            fromPath.ShouldBe(fromStream);
+            firstHash.ShouldBe(secondHash);
         }
         finally
         {
@@ -57,7 +59,7 @@ public class PlaintextPassthroughServiceTests
     }
 
     [Test]
-    public async Task ComputeHashAsync_FilePath_ReportsProgress()
+    public async Task ComputeHashAsync_ProgressStream_ReportsProgress()
     {
         var path = Path.GetTempFileName();
         await File.WriteAllBytesAsync(path, new byte[4096]);
@@ -66,8 +68,10 @@ public class PlaintextPassthroughServiceTests
         {
             long reported = 0;
             var progress = new SyncProgress<long>(value => reported = value);
+            await using var stream = File.OpenRead(path);
+            await using var progressStream = new ProgressStream(stream, progress);
 
-            _ = await _svc.ComputeHashAsync(path, progress);
+            _ = await _svc.ComputeHashAsync(progressStream);
 
             reported.ShouldBe(4096);
         }

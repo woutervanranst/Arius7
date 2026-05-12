@@ -114,7 +114,7 @@ public class PassphraseEncryptionServiceTests
     }
 
     [Test]
-    public async Task ComputeHashAsync_FilePath_MatchesStreamVariant()
+    public async Task ComputeHashAsync_FileStream_MatchesStreamVariant()
     {
         var svc  = new PassphraseEncryptionService(Passphrase);
         var path = Path.GetTempFileName();
@@ -122,12 +122,13 @@ public class PassphraseEncryptionServiceTests
 
         try
         {
-            await using var stream = File.OpenRead(path);
+            await using var firstStream = File.OpenRead(path);
+            await using var secondStream = File.OpenRead(path);
 
-            var fromPath   = await svc.ComputeHashAsync(path);
-            var fromStream = await svc.ComputeHashAsync(stream);
+            var firstHash = await svc.ComputeHashAsync(firstStream);
+            var secondHash = await svc.ComputeHashAsync(secondStream);
 
-            fromPath.ShouldBe(fromStream);
+            firstHash.ShouldBe(secondHash);
         }
         finally
         {

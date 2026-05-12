@@ -7,12 +7,14 @@ description: Use when writing or reviewing C# tests in a repository that uses TU
 
 ## Overview
 
-TUnit's highest-value differences are discovery-time data generation, property injection, parallel-by-default execution, and async assertions. Prefer the smallest TUnit feature that solves the real testing problem; do not cargo-cult every attribute.
+TUnit's highest-value differences are discovery-time data generation, property injection, parallel-by-default execution, async assertions, and first-class static and runtime skip controls. Prefer the smallest TUnit feature that solves the real testing problem; do not cargo-cult every attribute.
 
 ## High-Value Patterns
 
 - Use `[Arguments(...)]` only for compile-time constants.
 - Use `[MethodDataSource]` for computed or reusable data. For mutable reference data, return `Func<T>` so each test gets a fresh instance instead of sharing state.
+- Use `[Skip("reason")]` when the skip decision is known at attribute/discovery time. Apply it to a test, a class, or the assembly as needed.
+- Use `Skip.Test("reason")` inside the test body or hooks when the skip decision depends on runtime state.
 - Use `TestDataRow<T>` when individual cases need `DisplayName`, `Skip`, or `Categories`.
 - Use `[CombinedDataSources]` only when you really want the full Cartesian product.
 - Use `[ClassDataSource<T>]` plus `SharedType` for expensive fixtures. Choose `PerClass`, `PerAssembly`, `PerTestSession`, or `Keyed` deliberately; broader sharing increases coupling and lifetime risk.
@@ -31,6 +33,7 @@ TUnit's highest-value differences are discovery-time data generation, property i
 
 - Use `[Before(Test)]` and `[After(Test)]` for per-test setup and cleanup that belongs to the test class instance.
 - Use `[Before(Class)]` and `[After(Class)]` for class-scoped coordination, remembering these hooks are static.
+- If a hook discovers a missing runtime prerequisite, call `Skip.Test("reason")` there instead of letting every test fail with the same setup error.
 - Prefer fixture objects with `IAsyncInitializer` and `IAsyncDisposable` when setup is async, expensive, or shared across tests.
 - Keep hooks thin. If setup grows into infrastructure orchestration, move it into a fixture and inject it.
 - Use session- or assembly-level hooks sparingly; they are powerful but easy to overuse.
@@ -58,6 +61,8 @@ TUnit's highest-value differences are discovery-time data generation, property i
 | Need | Prefer |
 |---|---|
 | dynamic non-constant data | `MethodDataSource` |
+| skip known before execution | `[Skip("reason")]` |
+| skip based on runtime state | `Skip.Test("reason")` |
 | per-case display name / skip / categories | `TestDataRow<T>` |
 | expensive reusable fixture | `ClassDataSource<T>(Shared = ...)` |
 | discovery-time async data loading | `IAsyncDiscoveryInitializer` |
@@ -109,6 +114,22 @@ public class UserTests
     public required ApiFixture Api { get; init; }
 
     [Test]
+    [Skip("Blocked by issue #123")]
+    public async Task Skipped_until_known_bug_is_fixed()
+    {
+        await Assert.That(true).IsTrue();
+    }
+
+    [Before(Test)]
+    public void Skip_when_api_fixture_is_unavailable()
+    {
+        if (Api.Client.BaseAddress is null)
+        {
+            Skip.Test("API fixture is unavailable");
+        }
+    }
+
+    [Test]
     [MethodDataSource(typeof(UserCases), nameof(UserCases.All))]
     public async Task Validate_user_input(UserCase userCase)
     {
@@ -123,6 +144,8 @@ public class UserTests
 - Using `[Arguments]` for objects or other non-constant values.
 - Returning the same mutable reference from a data source and accidentally coupling tests.
 - Using `InstanceMethodDataSource` with execution-time initialized state.
+- Using `[Skip]` for conditions that are only known after setup has started; use `Skip.Test(...)` instead.
+- Calling `Skip.Test(...)` for a static condition that should have been expressed once with `[Skip("reason")]`.
 - Serializing the whole suite instead of scoping the parallel constraint to the actual shared resource.
 - Using `[Order]` or `[Retry]` to hide poor isolation.
 - Treating `TestContext` as available during discovery; use `TestBuilderContext` there instead.

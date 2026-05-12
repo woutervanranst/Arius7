@@ -72,8 +72,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         r1.Success.ShouldBeFalse(); // pipeline should surface the fault
 
         // After the crash, at least one completed chunk should be present with arius-type set.
-        var blobs = new List<string>();
-        await foreach (var name in fix.BlobContainer.ListAsync("chunks/"))
+        var blobs = new List<RelativePath>();
+        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
             blobs.Add(name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
 

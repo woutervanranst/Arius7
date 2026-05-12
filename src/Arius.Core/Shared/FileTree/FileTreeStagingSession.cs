@@ -1,35 +1,40 @@
+using Arius.Core.Shared.FileSystem;
+
 namespace Arius.Core.Shared.FileTree;
 
 internal interface IFileTreeStagingSession : IAsyncDisposable
 {
-    string StagingRoot { get; }
+    LocalDirectory StagingRoot { get; }
 }
 
 internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 {
     private readonly FileStream _lockStream;
+    private readonly RelativeFileSystem _cacheFileSystem;
+    private static readonly RelativePath StagingRootPath = RelativePath.Parse(".staging");
 
-    private FileTreeStagingSession(string stagingRoot, FileStream lockStream)
+    private FileTreeStagingSession(LocalDirectory stagingRoot, FileStream lockStream, RelativeFileSystem cacheFileSystem)
     {
         StagingRoot = stagingRoot;
         _lockStream = lockStream;
+        _cacheFileSystem = cacheFileSystem;
     }
 
-    public string StagingRoot { get; }
+    public LocalDirectory StagingRoot { get; }
 
-    public static Task<FileTreeStagingSession> OpenAsync(string fileTreeCacheDirectory, CancellationToken cancellationToken = default)
+    public static Task<FileTreeStagingSession> OpenAsync(LocalDirectory fileTreeCacheDirectory, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(fileTreeCacheDirectory);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Directory.CreateDirectory(fileTreeCacheDirectory);
+        var cacheFileSystem = new RelativeFileSystem(fileTreeCacheDirectory);
+        cacheFileSystem.CreateDirectory(RelativePath.Root);
 
-        var lockPath = FileTreePaths.GetStagingLockPath(fileTreeCacheDirectory);
+        var lockPath = FileTreePaths.GetStagingLockPath();
         FileStream lockStream;
 
         try
         {
-            lockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, useAsync: true);
+            lockStream = cacheFileSystem.OpenOrCreateFile(lockPath, FileAccess.ReadWrite, FileShare.None, bufferSize: 1, useAsync: true);
         }
         catch (IOException ex)
         {
@@ -39,11 +44,11 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
         try
         {
             var stagingRoot = FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory);
-            if (Directory.Exists(stagingRoot))
-                Directory.Delete(stagingRoot, recursive: true);
+            if (cacheFileSystem.DirectoryExists(StagingRootPath))
+                cacheFileSystem.DeleteDirectory(StagingRootPath, recursive: true);
 
-            Directory.CreateDirectory(stagingRoot);
-            return Task.FromResult(new FileTreeStagingSession(stagingRoot, lockStream));
+            cacheFileSystem.CreateDirectory(StagingRootPath);
+            return Task.FromResult(new FileTreeStagingSession(stagingRoot, lockStream, cacheFileSystem));
         }
         catch
         {
@@ -56,8 +61,8 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
     {
         try
         {
-            if (Directory.Exists(StagingRoot))
-                Directory.Delete(StagingRoot, recursive: true);
+            if (_cacheFileSystem.DirectoryExists(StagingRootPath))
+                _cacheFileSystem.DeleteDirectory(StagingRootPath, recursive: true);
         }
         finally
         {

@@ -20,7 +20,7 @@ public static class ShardSerializer
         var ms = new MemoryStream();
 
         await using (var encStream  = encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
         await using (var writer     = new StreamWriter(gzipStream, leaveOpen: true))
         {
             shard.WriteTo(writer);

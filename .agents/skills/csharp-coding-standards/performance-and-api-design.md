@@ -186,12 +186,24 @@ public bool TryFormatOrderId(int orderId, Span<char> destination, out int charsW
 
 ### `params` Collections and Span Overloads (C# 13+)
 
+<<<<<<< feat/path-helpers2
+- `params` collections are a real C# 13 feature, including `params ReadOnlySpan<T>` and `params Span<T>` when the element type supports collection expressions.
+- Prefer a plain `ReadOnlySpan<T>` parameter for canonical synchronous hot-path APIs.
+- Use `params ReadOnlySpan<T>` only when `Foo(1, 2, 3)` style call sites are a first-class part of the API shape.
+- Do not try to offer both `M(ReadOnlySpan<T>)` and `M(params ReadOnlySpan<T>)` with the same method name. `params` is not part of the signature, so that is an invalid redeclaration.
+- If you need both convenience and broader input support, use materially different parameter types and keep one implementation canonical.
+- Be conservative with overload sets. Combining `params`, arrays, collection abstractions, and span overloads can make calls harder to predict and evolve.
+
+```csharp
+// Canonical hot-path API: callers already have a span, array, or string slice.
+=======
 - Use `params` collections for convenience-first APIs where terse call sites matter more than the last allocation.
 - Prefer `params ReadOnlySpan<T>` or a plain `ReadOnlySpan<T>` parameter for synchronous hot paths that already operate on spans.
 - If you need both, keep one canonical implementation and forward convenience overloads to it.
 - Be conservative with overload sets. Combining `params`, arrays, collection abstractions, and span overloads can make calls harder to predict and evolve.
 
 ```csharp
+>>>>>>> master
 public static int Sum(ReadOnlySpan<int> values)
 {
     var total = 0;
@@ -200,8 +212,24 @@ public static int Sum(ReadOnlySpan<int> values)
     return total;
 }
 
+<<<<<<< feat/path-helpers2
+// Convenience-first API: choose this shape instead when SumAll(1, 2, 3)
+// style calls are part of the contract.
+public static int SumAll(params ReadOnlySpan<int> values)
+{
+    var total = 0;
+    foreach (var value in values)
+        total += value;
+    return total;
+}
+
+// If you keep multiple overloads, vary the parameter types, not just `params`.
+public static int SumAll(IEnumerable<int> values)
+    => SumAll([.. values]);
+=======
 public static int Sum(params ReadOnlySpan<int> values)
     => Sum(values);
+>>>>>>> master
 ```
 
 ### Synchronization Guidance (C# 13 / .NET 9+)

@@ -2,31 +2,29 @@
 
 Arius.Core uses raw strings for several different path concepts: archive-relative file paths, pointer-file paths, filetree entry names, local filesystem paths, blob virtual names, and local cache paths. The most visible pain is in archive/list/restore flows, where `File.*`, `Directory.*`, `Path.*`, separator normalization, pointer suffix handling, and root stripping/re-rooting are repeated in feature handlers and shared services.
 
-The earlier `feat/path-helpers` branch proved that `RelativePath`, `PathSegment`, `LocalRootPath`, `RootedPath`, and typed `FilePair` concepts improve correctness and developer experience, especially the `/` path composition operator. It also exposed too many typed path objects through public contracts and introduced a broad filesystem wrapper surface. This design keeps the useful domain model, makes it internal, and avoids a Zio-style filesystem abstraction.
+The earlier `feat/path-helpers` branch proved that `RelativePath`, `PathSegment`, `LocalRootPath`, `RootedPath`, and typed `FilePair` concepts improve correctness and developer experience, especially the `/` path composition operator. The current implementation keeps the useful domain model, allows `RelativePath` and `PathSegment` to be public, and avoids a Zio-style filesystem abstraction.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Make `RelativePath` the internal domain coordinate system for Arius archive paths, list traversal, restore candidates, filetree staging, blob virtual names, and logical cache paths.
-- Keep public Arius.Core command/query/result/event contracts string-based unless a future change explicitly changes them.
+- Make `RelativePath` the main slash-normalized domain coordinate system for Arius archive paths, list traversal, restore candidates, filetree staging, blob virtual names, and logical cache paths.
+- Allow public Arius.Core contracts to expose `RelativePath` and `PathSegment` where that fits the implemented API.
 - Introduce `BinaryFile`, `PointerFile`, and `FilePair` for archive-time local file state only.
 - Use a concrete `RelativeFileSystem` rooted at a `LocalDirectory` to quarantine host filesystem string paths and direct `System.IO` usage.
 - Preserve the pleasant path composition developer experience with `RelativePath.Root / "photos" / "pic.jpg"` while validating each appended segment.
-- Reject archive paths that collide under case-insensitive comparison before publishing repository state, so archives remain cross-OS restorable.
 - Refactor path-like strings broadly across Arius.Core, including blob names and cache paths, when those strings represent slash-normalized logical paths.
 
 **Non-Goals:**
 
 - Do not introduce `RootedPath` or `LocalRootPath` as central domain types.
-- Do not expose filesystem domain types from public command/query/result contracts.
 - Do not add a third-party strongly-typed-id/codegen dependency unless implementation proves hand-written value objects are insufficient.
 - Do not build a replaceable virtual filesystem or broad `ILocalFileSystem` abstraction up front.
 - Do not reuse archive-time `BinaryFile`/`PointerFile`/`FilePair` as restore-time models.
 
 ## Decisions
 
-### `RelativePath` is the generic internal slash-normalized path primitive
+### `RelativePath` is the generic slash-normalized path primitive
 
 `RelativePath` represents a canonical relative path using `/` separators. It rejects rooted paths, empty non-root paths, empty segments, `.` and `..`, backslashes, control characters, and malformed separators. `RelativePath.Root` represents the empty root path.
 
@@ -45,7 +43,7 @@ Alternatives considered:
 - Separate `RepositoryPath`, `BlobPath`, and `CachePath` types. This gives stronger semantic separation, but it adds ceremony across the whole codebase and risks overengineering. Start with one slash-normalized primitive and add semantic wrappers only where actual mixups are found.
 - Keep using strings with helper methods. This is simpler initially but does not stop invalid paths from flowing through Core.
 
-### `PathSegment` stays internal and mostly invisible
+### `PathSegment` is public and lightweight
 
 `PathSegment` owns single-segment validation and string rendering. Production code can use it when a filetree entry name or directory name is explicitly a segment, but most call sites should use `RelativePath / "segment"` for readability.
 
@@ -97,10 +95,10 @@ Restore-time should use a separate restore candidate model, such as `FileToResto
 
 ### Local filesystem access is quarantined in `RelativeFileSystem`
 
-Feature handlers and domain services should not call `File.*`, `Directory.*`, or `Path.*` directly for local archive/restore/list filesystem work. A concrete internal `RelativeFileSystem` rooted at a `LocalDirectory` provides the needed operations using `RelativePath` arguments:
+Feature handlers and domain services should not call `File.*`, `Directory.*`, or `Path.*` directly for local archive/restore/list filesystem work. `Arius.Core.Shared.FileSystem` is the only namespace where those APIs should appear for Arius path-domain work. A concrete `RelativeFileSystem` rooted at a `LocalDirectory` provides the needed operations using `RelativePath` arguments:
 
 ```csharp
-internal sealed class RelativeFileSystem
+sealed class RelativeFileSystem
 {
     public RelativeFileSystem(LocalDirectory root);
 
@@ -117,21 +115,13 @@ internal sealed class RelativeFileSystem
 }
 ```
 
-`LocalDirectory` is a typed root token, not a domain path. It parses and normalizes an absolute local directory root. `RelativeFileSystem` converts `LocalDirectory + RelativePath` to host paths, enforces root containment, and is the only place that should use direct `System.IO` for local filesystem work.
+`LocalDirectory` is a typed root token, not a domain path. It parses and normalizes an absolute local directory root. `RelativeFileSystem` converts `LocalDirectory + RelativePath` to host paths, enforces root containment, and `Arius.Core.Shared.FileSystem` is the only place that should use direct `System.IO` for local filesystem work.
 
 No interface is introduced initially. If tests or alternate filesystem implementations later require substitution, extract an interface from the concrete class at that point.
 
-### Cross-OS path collisions fail before snapshot publication
+### Public contracts may expose validated path types
 
-`RelativePath` equality remains ordinal and case-preserving. Linux can enumerate both `photos/pic.jpg` and `Photos/pic.jpg`, but Arius must reject such input before publishing a snapshot because it cannot restore both paths safely on Windows or common macOS configurations.
-
-Collision checks should use ordinal case-insensitive comparison over complete `RelativePath` values and over sibling filetree entry names where appropriate. The failure should identify the colliding paths and stop the archive before snapshot creation.
-
-### Public contracts convert at the boundary
-
-Public command/query/result contracts remain strings. Handlers parse incoming strings into `LocalDirectory` and `RelativePath` near the start of the operation and convert internal paths back to strings when publishing public events or returning public result DTOs.
-
-This avoids the previous branch's public API ripple while still removing internal stringly path behavior.
+Public command/query/result/event contracts may expose `RelativePath` and `PathSegment` directly when that improves the API. Handlers still parse incoming string roots and other host-path inputs into `LocalDirectory` and `RelativePath` near the start of the operation.
 
 ### Blob and cache path strings use `RelativePath` where they are slash-normalized logical paths
 
@@ -141,11 +131,11 @@ Local cache directories use `LocalDirectory` and `RelativeFileSystem` where they
 
 ## Risks / Trade-offs
 
-- Refactor scope is broad → Implement in phases with tests at each boundary and keep public contracts string-based to contain ripple.
+- Refactor scope is broad → Implement in phases with tests at each boundary while keeping public API changes deliberate.
 - `RelativePath / string` could look like unchecked string usage → The operator only accepts one validated segment and tests must prove multi-segment strings throw.
 - One generic `RelativePath` can still mix repository and blob concepts → Start simple, then add semantic wrappers only if real mistakes appear.
 - Removing direct `System.IO` calls from feature code may centralize too much in `RelativeFileSystem` → Keep it concrete and limited to operations Arius already needs; do not add broad virtual filesystem APIs speculatively.
-- Case-collision detection can reject valid Linux-only file trees → This is deliberate because Arius archives are intended to be cross-OS compatible and restorable.
+- Public path types in contracts increase API coupling to Arius.Core path semantics → Accepted because the current implementation already uses `RelativePath` directly in several public contracts.
 - Existing repository/cache format compatibility is not preserved → Accepted for this change; tests should assert the new canonical behavior instead of preserving old hashes or layout.
 
 ## Migration Plan
@@ -159,5 +149,11 @@ Local cache directories use `LocalDirectory` and `RelativeFileSystem` where they
 
 ## Open Questions
 
-- Whether every blob/cache helper should return `RelativePath` immediately, or whether some storage-boundary helpers should remain string-based until their callers are refactored.
 - The exact restore candidate type name and shape (`FileToRestore`, `RestoreFile`, or similar) should be chosen during implementation based on current restore code.
+
+## Notes From Implementation
+
+- `RelativePath` and `PathSegment` are allowed to be public.
+- Case-insensitive path-collision rejection is intentionally not part of this change.
+- Tar assembly is allowed to use in-memory buffering when that matches the implementation and runtime goals.
+- `FileTreeService` and `SnapshotService` details are not part of this change's core filesystem-domain design.

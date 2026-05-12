@@ -161,7 +161,7 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_ShowsHashingFile()
     {
         var state = new ProgressState();
-        state.AddFile("video.mp4", 5_000_000);
+        state.AddFile(RelativePath.Parse("video.mp4"), 5_000_000);
         // State is Hashing by default
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -173,8 +173,8 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_ShowsUploadingFile()
     {
         var state = new ProgressState();
-        state.AddFile("large.bin", 10_000_000);
-        state.SetFileHashed("large.bin", FakeContentHash('1'));
+        state.AddFile(RelativePath.Parse("large.bin"), 10_000_000);
+        state.SetFileHashed(RelativePath.Parse("large.bin"), FakeContentHash('1'));
         state.SetFileUploading(FakeContentHash('1'));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -187,8 +187,8 @@ public class BuildArchiveDisplayTests
     {
         // Hashed state is invisible
         var state = new ProgressState();
-        state.AddFile("pending.bin", 1000);
-        state.SetFileHashed("pending.bin", FakeContentHash('2'));
+        state.AddFile(RelativePath.Parse("pending.bin"), 1000);
+        state.SetFileHashed(RelativePath.Parse("pending.bin"), FakeContentHash('2'));
         // State is now Hashed — should not appear
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -199,9 +199,9 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_DoesNotShowRemovedFiles()
     {
         var state = new ProgressState();
-        state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", FakeContentHash('3'));
-        state.RemoveFile("completed.bin");
+        state.AddFile(RelativePath.Parse("completed.bin"), 1000);
+        state.SetFileHashed(RelativePath.Parse("completed.bin"), FakeContentHash('3'));
+        state.RemoveFile(RelativePath.Parse("completed.bin"));
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldNotContain("completed.bin");
@@ -263,7 +263,7 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_ShowsRelativePath_NotJustFilename()
     {
         var state = new ProgressState();
-        state.AddFile("some/deep/path/file.bin", 1024);
+        state.AddFile(RelativePath.Parse("some/deep/path/file.bin"), 1024);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("some/deep/path/file.bin");
@@ -274,7 +274,7 @@ public class BuildArchiveDisplayTests
     {
         var longPath = "a/very/long/directory/structure/with/file.bin"; // > 30 chars
         var state = new ProgressState();
-        state.AddFile(longPath, 2048);
+        state.AddFile(RelativePath.Parse(longPath), 2048);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("...ory/structure/with/file.bin");
@@ -285,7 +285,7 @@ public class BuildArchiveDisplayTests
     public void BuildArchiveDisplay_ShowsSizeInMB_ForHashingFile()
     {
         var state = new ProgressState();
-        state.AddFile("doc.pdf", 5_000_000);
+        state.AddFile(RelativePath.Parse("doc.pdf"), 5_000_000);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
         output.ShouldContain("MB");

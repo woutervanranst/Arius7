@@ -82,6 +82,8 @@ arius restore ./photos \
   -c photos-backup
 ```
 
+Filter paths with `--target-path`.
+
 ### List snapshots
 
 ```bash

@@ -1,6 +1,5 @@
 using System.CommandLine;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -142,31 +141,33 @@ internal static class RestoreVerb
                         return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                     },
 
-                    CreateDownloadProgress = (identifier, compressedSize, kind) =>
+                    CreateLargeFileDownloadProgress = (relativePath, compressedSize) =>
                     {
+                        var key = relativePath.ToString();
+                        var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, compressedSize, originalSize: 0);
+                        restoreProgress.TrackedDownloads[key] = tracked;
+
+                        return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                    },
+
+                    CreateTarBundleDownloadProgress = (chunkHash, compressedSize) =>
+                    {
+                        var key = chunkHash.ToString();
                         string displayName;
                         long originalSize = 0;
 
-                        if (kind == DownloadKind.TarBundle)
+                        if (restoreProgress.TarBundleMetadata.TryGetValue(chunkHash, out var meta))
                         {
-                            if (ChunkHash.TryParse(identifier, out var typedChunkHash)
-                                && restoreProgress.TarBundleMetadata.TryGetValue(typedChunkHash, out var meta))
-                            {
-                                displayName  = $"TAR bundle ({meta.FileCount} files, {meta.OriginalSize.Bytes().Humanize()})";
-                                originalSize = meta.OriginalSize;
-                            }
-                            else
-                            {
-                                displayName = $"TAR bundle ({identifier[..8]}...)";
-                            }
+                            displayName  = $"TAR bundle ({meta.FileCount} files, {meta.OriginalSize.Bytes().Humanize()})";
+                            originalSize = meta.OriginalSize;
                         }
                         else
                         {
-                            displayName = identifier;
+                            displayName = $"TAR bundle ({key[..8]}...)";
                         }
 
-                        var tracked = new TrackedDownload(identifier, kind, displayName, compressedSize, originalSize);
-                        restoreProgress.TrackedDownloads[identifier] = tracked;
+                        var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, compressedSize, originalSize);
+                        restoreProgress.TrackedDownloads[key] = tracked;
 
                         return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
                     },
@@ -497,7 +498,7 @@ internal static class RestoreVerb
                     foreach (var ev in recent)
                     {
                         var sym     = ev.Skipped ? "[dim]○[/]" : "[green]●[/]";
-                        var path    = Markup.Escape(DisplayHelpers.TruncateAndLeftJustify(ev.RelativePath, 40));
+                        var path    = Markup.Escape(DisplayHelpers.TruncateAndLeftJustify(ev.RelativePath.ToString(), 40));
                         var sizeStr = Markup.Escape(ev.FileSize.Bytes().Humanize());
                         lines.Add(new Markup($"  {sym} [dim]{path}[/]  ({sizeStr})"));
                     }

@@ -32,6 +32,69 @@ public class AzureBlobServiceTests
     }
 
     [Test]
+    public async Task GetContainerNamesAsync_DoesNotYieldContainersWithoutSnapshotBlobs()
+    {
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient(
+                [
+                    new FakeContainer("not-a-repo", exists: true, ["random/file.txt"]),
+                    new FakeContainer("empty", exists: true, []),
+                ]),
+            "account",
+            "key");
+
+        var results = new List<string>();
+        await foreach (var name in service.GetContainerNamesAsync(CancellationToken.None))
+        {
+            results.Add(name);
+        }
+
+        results.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task GetContainerNamesAsync_DoesNotTreatBlobNamedSnapshotsAsRepository()
+    {
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient(
+                [
+                    new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-01T120000.000Z"]),
+                    new FakeContainer("snapshot-like", exists: true, ["snapshots"]),
+                ]),
+            "account",
+            "key");
+
+        var results = new List<string>();
+        await foreach (var name in service.GetContainerNamesAsync(CancellationToken.None))
+        {
+            results.Add(name);
+        }
+
+        results.ShouldBe(["repo-a"]);
+    }
+
+    [Test]
+    public async Task GetContainerNamesAsync_DoesNotTreatSnapshotLikeSiblingPrefixAsRepository()
+    {
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient(
+                [
+                    new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-01T120000.000Z"]),
+                    new FakeContainer("snapshot-like", exists: true, ["snapshots-archive/2026-04-01T120000.000Z"]),
+                ]),
+            "account",
+            "key");
+
+        var results = new List<string>();
+        await foreach (var name in service.GetContainerNamesAsync(CancellationToken.None))
+        {
+            results.Add(name);
+        }
+
+        results.ShouldBe(["repo-a"]);
+    }
+
+    [Test]
     public async Task GetContainerServiceAsync_ReadOnly_ReturnsContainerServiceWhenContainerExists()
     {
         var service = new AzureBlobService(
@@ -72,6 +135,33 @@ public class AzureBlobServiceTests
         containerService.ShouldBeOfType<AzureBlobContainerService>();
         container.UploadedProbe.ShouldBeTrue();
         container.DeletedProbe.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task ListAsync_DoesNotReturnSiblingPrefixMatches()
+    {
+        var container = new FakeContainer(
+            "repo-a",
+            exists: true,
+            [
+                "snapshots/2026-04-01T120000.000Z",
+                "snapshots-archive/2026-04-01T120000.000Z",
+                "snapshots"
+            ]);
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient([container]),
+            "account",
+            "key");
+
+        var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
+
+        var results = new List<string>();
+        await foreach (var path in containerService.ListAsync(BlobPaths.SnapshotsPrefix, CancellationToken.None))
+        {
+            results.Add(path.ToString());
+        }
+
+        results.ShouldBe(["snapshots/2026-04-01T120000.000Z"]);
     }
 
     private sealed class FakeBlobServiceClient(IReadOnlyList<FakeContainer> containers) : BlobServiceClient
@@ -120,9 +210,28 @@ public class AzureBlobServiceTests
             string prefix = default!,
             CancellationToken cancellationToken = default)
         {
-            var items = container.BlobNames
-                .Where(name => string.IsNullOrEmpty(prefix) || name.StartsWith(prefix, StringComparison.Ordinal))
-                .Select(name => BlobsModelFactory.BlobHierarchyItem(prefix: null, blob: BlobsModelFactory.BlobItem(
+            var items = new List<BlobHierarchyItem>();
+            var prefixes = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var name in container.BlobNames.Where(name => string.IsNullOrEmpty(prefix) || name.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                var remaining = string.IsNullOrEmpty(prefix) ? name : name[prefix.Length..];
+                var delimiterIndex = string.IsNullOrEmpty(delimiter)
+                    ? -1
+                    : remaining.IndexOf(delimiter, StringComparison.Ordinal);
+
+                if (delimiterIndex >= 0)
+                {
+                    var hierarchyPrefix = name[..(name.Length - remaining.Length + delimiterIndex + delimiter.Length)];
+                    if (prefixes.Add(hierarchyPrefix))
+                    {
+                        items.Add(BlobsModelFactory.BlobHierarchyItem(prefix: hierarchyPrefix, blob: null));
+                    }
+
+                    continue;
+                }
+
+                items.Add(BlobsModelFactory.BlobHierarchyItem(prefix: null, blob: BlobsModelFactory.BlobItem(
                     name,
                     false,
                     BlobsModelFactory.BlobItemProperties(
@@ -158,8 +267,8 @@ public class AzureBlobServiceTests
                         null,
                         null),
                     null,
-                    new Dictionary<string, string>())))
-                .ToArray();
+                    new Dictionary<string, string>())));
+            }
 
             return AsyncPageable<BlobHierarchyItem>.FromPages([Page<BlobHierarchyItem>.FromValues(items, continuationToken: null, FakeResponse.Instance)]);
         }

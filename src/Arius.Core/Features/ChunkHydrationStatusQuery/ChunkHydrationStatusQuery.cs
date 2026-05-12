@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -11,7 +12,7 @@ namespace Arius.Core.Features.ChunkHydrationStatusQuery;
 
 public sealed record ChunkHydrationStatusQuery(IReadOnlyList<RepositoryFileEntry> Files) : IStreamQuery<ChunkHydrationStatusResult>;
 
-public sealed record ChunkHydrationStatusResult(string RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
+public sealed record ChunkHydrationStatusResult(RelativePath RelativePath, ContentHash? ContentHash, ChunkHydrationStatus Status);
 
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>

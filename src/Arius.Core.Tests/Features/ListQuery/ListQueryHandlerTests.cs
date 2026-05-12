@@ -4,8 +4,8 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
-using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging.Testing;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
@@ -50,13 +50,13 @@ public class ListQueryHandlerTests
         results.Count.ShouldBe(2);
 
         var directory = results.OfType<RepositoryDirectoryEntry>().Single();
-        directory.RelativePath.ShouldBe("docs/");
+        directory.RelativePath.ShouldBe(RelativePath.Parse("docs"));
         directory.ExistsInCloud.ShouldBeTrue();
         directory.ExistsLocally.ShouldBeFalse();
         directory.TreeHash.ShouldBe(TreeHashFor("docs"));
 
         var file = results.OfType<RepositoryFileEntry>().Single();
-        file.RelativePath.ShouldBe("readme.txt");
+        file.RelativePath.ShouldBe(RelativePath.Parse("readme.txt"));
         file.ContentHash.ShouldBe(ContentHashFor("readme"));
         file.OriginalSize.ShouldBe(123);
         file.Created.ShouldBe(s_created);
@@ -98,14 +98,67 @@ public class ListQueryHandlerTests
         var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
-        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = "docs", Recursive = false }), CancellationToken.None))
+        await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("docs"), Recursive = false }), CancellationToken.None))
         {
             results.Add(entry);
         }
 
         results.Count.ShouldBe(2);
-        results.Select(entry => entry.RelativePath).OrderBy(path => path).ShouldBe(["docs/guide.txt", "docs/nested/"]);
-        results.ShouldNotContain(entry => entry.RelativePath == "root.txt");
+        results.Select(entry => entry.RelativePath.ToString() + (entry is RepositoryDirectoryEntry ? "/" : string.Empty)).OrderBy(path => path).ShouldBe(["docs/guide.txt", "docs/nested/"]);
+        results.ShouldNotContain(entry => entry.RelativePath == RelativePath.Parse("root.txt"));
+    }
+
+    [Test]
+    public async Task Handle_Prefix_DoesNotMatchPartialSegment()
+    {
+        var photosTree = Entries(FileEntryOf("pic.jpg", FakeContentHash('1')));
+        var photoshopTree = Entries(FileEntryOf("logo.png", FakeContentHash('2')));
+        var photosHash = FileTreeBuilder.ComputeHash(photosTree, s_encryption);
+        var photoshopHash = FileTreeBuilder.ComputeHash(photoshopTree, s_encryption);
+        var rootTree = Entries(
+            DirectoryEntryOf("photos/", photosHash),
+            DirectoryEntryOf("photoshop/", photoshopHash));
+        var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, s_encryption));
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, rootTree);
+        await SeedTreeAsync(blobs, photosTree);
+        await SeedTreeAsync(blobs, photoshopTree);
+        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-segments", "ctr-ls-segments", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('1'), FakeChunkHash('3'), 10, 5));
+        var handler = fixture.CreateListQueryHandler();
+
+        var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("photos"), Recursive = true }), CancellationToken.None)
+            .OfType<RepositoryFileEntry>()
+            .ToListAsync();
+
+        results.Select(file => file.RelativePath).ShouldBe([RelativePath.Parse("photos/pic.jpg")]);
+    }
+
+    [Test]
+    public async Task Handle_RootedPrefix_ThrowsFormatException()
+    {
+        IReadOnlyList<FileTreeEntry> rootTree = [];
+        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
+        var snapshot = MakeSnapshot(rootHash);
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, rootTree);
+        blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-invalid-prefix", "ctr-ls-invalid-prefix", s_encryption);
+        var handler = fixture.CreateListQueryHandler();
+
+        var exception = await Should.ThrowAsync<FormatException>(async () =>
+        {
+            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("/photos") }), CancellationToken.None))
+            {
+            }
+        });
+
+        exception.Message.ShouldContain("Invalid relative path");
     }
 
     [Test]
@@ -152,21 +205,21 @@ public class ListQueryHandlerTests
 
             results.Count.ShouldBe(3);
 
-            var shared = results.Single(file => file.RelativePath == "shared.txt");
+            var shared = results.Single(file => file.RelativePath == RelativePath.Parse("shared.txt"));
             shared.ExistsInCloud.ShouldBeTrue();
             shared.ExistsLocally.ShouldBeTrue();
             shared.HasPointerFile.ShouldBe(true);
             shared.BinaryExists.ShouldBe(true);
             shared.OriginalSize.ShouldBe(20);
 
-            var cloudOnly = results.Single(file => file.RelativePath == "cloud-only.txt");
+            var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("cloud-only.txt"));
             cloudOnly.ExistsInCloud.ShouldBeTrue();
             cloudOnly.ExistsLocally.ShouldBeFalse();
             cloudOnly.HasPointerFile.ShouldBeNull();
             cloudOnly.BinaryExists.ShouldBeNull();
             cloudOnly.OriginalSize.ShouldBe(10);
 
-            var localOnly = results.Single(file => file.RelativePath == "local-only.txt");
+            var localOnly = results.Single(file => file.RelativePath == RelativePath.Parse("local-only.txt"));
             localOnly.ExistsInCloud.ShouldBeFalse();
             localOnly.ExistsLocally.ShouldBeTrue();
             localOnly.HasPointerFile.ShouldBe(false);
@@ -180,6 +233,156 @@ public class ListQueryHandlerTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    [Test]
+    public async Task Handle_WithPrefixAndLocalPath_PointerSuffixComparisonIsCaseInsensitive()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt"), "local-shared");
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt.POINTER.ARIUS"), FakeContentHash('2').ToString());
+            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "local-only.txt"), "local-only");
+
+            var docsTree = Entries(
+                FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
+                FileEntryOf("shared.txt", ContentHashFor("shared")));
+            var docsHash = FileTreeBuilder.ComputeHash(docsTree, s_encryption);
+            var rootTree = Entries(DirectoryEntryOf("docs/", docsHash));
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
+                RootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption),
+                FileCount = 2,
+                TotalSize = 100,
+                AriusVersion = "test"
+            };
+
+            var blobs = new FakeSeededBlobContainerService();
+            await SeedTreeAsync(blobs, rootTree);
+            await SeedTreeAsync(blobs, docsTree);
+            blobs.AddBlob(SnapshotService.BlobName(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-prefix-local", "ctr-ls-prefix-local", s_encryption);
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
+            var handler = fixture.CreateListQueryHandler();
+
+            var results = new List<RepositoryFileEntry>();
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("docs"), LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            {
+                if (entry is RepositoryFileEntry file)
+                {
+                    results.Add(file);
+                }
+            }
+
+            results.Count.ShouldBe(3);
+
+            var shared = results.Single(file => file.RelativePath == RelativePath.Parse("docs/shared.txt"));
+            shared.ExistsInCloud.ShouldBeTrue();
+            shared.ExistsLocally.ShouldBeTrue();
+            shared.HasPointerFile.ShouldBe(true);
+            shared.BinaryExists.ShouldBe(true);
+
+            var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/cloud-only.txt"));
+            cloudOnly.ExistsInCloud.ShouldBeTrue();
+            cloudOnly.ExistsLocally.ShouldBeFalse();
+
+            var localOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/local-only.txt"));
+            localOnly.ExistsInCloud.ShouldBeFalse();
+            localOnly.ExistsLocally.ShouldBeTrue();
+
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public void BuildFiles_PointerSuffixComparisonIsCaseInsensitive()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt")
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() == "docs/shared.txt",
+            path => path.ToString() == "docs/shared.txt" ? 12 : throw new InvalidOperationException($"Unexpected size request for {path}"),
+            _ => (s_created, s_modified),
+            path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
+
+        result.Count.ShouldBe(1);
+
+        var shared = result[PathSegment.Parse("shared.txt")];
+        shared.BinaryExists.ShouldBeTrue();
+        shared.PointerExists.ShouldBeTrue();
+        shared.PointerHash.ShouldBe(FakeContentHash('2'));
+        shared.FileSize.ShouldBe(12);
+    }
+
+    [Test]
+    public void BuildFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
+    {
+        var files = new[]
+        {
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt")
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/shared.txt.pointer.arius")
+            },
+            new LocalFileEntry
+            {
+                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
+            }
+        };
+
+        var result = LocalFileSnapshotBuilder.BuildFiles(
+            files,
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected file existence probe for {path}"),
+                _ => false
+            },
+            path => path.ToString() switch
+            {
+                "docs/shared.txt" => 12,
+                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
+                "docs/pointer-only.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
+                _ => throw new InvalidOperationException($"Unexpected size request for {path}")
+            },
+            _ => (s_created, s_modified),
+            path => path.ToString() switch
+            {
+                "docs/shared.txt.pointer.arius" => FakeContentHash('2'),
+                "docs/pointer-only.txt.pointer.arius" => FakeContentHash('3'),
+                _ => null
+            });
+
+        result.Count.ShouldBe(2);
+        result[PathSegment.Parse("shared.txt")].PointerExists.ShouldBeTrue();
+        result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
+        result[PathSegment.Parse("shared.txt")].FileSize.ShouldBe(12);
+        result[PathSegment.Parse("pointer-only.txt")].FileSize.ShouldBeNull();
     }
 
     [Test]
@@ -224,17 +427,17 @@ public class ListQueryHandlerTests
 
         var nonRecursive = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None).ToListAsync();
         nonRecursive.Count.ShouldBe(2);
-        nonRecursive.ShouldContain(e => e.RelativePath == "child/");
-        nonRecursive.ShouldContain(e => e.RelativePath == "root.txt");
-        nonRecursive.ShouldNotContain(e => e.RelativePath == "child/deep.txt");
+        nonRecursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child"));
+        nonRecursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("root.txt"));
+        nonRecursive.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("child/deep.txt"));
 
         await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-r", "ctr-33-r", s_encryption);
         var handler2 = fixture2.CreateListQueryHandler();
 
         var recursive = await handler2.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None).ToListAsync();
-        recursive.ShouldContain(e => e.RelativePath == "child/");
-        recursive.ShouldContain(e => e.RelativePath == "root.txt");
-        recursive.ShouldContain(e => e.RelativePath == "child/deep.txt");
+        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child"));
+        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("root.txt"));
+        recursive.ShouldContain(e => e.RelativePath == RelativePath.Parse("child/deep.txt"));
     }
 
     [Test]
@@ -259,10 +462,10 @@ public class ListQueryHandlerTests
         var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, Filter = "vacation" }), CancellationToken.None).ToListAsync();
 
          // Directories are NOT filtered — Photos/ should still appear
-        results.ShouldContain(e => e.RelativePath == "Photos/");
-        results.ShouldContain(e => e.RelativePath == "VACATION.jpg");
-        results.ShouldNotContain(e => e.RelativePath == "sunset.jpg");
-        results.ShouldNotContain(e => e.RelativePath == "readme.txt");
+        results.ShouldContain(e => e.RelativePath == RelativePath.Parse("Photos"));
+        results.ShouldContain(e => e.RelativePath == RelativePath.Parse("VACATION.jpg"));
+        results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("sunset.jpg"));
+        results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("readme.txt"));
     }
 
     [Test]
@@ -301,15 +504,15 @@ public class ListQueryHandlerTests
 
             dirs.Count.ShouldBe(3);
 
-            var cloudLocal = dirs.Single(d => d.RelativePath == "cloud-local-dir/");
+            var cloudLocal = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-local-dir"));
             cloudLocal.ExistsInCloud.ShouldBeTrue();
             cloudLocal.ExistsLocally.ShouldBeTrue();
 
-            var cloudOnly = dirs.Single(d => d.RelativePath == "cloud-only-dir/");
+            var cloudOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-only-dir"));
             cloudOnly.ExistsInCloud.ShouldBeTrue();
             cloudOnly.ExistsLocally.ShouldBeFalse();
 
-            var localOnly = dirs.Single(d => d.RelativePath == "local-only-dir/");
+            var localOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("local-only-dir"));
             localOnly.ExistsInCloud.ShouldBeFalse();
             localOnly.ExistsLocally.ShouldBeTrue();
         }
@@ -345,9 +548,9 @@ public class ListQueryHandlerTests
             .OfType<RepositoryFileEntry>()
             .ToListAsync();
 
-        var known   = files.Single(f => f.RelativePath == "known.txt");
-        var unknown = files.Single(f => f.RelativePath == "unknown.txt");
-        var child   = files.Single(f => f.RelativePath == "child/child-file.txt");
+        var known   = files.Single(f => f.RelativePath == RelativePath.Parse("known.txt"));
+        var unknown = files.Single(f => f.RelativePath == RelativePath.Parse("unknown.txt"));
+        var child   = files.Single(f => f.RelativePath == RelativePath.Parse("child/child-file.txt"));
 
         known.OriginalSize.ShouldBe(999);
         unknown.OriginalSize.ShouldBeNull();
@@ -459,18 +662,18 @@ public class ListQueryHandlerTests
         using var ms = new MemoryStream();
 
         await using (var encStream = s_encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzipStream.WriteAsync(payload.Plaintext);
         }
 
-        blobs.AddBlob(BlobPaths.FileTree(payload.Hash), ms.ToArray());
+        blobs.AddBlob(BlobPathStrings.FileTree(payload.Hash), ms.ToArray());
         return payload.Hash;
     }
 
     private static FileEntry FileEntryOf(string name, ContentHash hash) => new()
     {
-        Name = name,
+        Name = PathSegment.Parse(name),
         ContentHash = hash,
         Created = s_created,
         Modified = s_modified
@@ -478,7 +681,7 @@ public class ListQueryHandlerTests
 
     private static DirectoryEntry DirectoryEntryOf(string name, FileTreeHash hash) => new()
     {
-        Name = name,
+        Name = PathSegment.Parse(name.TrimEnd('/')),
         FileTreeHash = hash
     };
 }

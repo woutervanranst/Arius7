@@ -1,11 +1,17 @@
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Static helpers for computing the 4-component restore cost estimate.
-/// Extracted for unit testability.
+/// Computes the 4-component restore cost estimate using either supplied pricing or the embedded default.
 /// </summary>
-internal static class RestoreCostCalculator
+internal sealed class RestoreCostCalculator
 {
+    private readonly PricingConfig _pricing;
+
+    public RestoreCostCalculator(PricingConfig? pricing)
+    {
+        _pricing = pricing ?? PricingConfig.LoadEmbedded();
+    }
+
     /// <summary>
     /// Computes a <see cref="RestoreCostEstimate"/> from raw inputs.
     /// </summary>
@@ -15,20 +21,16 @@ internal static class RestoreCostCalculator
     /// <param name="chunksPendingRehydration">Chunk count in Archive with copy in progress.</param>
     /// <param name="rehydrationBytes">Compressed bytes of chunks needing rehydration.</param>
     /// <param name="downloadBytes">Compressed bytes available for immediate download.</param>
-    /// <param name="pricing">Pricing config to use (defaults to <see cref="PricingConfig.Load"/>).</param>
     /// <param name="monthsStored">Storage duration assumption (default: 1 month).</param>
-    public static RestoreCostEstimate Compute(
+    public RestoreCostEstimate Compute(
         int            chunksAvailable,
         int            chunksAlreadyRehydrated,
         int            chunksNeedingRehydration,
         int            chunksPendingRehydration,
         long           rehydrationBytes,
         long           downloadBytes,
-        PricingConfig? pricing      = null,
         double         monthsStored = 1.0)
     {
-        pricing ??= PricingConfig.Load();
-
         var numberOfBlobs = chunksNeedingRehydration + chunksPendingRehydration;
         var totalGB       = rehydrationBytes / (1024.0 * 1024.0 * 1024.0);
         var opsUnits      = numberOfBlobs / 10_000.0;
@@ -43,18 +45,18 @@ internal static class RestoreCostCalculator
             DownloadBytes            = downloadBytes,
 
             // Retrieval cost: per GB from archive
-            RetrievalCostStandard = totalGB * pricing.Archive.RetrievalPerGB,
-            RetrievalCostHigh     = totalGB * pricing.Archive.RetrievalHighPerGB,
+            RetrievalCostStandard = totalGB * _pricing.Archive.RetrievalPerGB,
+            RetrievalCostHigh     = totalGB * _pricing.Archive.RetrievalHighPerGB,
 
             // Read ops: (N/10000) * rate — Azure charges per operation, not per batch
-            ReadOpsCostStandard   = opsUnits * pricing.Archive.ReadOpsPer10000,
-            ReadOpsCostHigh       = opsUnits * pricing.Archive.ReadOpsHighPer10000,
+            ReadOpsCostStandard   = opsUnits * _pricing.Archive.ReadOpsPer10000,
+            ReadOpsCostHigh       = opsUnits * _pricing.Archive.ReadOpsHighPer10000,
 
             // Write ops: (N/10000) * rate to Hot tier
-            WriteOpsCost          = opsUnits * pricing.Hot.WriteOpsPer10000,
+            WriteOpsCost          = opsUnits * _pricing.Hot.WriteOpsPer10000,
 
             // Storage: N months in Hot tier (rehydrated copies in chunks-rehydrated/)
-            StorageCost           = totalGB * pricing.Hot.StoragePerGBPerMonth * monthsStored,
+            StorageCost           = totalGB * _pricing.Hot.StoragePerGBPerMonth * monthsStored,
         };
     }
 }

@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.ChunkIndex;
@@ -118,5 +119,5 @@ public sealed class Shard
     /// Returns the 2-character (1-byte / 4-bit + 4-bit) shard prefix for a content-hash.
     /// With 65,536 shards this is the first 4 hex chars (2 bytes) of the hash.
     /// </summary>
-    public static string PrefixOf(ContentHash contentHash) => contentHash.Prefix4;
+    public static PathSegment PrefixOf(ContentHash contentHash) => PathSegment.Parse(contentHash.Prefix4);
 }

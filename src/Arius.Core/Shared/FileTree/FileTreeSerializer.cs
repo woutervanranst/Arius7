@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -26,7 +27,7 @@ public static class FileTreeSerializer
 
         var sb = new StringBuilder();
 
-        foreach (var entry in entries.OrderBy(e => e.Name, StringComparer.Ordinal))
+        foreach (var entry in entries.OrderBy(e => e.Name, PathSegmentOrdinalComparer.Instance))
         {
             if (entry is FileEntry fileEntry)
                 sb.AppendLine(SerializePersistedFileEntryLine(fileEntry));
@@ -39,6 +40,13 @@ public static class FileTreeSerializer
         return s_utf8.GetBytes(sb.ToString());
     }
 
+    private sealed class PathSegmentOrdinalComparer : IComparer<PathSegment>
+    {
+        public static PathSegmentOrdinalComparer Instance { get; } = new();
+
+        public int Compare(PathSegment x, PathSegment y) => x.Compare(y, StringComparer.Ordinal);
+    }
+
     /// <summary>
     /// Serializes one file entry in the persisted filetree node format.
     /// </summary>
@@ -48,8 +56,8 @@ public static class FileTreeSerializer
     /// Serializes one directory entry in the persisted filetree node format.
     /// </summary>
     public static string SerializePersistedDirectoryEntryLine(DirectoryEntry entry) => SerializePersistedDirectoryEntryLine(entry.FileTreeHash, entry.Name);
-    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, string name) => $"{hash} D {name}";
-    public static string SerializePersistedDirectoryEntryLine(string hash, string name)       => $"{hash} D {name}";
+    public static string SerializePersistedDirectoryEntryLine(FileTreeHash hash, PathSegment name) => $"{hash} D {name}/";
+    public static string SerializePersistedDirectoryEntryLine(string hash, PathSegment name)       => $"{hash} D {name}/";
 
     /// <summary>
     /// Parses a persisted file entry line of the form '{content-hash} F {created} {modified} {name}'.
@@ -109,7 +117,7 @@ public static class FileTreeSerializer
             return new DirectoryEntry
             {
                 FileTreeHash = fileTreeHash,
-                Name         = afterType
+                Name         = ParseDirectoryName(afterType, line)
             };
         }
 
@@ -196,7 +204,7 @@ public static class FileTreeSerializer
         return new StagedDirectoryEntry
         {
             DirectoryNameHash = normalizedDirectoryNameHash,
-            Name              = name
+            Name              = PathSegment.Parse(name[..^1])
         };
     }
 
@@ -227,7 +235,20 @@ public static class FileTreeSerializer
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified,
-            Name        = name
+            Name        = PathSegment.Parse(name)
         };
+    }
+
+    private static PathSegment ParseDirectoryName(string persistedName, string line)
+    {
+        if (!persistedName.EndsWith("/", StringComparison.Ordinal)
+            || persistedName.Length == 1
+            || persistedName.Contains('\\')
+            || persistedName[..^1].Contains('/'))
+        {
+            throw new FormatException($"Invalid directory entry (non-canonical name): '{line}'");
+        }
+
+        return PathSegment.Parse(persistedName[..^1]);
     }
 }

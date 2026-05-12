@@ -151,7 +151,9 @@ public static class CliBuilder
     /// </summary>
     public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
     {
-        var logDir  = RepositoryPaths.GetLogsDirectory(accountName, containerName);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var repositoryDirectoryName = RepositoryPaths.GetRepositoryDirectoryName(accountName, containerName);
+        var logDir = Path.Combine(home, ".arius", repositoryDirectoryName.ToString(), "logs");
         Directory.CreateDirectory(logDir);
 
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");

@@ -1,7 +1,12 @@
-using System.Formats.Tar;
+using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
+using Mediator;
+using NSubstitute;
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -17,8 +22,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
 
-        await env.Blobs.SeedLargeBlobAsync(BlobPaths.Chunk(chunkHash), content, uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(chunkHash));
+        await env.Blobs.SeedLargeBlobAsync(BlobPathStrings.Chunk(chunkHash), content, uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(chunkHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -36,8 +41,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
 
         var tarHash = ComputeTarHash(env, contentHash, content);
-        await env.Blobs.SeedTarBlobAsync(BlobPaths.Chunk(tarHash), [content], uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.Chunk(tarHash));
+        await env.Blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(tarHash), [content], uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(tarHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -51,7 +56,8 @@ public class ArchiveRecoveryTests
         using var env = new ArchiveTestEnvironment();
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
         var contentHash = env.Encryption.ComputeHash(content);
-        var blobName = BlobPaths.Chunk(ChunkHash.Parse(contentHash));
+        var chunkHash = ChunkHash.Parse(contentHash);
+        var blobName = BlobPaths.ChunkPath(chunkHash);
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         env.Blobs.ClearMetadata(blobName);
@@ -62,7 +68,7 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
         env.Blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        var finalMeta = await env.Blobs.GetMetadataAsync(blobName);
+        var finalMeta = await env.Blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash));
         finalMeta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
     }
 
@@ -112,12 +118,96 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_WritesFileTreeEntryWithBinaryFileTimestamps()
+    {
+        using var env = new ArchiveTestEnvironment();
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        var created = new DateTimeOffset(2021, 4, 5, 6, 7, 8, TimeSpan.Zero);
+        var modified = new DateTimeOffset(2022, 5, 6, 7, 8, 9, TimeSpan.Zero);
+
+        env.WriteRandomFile(relativePath.ToString(), 128);
+        env.SetTimestamps(relativePath, created, modified);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var entry = await env.ReadRootFileEntryAsync(relativePath);
+
+        if (!OperatingSystem.IsLinux())
+            entry.Created.ShouldBe(created);
+
+        entry.Modified.ShouldBe(modified);
+    }
+
+    [Test]
+    public async Task Archive_UsesEnumeratedBinaryMetadataForScanAndHashProgress()
+    {
+        using var env = new ArchiveTestEnvironment();
+
+        var mediator = env.Mediator;
+        var scannedEvents = new ConcurrentBag<FileScannedEvent>();
+        var hashingEvents = new ConcurrentBag<FileHashingEvent>();
+        mediator
+            .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo =>
+            {
+                switch (callInfo.ArgAt<INotification>(0))
+                {
+                    case FileScannedEvent scanned:
+                        scannedEvents.Add(scanned);
+                        break;
+                    case FileHashingEvent hashing:
+                        hashingEvents.Add(hashing);
+                        break;
+                }
+            });
+
+        env.WriteRandomFile("photos/pic.jpg", 32);
+        var result = await env.ArchiveAsync(BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var scannedEvent = scannedEvents.ShouldHaveSingleItem();
+        scannedEvent.RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
+        scannedEvent.FileSize.ShouldBe(32);
+
+        var hashingEvent = hashingEvents.ShouldHaveSingleItem();
+        hashingEvent.RelativePath.ShouldBe(RelativePath.Parse("photos/pic.jpg"));
+        hashingEvent.FileSize.ShouldBe(32);
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocal_WritesPointerAndDeletesBinaryAtRelativePath()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 128);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt")).ShouldBeFalse();
+        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt.pointer.arius")).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
+    {
+        using var env = new ArchiveTestEnvironment();
+        env.WriteRandomFile("docs/readme.txt", 128);
+
+        var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true, noPointers: true);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("--remove-local cannot be combined with --no-pointers");
+    }
+
+    [Test]
     public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
     {
         using var env = new ArchiveTestEnvironment();
         env.WriteRandomFile("docs/readme.txt", 1024);
 
-        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(env.FileTreeCacheDirectory));
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
 

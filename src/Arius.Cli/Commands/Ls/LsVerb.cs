@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Arius.Core.Features.ListQuery;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
@@ -104,10 +105,27 @@ internal static class LsVerb
 
                 var mediator = services.GetRequiredService<IMediator>();
 
+                RelativePath? parsedPrefix = null;
+                if (prefix is not null)
+                {
+                    try
+                    {
+                        var normalizedPrefix = prefix.TrimEnd('/', '\\');
+                        parsedPrefix = normalizedPrefix.Length == 0
+                            ? RelativePath.Root
+                            : RelativePath.Parse(normalizedPrefix);
+                    }
+                    catch (FormatException ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Error:[/] Invalid --prefix value: {Markup.Escape(ex.Message)}");
+                        return 1;
+                    }
+                }
+
                 var opts = new ListQueryOptions
                 {
                     Version = version,
-                    Prefix  = prefix,
+                    Prefix  = parsedPrefix,
                     Filter  = filter,
                 };
 
@@ -131,7 +149,7 @@ internal static class LsVerb
                             ? file.OriginalSize.Value.Bytes().Humanize()
                             : "?";
                         table.AddRow(
-                            Markup.Escape(file.RelativePath),
+                            Markup.Escape(file.RelativePath.ToString()),
                             size,
                             file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-",
                             file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-");

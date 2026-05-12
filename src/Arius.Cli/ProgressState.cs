@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Cli;
@@ -36,7 +37,7 @@ public sealed class TrackedFile
     /// </summary>
     /// <param name="relativePath">The file's relative path used as the tracking key.</param>
     /// <param name="totalBytes">The file's total size in bytes.</param>
-    public TrackedFile(string relativePath, long totalBytes)
+    public TrackedFile(RelativePath relativePath, long totalBytes)
     {
         RelativePath = relativePath;
         TotalBytes   = totalBytes;
@@ -44,7 +45,7 @@ public sealed class TrackedFile
     }
 
     /// <summary>Relative path of the file (dictionary key).</summary>
-    public string RelativePath { get; }
+    public RelativePath RelativePath { get; }
 
     /// <summary>File size in bytes, set at creation.</summary>
     public long TotalBytes { get; }
@@ -232,7 +233,7 @@ public sealed class TrackedDownload
 /// <param name="RelativePath">Forward-slash relative path of the file.</param>
 /// <param name="FileSize">Uncompressed file size in bytes.</param>
 /// <param name="Skipped">True if the file was skipped (already present); false if restored.</param>
-internal sealed record RestoreFileEvent(string RelativePath, long FileSize, bool Skipped);
+internal sealed record RestoreFileEvent(RelativePath RelativePath, long FileSize, bool Skipped);
 
 // ── ProgressState ─────────────────────────────────────────────────────────────
 
@@ -247,17 +248,17 @@ public sealed class ProgressState
     // ── Archive: per-file state machine ──────────────────────────────────────
 
     /// <summary>Files currently tracked in the pipeline, keyed by relative path.</summary>
-    public ConcurrentDictionary<string, TrackedFile> TrackedFiles { get; } = new();
+    public ConcurrentDictionary<RelativePath, TrackedFile> TrackedFiles { get; } = new();
 
     /// <summary>
     /// Reverse lookup: ContentHash → one or more RelativePaths.
     /// One-to-many because two files can legitimately hash to the same content in one run.
     /// Populated when <c>FileHashedEvent</c> fires; used by downstream content-hash-keyed events.
     /// </summary>
-    public ConcurrentDictionary<ContentHash, ConcurrentBag<string>> ContentHashToPath { get; } = new();
+    public ConcurrentDictionary<ContentHash, ConcurrentBag<RelativePath>> ContentHashToPath { get; } = new();
 
     /// <summary>Adds a new <see cref="TrackedFile"/> entry with State=Hashing.</summary>
-    public void AddFile(string relativePath, long fileSize) =>
+    public void AddFile(RelativePath relativePath, long fileSize) =>
         TrackedFiles.TryAdd(relativePath, new TrackedFile(relativePath, fileSize));
 
     /// <summary>
@@ -266,14 +267,14 @@ public sealed class ProgressState
     /// </summary>
     /// <param name="relativePath">The file's relative path within the archive.</param>
     /// <param name="contentHash">The computed content hash for the file.</param>
-    public void SetFileHashed(string relativePath, ContentHash contentHash)
+    public void SetFileHashed(RelativePath relativePath, ContentHash contentHash)
     {
         if (TrackedFiles.TryGetValue(relativePath, out var file))
         {
             file.ContentHash = contentHash;
             file.State       = FileState.Hashed;
         }
-        ContentHashToPath.GetOrAdd(contentHash, _ => new ConcurrentBag<string>()).Add(relativePath);
+        ContentHashToPath.GetOrAdd(contentHash, _ => new ConcurrentBag<RelativePath>()).Add(relativePath);
         Interlocked.Increment(ref _filesHashed);
     }
 
@@ -303,7 +304,7 @@ public sealed class ProgressState
     }
 
     /// <summary>Removes the <see cref="TrackedFile"/> entry for <paramref name="relativePath"/>.</summary>
-    public void RemoveFile(string relativePath) =>
+    public void RemoveFile(RelativePath relativePath) =>
         TrackedFiles.TryRemove(relativePath, out _);
 
     // ── Archive: TAR bundle tracking ─────────────────────────────────────────
@@ -452,8 +453,8 @@ public sealed class ProgressState
 
     /// <summary>
     /// Per-chunk metadata for tar bundles (file count + original size), populated by
-    /// <c>ChunkDownloadStartedHandler</c> before <c>CreateDownloadProgress</c> is called.
-    /// Used by the <c>CreateDownloadProgress</c> factory to build display names.
+    /// <c>ChunkDownloadStartedHandler</c> before the tar-bundle download progress callback is called.
+    /// Used by the tar-bundle download progress factory to build display names.
     /// </summary>
     internal ConcurrentDictionary<ChunkHash, (int FileCount, long OriginalSize)> TarBundleMetadata { get; } = new();
 
@@ -678,7 +679,7 @@ public sealed class ProgressState
     /// Enqueues a restore file event into <see cref="RecentRestoreEvents"/>, capped at 10 entries.
     /// If the queue already has 10 entries the oldest is dequeued first.
     /// </summary>
-    public void AddRestoreEvent(string path, long size, bool skipped)
+    public void AddRestoreEvent(RelativePath path, long size, bool skipped)
     {
         // Trim to cap before adding so we never exceed 10.
         while (RecentRestoreEvents.Count >= 10)

@@ -1,7 +1,15 @@
-## ADDED Requirements
+# Filesystem Domain Types Spec
+
+## Purpose
+
+Defines Arius.Core's internal filesystem domain model for validated relative paths, rooted local filesystem access, archive-time local file state, and path-boundary behavior.
+
+## Requirements
 
 ### Requirement: Slash-normalized relative paths
-Arius.Core SHALL use an internal `RelativePath` value object to represent canonical slash-normalized relative paths for archive domain paths and other logical paths that are relative and use `/` separators.
+Arius.Core SHALL use a `RelativePath` value object to represent canonical slash-normalized relative paths for archive domain paths and other logical paths that are relative and use `/` separators.
+
+`RelativePath` and `PathSegment` MAY be public types.
 
 #### Scenario: Valid relative path
 - **WHEN** Arius.Core parses `photos/2024/pic.jpg` as a relative path
@@ -76,7 +84,7 @@ Arius.Core SHALL model local archive-time file state with internal `BinaryFile`,
 - **THEN** enumeration SHALL produce one file pair whose path is the binary relative path and whose binary and pointer values are both present
 
 ### Requirement: Relative filesystem boundary
-Arius.Core SHALL centralize local filesystem access for archive, list, restore, and cache operations behind a concrete internal `RelativeFileSystem` rooted at a local directory.
+Arius.Core SHALL centralize local filesystem access for archive, list, restore, and cache operations behind a concrete `RelativeFileSystem` rooted at a local directory.
 
 #### Scenario: Enumerate local files by relative path
 - **WHEN** Core code enumerates a rooted local directory through `RelativeFileSystem.EnumerateFiles()`
@@ -91,7 +99,7 @@ Arius.Core SHALL centralize local filesystem access for archive, list, restore, 
 - **THEN** the filesystem boundary SHALL reject the operation before touching the filesystem
 
 ### Requirement: System IO quarantine
-Archive, list, restore, filetree, blob-name, and cache-path feature code SHALL NOT call local filesystem `File.*`, `Directory.*`, or `Path.*` APIs directly when handling Arius path-domain work. Such calls SHALL be limited to the filesystem boundary or clearly non-domain infrastructure that cannot be represented by `RelativePath`.
+Archive, list, restore, filetree, blob-name, cache-path, and other Arius.Core code outside `Arius.Core.Shared.FileSystem` SHALL NOT call local filesystem `File.*`, `Directory.*`, or `Path.*` APIs directly when handling Arius path-domain work. Direct use of those APIs is allowed only inside `Arius.Core.Shared.FileSystem`, which is the local filesystem abstraction layer for this change.
 
 #### Scenario: Feature code reads pointer file
 - **WHEN** archive or list logic needs to read pointer-file text
@@ -101,27 +109,24 @@ Archive, list, restore, filetree, blob-name, and cache-path feature code SHALL N
 - **WHEN** restore logic materializes a file under the restore root
 - **THEN** it SHALL call the filesystem boundary with a `RelativePath` instead of constructing a full path string in the feature handler
 
-### Requirement: Cross-OS case collision rejection
-Arius.Core SHALL preserve ordinal relative path identity internally, but SHALL reject a repository state with two relative paths that collide under ordinal case-insensitive comparison before publishing a snapshot.
+#### Scenario: Shared.FileSystem uses System.IO internally
+- **WHEN** `RelativeFileSystem`, `LocalDirectory`, or related helpers need to enumerate, resolve, create, delete, or mutate host filesystem paths
+- **THEN** they MAY call `File.*`, `Directory.*`, and `Path.*` directly because `Arius.Core.Shared.FileSystem` is the designated abstraction layer
 
-#### Scenario: Linux-only casing conflict
-- **WHEN** an archive input contains both `photos/pic.jpg` and `Photos/pic.jpg`
-- **THEN** the archive SHALL fail before snapshot publication with an error that identifies the colliding paths
+#### Scenario: Non-filesystem namespace attempts direct IO
+- **WHEN** code outside `Arius.Core.Shared.FileSystem` needs local filesystem access for Arius path-domain work
+- **THEN** it SHALL use the filesystem boundary instead of calling `File.*`, `Directory.*`, or `Path.*` directly
 
-#### Scenario: Distinct non-colliding paths
-- **WHEN** an archive input contains `photos/pic.jpg` and `photos/pic2.jpg`
-- **THEN** the archive SHALL proceed past case-collision validation
+### Requirement: Public validated path contracts
+Public Arius.Core command, query, result, and event contracts MAY expose `RelativePath` and `PathSegment` values directly.
 
-### Requirement: Boundary string contracts
-Public Arius.Core command, query, result, and event contracts SHALL remain string-based for path values unless a separate change explicitly modifies those contracts.
+#### Scenario: Parse string root at boundary
+- **WHEN** a public command option supplies a local root directory as a string
+- **THEN** the handler SHALL parse it into `LocalDirectory` near the start of the operation
 
-#### Scenario: Parse command path at boundary
-- **WHEN** a public command option supplies a root, prefix, or target path string
-- **THEN** the handler SHALL parse it into filesystem domain types near the start of the operation
-
-#### Scenario: Return public listing path
-- **WHEN** list query returns a repository entry
-- **THEN** the public result SHALL expose the path as the existing string contract produced from the internal relative path
+#### Scenario: Expose repository path in public API
+- **WHEN** list, restore, archive events, or other public APIs expose repository-relative paths
+- **THEN** those APIs MAY use `RelativePath` directly instead of converting back to strings
 
 ### Requirement: Restore-time relative path model
 Restore-time file candidates SHALL be modeled separately from archive-time `BinaryFile`, `PointerFile`, and `FilePair` objects, while still using `RelativePath` for repository location and pointer path derivation.

@@ -1,3 +1,5 @@
+using Arius.Core.Shared.FileSystem;
+
 namespace Arius.Core.Shared;
 
 /// <summary>
@@ -11,47 +13,36 @@ namespace Arius.Core.Shared;
 /// </summary>
 public static class RepositoryPaths
 {
+    private static readonly RelativePath chunkIndexCacheRelativePath = RelativePath.Parse("chunk-index");
+    private static readonly RelativePath fileTreeCacheRelativePath   = RelativePath.Parse("filetrees");
+    private static readonly RelativePath snapshotCacheRelativePath   = RelativePath.Parse("snapshots");
+    private static readonly RelativePath logsRelativePath            = RelativePath.Parse("logs");
+
     /// <summary>
     /// Returns the stable repository directory name for one archive/container pair.
     /// Example: <c>archive-container</c>
     /// </summary>
-    public static string GetRepoDirectoryName(string accountName, string containerName) => $"{accountName}-{containerName}";
+    public static PathSegment GetRepositoryDirectoryName(string accountName, string containerName) 
+        => PathSegment.Parse($"{accountName}-{containerName}");
 
-    /// <summary>
-    /// Returns the repository root directory under the user's <c>.arius</c> home.
-    /// Example: <c>~/.arius/<container>/</c>
-    /// </summary>
-    public static string GetRepositoryDirectory(string accountName, string containerName)
+    internal static PathSegment GetRepoDirectoryName(string accountName, string containerName) 
+        => GetRepositoryDirectoryName(accountName, containerName);
+
+    internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".arius", GetRepoDirectoryName(accountName, containerName));
+        var homeRoot = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / ".arius" / GetRepoDirectoryName(accountName, containerName)));
     }
 
-    /// <summary>
-    /// Returns the chunk-index cache directory for one repository.
-    /// Example: <c>~/.arius/<container>/chunk-index/</c>
-    /// </summary>
-    public static string GetChunkIndexCacheDirectory(string accountName, string containerName) =>
-        Path.Combine(GetRepositoryDirectory(accountName, containerName), "chunk-index");
+    internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) 
+        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(chunkIndexCacheRelativePath));
 
-    /// <summary>
-    /// Returns the filetree cache directory for one repository.
-    /// Example: <c>~/.arius/<container>/filetrees/</c>
-    /// </summary>
-    public static string GetFileTreeCacheDirectory(string accountName, string containerName) =>
-        Path.Combine(GetRepositoryDirectory(accountName, containerName), "filetrees");
+    internal static LocalDirectory GetFileTreeCacheRoot(string accountName, string containerName) 
+        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(fileTreeCacheRelativePath));
 
-    /// <summary>
-    /// Returns the snapshot cache directory for one repository.
-    /// Example: <c>~/.arius/<container>/snapshots/</c>
-    /// </summary>
-    public static string GetSnapshotCacheDirectory(string accountName, string containerName) =>
-        Path.Combine(GetRepositoryDirectory(accountName, containerName), "snapshots");
+    internal static LocalDirectory GetSnapshotCacheRoot(string accountName, string containerName) 
+        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(snapshotCacheRelativePath));
 
-    /// <summary>
-    /// Returns the logs directory for one repository.
-    /// Example: <c>~/.arius/<container>/logs/</c>
-    /// </summary>
-    public static string GetLogsDirectory(string accountName, string containerName) =>
-        Path.Combine(GetRepositoryDirectory(accountName, containerName), "logs");
+    internal static LocalDirectory GetLogsRoot(string accountName, string containerName) 
+        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(logsRelativePath));
 }

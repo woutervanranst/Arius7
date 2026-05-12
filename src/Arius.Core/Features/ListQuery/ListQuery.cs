@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Mediator;
 
@@ -20,7 +21,7 @@ public sealed record ListQueryOptions
     /// Path prefix filter: only return files whose relative path starts with this value.
     /// <c>null</c> = no prefix filter.
     /// </summary>
-    public string? Prefix { get; init; }
+    public RelativePath? Prefix { get; init; }
 
     /// <summary>
     /// Filename substring filter (case-insensitive).
@@ -43,13 +44,13 @@ public sealed record ListQueryOptions
 /// <summary>
 /// Base type for entries emitted by the streaming repository listing.
 /// </summary>
-public abstract record RepositoryEntry(string RelativePath);
+public abstract record RepositoryEntry(RelativePath RelativePath);
 
 /// <summary>
 /// A file entry emitted by the repository listing.
 /// </summary>
 public sealed record RepositoryFileEntry(
-    string RelativePath,
+    RelativePath RelativePath,
     ContentHash? ContentHash,
     long? OriginalSize,
     DateTimeOffset? Created,
@@ -63,10 +64,9 @@ public sealed record RepositoryFileEntry(
 
 /// <summary>
 /// A directory entry emitted by the repository listing.
-/// Directory paths always end with a trailing slash.
 /// </summary>
 public sealed record RepositoryDirectoryEntry(
-    string RelativePath,
+    RelativePath RelativePath,
     FileTreeHash? TreeHash,
     bool ExistsInCloud,
     bool ExistsLocally)

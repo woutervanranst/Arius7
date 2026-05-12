@@ -13,9 +13,9 @@ public class BuildArchiveDisplayDoneTests
     public void BuildArchiveDisplay_DoesNotShowRemovedFiles()
     {
         var state = new ProgressState();
-        state.AddFile("completed.bin", 1000);
-        state.SetFileHashed("completed.bin", FakeContentHash('d'));
-        state.RemoveFile("completed.bin");
+        state.AddFile(RelativePath.Parse("completed.bin"), 1000);
+        state.SetFileHashed(RelativePath.Parse("completed.bin"), FakeContentHash('d'));
+        state.RemoveFile(RelativePath.Parse("completed.bin"));
 
         var writer  = new StringWriter();
         var console = AnsiConsole.Create(new AnsiConsoleSettings

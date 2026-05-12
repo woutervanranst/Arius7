@@ -10,10 +10,30 @@ public class FileItemViewModelTests
     private static readonly ContentHash ContentHashA = FakeContentHash('a');
 
     [Test]
+    public void Constructor_WhenRelativePathIsNested_UsesLastSegmentAsName()
+    {
+        var file = new RepositoryFileEntry(
+            RelativePath: RelativePath.Parse("folder1/folder2/file.txt"),
+            ContentHash: ContentHashA,
+            OriginalSize: 1,
+            Created: null,
+            Modified: null,
+            ExistsInCloud: true,
+            ExistsLocally: true,
+            HasPointerFile: false,
+            BinaryExists: false,
+            Hydrated: null);
+
+        var viewModel = new FileItemViewModel(file);
+
+        viewModel.Name.ShouldBe("file.txt");
+    }
+
+    [Test]
     public void HydrationStatus_WhenChanged_UpdatesChunkStateColorAndTooltip()
     {
         var file = new RepositoryFileEntry(
-            RelativePath: "file.txt",
+            RelativePath: RelativePath.Parse("file.txt"),
             ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,

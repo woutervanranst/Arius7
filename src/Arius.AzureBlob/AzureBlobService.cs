@@ -12,8 +12,6 @@ namespace Arius.AzureBlob;
 /// </summary>
 public sealed class AzureBlobService(BlobServiceClient serviceClient, string accountName, string authMode) : IBlobService
 {
-    private const string PreflightProbeBlobName = ".arius-preflight-probe";
-
     public async IAsyncEnumerable<string> GetContainerNamesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var container in serviceClient.GetBlobContainersAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
@@ -21,24 +19,21 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             cancellationToken.ThrowIfCancellationRequested();
 
             var containerClient = serviceClient.GetBlobContainerClient(container.Name);
-            var hasSnapshot = false;
 
-            await foreach (var page in containerClient
-                               .GetBlobsByHierarchyAsync(BlobTraits.None, BlobStates.None, "/", BlobPaths.Snapshots, cancellationToken)
-                               .AsPages(pageSizeHint: 1)
-                               .ConfigureAwait(false))
-            {
-                if (page.Values.Any(item => item.IsBlob))
-                {
-                    hasSnapshot = true;
-                    break;
-                }
-            }
-
-            if (hasSnapshot)
-            {
+            if (await IsAriusArchive(containerClient, cancellationToken).ConfigureAwait(false))
                 yield return container.Name;
-            }
+        }
+
+        static async Task<bool> IsAriusArchive(BlobContainerClient containerClient, CancellationToken cancellationToken)
+        {
+            var page = await containerClient
+                .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix.ToBlobPrefix(), cancellationToken)
+                .AsPages(pageSizeHint: 1)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            // We agree that a container is an Arius archive if it contains any blobs under the "snapshots/" prefix, excluding the edge case should a "snapshots/" blob exist without any actual snapshots.
+            return page?.Values.Any(i => !i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
         }
     }
 
@@ -47,13 +42,15 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
         PreflightMode preflightMode,
         CancellationToken cancellationToken = default)
     {
+        const string preflightProbeBlobName = ".arius-preflight-probe";
+
         var containerClient = serviceClient.GetBlobContainerClient(containerName);
 
         try
         {
             if (preflightMode == PreflightMode.ReadWrite)
             {
-                var probeBlob = containerClient.GetBlobClient(PreflightProbeBlobName);
+                var probeBlob = containerClient.GetBlobClient(preflightProbeBlobName);
                 await using var emptyStream = new MemoryStream();
                 await probeBlob.UploadAsync(emptyStream, overwrite: true, cancellationToken).ConfigureAwait(false);
                 await probeBlob.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(false);

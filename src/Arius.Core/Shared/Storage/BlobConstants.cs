@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.Storage;
@@ -70,24 +71,24 @@ public static class ContentTypes
 public static class BlobPaths
 {
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
-    public const string Chunks            = "chunks/";
+    public static RelativePath ChunksPrefix => RelativePath.Root / "chunks";
 
     /// <summary>Temporary Hot-tier copies for in-progress rehydration.</summary>
-    public const string ChunksRehydrated  = "chunks-rehydrated/";
+    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
-    public const string FileTrees         = "filetrees/";
+    public static RelativePath FileTreesPrefix => RelativePath.Root / "filetrees";
 
     /// <summary>Snapshot manifests.</summary>
-    public const string Snapshots         = "snapshots/";
+    public static RelativePath SnapshotsPrefix => RelativePath.Root / "snapshots";
 
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
-    public const string ChunkIndex        = "chunk-index/";
+    public static RelativePath ChunkIndexPrefix => RelativePath.Root / "chunk-index";
 
-    public static string Chunk(ChunkHash hash)           => $"{Chunks}{hash}";
-    public static string ThinChunk(ContentHash hash)     => $"{Chunks}{hash}";
-    public static string ChunkRehydrated(ChunkHash hash) => $"{ChunksRehydrated}{hash}";
-    public static string FileTree(FileTreeHash hash)     => $"{FileTrees}{hash}";
-    public static string Snapshot(string name)           => $"{Snapshots}{name}";
-    public static string ChunkIndexShard(string prefix)  => $"{ChunkIndex}{prefix}";
+    public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / hash.ToString();
+    public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / hash.ToString();
+    public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / hash.ToString();
+    public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / hash.ToString();
+    public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / name;
+    public static RelativePath ChunkIndexShardPath(PathSegment prefix) => ChunkIndexPrefix / prefix;
 }

@@ -7,13 +7,13 @@ Defines the archive pipeline for Arius: file enumeration, hashing, deduplication
 ## Requirements
 
 ### Requirement: File enumeration
-The system SHALL recursively enumerate all files in the local root directory, producing FilePair units for archiving using a single-pass streaming approach. Files with the `.pointer.arius` suffix SHALL always be treated as pointer files. All other files SHALL be treated as binary files. If a file cannot be read (e.g., system-protected), the system SHALL log a warning and continue with the remaining files. Enumeration SHALL be depth-first to provide directory affinity for the tar builder. Enumeration SHALL yield FilePair objects immediately as files are discovered without materializing the full file list into memory. When encountering a binary file, the system SHALL check `File.Exists(binaryPath + ".pointer.arius")` to pair it. When encountering a pointer file, the system SHALL check `File.Exists(pointerPath[..^".pointer.arius".Length])` -- if the binary exists, skip (already emitted with the binary); if not, yield as pointer-only. No dictionaries or state tracking SHALL be used.
+The system SHALL recursively enumerate all files in the local root directory through the Arius.Core filesystem domain boundary, producing FilePair units for archiving using a single-pass streaming approach. Files with the `.pointer.arius` suffix SHALL always be treated as pointer files. All other files SHALL be treated as binary files. If a file cannot be read (e.g., system-protected), the system SHALL log a warning and continue with the remaining files. Enumeration SHALL yield FilePair objects immediately as files are discovered without materializing the full file list into memory. When encountering a binary file, the system SHALL check for its pointer counterpart through relative path pointer derivation. When encountering a pointer file, the system SHALL check for its binary counterpart through relative path pointer derivation -- if the binary exists, skip (already emitted with the binary); if not, yield as pointer-only. No dictionaries or state tracking SHALL be used for pairing.
 
-During enumeration, the system SHALL publish a `FileScannedEvent(string RelativePath, long FileSize)` for each file discovered. The `RelativePath` and `FileSize` SHALL be taken from the `FilePair` at the enumeration site. After enumeration completes, the system SHALL publish a `ScanCompleteEvent(long TotalFiles, long TotalBytes)` with the final counts.
+During enumeration, the system SHALL publish a `FileScannedEvent(RelativePath RelativePath, long FileSize)` for each file discovered. The `RelativePath` and `FileSize` SHALL be taken from the `FilePair` at the enumeration site. After enumeration completes, the system SHALL publish a `ScanCompleteEvent(long TotalFiles, long TotalBytes)` with the final counts.
 
 #### Scenario: Binary file with matching pointer
 - **WHEN** a binary file `photos/vacation.jpg` exists alongside `photos/vacation.jpg.pointer.arius`
-- **THEN** the system SHALL produce a FilePair with both binary and pointer present, discovered via `File.Exists` check on the binary
+- **THEN** the system SHALL produce a FilePair with both binary and pointer present, discovered through relative pointer path derivation
 
 #### Scenario: Binary file without pointer
 - **WHEN** a binary file `documents/report.pdf` exists with no corresponding `.pointer.arius` file
@@ -164,7 +164,7 @@ A notification record `TarEntryAddedEvent(string ContentHash, int CurrentEntryCo
 - **THEN** the pipeline SHALL publish `TarEntryAddedEvent` with the file's content hash, the updated entry count, and the updated cumulative uncompressed size
 
 ### Requirement: FileScannedEvent per-file notification
-The `FileScannedEvent` record SHALL be defined as `FileScannedEvent(string RelativePath, long FileSize) : INotification`. This replaces the previous `FileScannedEvent(long TotalFiles)` batch event. The event SHALL be published once per file discovered during enumeration, providing the file's relative path and size in bytes.
+The `FileScannedEvent` record SHALL be defined as `FileScannedEvent(RelativePath RelativePath, long FileSize) : INotification`. This replaces the previous `FileScannedEvent(long TotalFiles)` batch event. The event SHALL be published once per file discovered during enumeration, providing the file's relative path and size in bytes.
 
 #### Scenario: Per-file event during enumeration
 - **WHEN** a file `photos/vacation.jpg` (1.2 MB) is discovered during enumeration

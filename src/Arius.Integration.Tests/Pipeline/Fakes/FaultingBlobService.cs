@@ -18,7 +18,7 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
         => inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
     public async Task UploadAsync(
-        string blobName,
+        RelativePath blobName,
         Stream content,
         IReadOnlyDictionary<string, string> metadata,
         BlobTier tier,
@@ -32,16 +32,16 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
         await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
     }
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default)
+    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.DownloadAsync(blobName, cancellationToken);
 
-    public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default)
+    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default)
         => inner.ListAsync(prefix, cancellationToken);
 
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata,
+    public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken cancellationToken = default)
     {
         if (ShouldFaultUpload())
@@ -50,17 +50,17 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
         return inner.SetMetadataAsync(blobName, metadata, cancellationToken);
     }
 
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default)
+    public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default)
         => inner.SetTierAsync(blobName, tier, cancellationToken);
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null,
+    public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null,
         CancellationToken cancellationToken = default)
         => inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier,
+    public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier,
         RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
         => inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
 
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+    public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.DeleteAsync(blobName, cancellationToken);
 }

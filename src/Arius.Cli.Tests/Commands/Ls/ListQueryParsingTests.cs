@@ -34,7 +34,7 @@ public class ListQueryParsingTests
         var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd = (ListQuery)call.GetArguments()[0]!;
         cmd.Options.Version.ShouldBe("2026-01-01");
-        cmd.Options.Prefix.ShouldBe("docs/");
+        cmd.Options.Prefix.ShouldBe(RelativePath.Parse("docs"));
         cmd.Options.Filter.ShouldBe(".pdf");
     }
 
@@ -63,7 +63,7 @@ public class ListQueryParsingTests
 
         var call = harness.ListQueryHandler.ReceivedCalls().Single();
         var cmd = (ListQuery)call.GetArguments()[0]!;
-        cmd.Options.Prefix.ShouldBe("photos/");
+        cmd.Options.Prefix.ShouldBe(RelativePath.Parse("photos"));
         cmd.Options.Filter.ShouldBe(".jpg");
     }
 }

@@ -42,7 +42,7 @@ Feature handlers SHALL NOT construct chunk blob names, select chunk content type
 #### Scenario: Archive handler does not build upload protocol
 - **WHEN** `ArchiveCommandHandler` uploads a large or tar chunk
 - **THEN** it SHALL pass a plaintext source stream and progress sink to `ChunkStorageService`
-- **AND** it SHALL NOT directly call `BlobPaths.Chunk(...)`, choose chunk content types, or write chunk metadata
+- **AND** it SHALL NOT directly call `BlobPaths.ChunkPath(...)`, choose chunk content types, or write chunk metadata
 
 #### Scenario: Restore handler receives plaintext download stream
 - **WHEN** `RestoreCommandHandler` downloads a chunk through `DownloadAsync`

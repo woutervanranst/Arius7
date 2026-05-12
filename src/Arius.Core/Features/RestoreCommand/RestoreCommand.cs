@@ -1,4 +1,6 @@
-﻿using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Storage;
 using Mediator;
 
 namespace Arius.Core.Features.RestoreCommand;
@@ -20,9 +22,9 @@ public sealed record RestoreOptions
 
     /// <summary>
     /// Optional path within the snapshot to restore.
-    /// <c>null</c> or empty = full snapshot restore.
+    /// <c>null</c> = full snapshot restore.
     /// </summary>
-    public string? TargetPath { get; init; }
+    public RelativePath? TargetPath { get; init; }
 
     /// <summary>If <c>true</c>, overwrite local files without prompting.</summary>
     public bool Overwrite { get; init; } = false;
@@ -45,11 +47,16 @@ public sealed record RestoreOptions
     public Func<int, long, CancellationToken, Task<bool>>? ConfirmCleanup { get; init; }
 
     /// <summary>
-    /// Optional factory that creates an <see cref="IProgress{T}"/> for tracking download bytes.
-    /// Parameters: (identifier, compressedSize, kind). For large files, identifier is the file's RelativePath.
-    /// For tar bundles, identifier is the chunk hash. When <c>null</c>, no download progress is reported.
+    /// Optional factory that creates an <see cref="IProgress{T}"/> for tracking large-file download bytes.
+    /// Parameters: (relativePath, compressedSize). When <c>null</c>, no byte-level progress is reported for large files.
     /// </summary>
-    public Func<string, long, DownloadKind, IProgress<long>>? CreateDownloadProgress { get; init; }
+    public Func<RelativePath, long, IProgress<long>>? CreateLargeFileDownloadProgress { get; init; }
+
+    /// <summary>
+    /// Optional factory that creates an <see cref="IProgress{T}"/> for tracking tar-bundle download bytes.
+    /// Parameters: (chunkHash, compressedSize). When <c>null</c>, no byte-level progress is reported for tar bundles.
+    /// </summary>
+    public Func<ChunkHash, long, IProgress<long>>? CreateTarBundleDownloadProgress { get; init; }
 
 }
 

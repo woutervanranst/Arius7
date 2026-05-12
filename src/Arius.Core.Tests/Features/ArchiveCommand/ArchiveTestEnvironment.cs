@@ -1,5 +1,4 @@
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -7,6 +6,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
@@ -30,8 +30,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
         Directory.CreateDirectory(_rootDirectory);
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -40,9 +40,13 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName);
+
+    public string RootDirectory => _rootDirectory;
 
     public FakeLogCollector ArchiveLogs => _logger.Collector;
+
+    public IMediator Mediator => _mediator;
 
     public byte[] WriteRandomFile(string relativePath, int sizeBytes)
     {
@@ -54,26 +58,73 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return content;
     }
 
+    public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
+        => new RelativeFileSystem(LocalDirectory.Parse(_rootDirectory)).SetTimestamps(path, created, modified);
+
+    public async Task<FileEntry> ReadRootFileEntryAsync(RelativePath path)
+    {
+        var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
+        var snapshotSvc = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
+        var snapshot = await snapshotSvc.ResolveAsync();
+        snapshot.ShouldNotBeNull();
+
+        var entries = await fileTreeService.ReadAsync(snapshot.RootHash);
+
+        if (path.Parent is not { } parentPath)
+            return entries.OfType<FileEntry>().Single(entry => entry.Name == path.Name);
+
+        foreach (var segment in parentPath.Segments)
+        {
+            var directory = entries.OfType<DirectoryEntry>().Single(entry => entry.Name == segment);
+            entries = await fileTreeService.ReadAsync(directory.FileTreeHash);
+        }
+
+        return entries.OfType<FileEntry>().Single(entry => entry.Name == path.Name);
+    }
+
     public async Task<ArchiveResult> ArchiveAsync(
         BlobTier uploadTier,
         CancellationToken cancellationToken = default,
-        Func<string, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
+        bool removeLocal = false,
+        bool noPointers = false,
+        long? smallFileThreshold = null,
+        Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
-        Directory.CreateDirectory(RepositoryPaths.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPaths.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
         var snapshotSvc     = new SnapshotService(Blobs, _encryption, AccountName, _containerName);
-        var handler         = openStagingSession is null
-            ? new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName)
-            : new ArchiveCommandHandler(Blobs, _encryption, _index, chunkStorage, fileTreeService, snapshotSvc, _mediator, _logger, AccountName, _containerName, openStagingSession);
+        Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> stagingSessionFactory = openStagingSession is not null
+            ? openStagingSession
+            : OpenStagingSessionAsync;
+        var handler         = new ArchiveCommandHandler(
+            Blobs,
+            _encryption,
+            _index,
+            chunkStorage,
+            fileTreeService,
+            snapshotSvc,
+            _mediator,
+            _logger,
+            AccountName,
+            _containerName,
+            stagingSessionFactory);
+
+        static async Task<IFileTreeStagingSession> OpenStagingSessionAsync(LocalDirectory path, CancellationToken ct)
+            => await FileTreeStagingSession.OpenAsync(path, ct);
 
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
                 RootDirectory = _rootDirectory,
                 UploadTier = uploadTier,
+                SmallFileThreshold = smallFileThreshold ?? 1024 * 1024,
+                RemoveLocal = removeLocal,
+                NoPointers = noPointers,
+                CreateUploadProgress = createUploadProgress,
             }),
             cancellationToken);
     }

@@ -11,30 +11,30 @@ internal sealed class ThrowingDownloadBlobContainerService(Exception exception) 
 {
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task UploadAsync(string blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+    public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<Stream> OpenWriteAsync(string blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+    public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<Stream> DownloadAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromException<Stream>(exception);
 
-    public Task<BlobMetadata> GetMetadataAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 
-    public IAsyncEnumerable<string> ListAsync(string prefix, CancellationToken cancellationToken = default) =>
-        AsyncEnumerable.Empty<string>();
+    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default) =>
+        AsyncEnumerable.Empty<RelativePath>();
 
-    public Task SetMetadataAsync(string blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
+    public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task SetTierAsync(string blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
+    public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task CopyAsync(string sourceBlobName, string destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
+    public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default) =>
+    public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

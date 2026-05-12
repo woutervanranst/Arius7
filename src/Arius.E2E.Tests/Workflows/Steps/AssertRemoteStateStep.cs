@@ -20,20 +20,20 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
             ?? throw new InvalidOperationException($"{Name}: current synthetic repository state is not available.");
 
         state.LatestSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: latest snapshot version should be available.");
-        Path.GetFileName((await state.Fixture.Snapshot.ListBlobNamesAsync(cancellationToken))[^1])
+        (await state.Fixture.Snapshot.ListBlobNamesAsync(cancellationToken))[^1].Name.ToString()
             .ShouldBe(state.LatestSnapshotVersion, $"{Name}: latest resolved snapshot should match the most recent archive result.");
 
         switch (Kind)
         {
             case RemoteAssertionKind.InitialArchive:
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
                 latestSnapshot.FileCount
                     .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 break;
 
             case RemoteAssertionKind.IncrementalArchive:
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
                 latestSnapshot.FileCount
                     .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
@@ -48,12 +48,12 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
                 var preservedSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.SnapshotVersionBeforeNoOpArchive, cancellationToken);
                 preservedSnapshot.ShouldNotBeNull($"{Name}: preserved snapshot should exist.");
                 latestSnapshot.RootHash.ShouldBe(preservedSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Snapshots, cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(2, $"{Name}: no-op archive should preserve the latest snapshot without creating another snapshot.");
 
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.Chunks, cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.ChunksPrefix, cancellationToken))
                     .ShouldBe(state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."), $"{Name}: no-op archive should not create additional chunk blobs.");
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTrees, cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTreesPrefix, cancellationToken))
                     .ShouldBe(state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."), $"{Name}: no-op archive should not create additional filetree blobs.");
                 break;
 

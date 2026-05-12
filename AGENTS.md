@@ -62,12 +62,6 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Durability And Scale
-
-- Arius is a backup/archive tool. Prefer recoverability and correctness over throughput.
-- The design point is from small repositories (gigabytes, few files) to large (gigabytes, thousands of files)
-- Parallelize independent work when useful, but do not weaken crash recovery semantics to do it.
-
 ## Agent Guidance: dotnet-skills
 
 IMPORTANT: Prefer retrieval-led reasoning over pretraining for any .NET work.
@@ -114,7 +108,7 @@ Specialist agents
 
 ## Testing
 
-This project uses **TUnit** (not xUnit/NUnit). Key differences:
+When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
 
 - **Run tests**: `dotnet test --project <path-to-csproj>`
 - **Filter by class**: use `--treenode-filter "/*/*/<ClassName>/*"` (NOT `--filter`)
@@ -182,6 +176,16 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
 - Do not add implicit conversions between hash types or between hash types and `string`.
 - Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
+
+## Filesystem type guidance
+
+- Prefer strong domain types over raw primitives when a value has Arius-specific semantics.
+- Avoid primitive obsession: do not pass repository-relative paths, path segments, or similar Arius domain values as `string` just for convenience.
+- Avoid stringify/parse round-trips. Preserve strong types until a real foreign boundary such as console output, configuration, serialization, or external SDK calls.
+- Prefer `RelativePath` for repository-relative paths, subtree roots, and prefixes that may contain multiple segments.
+- Use `PathSegment` only when the value is semantically exactly one path segment.
+- Keep archive-time and local-filesystem operational types internal, including `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, and `RelativeFileSystem`.
+- Do not encode directory semantics in canonical path values via trailing slash conventions when a typed contract can represent directory-ness directly.
 
 ## Architecture
 

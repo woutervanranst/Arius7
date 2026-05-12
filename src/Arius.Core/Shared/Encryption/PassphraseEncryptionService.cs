@@ -3,7 +3,6 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.Encryption;
 
@@ -120,22 +119,6 @@ public sealed class PassphraseEncryptionService : IEncryptionService
         }
 
         return ContentHash.FromDigest(sha.GetHashAndReset());
-    }
-
-    /// <inheritdoc/>
-    public async Task<ContentHash> ComputeHashAsync(
-        string filePath,
-        IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(filePath);
-
-        await using var file = File.OpenRead(filePath);
-        if (progress is null)
-            return await ComputeHashAsync(file, cancellationToken);
-
-        await using var progressStream = new ProgressStream(file, progress);
-        return await ComputeHashAsync(progressStream, cancellationToken);
     }
 
     // ── Nonce derivation helper ──────────────────────────────────────────────────

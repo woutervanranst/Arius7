@@ -175,7 +175,7 @@ public class ShardTests
     public void Shard_PrefixOf_Returns4Characters()
     {
         Shard.PrefixOf(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
-            .ShouldBe("aabb");
+            .ShouldBe(PathSegment.Parse("aabb"));
     }
 
     [Test]

@@ -1,3 +1,4 @@
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
@@ -7,108 +8,76 @@ internal sealed class FileTreeStagingWriter : IDisposable
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
     private readonly SemaphoreSlim[] _lockStripes;
-    private readonly string          _stagingRoot;
+    private readonly RelativeFileSystem _stagingFileSystem;
     private          bool            _disposed;
 
-    public FileTreeStagingWriter(string stagingRoot)
+    public FileTreeStagingWriter(LocalDirectory stagingRoot)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stagingRoot);
-        _stagingRoot = stagingRoot;
+        _stagingFileSystem = new RelativeFileSystem(stagingRoot);
         _lockStripes = Enumerable.Range(0, StripeCount)
             .Select(_ => new SemaphoreSlim(1, 1))
             .ToArray();
     }
 
     public async Task AppendFileEntryAsync(
-        string filePath,
+        RelativePath filePath,
         ContentHash contentHash,
         DateTimeOffset created,
         DateTimeOffset modified,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(filePath);
+        if (filePath == RelativePath.Root)
+            throw new InvalidOperationException("File path must include a file name.");
+
         cancellationToken.ThrowIfCancellationRequested();
 
-        ValidateCanonicalRelativePath(filePath);
-
-        var segments = filePath.Split('/');
-        if (segments.Length == 0)
-            throw new ArgumentException("File path must include a file name.", nameof(filePath));
-
-        var fileName = segments[^1];
-        if (string.IsNullOrWhiteSpace(fileName))
-            throw new ArgumentException("File path must include a non-empty file name.", nameof(filePath));
-
-        var parentPath = segments.Length == 1 ? string.Empty : string.Join('/', segments, 0, segments.Length - 1);
-
-        await AppendDirectoryEntriesAsync(segments, cancellationToken);
-        await AppendFileEntryAsync(parentPath, new FileEntry
+        await AppendDirectoryEntriesAsync(filePath, cancellationToken);
+        await AppendFileEntryAsync(filePath.Parent ?? RelativePath.Root, new FileEntry
         {
-            Name        = fileName,
+            Name        = filePath.Name,
             ContentHash = contentHash,
             Created     = created,
             Modified    = modified
         }, cancellationToken);
-
-        static void ValidateCanonicalRelativePath(string path)
-        {
-            if (path.StartsWith('/')
-                || Path.IsPathRooted(path)
-                || (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '/'))
-                throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-            var segments = path.Split('/');
-            if (segments.Length == 0)
-                throw new ArgumentException("File path must include a file name.", nameof(filePath));
-
-            foreach (var segment in segments)
-            {
-                if (segment.Length == 0 || string.IsNullOrWhiteSpace(segment))
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment is "." or "..")
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment.Contains('\\'))
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-
-                if (segment.IndexOfAny(['\r', '\n', '\0']) >= 0)
-                    throw new ArgumentException("File path must be a canonical relative path.", nameof(filePath));
-            }
-        }
     }
 
-    private async Task AppendFileEntryAsync(string directoryPath, FileEntry entry, CancellationToken cancellationToken)
+    private async Task AppendFileEntryAsync(RelativePath directoryPath, FileEntry entry, CancellationToken cancellationToken)
     {
         var directoryId = FileTreePaths.GetStagingDirectoryId(directoryPath);
-        var nodePath = FileTreePaths.GetStagingNodePath(_stagingRoot, directoryId);
+        var nodePath = FileTreePaths.GetStagingNodePath(directoryId);
         await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedFileEntryLine(entry), cancellationToken);
     }
 
-    private async Task AppendDirectoryEntriesAsync(string[] segments, CancellationToken cancellationToken)
+    private async Task AppendDirectoryEntriesAsync(RelativePath filePath, CancellationToken cancellationToken)
     {
-        for (var depth = 0; depth < segments.Length - 1; depth++)
-        {
-            var parentPath    = depth == 0 ? string.Empty : string.Join('/', segments, 0, depth);
-            var directoryPath = string.Join('/', segments, 0, depth + 1);
-            var directoryName = segments[depth] + "/";
-            var directoryId   = FileTreePaths.GetStagingDirectoryId(directoryPath);
-            var nodePath      = FileTreePaths.GetStagingNodePath(_stagingRoot, FileTreePaths.GetStagingDirectoryId(parentPath));
+        var currentPath = RelativePath.Root;
 
-            await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId, directoryName), cancellationToken);
+        foreach (var segment in filePath.Segments.Take(filePath.Segments.Count() - 1))
+        {
+            var parentPath = currentPath;
+            currentPath = currentPath / segment;
+            var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
+            var nodePath = FileTreePaths.GetStagingNodePath(FileTreePaths.GetStagingDirectoryId(parentPath));
+
+            await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId.ToString(), segment), cancellationToken);
         }
     }
 
-    private async Task AppendLineAsync(string path, string line, CancellationToken cancellationToken)
+    private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
         var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
         await nodeLock.WaitAsync(cancellationToken);
 
         try
         {
-            Directory.CreateDirectory(_stagingRoot);
-
-            await File.AppendAllLinesAsync(path, [line], cancellationToken);
+            _stagingFileSystem.CreateDirectory(RelativePath.Root);
+            var existingLines = _stagingFileSystem.FileExists(path)
+                ? await _stagingFileSystem.ReadAllTextAsync(path, cancellationToken)
+                : null;
+            var content = existingLines is null or ""
+                ? line + Environment.NewLine
+                : existingLines + line + Environment.NewLine;
+            await _stagingFileSystem.WriteAllTextAsync(path, content, cancellationToken);
         }
         finally
         {

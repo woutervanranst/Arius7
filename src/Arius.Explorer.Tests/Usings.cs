@@ -1,3 +1,4 @@
+global using Arius.Core.Shared.FileSystem;
 global using Arius.Core.Shared.Hashes;
 global using Arius.Explorer.Tests.Settings;
 global using Shouldly;

@@ -3,7 +3,7 @@
 ### Requirement: File enumeration
 The system SHALL recursively enumerate all files in the local root directory through the Arius.Core filesystem domain boundary, producing FilePair units for archiving using a single-pass streaming approach. Files with the `.pointer.arius` suffix SHALL always be treated as pointer files. All other files SHALL be treated as binary files. If a file cannot be read (e.g., system-protected), the system SHALL log a warning and continue with the remaining files. Enumeration SHALL yield FilePair objects immediately as files are discovered without materializing the full file list into memory. When encountering a binary file, the system SHALL check for its pointer counterpart through relative path pointer derivation. When encountering a pointer file, the system SHALL check for its binary counterpart through relative path pointer derivation -- if the binary exists, skip (already emitted with the binary); if not, yield as pointer-only. No dictionaries or state tracking SHALL be used for pairing.
 
-During enumeration, the system SHALL publish a `FileScannedEvent(string RelativePath, long FileSize)` for each file discovered. The `RelativePath` and `FileSize` SHALL be taken from the `FilePair` at the enumeration site. After enumeration completes, the system SHALL publish a `ScanCompleteEvent(long TotalFiles, long TotalBytes)` with the final counts.
+During enumeration, the system SHALL publish a `FileScannedEvent(RelativePath RelativePath, long FileSize)` for each file discovered. The `RelativePath` and `FileSize` SHALL be taken from the `FilePair` at the enumeration site. After enumeration completes, the system SHALL publish a `ScanCompleteEvent(long TotalFiles, long TotalBytes)` with the final counts.
 
 #### Scenario: Binary file with matching pointer
 - **WHEN** a binary file `photos/vacation.jpg` exists alongside `photos/vacation.jpg.pointer.arius`
@@ -41,15 +41,12 @@ During enumeration, the system SHALL publish a `FileScannedEvent(string Relative
 - **WHEN** all files have been enumerated and the channel is about to be completed
 - **THEN** the system SHALL publish `ScanCompleteEvent` with the total file count and total bytes
 
+### Requirement: In-memory tar builder
+The system MAY build tar bundles in memory before upload. Using `MemoryStream` and sealed in-memory tar payloads is acceptable for this change.
+
+#### Scenario: Seal tar in memory
+- **WHEN** the current tar bundle is sealed for upload
+- **THEN** the pipeline MAY materialize the tar payload in memory and hand the sealed bytes to the upload stage
+
 ## ADDED Requirements
 
-### Requirement: Archive path collision validation
-The archive pipeline SHALL validate discovered relative paths for ordinal case-insensitive collisions before publishing a snapshot.
-
-#### Scenario: Case-insensitive collision discovered
-- **WHEN** enumeration discovers `photos/pic.jpg` and `Photos/pic.jpg` in the same archive input
-- **THEN** the archive SHALL fail before snapshot publication and report the colliding paths
-
-#### Scenario: No case-insensitive collision
-- **WHEN** enumeration discovers `photos/pic.jpg` and `photos/pic2.jpg`
-- **THEN** the archive SHALL proceed past path collision validation

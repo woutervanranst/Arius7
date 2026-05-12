@@ -49,8 +49,8 @@ public class BuildRestoreDisplayTests
         state.IncrementDisposition(RestoreDisposition.New);
         state.SetChunkResolution(3, 1, 2);
         state.IncrementFilesRestored(1024L);
-        state.AddRestoreEvent("foo/bar.txt", 1024L, skipped: false);
-        state.AddRestoreEvent("baz/skip.txt", 512L, skipped: true);
+        state.AddRestoreEvent(RelativePath.Parse("foo/bar.txt"), 1024L, skipped: false);
+        state.AddRestoreEvent(RelativePath.Parse("baz/skip.txt"), 512L, skipped: true);
 
         var output = RenderToString(RestoreVerb.BuildDisplay(state));
 
@@ -83,7 +83,7 @@ public class BuildRestoreDisplayTests
         state.SetChunkResolution(1, 1, 0);
         state.IncrementFilesRestored(500L);
         state.IncrementFilesRestored(300L);
-        state.AddRestoreEvent("done.txt", 500L, skipped: false);
+        state.AddRestoreEvent(RelativePath.Parse("done.txt"), 500L, skipped: false);
 
         var output = RenderToString(RestoreVerb.BuildDisplay(state));
 

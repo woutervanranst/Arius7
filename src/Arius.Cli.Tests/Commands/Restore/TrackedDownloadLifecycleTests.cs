@@ -14,7 +14,7 @@ public class TrackedDownloadLifecycleTests
     {
         var state = new ProgressState();
 
-        // Simulate CreateDownloadProgress adding a TrackedDownload for a large file
+        // Simulate CreateLargeFileDownloadProgress adding a TrackedDownload for a large file
         // Key is RelativePath (the identifier passed from RestoreCommandHandler for large files)
         var td = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
@@ -32,7 +32,7 @@ public class TrackedDownloadLifecycleTests
 
         // FileRestoredHandler should remove the TrackedDownload by direct key lookup on RelativePath
         var handler = new FileRestoredHandler(state);
-        await handler.Handle(new FileRestoredEvent("photos/sunset.jpg", 50_000_000L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("photos/sunset.jpg"), 50_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
         state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
@@ -46,7 +46,7 @@ public class TrackedDownloadLifecycleTests
         var state = new ProgressState();
         var chunkHash = FakeChunkHash('a').ToString();
 
-        // Simulate CreateDownloadProgress adding a TrackedDownload for a tar bundle
+        // Simulate CreateTarBundleDownloadProgress adding a TrackedDownload for a tar bundle
         var td = new TrackedDownload(chunkHash, DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
         state.TrackedDownloads.TryAdd(chunkHash, td);
 
@@ -84,7 +84,7 @@ public class TrackedDownloadLifecycleTests
         var state   = new ProgressState();
         var handler = new FileRestoredHandler(state);
 
-        await handler.Handle(new FileRestoredEvent("some/file.txt", 1024L), CancellationToken.None);
+        await handler.Handle(new FileRestoredEvent(RelativePath.Parse("some/file.txt"), 1024L), CancellationToken.None);
 
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(1024L);
