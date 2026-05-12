@@ -162,25 +162,15 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
 
-## Strong type guidance
-
-- Prefer strong domain types over primitives for paths, hashes, identifiers, and domain coordinates.
-- Avoid primitive obsession: do not pass raw `string`, `Guid`, `byte[]`, or numeric values through domain code when the value has Arius-specific meaning or validation rules.
-- Preserve strong types for as long as possible. Convert to primitives only at real foreign boundaries such as storage names, serialized payloads, logs, console/UI output, external SDKs, and configuration.
-
-### Path type guidance
-
-- Use `RelativePath` for canonical slash-normalized relative paths that may contain multiple segments or denote subtree roots, logical prefixes, repository-relative paths, blob virtual paths, or cache-relative paths.
-- Use `PathSegment` only when the value is semantically exactly one validated name component.
-- Public Arius.Core command/query/result/event contracts should expose `RelativePath` or `PathSegment` when the value is genuinely an Arius relative path or path segment.
-- Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based.
-- Pointer-file path derivation belongs on typed path helpers such as `ToPointerPath()` / `ToBinaryPath()`, not scattered string suffix manipulation.
-
-### Hash type guidance
+## Hash type guidance
 
 - Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, and `FileTreeHash`.
+- Do not collapse those types into one generic hash abstraction and do not use inheritance between them.
 - Keep persisted and wire formats as canonical lowercase hex strings.
 - Use typed hashes inside the domain and as dictionary/set keys when hash identity is the key.
+- Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
+- Do not add implicit conversions between hash types or between hash types and `string`.
+- Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
 
 ## Architecture
 
