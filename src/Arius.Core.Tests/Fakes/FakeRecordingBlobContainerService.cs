@@ -10,18 +10,18 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 {
-    private readonly HashSet<string> _remoteBlobs = new(StringComparer.Ordinal);
+    private readonly HashSet<RelativePath> _remoteBlobs = [];
 
-    public HashSet<string> Uploaded { get; } = new(StringComparer.Ordinal);
-    public HashSet<string> HeadChecked { get; } = new(StringComparer.Ordinal);
+    public HashSet<RelativePath> Uploaded { get; } = [];
+    public HashSet<RelativePath> HeadChecked { get; } = [];
 
-    public void SeedRemoteBlob(string blobName) => _remoteBlobs.Add(blobName);
+    public void SeedRemoteBlob(RelativePath blobName) => _remoteBlobs.Add(blobName);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
-        Uploaded.Add(blobName.ToString());
+        Uploaded.Add(blobName);
         return Task.CompletedTask;
     }
 
@@ -33,15 +33,13 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
-        HeadChecked.Add(blobKey);
-        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobKey) });
+        HeadChecked.Add(blobName);
+        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
     }
 
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _remoteBlobs
-                     .Select(RelativePath.Parse)
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {

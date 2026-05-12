@@ -16,13 +16,13 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     private readonly ConcurrentDictionary<string, StoredBlob> _blobs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> _openWriteAlreadyExists = new(StringComparer.Ordinal);
 
-    private readonly ConcurrentQueue<string> _requestedBlobNames = new();
-    private readonly ConcurrentQueue<string> _deletedBlobNames = new();
-    private readonly ConcurrentQueue<string> _uploadedBlobNames = new();
+    private readonly ConcurrentQueue<RelativePath> _requestedBlobNames = new();
+    private readonly ConcurrentQueue<RelativePath> _deletedBlobNames = new();
+    private readonly ConcurrentQueue<RelativePath> _uploadedBlobNames = new();
 
-    public ICollection<string> RequestedBlobNames => new RecordingCollection(_requestedBlobNames);
-    public ICollection<string> DeletedBlobNames => new RecordingCollection(_deletedBlobNames);
-    public ICollection<string> UploadedBlobNames => new RecordingCollection(_uploadedBlobNames);
+    public ICollection<RelativePath> RequestedBlobNames => new RecordingCollection(_requestedBlobNames);
+    public ICollection<RelativePath> DeletedBlobNames => new RecordingCollection(_deletedBlobNames);
+    public ICollection<RelativePath> UploadedBlobNames => new RecordingCollection(_uploadedBlobNames);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -36,7 +36,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             throw new BlobAlreadyExistsException(blobName);
 
         _blobs[blobKey] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
-        _uploadedBlobNames.Enqueue(blobKey);
+        _uploadedBlobNames.Enqueue(blobName);
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
@@ -59,14 +59,14 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         return Task.FromResult<Stream>(new CommitOnDisposeStream(bytes =>
         {
             _blobs[blobKey] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false);
-            _uploadedBlobNames.Enqueue(blobKey);
+            _uploadedBlobNames.Enqueue(blobName);
         }));
     }
 
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         var blobKey = blobName.ToString();
-        _requestedBlobNames.Enqueue(blobKey);
+        _requestedBlobNames.Enqueue(blobName);
         var blob = _blobs[blobKey];
         return Task.FromResult<Stream>(new MemoryStream(blob.Content, writable: false));
     }
@@ -74,7 +74,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         var blobKey = blobName.ToString();
-        _requestedBlobNames.Enqueue(blobKey);
+        _requestedBlobNames.Enqueue(blobName);
         if (!_blobs.TryGetValue(blobKey, out var blob))
             return Task.FromResult(new BlobMetadata { Exists = false });
 
@@ -127,7 +127,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         var blobKey = blobName.ToString();
-        _deletedBlobNames.Enqueue(blobKey);
+        _deletedBlobNames.Enqueue(blobName);
         _blobs.TryRemove(blobKey, out _);
         _openWriteAlreadyExists.TryRemove(blobKey, out _);
         return Task.CompletedTask;
@@ -173,6 +173,9 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             ContentTypes.LargePlaintext);
     }
 
+    public Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
+        => SeedLargeBlobAsync(blobName.ToString(), originalContent, tier);
+
     public async Task SeedTarBlobAsync(string blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
     {
         var combined = originalContents.SelectMany(bytes => bytes).ToArray();
@@ -188,6 +191,9 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             },
             ContentTypes.TarPlaintext);
     }
+
+    public Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
+        => SeedTarBlobAsync(blobName.ToString(), originalContents, tier);
 
     private static async Task<byte[]> GzipAsync(byte[] content)
     {
@@ -218,12 +224,12 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         }
     }
 
-    private sealed class RecordingCollection(ConcurrentQueue<string> queue) : ICollection<string>
+    private sealed class RecordingCollection(ConcurrentQueue<RelativePath> queue) : ICollection<RelativePath>
     {
         public int Count => queue.Count;
         public bool IsReadOnly => false;
 
-        public void Add(string item) => queue.Enqueue(item);
+        public void Add(RelativePath item) => queue.Enqueue(item);
 
         public void Clear()
         {
@@ -232,18 +238,18 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             }
         }
 
-        public bool Contains(string item) => queue.Contains(item);
+        public bool Contains(RelativePath item) => queue.Contains(item);
 
-        public void CopyTo(string[] array, int arrayIndex) => queue.ToArray().CopyTo(array, arrayIndex);
+        public void CopyTo(RelativePath[] array, int arrayIndex) => queue.ToArray().CopyTo(array, arrayIndex);
 
-        public bool Remove(string item)
+        public bool Remove(RelativePath item)
         {
             var removed = false;
-            var retained = new List<string>();
+            var retained = new List<RelativePath>();
 
             while (queue.TryDequeue(out var current))
             {
-                if (!removed && string.Equals(current, item, StringComparison.Ordinal))
+                if (!removed && current == item)
                 {
                     removed = true;
                     continue;
@@ -258,7 +264,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             return removed;
         }
 
-        public IEnumerator<string> GetEnumerator() => ((IEnumerable<string>)queue.ToArray()).GetEnumerator();
+        public IEnumerator<RelativePath> GetEnumerator() => ((IEnumerable<RelativePath>)queue.ToArray()).GetEnumerator();
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }

@@ -12,7 +12,7 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
     private readonly FakeInMemoryBlobContainerService _inner = new();
     private int _remainingFailures = 1;
 
-    public ICollection<string> DeletedBlobNames => _inner.DeletedBlobNames;
+    public ICollection<RelativePath> DeletedBlobNames => _inner.DeletedBlobNames;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
         _inner.CreateContainerIfNotExistsAsync(cancellationToken);

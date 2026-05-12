@@ -57,7 +57,7 @@ public class ArchiveRecoveryTests
         var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
-        var blobName = BlobPathStrings.Chunk(chunkHash);
+        var blobName = BlobPaths.ChunkPath(chunkHash);
 
         await env.Blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         env.Blobs.ClearMetadata(blobName);

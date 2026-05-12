@@ -14,7 +14,7 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
     private readonly TaskCompletionSource<bool> _twoUploadsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _startedUploads;
 
-    public ConcurrentDictionary<string, byte> Uploaded { get; } = new(StringComparer.Ordinal);
+    public ConcurrentDictionary<RelativePath, byte> Uploaded { get; } = [];
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -28,7 +28,7 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
             await _allowUploads.Task.WaitAsync(cancellationToken);
         }
 
-        Uploaded.TryAdd(blobName.ToString(), 0);
+        Uploaded.TryAdd(blobName, 0);
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>

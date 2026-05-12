@@ -12,7 +12,7 @@ namespace Arius.Core.Tests.Fakes;
 internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerService
 {
     public Dictionary<string, BlobMetadata> Metadata { get; } = new(StringComparer.Ordinal);
-    public List<string> RequestedBlobNames { get; } = [];
+    public List<RelativePath> RequestedBlobNames { get; } = [];
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -26,7 +26,7 @@ internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerServi
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         var blobKey = blobName.ToString();
-        RequestedBlobNames.Add(blobKey);
+        RequestedBlobNames.Add(blobName);
         return Task.FromResult(Metadata.TryGetValue(blobKey, out var metadata) ? metadata : new BlobMetadata { Exists = false });
     }
 

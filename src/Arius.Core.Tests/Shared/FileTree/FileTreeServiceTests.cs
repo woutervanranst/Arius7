@@ -102,7 +102,7 @@ public class FileTreeServiceTests
         {
             var entries   = MakeEntries("photo.jpg", "deadbeef");
             var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPathStrings.FileTree(hash);
+            var blobName = BlobPaths.FileTreePath(hash);
 
             // Pre-populate Azure (storage serialization)
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -139,7 +139,7 @@ public class FileTreeServiceTests
         {
             var entries   = MakeEntries("concurrent.txt", "cc001122");
             var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPathStrings.FileTree(hash);
+            var blobName = BlobPaths.FileTreePath(hash);
 
             // Pre-populate Azure only — no local cache
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -187,7 +187,7 @@ public class FileTreeServiceTests
         {
             var entries = MakeEntries("partial.txt", "a1b2c3d4");
             var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
-            var blobName = BlobPathStrings.FileTree(hash);
+            var blobName = BlobPaths.FileTreePath(hash);
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
             blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
@@ -254,7 +254,7 @@ public class FileTreeServiceTests
             await svc.WriteAsync(payload);
 
             // Azure was uploaded
-            var blobName = BlobPathStrings.FileTree(payload.Hash);
+            var blobName = BlobPaths.FileTreePath(payload.Hash);
             blobs.UploadedBlobNames.ShouldContain(blobName);
 
             // Disk file was written
@@ -457,7 +457,7 @@ public class FileTreeServiceTests
             var payload = (Hash: FileTreeHash.Parse(encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
             await service.EnsureStoredAsync(payload);
 
-            blobs.Uploaded.ShouldContain(BlobPathStrings.FileTree(payload.Hash));
+            blobs.Uploaded.ShouldContain(BlobPaths.FileTreePath(payload.Hash));
         }
         finally
         {
@@ -788,7 +788,7 @@ public class FileTreeServiceTests
             json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded
-            blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts).ToString());
+            blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts));
         }
         finally
         {

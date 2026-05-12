@@ -109,8 +109,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         results.Count.ShouldBe(2);
         results.ShouldContain(result => result.RelativePath == RelativePath.Parse("thin.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
         results.ShouldContain(result => result.RelativePath == RelativePath.Parse("tar.bin") && result.Status == ChunkHydrationStatus.NeedsRehydration);
-        blobs.RequestedBlobNames.ShouldNotContain(BlobPathStrings.ThinChunk(thinContentHash));
-        blobs.RequestedBlobNames.ShouldContain(BlobPathStrings.Chunk(tarChunkHash));
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ThinChunkPath(thinContentHash));
+        blobs.RequestedBlobNames.ShouldContain(BlobPaths.ChunkPath(tarChunkHash));
     }
 
     private static HydrationStatusCase StatusCaseFor(HydrationBlobState state)

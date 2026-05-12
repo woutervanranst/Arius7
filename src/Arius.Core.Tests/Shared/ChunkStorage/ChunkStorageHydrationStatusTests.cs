@@ -21,7 +21,7 @@ public class ChunkStorageHydrationStatusTests
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkPath(chunkHash)]);
     }
 
     [Test]
@@ -36,7 +36,7 @@ public class ChunkStorageHydrationStatusTests
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash), BlobPathStrings.ChunkRehydrated(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkPath(chunkHash), BlobPaths.ChunkRehydratedPath(chunkHash)]);
     }
 
     [Test]
@@ -65,7 +65,7 @@ public class ChunkStorageHydrationStatusTests
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Available);
-        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash), BlobPathStrings.ChunkRehydrated(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkPath(chunkHash), BlobPaths.ChunkRehydratedPath(chunkHash)]);
     }
 
     [Test]
@@ -107,6 +107,6 @@ public class ChunkStorageHydrationStatusTests
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
         status.ShouldBe(ChunkHydrationStatus.Unknown);
-        blobs.RequestedBlobNames.ShouldBe([BlobPathStrings.Chunk(chunkHash)]);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkPath(chunkHash)]);
     }
 }

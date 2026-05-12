@@ -17,9 +17,9 @@ internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
     private int _downloadCount;
 
     public Task FirstDownloadStarted => _firstDownloadStarted.Task;
-    public ICollection<string> RequestedBlobNames => _inner.RequestedBlobNames;
+    public ICollection<RelativePath> RequestedBlobNames => _inner.RequestedBlobNames;
 
-    public void SeedBlob(string blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
+    public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
         => _inner.SeedBlob(blobName, content, tier, metadata, contentType, isRehydrating);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)

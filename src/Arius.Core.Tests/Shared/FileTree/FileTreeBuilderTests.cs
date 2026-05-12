@@ -597,8 +597,8 @@ public class FileTreeBuilderTests
         await Task.WhenAll(uploads);
 
         blobs.Uploaded.Count.ShouldBe(2_000);
-        blobs.Uploaded.Keys.ShouldContain((BlobPaths.FileTreesPrefix / "blob-0").ToString());
-        blobs.Uploaded.Keys.ShouldContain((BlobPaths.FileTreesPrefix / "blob-1999").ToString());
+        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreesPrefix / "blob-0");
+        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreesPrefix / "blob-1999");
     }
 
     [Test]
