@@ -264,7 +264,7 @@ internal static class ArchiveVerb
             var tarsUploaded   = state.TarsUploaded;
             var queueDepth     = state.UploadQueueDepth?.Invoke() ?? 0;
 
-            var uploadActive = chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0 || !state.SnapshotComplete && state.ScanComplete;
+            var uploadActive = chunksUploaded > 0 || tarsUploaded > 0 || queueDepth > 0 || state is { SnapshotComplete: false, ScanComplete: true };
             if (uploadActive)
             {
                 var queuePart    = queueDepth > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;

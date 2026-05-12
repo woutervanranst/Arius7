@@ -240,6 +240,6 @@ public sealed class AzureBlobContainerService : IBlobContainerService
      /// </para>
      /// </summary>
     private static bool IsAlreadyExistsError(RequestFailedException ex) =>
-        (ex.Status == 412 && ex.ErrorCode == "ConditionNotMet") ||
-        (ex.Status == 409 && ex.ErrorCode is "BlobAlreadyExists" or "BlobArchived");
+        ex is { Status: 412, ErrorCode: "ConditionNotMet" } ||
+        ex is { Status: 409, ErrorCode: "BlobAlreadyExists" or "BlobArchived" };
 }

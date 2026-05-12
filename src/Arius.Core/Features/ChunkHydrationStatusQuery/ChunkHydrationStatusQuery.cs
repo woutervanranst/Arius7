@@ -36,7 +36,7 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cloudFiles = query.Files
-            .Where(file => file.ExistsInCloud && file.ContentHash is not null)
+            .Where(file => file is { ExistsInCloud: true, ContentHash: not null })
             .Select(file => (File: file, ContentHash: file.ContentHash!.Value))
             .ToList();
 

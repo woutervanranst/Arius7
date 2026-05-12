@@ -45,7 +45,7 @@ public class PasswordBoxBehavior : Behavior<PasswordBox>
 
     private static void OnPasswordPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is PasswordBoxBehavior behavior && behavior.AssociatedObject != null)
+        if (d is PasswordBoxBehavior { AssociatedObject: not null } behavior)
         {
             var newPassword = e.NewValue as string ?? string.Empty;
             if (behavior.AssociatedObject.Password != newPassword)

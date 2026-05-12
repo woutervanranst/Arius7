@@ -228,7 +228,7 @@ internal static class RestoreVerb
                             AnsiConsole.Write(summaryTable);
 
                             RehydratePriority? priority;
-                            if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0)
+                            if (estimate is { ChunksNeedingRehydration: 0, ChunksPendingRehydration: 0 })
                             {
                                 priority = RehydratePriority.Standard;
                             }
