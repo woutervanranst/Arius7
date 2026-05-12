@@ -1,3 +1,5 @@
+using Arius.Core.Shared.Storage;
+
 namespace Arius.E2E.Tests.Workflows.Steps;
 
 internal enum RemoteAssertionKind
@@ -49,9 +51,9 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "snapshots", cancellationToken))
                     .ShouldBe(2, $"{Name}: no-op archive should preserve the latest snapshot without creating another snapshot.");
 
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "chunks", cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.ChunksPrefix, cancellationToken))
                     .ShouldBe(state.ChunkBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op chunk blob count was not captured."), $"{Name}: no-op archive should not create additional chunk blobs.");
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "filetrees", cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.FileTreesPrefix, cancellationToken))
                     .ShouldBe(state.FileTreeBlobCountBeforeNoOpArchive ?? throw new InvalidOperationException($"{Name}: pre-no-op filetree blob count was not captured."), $"{Name}: no-op archive should not create additional filetree blobs.");
                 break;
 

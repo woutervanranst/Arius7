@@ -53,7 +53,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Find the tar blob (which is what the restore pipeline downloads / rehydrates).
         // Small files are bundled into tar chunks; the thin chunk is just a pointer to the tar.
         RelativePath? chunkBlobName = null;
-        await foreach (var name in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
+        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
         {
             var meta = await fix.BlobContainer.GetMetadataAsync(name);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)

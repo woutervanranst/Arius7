@@ -641,7 +641,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Find the chunk blob and verify chunk-size metadata was set by the streaming chain
         var blobs = new List<RelativePath>();
-        await foreach (var name in fix.BlobContainer.ListAsync(RelativePath.Root / "chunks"))
+        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
             blobs.Add(name);
         blobs.Count.ShouldBe(1);
 
