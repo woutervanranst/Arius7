@@ -104,7 +104,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Count blobs in filetrees/ after first run
             var blobsAfterRun1 = new List<string>();
-            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
                 blobsAfterRun1.Add(b.ToString());
 
             // Second run with same manifest
@@ -116,7 +116,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Blob count should be the same (no new blobs)
             var blobsAfterRun2 = new List<string>();
-            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
                 blobsAfterRun2.Add(b.ToString());
 
             blobsAfterRun2.Count.ShouldBe(blobsAfterRun1.Count);
@@ -152,7 +152,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Multiple tree blobs should have been uploaded (one per directory + root)
             var treeBlobNames = new List<string>();
-            await foreach (var b in blobs.ListAsync(RelativePath.Root / "filetrees"))
+            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
                 treeBlobNames.Add(b.ToString());
 
             // Expected: filetrees/ for june, 2024, photos, docs, root = at least 4
