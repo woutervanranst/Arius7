@@ -9,7 +9,7 @@ internal readonly record struct LocalDirectory
 {
     private string? RawValue { get; }
 
-    public LocalDirectory(string? rawValue)
+    private LocalDirectory(string rawValue)
     {
         RawValue = rawValue;
     }

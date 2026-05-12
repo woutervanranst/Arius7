@@ -9,7 +9,7 @@ public readonly record struct PathSegment
 {
     private string? RawValue { get; }
 
-    public PathSegment(string? rawValue)
+    private PathSegment(string rawValue)
     {
         RawValue = rawValue;
     }

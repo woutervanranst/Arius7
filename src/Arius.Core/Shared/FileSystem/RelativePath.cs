@@ -9,7 +9,7 @@ public readonly record struct RelativePath
 {
     private string? RawValue { get; }
 
-    public RelativePath(string? rawValue)
+    private RelativePath(string rawValue)
     {
         RawValue = rawValue;
     }
