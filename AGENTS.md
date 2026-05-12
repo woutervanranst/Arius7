@@ -62,31 +62,6 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Durability And Scale
-
-- Arius is a backup/archive tool. Prefer recoverability and correctness over throughput.
-- The design point is from small repositories (gigabytes, few files) to large (gigabytes, thousands of files)
-- Parallelize independent work when useful, but do not weaken crash recovery semantics to do it.
-
-## Agent Guidance: dotnet-skills
-
-IMPORTANT: Prefer retrieval-led reasoning over pretraining for any .NET work.
-Workflow: skim repo patterns -> consult dotnet-skills by name -> implement smallest-change -> note conflicts.
-
-Routing (invoke by name)
-- C# / code quality: csharp-coding-standards, csharp-concurrency-patterns, api-design, type-design-performance
-- ASP.NET Core / Web (incl. Aspire): aspire-service-defaults, aspire-integration-testing, transactional-emails
-- Data: efcore-patterns, database-performance
-- DI / config: dependency-injection-patterns, microsoft-extensions-configuration
-- Testing: testcontainers-integration-tests, playwright-blazor-testing, snapshot-testing
-
-Quality gates (use when applicable)
-- dotnet-slopwatch: after substantial new/refactor/LLM-authored code
-- crap-analysis: after tests added/changed in complex code
-
-Specialist agents
-- dotnet-concurrency-specialist, dotnet-performance-analyst, dotnet-benchmark-designer
-
 ## Way of Working
 
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
@@ -114,7 +89,9 @@ Specialist agents
 
 ## Testing
 
-This project uses **TUnit** (not xUnit/NUnit). Key differences:
+When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
+
+This project uses **TUnit** (not xUnit/NUnit). Repo-specific invocation rules:
 
 - **Run tests**: `dotnet test --project <path-to-csproj>`
 - **Filter by class**: use `--treenode-filter "/*/*/<ClassName>/*"` (NOT `--filter`)
@@ -182,6 +159,16 @@ This project uses **TUnit** (not xUnit/NUnit). Key differences:
 - Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
 - Do not add implicit conversions between hash types or between hash types and `string`.
 - Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
+
+## Filesystem type guidance
+
+- Prefer strong domain types over raw primitives when a value has Arius-specific semantics.
+- Avoid primitive obsession: do not pass repository-relative paths, path segments, or similar Arius domain values as `string` just for convenience.
+- Avoid stringify/parse round-trips. Preserve strong types until a real foreign boundary such as console output, configuration, serialization, or external SDK calls.
+- Prefer `RelativePath` for repository-relative paths, subtree roots, and prefixes that may contain multiple segments.
+- Use `PathSegment` only when the value is semantically exactly one path segment.
+- Keep archive-time and local-filesystem operational types internal, including `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, and `RelativeFileSystem`.
+- Do not encode directory semantics in canonical path values via trailing slash conventions when a typed contract can represent directory-ness directly.
 
 ## Architecture
 
