@@ -2,12 +2,12 @@ using System.Collections.Immutable;
 
 namespace Arius.Core.Shared;
 
-public static class IEnumerableExtensions
+internal static class IEnumerableExtensions
 {
-    public static bool Empty<T>(this IEnumerable<T> str) => !str.Any();
+    public static bool Empty<T>(this IEnumerable<T> source) => !source.Any();
 }
 
-public static class StreamExtensions
+internal static class StreamExtensions
 {
     /// <summary>
     /// Materializes the current <see cref="MemoryStream"/> contents as an <see cref="ImmutableArray{T}"/>.
