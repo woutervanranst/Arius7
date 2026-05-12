@@ -75,7 +75,7 @@ public sealed class ChunkStorageService : IChunkStorageService
                 var source = progressStream ?? content;
                 await source.CopyToAsync(gzipStream, cancellationToken);
 
-                await gzipStream.DisposeAsync();
+                await gzipStream.DisposeAsync(); // NOTE: leave Dispose to get a correct BytesWritten
                 await encryptionStream.DisposeAsync();
                 storedSize = countingStream.BytesWritten;
             }
@@ -96,7 +96,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         }
         catch (BlobAlreadyExistsException)
         {
-            // DESIGN DECISION: The Metadata is written only after a succesful upload, so we can assume that if the blob has this metadata, the upload completed successfully
+            // DESIGN DECISION: The Metadata is written only after a successful upload, so we can assume that if the blob has this metadata, the upload completed successfully
             var existing = await _blobs.GetMetadataAsync(blobName, cancellationToken);
             if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
                 return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true);
