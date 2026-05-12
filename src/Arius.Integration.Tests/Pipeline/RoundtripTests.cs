@@ -218,13 +218,13 @@ public class RoundtripTests(AzuriteFixture azurite)
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
 
-        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
+        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
         snapshotCountAfterFirst.ShouldBe(1);
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);
@@ -244,7 +244,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(RelativePath.Root / "snapshots").CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);

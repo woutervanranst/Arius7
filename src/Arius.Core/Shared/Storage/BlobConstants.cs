@@ -91,11 +91,11 @@ public static class BlobPaths
     public static RelativePath SnapshotsPrefix        => RelativePath.Root / "snapshots";
     public static RelativePath ChunkIndexPrefix       => RelativePath.Root / "chunk-index";
 
-    public static RelativePath ChunkPath(ChunkHash hash)           => RelativePath.Root / "chunks" / hash.ToString();
-    public static RelativePath ThinChunkPath(ContentHash hash)     => RelativePath.Root / "chunks" / hash.ToString();
-    public static RelativePath ChunkRehydratedPath(ChunkHash hash) => RelativePath.Root / "chunks-rehydrated" / hash.ToString();
-    public static RelativePath FileTreePath(FileTreeHash hash)     => RelativePath.Root / "filetrees" / hash.ToString();
-    public static RelativePath SnapshotPath(string name)           => RelativePath.Root / "snapshots" / name;
-    public static RelativePath ChunkIndexShardPath(PathSegment prefix) => RelativePath.Root / "chunk-index" / prefix;
+    public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / hash.ToString();
+    public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / hash.ToString();
+    public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / hash.ToString();
+    public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / hash.ToString();
+    public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / name;
+    public static RelativePath ChunkIndexShardPath(PathSegment prefix) => ChunkIndexPrefix / prefix;
 
 }
