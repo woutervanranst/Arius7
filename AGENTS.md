@@ -62,6 +62,25 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## Agent Guidance: dotnet-skills
+
+IMPORTANT: Prefer retrieval-led reasoning over pretraining for any .NET work.
+Workflow: skim repo patterns -> consult dotnet-skills by name -> implement smallest-change -> note conflicts.
+
+Routing (invoke by name)
+- C# / code quality: modern-csharp-coding-standards, csharp-concurrency-patterns, api-design, type-design-performance
+- ASP.NET Core / Web (incl. Aspire): aspire-service-defaults, aspire-integration-testing, transactional-emails
+- Data: efcore-patterns, database-performance
+- DI / config: dependency-injection-patterns, microsoft-extensions-configuration
+- Testing: testcontainers-integration-tests, playwright-blazor-testing, snapshot-testing
+
+Quality gates (use when applicable)
+- dotnet-slopwatch: after substantial new/refactor/LLM-authored code
+- crap-analysis: after tests added/changed in complex code
+
+Specialist agents
+- dotnet-concurrency-specialist, dotnet-performance-analyst, dotnet-benchmark-designer
+
 ## Way of Working
 
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
@@ -90,8 +109,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Testing
 
 When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
-
-This project uses **TUnit** (not xUnit/NUnit). Repo-specific invocation rules:
 
 - **Run tests**: `dotnet test --project <path-to-csproj>`
 - **Filter by class**: use `--treenode-filter "/*/*/<ClassName>/*"` (NOT `--filter`)
