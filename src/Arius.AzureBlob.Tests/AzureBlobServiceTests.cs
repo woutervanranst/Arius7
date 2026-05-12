@@ -164,6 +164,33 @@ public class AzureBlobServiceTests
         results.ShouldBe(["snapshots/2026-04-01T120000.000Z"]);
     }
 
+    [Test]
+    public async Task ListAsync_ChunksPrefix_DoesNotReturnRehydratedChunkMatches()
+    {
+        var container = new FakeContainer(
+            "repo-a",
+            exists: true,
+            [
+                "chunks/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "chunks-rehydrated/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "chunks"
+            ]);
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient([container]),
+            "account",
+            "key");
+
+        var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
+
+        var results = new List<string>();
+        await foreach (var path in containerService.ListAsync(BlobPaths.ChunksPrefix, CancellationToken.None))
+        {
+            results.Add(path.ToString());
+        }
+
+        results.ShouldBe(["chunks/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
+    }
+
     private sealed class FakeBlobServiceClient(IReadOnlyList<FakeContainer> containers) : BlobServiceClient
     {
         public override AsyncPageable<BlobContainerItem> GetBlobContainersAsync(
