@@ -26,14 +26,14 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
         switch (Kind)
         {
             case RemoteAssertionKind.InitialArchive:
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "snapshots", cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(1, $"{Name}: initial archive should create one snapshot.");
                 latestSnapshot.FileCount
                     .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
                 break;
 
             case RemoteAssertionKind.IncrementalArchive:
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "snapshots", cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(2, $"{Name}: incremental archive should create a second snapshot.");
                 latestSnapshot.FileCount
                     .ShouldBe(expectedState.Files.Count, $"{Name}: latest snapshot file count should match the current synthetic dataset state.");
@@ -48,7 +48,7 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
                 var preservedSnapshot = await Helpers.ResolveSnapshotByVersionAsync(state, state.SnapshotVersionBeforeNoOpArchive, cancellationToken);
                 preservedSnapshot.ShouldNotBeNull($"{Name}: preserved snapshot should exist.");
                 latestSnapshot.RootHash.ShouldBe(preservedSnapshot.RootHash, $"{Name}: no-op archive should preserve the root hash.");
-                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, RelativePath.Root / "snapshots", cancellationToken))
+                (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.SnapshotsPrefix, cancellationToken))
                     .ShouldBe(2, $"{Name}: no-op archive should preserve the latest snapshot without creating another snapshot.");
 
                 (await Helpers.CountBlobsAsync(state.Context.BlobContainer, BlobPaths.ChunksPrefix, cancellationToken))
