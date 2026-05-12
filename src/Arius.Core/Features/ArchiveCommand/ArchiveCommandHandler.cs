@@ -1,7 +1,3 @@
-using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using System.Formats.Tar;
-using System.Threading.Channels;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
@@ -15,6 +11,9 @@ using Arius.Core.Shared.Streaming;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Formats.Tar;
+using System.Threading.Channels;
 
 namespace Arius.Core.Features.ArchiveCommand;
 
@@ -403,8 +402,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             foreach (var te in tarEntries)
                                 _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
 
-                            var sealedBytes = sealedStream.ToArray();
-                            await sealedTarChannel.Writer.WriteAsync(new SealedTar([..sealedBytes], tarHash, currentSize, tarEntries.ToList()), cancellationToken);
+                            await sealedTarChannel.Writer.WriteAsync(new SealedTar(sealedStream.ToArray(), tarHash, currentSize, tarEntries.ToList()), cancellationToken);
 
                             tarEntries.Clear();
                             tarWriter      = null;
@@ -468,15 +466,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var tarUploadTask = Parallel.ForEachAsync(
                 sealedTarChannel.Reader.ReadAllAsync(cancellationToken),
                 new ParallelOptions { MaxDegreeOfParallelism = TarUploadWorkers, CancellationToken = cancellationToken },
-                async (sealed_, ct) =>
+                async (sealedTar, ct) =>
                 {
-                    var sealedTar = sealed_;
-
                     await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
 
-                    using var tarStream = new MemoryStream([.. sealedTar.Content], writable: false);
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
-                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
+                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, sealedTar.Content, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
 
                     var proportionalFactor = sealedTar.UncompressedSize > 0

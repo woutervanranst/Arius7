@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
@@ -99,7 +98,7 @@ internal sealed record TarEntry(
 /// with responsibility for describing the sealed tar content, its chunk hash, its size, and its member entries.
 /// </summary>
 internal sealed record SealedTar(
-    ImmutableArray<byte>    Content,
+    byte[]                  Content,  // NOTE: While ImmutableArray<byte> would be ideal, it causes extra allocations when converting to/from byte[]
     ChunkHash               TarHash,            // hash of the tar body (before gzip+encrypt)
     long                    UncompressedSize,   // sum of file sizes
     IReadOnlyList<TarEntry> Entries             // per-file info for thin chunk

@@ -62,7 +62,7 @@ public class ChunkStorageServiceUploadTests
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
-            content: new MemoryStream(content),
+            content: content,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
             progress: null,
@@ -83,7 +83,7 @@ public class ChunkStorageServiceUploadTests
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
-            content: new MemoryStream(content),
+            content: content,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
             progress: null,
