@@ -11,7 +11,7 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerService
 {
-    public Dictionary<string, BlobMetadata> Metadata { get; } = new(StringComparer.Ordinal);
+    public Dictionary<RelativePath, BlobMetadata> Metadata { get; } = [];
     public List<RelativePath> RequestedBlobNames { get; } = [];
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -25,9 +25,8 @@ internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerServi
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
         RequestedBlobNames.Add(blobName);
-        return Task.FromResult(Metadata.TryGetValue(blobKey, out var metadata) ? metadata : new BlobMetadata { Exists = false });
+        return Task.FromResult(Metadata.TryGetValue(blobName, out var metadata) ? metadata : new BlobMetadata { Exists = false });
     }
 
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
