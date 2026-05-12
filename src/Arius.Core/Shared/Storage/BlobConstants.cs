@@ -71,25 +71,19 @@ public static class ContentTypes
 public static class BlobPaths
 {
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
-    private const string Chunks            = "chunks/";
+    public static RelativePath ChunksPrefix => RelativePath.Root / "chunks";
 
     /// <summary>Temporary Hot-tier copies for in-progress rehydration.</summary>
-    private const string ChunksRehydrated  = "chunks-rehydrated/";
+    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
-    private const string FileTrees         = "filetrees/";
+    public static RelativePath FileTreesPrefix => RelativePath.Root / "filetrees";
 
     /// <summary>Snapshot manifests.</summary>
-    private const string Snapshots         = "snapshots/";
+    public static RelativePath SnapshotsPrefix => RelativePath.Root / "snapshots";
 
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
-    private const string ChunkIndex        = "chunk-index/";
-
-    public static RelativePath ChunksPrefix           => RelativePath.Root / "chunks";
-    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
-    public static RelativePath FileTreesPrefix        => RelativePath.Root / "filetrees";
-    public static RelativePath SnapshotsPrefix        => RelativePath.Root / "snapshots";
-    public static RelativePath ChunkIndexPrefix       => RelativePath.Root / "chunk-index";
+    public static RelativePath ChunkIndexPrefix => RelativePath.Root / "chunk-index";
 
     public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / hash.ToString();
     public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / hash.ToString();
@@ -97,5 +91,4 @@ public static class BlobPaths
     public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / hash.ToString();
     public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / name;
     public static RelativePath ChunkIndexShardPath(PathSegment prefix) => ChunkIndexPrefix / prefix;
-
 }
