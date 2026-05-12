@@ -409,11 +409,10 @@ public class FileTreeServiceTests
             var entries   = MakeEntries();
             var plaintext = FileTreeSerializer.Serialize(entries);
             var payload   = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
-            var blobName = BlobPathStrings.FileTree(payload.Hash);
 
             // Seed blob in Azure so upload throws BlobAlreadyExistsException
             var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
-            blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
+            blobs.SeedBlob(BlobPaths.FileTreePath(payload.Hash), storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
             // Should not throw
             await Should.NotThrowAsync(() => svc.WriteAsync(payload));
@@ -502,7 +501,7 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, timestamp), []);
 
             // Seed a remote snapshot with the same timestamp
-            blobs.SeedBlob(BlobPathStrings.Snapshot(timestamp), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.SnapshotPath(timestamp), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -598,12 +597,11 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
-            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Two remote filetree blobs
-            blobs.SeedBlob(BlobPathStrings.FileTree(firstRemoteHash), [], contentType: null);
-            blobs.SeedBlob(BlobPathStrings.FileTree(secondRemoteHash), [], contentType: null);
-
+            blobs.SeedBlob(BlobPaths.FileTreePath(firstRemoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTreePath(secondRemoteHash), [], contentType: null);
             await svc.ValidateAsync();
 
             // Empty marker files created for remote filetrees
@@ -635,14 +633,14 @@ public class FileTreeServiceTests
             await File.WriteAllBytesAsync(Path.Combine(snapshotsDir, "2024-01-01T000000.000Z"), []);
 
             // Remote snapshot: newer
-            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
             var diskPath = ResolveCachePath(cacheDir, existingHash);
             await File.WriteAllBytesAsync(diskPath, existingContent);
 
-            blobs.SeedBlob(BlobPathStrings.FileTree(existingHash), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTreePath(existingHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -670,10 +668,10 @@ public class FileTreeServiceTests
             // No local snapshot markers (snapshotsDir is empty)
 
             // Remote snapshot exists
-            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
 
             // Remote filetree blob
-            blobs.SeedBlob(BlobPathStrings.FileTree(remoteHash), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTreePath(remoteHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
@@ -808,8 +806,8 @@ public class FileTreeServiceTests
             var someHash = FakeFileTreeHash('5');
 
             // Remote snapshot mismatch forces slow path on first call
-            blobs.SeedBlob(BlobPathStrings.Snapshot("2024-06-15T100000.000Z"), [], contentType: null);
-            blobs.SeedBlob(BlobPathStrings.FileTree(someHash), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
+            blobs.SeedBlob(BlobPaths.FileTreePath(someHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
