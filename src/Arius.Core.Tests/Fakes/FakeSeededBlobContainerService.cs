@@ -14,8 +14,6 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 
     public void AddBlob(RelativePath blobName, byte[] content) => _blobs[blobName.ToString()] = content;
 
-    public void AddBlob(string blobName, byte[] content) => _blobs[blobName] = content;
-
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

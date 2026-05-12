@@ -1,6 +1,8 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
@@ -142,11 +144,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── File helpers ──────────────────────────────────────────────────────────
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with the given content.</summary>
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
         => _repository.WriteFile(relativePath, content);
 
     /// <summary>Creates a file under <see cref="LocalRoot"/> with random byte content.</summary>
-    public string WriteRandomFile(string relativePath, int sizeBytes)
+    public string WriteRandomFile(RelativePath relativePath, int sizeBytes)
     {
         var bytes = new byte[sizeBytes];
         Random.Shared.NextBytes(bytes);
@@ -154,11 +156,11 @@ public sealed class PipelineFixture : IAsyncDisposable
     }
 
     /// <summary>Reads a restored file's bytes from <see cref="RestoreRoot"/>.</summary>
-    public byte[] ReadRestored(string relativePath)
+    public byte[] ReadRestored(RelativePath relativePath)
         => _repository.ReadRestored(relativePath);
 
     /// <summary>Checks whether a restored file exists.</summary>
-    public bool RestoredExists(string relativePath) =>
+    public bool RestoredExists(RelativePath relativePath) =>
         _repository.RestoredExists(relativePath);
 
     /// <summary>
@@ -167,9 +169,9 @@ public sealed class PipelineFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // Clean up any cache dirs created by this test's container (unique name)
-        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(Account, Container.Name);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = RepositoryPaths.GetRepositoryRoot(Account, Container.Name);
+        if (Directory.Exists(cacheDir.ToString()))
+            Directory.Delete(cacheDir.ToString(), recursive: true);
 
         await _repository.DisposeAsync();
     }

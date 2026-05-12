@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -20,7 +21,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a file directly to Archive tier
-        fix.WriteFile("data.bin", new byte[1024 * 1024]); // 1 MB
+        fix.WriteFile(RelativePath.Parse("data.bin"), new byte[1024 * 1024]); // 1 MB
         var archiveResult = await fix.ArchiveAsync(new()
         {
             RootDirectory = fix.LocalRoot,
@@ -69,7 +70,7 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a file to Hot tier — no rehydration needed
-        fix.WriteFile("data.bin", new byte[1024]);
+        fix.WriteFile(RelativePath.Parse("data.bin"), new byte[1024]);
         var archiveResult = await fix.ArchiveAsync(new()
         {
             RootDirectory = fix.LocalRoot,

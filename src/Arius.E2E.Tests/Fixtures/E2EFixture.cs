@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -90,8 +91,6 @@ public sealed class E2EFixture : IAsyncDisposable
 
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
     {
-        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(accountName, containerName);
-
         lock (RepositoryCacheLeaseLock)
         {
             if (HasActiveLease(accountName, containerName))
@@ -100,18 +99,8 @@ public sealed class E2EFixture : IAsyncDisposable
                     $"Cannot reset local repository cache for account '{accountName}' and container '{containerName}' because an active lease exists. Dispose the active fixture before resetting the cache so workflow transitions remain explicit.");
             }
 
-            try
-            {
-                if (Directory.Exists(cacheDir))
-                    Directory.Delete(cacheDir, recursive: true);
-            }
-            catch (DirectoryNotFoundException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(ex);
-            }
+            return RepositoryTestFixture.DeleteLocalCacheDirectoryAsync(accountName, containerName);
         }
-
-        return Task.CompletedTask;
     }
 
     public Task PreserveLocalCacheAsync()
@@ -140,13 +129,13 @@ public sealed class E2EFixture : IAsyncDisposable
         return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
 
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
         => _repository.WriteFile(relativePath, content);
 
-    public byte[] ReadRestored(string relativePath)
+    public byte[] ReadRestored(RelativePath relativePath)
         => _repository.ReadRestored(relativePath);
 
-    public bool RestoredExists(string relativePath)
+    public bool RestoredExists(RelativePath relativePath)
         => _repository.RestoredExists(relativePath);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 
@@ -199,16 +188,16 @@ public sealed class E2EFixture : IAsyncDisposable
         await Task.CompletedTask;
     }
 
-    internal static string CombineValidatedRelativePath(string rootPath, string relativePath)
+    internal static string CombineValidatedRelativePath(string rootPath, RelativePath relativePath)
     {
-        if (Path.IsPathRooted(relativePath))
+        if (Path.IsPathRooted(relativePath.ToString()))
             throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
 
-        var parts = relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        var parts = relativePath.ToString().Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Contains("..", StringComparer.Ordinal))
             throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
 
-        return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        return Path.Combine(rootPath, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
     }
 
     bool ShouldResetCacheOnDispose()

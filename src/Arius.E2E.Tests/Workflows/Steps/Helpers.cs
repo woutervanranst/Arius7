@@ -135,14 +135,14 @@ internal static class Helpers
         expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
-        var contentHashA = await ComputeContentHashAsync(state, pathA, cancellationToken);
-        var contentHashB = await ComputeContentHashAsync(state, pathB, cancellationToken);
+        var contentHashA = await ComputeContentHashAsync(state, RelativePath.Parse(pathA), cancellationToken);
+        var contentHashB = await ComputeContentHashAsync(state, RelativePath.Parse(pathB), cancellationToken);
         contentHashA.ShouldBe(contentHashB, $"Expected '{pathA}' and '{pathB}' to hash to the same content-addressed chunk.");
 
         return contentHashA;
     }
 
-    static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, string relativePath, CancellationToken cancellationToken)
+    static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, RelativePath relativePath, CancellationToken cancellationToken)
     {
         var             fullPath = E2EFixture.CombineValidatedRelativePath(state.Fixture.LocalRoot, relativePath);
         await using var f        = File.OpenRead(fullPath);

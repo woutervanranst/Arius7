@@ -3,6 +3,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -74,14 +75,14 @@ public class ContainerCreationTests(AzuriteFixture azurite)
     public async Task Archive_ExistingContainer_Succeeds_Idempotent()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
-        fix.WriteFile("hello.txt", "hello"u8.ToArray());
+        fix.WriteFile(RelativePath.Parse("hello.txt"), "hello"u8.ToArray());
 
         // First archive — container was pre-created by fixture
         var result1 = await fix.ArchiveAsync();
         result1.Success.ShouldBeTrue(result1.ErrorMessage);
 
         // Second archive — same existing container, CreateContainerIfNotExistsAsync is a no-op
-        fix.WriteFile("hello2.txt", "world"u8.ToArray());
+        fix.WriteFile(RelativePath.Parse("hello2.txt"), "world"u8.ToArray());
         var result2 = await fix.ArchiveAsync();
         result2.Success.ShouldBeTrue(result2.ErrorMessage);
     }

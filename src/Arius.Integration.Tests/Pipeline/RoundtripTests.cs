@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -28,7 +29,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // 2 MB > default 1 MB threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("big.bin", original);
+        fix.WriteFile(RelativePath.Parse("big.bin"), original);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -38,7 +39,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.ReadRestored("big.bin").ShouldBe(original);
+        fix.ReadRestored(RelativePath.Parse("big.bin")).ShouldBe(original);
     }
 
     // ── 13.2: Single small file (tar-bundled) ─────────────────────────────────
@@ -51,7 +52,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // 100 bytes < 1 MB threshold → tar pipeline
         var original = new byte[100];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("small.txt", original);
+        fix.WriteFile(RelativePath.Parse("small.txt"), original);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -61,7 +62,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.ReadRestored("small.txt").ShouldBe(original);
+        fix.ReadRestored(RelativePath.Parse("small.txt")).ShouldBe(original);
     }
 
     // ── 13.3: Mix of large and small files ───────────────────────────────────
@@ -78,9 +79,9 @@ public class RoundtripTests(AzuriteFixture azurite)
         Random.Shared.NextBytes(small1);
         Random.Shared.NextBytes(small2);
 
-        fix.WriteFile("large.bin", largeContent);
-        fix.WriteFile("small1.txt", small1);
-        fix.WriteFile("small2.txt", small2);
+        fix.WriteFile(RelativePath.Parse("large.bin"), largeContent);
+        fix.WriteFile(RelativePath.Parse("small1.txt"), small1);
+        fix.WriteFile(RelativePath.Parse("small2.txt"), small2);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -90,9 +91,9 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(3);
 
-        fix.ReadRestored("large.bin").ShouldBe(largeContent);
-        fix.ReadRestored("small1.txt").ShouldBe(small1);
-        fix.ReadRestored("small2.txt").ShouldBe(small2);
+        fix.ReadRestored(RelativePath.Parse("large.bin")).ShouldBe(largeContent);
+        fix.ReadRestored(RelativePath.Parse("small1.txt")).ShouldBe(small1);
+        fix.ReadRestored(RelativePath.Parse("small2.txt")).ShouldBe(small2);
     }
 
     // ── 13.4: Encryption roundtrip ────────────────────────────────────────────
@@ -104,7 +105,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var original = new byte[800];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("encrypted.dat", original);
+        fix.WriteFile(RelativePath.Parse("encrypted.dat"), original);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -112,7 +113,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
-        fix.ReadRestored("encrypted.dat").ShouldBe(original);
+        fix.ReadRestored(RelativePath.Parse("encrypted.dat")).ShouldBe(original);
     }
 
     // ── 13.5: Nested directory structure ─────────────────────────────────────
@@ -136,7 +137,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         {
             var bytes = new byte[size];
             Random.Shared.NextBytes(bytes);
-            fix.WriteFile(path, bytes);
+            fix.WriteFile(RelativePath.Parse(path), bytes);
             contents[path] = bytes;
         }
 
@@ -149,7 +150,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(files.Length);
 
         foreach (var (path, expected) in contents)
-            fix.ReadRestored(path).ShouldBe(expected, $"File mismatch: {path}");
+            fix.ReadRestored(RelativePath.Parse(path)).ShouldBe(expected, $"File mismatch: {path}");
     }
 
     // ── 13.6: Incremental archive — multiple snapshots ────────────────────────
@@ -161,7 +162,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // ── Snapshot 1: file-a ────────────────────────────────────────────────
         var contentA = new byte[100]; Random.Shared.NextBytes(contentA);
-        fix.WriteFile("file-a.bin", contentA);
+        fix.WriteFile(RelativePath.Parse("file-a.bin"), contentA);
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
@@ -171,7 +172,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // ── Snapshot 2: add file-b ────────────────────────────────────────────
         var contentB = new byte[200]; Random.Shared.NextBytes(contentB);
-        fix.WriteFile("file-b.bin", contentB);
+        fix.WriteFile(RelativePath.Parse("file-b.bin"), contentB);
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue(r2.ErrorMessage);
@@ -213,7 +214,7 @@ public class RoundtripTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("file.bin", "stable"u8.ToArray());
+        fix.WriteFile(RelativePath.Parse("file.bin"), "stable"u8.ToArray());
 
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
@@ -235,7 +236,7 @@ public class RoundtripTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("file.bin", "stable"u8.ToArray());
+        fix.WriteFile(RelativePath.Parse("file.bin"), "stable"u8.ToArray());
 
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
@@ -258,8 +259,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = new byte[500]; Random.Shared.NextBytes(content);
-        fix.WriteFile("dir-a/photo.jpg", content);
-        fix.WriteFile("dir-b/photo.jpg", content); // identical content
+        fix.WriteFile(RelativePath.Parse("dir-a/photo.jpg"), content);
+        fix.WriteFile(RelativePath.Parse("dir-b/photo.jpg"), content); // identical content
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -271,8 +272,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        fix.ReadRestored("dir-a/photo.jpg").ShouldBe(content);
-        fix.ReadRestored("dir-b/photo.jpg").ShouldBe(content);
+        fix.ReadRestored(RelativePath.Parse("dir-a/photo.jpg")).ShouldBe(content);
+        fix.ReadRestored(RelativePath.Parse("dir-b/photo.jpg")).ShouldBe(content);
     }
 
     // ── 13.8: Thin archive (--remove-local) ───────────────────────────────────
@@ -283,7 +284,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = new byte[300]; Random.Shared.NextBytes(content);
-        fix.WriteFile("data.bin", content);
+        fix.WriteFile(RelativePath.Parse("data.bin"), content);
 
         // First archive with --remove-local
         var archiveResult = await fix.CreateArchiveHandler().Handle(
@@ -314,7 +315,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fix.ReadRestored("data.bin").ShouldBe(content);
+        fix.ReadRestored(RelativePath.Parse("data.bin")).ShouldBe(content);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -330,13 +331,13 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Archive original content
         var original = new byte[500]; Random.Shared.NextBytes(original);
-        fix.WriteFile("file.bin", original);
+        fix.WriteFile(RelativePath.Parse("file.bin"), original);
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
 
         // Overwrite the binary with new content (making pointer stale)
         var updated = new byte[500]; Random.Shared.NextBytes(updated);
-        fix.WriteFile("file.bin", updated);
+        fix.WriteFile(RelativePath.Parse("file.bin"), updated);
 
         // Archive again — should detect stale pointer, archive new content
         var r2 = await fix.ArchiveAsync();
@@ -345,7 +346,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Restore latest snapshot → should have updated content
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue();
-        fix.ReadRestored("file.bin").ShouldBe(updated);
+        fix.ReadRestored(RelativePath.Parse("file.bin")).ShouldBe(updated);
     }
 
     // ── 14.3: File renamed between runs ──────────────────────────────────────
@@ -356,7 +357,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = new byte[400]; Random.Shared.NextBytes(content);
-        fix.WriteFile("original.bin", content);
+        fix.WriteFile(RelativePath.Parse("original.bin"), content);
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
@@ -367,7 +368,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Rename: delete original, create renamed
         File.Delete(Path.Combine(fix.LocalRoot, "original.bin"));
         File.Delete(Path.Combine(fix.LocalRoot, "original.bin.pointer.arius"));
-        fix.WriteFile("renamed.bin", content);
+        fix.WriteFile(RelativePath.Parse("renamed.bin"), content);
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue(r2.ErrorMessage);
@@ -377,9 +378,9 @@ public class RoundtripTests(AzuriteFixture azurite)
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue();
 
-        fix.RestoredExists("renamed.bin").ShouldBeTrue();
-        fix.RestoredExists("original.bin").ShouldBeFalse();
-        fix.ReadRestored("renamed.bin").ShouldBe(content);
+        fix.RestoredExists(RelativePath.Parse("renamed.bin")).ShouldBeTrue();
+        fix.RestoredExists(RelativePath.Parse("original.bin")).ShouldBeFalse();
+        fix.ReadRestored(RelativePath.Parse("renamed.bin")).ShouldBe(content);
     }
 
     // ── 14.4: File deleted between runs ──────────────────────────────────────
@@ -391,8 +392,8 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var contentA = new byte[100]; Random.Shared.NextBytes(contentA);
         var contentB = new byte[200]; Random.Shared.NextBytes(contentB);
-        fix.WriteFile("keep.bin", contentA);
-        fix.WriteFile("delete.bin", contentB);
+        fix.WriteFile(RelativePath.Parse("keep.bin"), contentA);
+        fix.WriteFile(RelativePath.Parse("delete.bin"), contentB);
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
@@ -444,7 +445,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         foreach (var name in files)
         {
             var bytes = new byte[50]; Random.Shared.NextBytes(bytes);
-            fix.WriteFile(name, bytes);
+            fix.WriteFile(RelativePath.Parse(name), bytes);
             contents[name] = bytes;
         }
 
@@ -456,7 +457,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(files.Length);
 
         foreach (var (name, expected) in contents)
-            fix.ReadRestored(name).ShouldBe(expected, $"Mismatch: {name}");
+            fix.ReadRestored(RelativePath.Parse(name)).ShouldBe(expected, $"Mismatch: {name}");
     }
 
     // ── 14.6: Empty file (0 bytes) roundtrip ─────────────────────────────────
@@ -466,7 +467,7 @@ public class RoundtripTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("empty.txt", Array.Empty<byte>());
+        fix.WriteFile(RelativePath.Parse("empty.txt"), Array.Empty<byte>());
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -476,7 +477,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.ReadRestored("empty.txt").ShouldBeEmpty();
+        fix.ReadRestored(RelativePath.Parse("empty.txt")).ShouldBeEmpty();
     }
 
     // ── 14.7: File exactly at threshold boundary ──────────────────────────────
@@ -489,7 +490,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // threshold = 1 MB; file at exactly 1 MB = large pipeline
         var content = new byte[1024 * 1024];
         Random.Shared.NextBytes(content);
-        fix.WriteFile("boundary.bin", content);
+        fix.WriteFile(RelativePath.Parse("boundary.bin"), content);
 
         // Use a threshold of exactly the file size so it routes to large
         var archiveResult = await fix.CreateArchiveHandler().Handle(
@@ -505,7 +506,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue();
-        fix.ReadRestored("boundary.bin").ShouldBe(content);
+        fix.ReadRestored(RelativePath.Parse("boundary.bin")).ShouldBe(content);
     }
 
     // ── 14.2: Pointer-only file with missing chunk ────────────────────────────
@@ -517,7 +518,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Archive one real file so the snapshot is non-empty
         var keepContent = new byte[100]; Random.Shared.NextBytes(keepContent);
-        fix.WriteFile("keep.bin", keepContent);
+        fix.WriteFile(RelativePath.Parse("keep.bin"), keepContent);
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
@@ -539,8 +540,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
         // keep.bin is in snapshot; ghost.bin was excluded due to missing chunk
-        fix.RestoredExists("keep.bin").ShouldBeTrue();
-        fix.RestoredExists("ghost.bin").ShouldBeFalse();
+        fix.RestoredExists(RelativePath.Parse("keep.bin")).ShouldBeTrue();
+        fix.RestoredExists(RelativePath.Parse("ghost.bin")).ShouldBeFalse();
     }
 
     // ── 14.8: Binary named something.pointer.arius (naming collision) ────────
@@ -554,11 +555,11 @@ public class RoundtripTests(AzuriteFixture azurite)
         // It will be treated as a pointer, content is invalid hex → warning logged, hash=null.
         // With no binary counterpart, it is a pointer-only with null hash → skipped.
         var binaryContent = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }; // not valid hex string
-        fix.WriteFile("data.pointer.arius", binaryContent);
+        fix.WriteFile(RelativePath.Parse("data.pointer.arius"), binaryContent);
 
         // Also add a normal file so the archive run has something to produce a snapshot
         var keepContent = new byte[50]; Random.Shared.NextBytes(keepContent);
-        fix.WriteFile("normal.txt", keepContent);
+        fix.WriteFile(RelativePath.Parse("normal.txt"), keepContent);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -569,9 +570,9 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.RestoredExists("normal.txt").ShouldBeTrue();
+        fix.RestoredExists(RelativePath.Parse("normal.txt")).ShouldBeTrue();
         // data.pointer.arius is treated as a pointer — it is not restored as a regular file
-        fix.RestoredExists("data.pointer.arius").ShouldBeFalse();
+        fix.RestoredExists(RelativePath.Parse("data.pointer.arius")).ShouldBeFalse();
     }
 
     // ── 14.9: --no-pointers: no pointer files created ─────────────────────────
@@ -581,7 +582,7 @@ public class RoundtripTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
+        fix.WriteFile(RelativePath.Parse("data.bin"), new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
@@ -604,7 +605,7 @@ public class RoundtripTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile("data.bin", new byte[] { 1, 2, 3 });
+        fix.WriteFile(RelativePath.Parse("data.bin"), new byte[] { 1, 2, 3 });
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
@@ -633,7 +634,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // 2 MB > default 1 MB threshold → large pipeline (streaming chain)
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("large.bin", original);
+        fix.WriteFile(RelativePath.Parse("large.bin"), original);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -655,7 +656,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Verify roundtrip integrity
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
-        fix.ReadRestored("large.bin").ShouldBe(original);
+        fix.ReadRestored(RelativePath.Parse("large.bin")).ShouldBe(original);
     }
 
     // ── 16.2: Streaming enumeration — pipeline processes all files ────────────
@@ -667,7 +668,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Write several small files to exercise the streaming enumeration path
         for (var i = 0; i < 10; i++)
-            fix.WriteRandomFile($"file{i:D2}.bin", sizeBytes: 512);
+            fix.WriteRandomFile(RelativePath.Parse($"file{i:D2}.bin"), sizeBytes: 512);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -680,6 +681,6 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(10);
         for (var i = 0; i < 10; i++)
-            fix.RestoredExists($"file{i:D2}.bin").ShouldBeTrue();
+            fix.RestoredExists(RelativePath.Parse($"file{i:D2}.bin")).ShouldBeTrue();
     }
 }

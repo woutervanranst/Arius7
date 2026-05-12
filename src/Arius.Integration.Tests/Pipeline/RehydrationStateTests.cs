@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -39,7 +40,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var fix = await PipelineFixture.CreateAsync(azurite);
         var content = new byte[200];
         Random.Shared.NextBytes(content);
-        fix.WriteFile("test.bin", content);
+        fix.WriteFile(RelativePath.Parse("test.bin"), content);
 
         // Archive with Hot tier (Azurite) so blobs are accessible
         var archiveOpts = new ArchiveCommandOptions

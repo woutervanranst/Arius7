@@ -9,7 +9,7 @@ namespace Arius.Core.Tests.Shared.FileTree.Fakes;
 /// instead of trusting backend enumeration order, and to distinguish fast-path validation from a
 /// slow-path filetree scan.
 /// </summary>
-internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string> snapshots) : IBlobContainerService
+internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<RelativePath> snapshots) : IBlobContainerService
 {
     public bool FileTreesListed { get; private set; }
 
@@ -33,12 +33,11 @@ internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<string>
         {
             foreach (var snapshot in snapshots)
             {
-                var snapshotPath = RelativePath.Parse(snapshot);
-                if (!snapshotPath.StartsWith(prefix))
+                if (!snapshot.StartsWith(prefix))
                     continue;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return snapshotPath;
+                yield return snapshot;
                 await Task.Yield();
             }
 

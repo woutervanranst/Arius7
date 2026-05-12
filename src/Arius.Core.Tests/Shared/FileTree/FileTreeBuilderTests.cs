@@ -15,8 +15,13 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
     private static LocalDirectory CacheRoot(string accountName, string containerName) => RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
+    private static void DeleteDirectoryIfExists(LocalDirectory directory)
+    {
+        if (Directory.Exists(directory.ToString()))
+            Directory.Delete(directory.ToString(), recursive: true);
+    }
 
-    private static async Task<(FileTreeStagingSession Session, string StagingRoot)> CreateStagingAsync(
+    private static async Task<(FileTreeStagingSession Session, LocalDirectory StagingRoot)> CreateStagingAsync(
         string accountName,
         string containerName,
         params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
@@ -27,7 +32,7 @@ public class FileTreeBuilderTests
         foreach (var file in files)
             await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Created, file.Modified);
 
-        return (session, session.StagingRoot.ToString());
+        return (session, session.StagingRoot);
     }
 
     private static FileTreeBuilder CreateBuilder(
@@ -53,9 +58,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "account-empty";
         const string containerName = "container-empty";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -70,8 +74,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -80,9 +83,9 @@ public class FileTreeBuilderTests
     {
         const string acct = "acct-single";
         const string cont = "cont-single";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var cacheDir = CacheRoot(acct, cont);
 
-        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        DeleteDirectoryIfExists(cacheDir);
         try
         {
             var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -93,7 +96,7 @@ public class FileTreeBuilderTests
             await fileTreeService.ValidateAsync();
             await using (stagingSession)
             {
-                var root = await builder.SynchronizeAsync(LocalDirectory.Parse(stagingRoot));
+                var root = await builder.SynchronizeAsync(stagingRoot);
 
                 root.ShouldNotBeNull();
                 blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -101,7 +104,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -110,9 +113,9 @@ public class FileTreeBuilderTests
     {
         const string acct = "acct-single-relative";
         const string cont = "cont-single-relative";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
+        var cacheDir = CacheRoot(acct, cont);
 
-        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        DeleteDirectoryIfExists(cacheDir);
         try
         {
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -133,7 +136,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -142,10 +145,10 @@ public class FileTreeBuilderTests
     {
         const string acct1 = "acc-identical-1", cont1 = "con-identical-1";
         const string acct2 = "acc-identical-2", cont2 = "con-identical-2";
-        var cache1 = RepositoryPathStrings.GetFileTreeCacheDirectory(acct1, cont1);
-        var cache2 = RepositoryPathStrings.GetFileTreeCacheDirectory(acct2, cont2);
-        if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
-        if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
+        var cache1 = CacheRoot(acct1, cont1);
+        var cache2 = CacheRoot(acct2, cont2);
+        DeleteDirectoryIfExists(cache1);
+        DeleteDirectoryIfExists(cache2);
 
         try
         {
@@ -179,8 +182,8 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cache1)) Directory.Delete(cache1, recursive: true);
-            if (Directory.Exists(cache2)) Directory.Delete(cache2, recursive: true);
+            DeleteDirectoryIfExists(cache1);
+            DeleteDirectoryIfExists(cache2);
         }
     }
 
@@ -188,8 +191,8 @@ public class FileTreeBuilderTests
     public async Task SynchronizeAsync_MetadataChange_DifferentRootHash()
     {
         const string acct = "acc-meta", cont = "con-meta";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(acct, cont);
-        if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(acct, cont);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -206,7 +209,7 @@ public class FileTreeBuilderTests
                 root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
             }
 
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
 
             FileTreeHash? root2;
             await using (var stagingSession2 = (await CreateStagingAsync(acct, cont, ("file.txt", FakeContentHash('f'), now1, now2))).Session)
@@ -220,7 +223,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -229,9 +232,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-dup-file";
         const string containerName = "con-dup-file";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -263,8 +265,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -314,9 +315,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-dup-dir";
         const string containerName = "con-dup-dir";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -347,7 +347,7 @@ public class FileTreeBuilderTests
             var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
 
             await stagingSession1.DisposeAsync();
-            Directory.Delete(cacheDir, recursive: true);
+            Directory.Delete(cacheDir.ToString(), recursive: true);
 
             await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(CacheRoot(accountName, containerName));
             await WriteNodeLinesAsync(
@@ -374,8 +374,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -384,9 +383,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-blocked-uploads";
         const string containerName = "con-blocked-uploads";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -410,8 +408,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -420,9 +417,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc";
         const string containerName = "con";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -457,8 +453,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -467,9 +462,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-unvalidated";
         const string containerName = "con-unvalidated";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -488,8 +482,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -499,10 +492,9 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-parallel";
         const string containerName = "con-parallel";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
+        var cacheDir = CacheRoot(accountName, containerName);
         ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -533,8 +525,7 @@ public class FileTreeBuilderTests
         {
             ThreadPool.SetMinThreads(originalWorkerThreads, originalCompletionPortThreads);
 
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -543,9 +534,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-upload-failure";
         const string containerName = "con-upload-failure";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -573,8 +563,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -697,9 +686,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-nested-core";
         const string containerName = "con-nested-core";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -718,8 +706,7 @@ public class FileTreeBuilderTests
                 root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
             }
 
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
 
             var blobs2 = new FakeRecordingBlobContainerService();
             FileTreeHash? root2;
@@ -740,8 +727,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 
@@ -750,9 +736,8 @@ public class FileTreeBuilderTests
     {
         const string accountName = "acc-ordering";
         const string containerName = "con-ordering";
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(accountName, containerName);
-        if (Directory.Exists(cacheDir))
-            Directory.Delete(cacheDir, recursive: true);
+        var cacheDir = CacheRoot(accountName, containerName);
+        DeleteDirectoryIfExists(cacheDir);
 
         try
         {
@@ -772,8 +757,7 @@ public class FileTreeBuilderTests
                 root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
             }
 
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
 
             var blobs2 = new FakeRecordingBlobContainerService();
             FileTreeHash? root2;
@@ -795,8 +779,7 @@ public class FileTreeBuilderTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            DeleteDirectoryIfExists(cacheDir);
         }
     }
 

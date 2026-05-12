@@ -133,11 +133,8 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         return Task.CompletedTask;
     }
 
-    public void ThrowAlreadyExistsOnOpenWrite(string blobName, bool throwOnce = false)
-        => _openWriteAlreadyExists[blobName] = throwOnce ? 1 : int.MaxValue;
-
     public void ThrowAlreadyExistsOnOpenWrite(RelativePath blobName, bool throwOnce = false)
-        => ThrowAlreadyExistsOnOpenWrite(blobName.ToString(), throwOnce);
+        => _openWriteAlreadyExists[blobName.ToString()] = throwOnce ? 1 : int.MaxValue;
 
     public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
         => SeedBlob(blobName.ToString(), content, tier, metadata, contentType, isRehydrating);
@@ -153,7 +150,13 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         _blobs[blobName] = blob with { Metadata = new Dictionary<string, string>() };
     }
 
-    public async Task SeedLargeBlobAsync(string blobName, byte[] originalContent, BlobTier tier)
+    public Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
+        => SeedLargeBlobAsyncCore(blobName.ToString(), originalContent, tier);
+
+    public Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
+        => SeedTarBlobAsyncCore(blobName.ToString(), originalContents, tier);
+
+    private async Task SeedLargeBlobAsyncCore(string blobName, byte[] originalContent, BlobTier tier)
     {
         var payload = await GzipAsync(originalContent);
         SeedBlob(
@@ -169,10 +172,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             ContentTypes.LargePlaintext);
     }
 
-    public Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
-        => SeedLargeBlobAsync(blobName.ToString(), originalContent, tier);
-
-    public async Task SeedTarBlobAsync(string blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
+    private async Task SeedTarBlobAsyncCore(string blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
     {
         var combined = originalContents.SelectMany(bytes => bytes).ToArray();
         var payload = await GzipAsync(combined);
@@ -187,9 +187,6 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             },
             ContentTypes.TarPlaintext);
     }
-
-    public Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
-        => SeedTarBlobAsync(blobName.ToString(), originalContents, tier);
 
     private static async Task<byte[]> GzipAsync(byte[] content)
     {

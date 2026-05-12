@@ -54,7 +54,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         // 2. Pick one representative tar-backed file under the target subtree and preserve the
         // exact existing chunk blob so we can later stage it as a ready rehydrated blob.
-        var targetChunk = await IdentifyTargetTarChunkAsync(state.Fixture, TargetPath, cancellationToken);
+        var targetChunk = await IdentifyTargetTarChunkAsync(state.Fixture, RelativePath.Parse(TargetPath), cancellationToken);
 
         // 3. Force that existing chunk into archive tier.
         await MoveChunksToArchiveAsync(azureBlobContainer, targetChunk.ChunkHash, cancellationToken);
@@ -67,7 +67,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreRoot,
-                TargetPath = RelativePath.Parse(targetChunk.TargetRelativePath),
+                TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
@@ -103,7 +103,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = readyRestoreRoot,
-                TargetPath = RelativePath.Parse(targetChunk.TargetRelativePath),
+                TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmCleanup = (count, _, _) =>
                 {
@@ -153,7 +153,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 context.ContainerName);
         }
 
-        static async Task<ArchiveTierTargetChunk> IdentifyTargetTarChunkAsync(E2EFixture fixture, string targetPath, CancellationToken cancellationToken)
+        static async Task<ArchiveTierTargetChunk> IdentifyTargetTarChunkAsync(E2EFixture fixture, RelativePath targetPath, CancellationToken cancellationToken)
         {
             // Select one representative tar-backed file under the subtree and preserve the exact
             // existing chunk blob bytes/metadata so the ready path can reuse the real blob.
@@ -175,7 +175,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
 
                 var metadata     = await fixture.BlobContainer.GetMetadataAsync(chunkBlobName, cancellationToken);
-                var relativePath = Path.GetRelativePath(fixture.LocalRoot, filePath).Replace(Path.DirectorySeparatorChar, '/');
+                var relativePath = RelativePath.FromPlatformRelativePath(Path.GetRelativePath(fixture.LocalRoot, filePath));
 
                 return new ArchiveTierTargetChunk(relativePath, contentHash, entry.ChunkHash, preservedChunk.ToArray(), metadata.Metadata);
             }
@@ -212,17 +212,17 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         static async Task AssertArchiveTierRestoreOutcomeAsync(ArchiveTierTargetChunk targetChunk, IEncryptionService encryption, string readyRestoreRoot)
         {
-            var restoredPath = Path.Combine(readyRestoreRoot, targetChunk.TargetRelativePath.Replace('/', Path.DirectorySeparatorChar));
+            var restoredPath = Path.Combine(readyRestoreRoot, targetChunk.TargetRelativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
             File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
 
             await using var stream = File.OpenRead(restoredPath);
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            var pointerPath = Path.Combine(readyRestoreRoot, (targetChunk.TargetRelativePath + ".pointer.arius").Replace('/', Path.DirectorySeparatorChar));
+            var pointerPath = Path.Combine(readyRestoreRoot, targetChunk.TargetRelativePath.AppendSuffix(".pointer.arius").ToString().Replace('/', Path.DirectorySeparatorChar));
             File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }
 
-    sealed record ArchiveTierTargetChunk(string TargetRelativePath, ContentHash ContentHash, ChunkHash ChunkHash, byte[] PreservedChunkBytes, IReadOnlyDictionary<string, string> Metadata);
+    sealed record ArchiveTierTargetChunk(RelativePath TargetRelativePath, ContentHash ContentHash, ChunkHash ChunkHash, byte[] PreservedChunkBytes, IReadOnlyDictionary<string, string> Metadata);
 }

@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -33,8 +34,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
     {
-        var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, containerName);
-        var session = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(cacheDir));
+        var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, containerName);
+        var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
             await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Timestamp, file.Timestamp);
@@ -79,8 +80,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             // clean up disk cache
-            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
@@ -123,8 +124,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
@@ -160,8 +161,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryPathStrings.GetFileTreeCacheDirectory(Account, container.Name);
-            if (Directory.Exists(cacheDir)) Directory.Delete(cacheDir, recursive: true);
+            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 

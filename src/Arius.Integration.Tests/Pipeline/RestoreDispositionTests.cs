@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 
@@ -20,7 +21,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         // Archive a small file
         var originalContent = new byte[] { 1, 2, 3, 4, 5 };
-        fix.WriteFile("test.txt", originalContent);
+        fix.WriteFile(RelativePath.Parse("test.txt"), originalContent);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
@@ -51,7 +52,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a small file
-        fix.WriteFile("test.txt", new byte[] { 1, 2, 3, 4, 5 });
+        fix.WriteFile(RelativePath.Parse("test.txt"), new byte[] { 1, 2, 3, 4, 5 });
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
@@ -94,7 +95,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         // Archive a file
         var content = new byte[] { 10, 20, 30, 40, 50 };
-        fix.WriteFile("same.txt", content);
+        fix.WriteFile(RelativePath.Parse("same.txt"), content);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
@@ -128,7 +129,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = new byte[] { 1, 2, 3 };
-        fix.WriteFile("new.txt", content);
+        fix.WriteFile(RelativePath.Parse("new.txt"), content);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
@@ -141,7 +142,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fix.ReadRestored("new.txt").ShouldBe(content);
+        fix.ReadRestored(RelativePath.Parse("new.txt")).ShouldBe(content);
     }
 
     // ── Overwrite: file exists, hash differs, --overwrite set → restore ──
@@ -152,7 +153,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var originalContent = new byte[] { 1, 2, 3, 4, 5 };
-        fix.WriteFile("overwrite.txt", originalContent);
+        fix.WriteFile(RelativePath.Parse("overwrite.txt"), originalContent);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
@@ -170,6 +171,6 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fix.ReadRestored("overwrite.txt").ShouldBe(originalContent);
+        fix.ReadRestored(RelativePath.Parse("overwrite.txt")).ShouldBe(originalContent);
     }
 }

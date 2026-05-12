@@ -1,8 +1,10 @@
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -24,14 +26,18 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly PlaintextPassthroughService       _encryption = new();
     private readonly IMediator                         _mediator   = Substitute.For<IMediator>();
     private readonly FakeLogger<ArchiveCommandHandler> _logger     = new();
+    private readonly LocalDirectory                    _chunkIndexCacheDirectory;
+    private readonly LocalDirectory                    _fileTreeCacheDirectory;
 
     public ArchiveTestEnvironment()
     {
         _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
+        _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
+        _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
         Directory.CreateDirectory(_rootDirectory);
-        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
+        Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
         Blobs  = new FakeInMemoryBlobContainerService();
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
@@ -40,7 +46,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName);
+    public string FileTreeCacheDirectory => _fileTreeCacheDirectory.ToString();
 
     public string RootDirectory => _rootDirectory;
 
@@ -48,11 +54,11 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IMediator Mediator => _mediator;
 
-    public byte[] WriteRandomFile(string relativePath, int sizeBytes)
+    public byte[] WriteRandomFile(RelativePath relativePath, int sizeBytes)
     {
         var content = new byte[sizeBytes];
         Random.Shared.NextBytes(content);
-        var fullPath = Path.Combine(_rootDirectory, relativePath);
+        var fullPath = Path.Combine(_rootDirectory, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         File.WriteAllBytes(fullPath, content);
         return content;
@@ -91,8 +97,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
-        Directory.CreateDirectory(RepositoryPathStrings.GetChunkIndexCacheDirectory(AccountName, _containerName));
-        Directory.CreateDirectory(RepositoryPathStrings.GetFileTreeCacheDirectory(AccountName, _containerName));
+        Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
+        Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);

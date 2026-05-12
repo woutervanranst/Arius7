@@ -1,10 +1,12 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
@@ -196,7 +198,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Writes a binary file under <see cref="LocalRoot"/> and returns the full path.
     /// The relative path is validated to stay inside the fixture source directory.
     /// </summary>
-    public string WriteFile(string relativePath, byte[] content)
+    public string WriteFile(RelativePath relativePath, byte[] content)
     {
         var full = CombineValidatedRelativePath(LocalRoot, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -208,7 +210,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Writes a binary file under <see cref="LocalRoot"/> with explicit UTC creation and modification timestamps.
     /// Use this for archive/restore tests that assert per-path metadata preservation.
     /// </summary>
-    public string WriteFile(string relativePath, byte[] content, DateTime created, DateTime modified)
+    public string WriteFile(RelativePath relativePath, byte[] content, DateTime created, DateTime modified)
     {
         var full = WriteFile(relativePath, content);
         File.SetCreationTimeUtc(full, created);
@@ -220,14 +222,14 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Reads a restored binary file from <see cref="RestoreRoot"/>.
     /// The relative path is validated to stay inside the fixture restore directory.
     /// </summary>
-    public byte[] ReadRestored(string relativePath)
+    public byte[] ReadRestored(RelativePath relativePath)
         => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
     /// <summary>
     /// Returns whether a restored binary file exists under <see cref="RestoreRoot"/>.
     /// The relative path is validated to stay inside the fixture restore directory.
     /// </summary>
-    public bool RestoredExists(string relativePath)
+    public bool RestoredExists(RelativePath relativePath)
         => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
 
     /// <summary>
@@ -235,13 +237,17 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this when a test creates repository services directly but still needs standard cache cleanup.
     /// </summary>
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
-    {
-        var cacheDir = RepositoryPathStrings.GetRepositoryDirectory(accountName, containerName);
+        => DeleteLocalCacheDirectoryAsync(accountName, containerName);
 
+    internal static Task DeleteLocalCacheDirectoryAsync(string accountName, string containerName)
+        => DeleteLocalCacheDirectoryAsync(RepositoryPaths.GetRepositoryRoot(accountName, containerName));
+
+    internal static Task DeleteLocalCacheDirectoryAsync(Arius.Core.Shared.FileSystem.LocalDirectory cacheDir)
+    {
         try
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
         catch (DirectoryNotFoundException ex)
         {
@@ -263,9 +269,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             _deleteTempRoot(_tempRoot);
     }
 
-    private static string CombineValidatedRelativePath(string root, string relativePath)
+    private static string CombineValidatedRelativePath(string root, RelativePath relativePath)
     {
-        var combined = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        var combined = Path.GetFullPath(Path.Combine(root, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
         var normalizedRoot = Path.GetFullPath(root);
 
         if (!combined.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&

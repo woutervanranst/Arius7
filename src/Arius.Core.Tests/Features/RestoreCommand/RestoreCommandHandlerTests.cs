@@ -53,8 +53,8 @@ public class RestoreCommandHandlerTests
         var content = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(content);
 
-        fixture.WriteFile("archives/duplicates/binary-a.bin", content);
-        fixture.WriteFile("nested/deep/a/b/c/binary-b.bin",   content);
+        fixture.WriteFile(RelativePath.Parse("archives/duplicates/binary-a.bin"), content);
+        fixture.WriteFile(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin"),   content);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -76,8 +76,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fixture.ReadRestored("archives/duplicates/binary-a.bin").ShouldBe(content);
-        fixture.ReadRestored("nested/deep/a/b/c/binary-b.bin").ShouldBe(content);
+        fixture.ReadRestored(RelativePath.Parse("archives/duplicates/binary-a.bin")).ShouldBe(content);
+        fixture.ReadRestored(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
     }
 
     [Test]
@@ -95,8 +95,8 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
         var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
 
-        fixture.WriteFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
-        fixture.WriteFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
+        fixture.WriteFile(RelativePath.Parse("archives/duplicates/copy-a.bin"), content, firstCreated,  firstModified);
+        fixture.WriteFile(RelativePath.Parse("nested/deep/a/b/c/copy-b.bin"),   content, secondCreated, secondModified);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -155,8 +155,8 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2020, 3, 4, 5, 6,  7, DateTimeKind.Utc);
         var secondModified = new DateTime(2020, 4, 5, 6, 7,  8, DateTimeKind.Utc);
 
-        fixture.WriteFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
-        fixture.WriteFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
+        fixture.WriteFile(RelativePath.Parse("zero/a.txt"), Array.Empty<byte>(), firstCreated,  firstModified);
+        fixture.WriteFile(RelativePath.Parse("zero/b.txt"), Array.Empty<byte>(), secondCreated, secondModified);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -265,8 +265,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-target-segments-{Guid.NewGuid():N}",
             $"ctr-restore-target-segments-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
-        fixture.WriteFile("photoshop/logo.png", [4, 5, 6]);
+        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
+        fixture.WriteFile(RelativePath.Parse("photoshop/logo.png"), [4, 5, 6]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -289,8 +289,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
-        fixture.RestoredExists("photoshop/logo.png").ShouldBeFalse();
+        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoredExists(RelativePath.Parse("photoshop/logo.png")).ShouldBeFalse();
     }
 
     [Test]
@@ -300,8 +300,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-root-target-{Guid.NewGuid():N}",
             $"ctr-restore-root-target-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
-        fixture.WriteFile("docs/readme.txt", [4, 5, 6]);
+        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
+        fixture.WriteFile(RelativePath.Parse("docs/readme.txt"), [4, 5, 6]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -324,8 +324,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
-        fixture.RestoredExists("docs/readme.txt").ShouldBeTrue();
+        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoredExists(RelativePath.Parse("docs/readme.txt")).ShouldBeTrue();
     }
 
     [Test]
@@ -335,7 +335,7 @@ public class RestoreCommandHandlerTests
             $"acct-restore-no-pointers-{Guid.NewGuid():N}",
             $"ctr-restore-no-pointers-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
+        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -359,7 +359,7 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
+        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
         File.Exists(Path.Combine(fixture.RestoreRoot, "photos", "pic.jpg.pointer.arius")).ShouldBeFalse();
     }
 
@@ -370,8 +370,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-file-target-{Guid.NewGuid():N}",
             $"ctr-restore-file-target-{Guid.NewGuid():N}");
 
-        fixture.WriteFile("photos/pic.jpg", [1, 2, 3]);
-        fixture.WriteFile("photos/other.jpg", [4, 5, 6]);
+        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
+        fixture.WriteFile(RelativePath.Parse("photos/other.jpg"), [4, 5, 6]);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -394,8 +394,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists("photos/pic.jpg").ShouldBeTrue();
-        fixture.RestoredExists("photos/other.jpg").ShouldBeFalse();
+        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoredExists(RelativePath.Parse("photos/other.jpg")).ShouldBeFalse();
     }
 
     private static async Task<byte[]> CompressAsync(byte[] plaintext)

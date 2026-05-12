@@ -1,5 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
@@ -105,7 +106,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
         var prefix = Shard.PrefixOf(contentHash);
-        var l2Path = Path.Combine(RepositoryPathStrings.GetChunkIndexCacheDirectory(Account, containerName), prefix.ToString());
+        var l2Path = RepositoryPaths.GetChunkIndexCacheRoot(Account, containerName).Resolve(RelativePath.Parse(prefix.ToString()));
         await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3

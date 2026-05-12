@@ -18,7 +18,7 @@ public class ArchiveRecoveryTests
         [Matrix(BlobTier.Archive, BlobTier.Cold)] BlobTier uploadTier)
     {
         using var env = new ArchiveTestEnvironment();
-        var content = env.WriteRandomFile("large.bin", 2 * 1024 * 1024);
+        var content = env.WriteRandomFile(RelativePath.Parse("large.bin"), 2 * 1024 * 1024);
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
 
@@ -37,7 +37,7 @@ public class ArchiveRecoveryTests
         [Matrix(BlobTier.Archive, BlobTier.Cold)] BlobTier uploadTier)
     {
         using var env = new ArchiveTestEnvironment();
-        var content = env.WriteRandomFile("small.txt", 256);
+        var content = env.WriteRandomFile(RelativePath.Parse("small.txt"), 256);
         var contentHash = env.Encryption.ComputeHash(content);
 
         var tarHash = ComputeTarHash(env, contentHash, content);
@@ -54,7 +54,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_LargeBlobWithoutMetadata_Rerun_DeletesAndRetries()
     {
         using var env = new ArchiveTestEnvironment();
-        var content = env.WriteRandomFile("partial.bin", 2 * 1024 * 1024);
+        var content = env.WriteRandomFile(RelativePath.Parse("partial.bin"), 2 * 1024 * 1024);
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
         var blobName = BlobPaths.ChunkPath(chunkHash);
@@ -76,7 +76,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_NewContent_CreatesSnapshotWithRootHash()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
 
@@ -88,7 +88,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_NewContent_EmitsConsistentPhaseTimingLogs()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
 
@@ -125,7 +125,7 @@ public class ArchiveRecoveryTests
         var created = new DateTimeOffset(2021, 4, 5, 6, 7, 8, TimeSpan.Zero);
         var modified = new DateTimeOffset(2022, 5, 6, 7, 8, 9, TimeSpan.Zero);
 
-        env.WriteRandomFile(relativePath.ToString(), 128);
+        env.WriteRandomFile(relativePath, 128);
         env.SetTimestamps(relativePath, created, modified);
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
@@ -163,7 +163,7 @@ public class ArchiveRecoveryTests
                 }
             });
 
-        env.WriteRandomFile("photos/pic.jpg", 32);
+        env.WriteRandomFile(RelativePath.Parse("photos/pic.jpg"), 32);
         var result = await env.ArchiveAsync(BlobTier.Cool);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
@@ -180,7 +180,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_RemoveLocal_WritesPointerAndDeletesBinaryAtRelativePath()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 128);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 128);
 
         var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true);
 
@@ -193,7 +193,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 128);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 128);
 
         var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true, noPointers: true);
 
@@ -205,7 +205,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_WhenAnotherLocalRunHoldsStagingLock_FailsFast()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
         await using var stagingSession = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(env.FileTreeCacheDirectory));
 
@@ -221,7 +221,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_WhenCancelledBeforeOpeningStagingSession_PropagatesCancellation()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
@@ -234,7 +234,7 @@ public class ArchiveRecoveryTests
     public async Task Archive_WhenOpeningStagingSessionThrowsNonIoException_ReturnsFailedResult()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile("docs/readme.txt", 1024);
+        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
         var result = await env.ArchiveAsync(
             BlobTier.Cool,
