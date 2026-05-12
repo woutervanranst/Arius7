@@ -52,6 +52,15 @@ public class LocalDirectoryTests : IDisposable
     }
 
     [Test]
+    public void TryGetRelativePath_RootPath_ReturnsRootRelativePath()
+    {
+        var directory = LocalDirectory.Parse(_root);
+
+        directory.TryGetRelativePath(_root, out var relativePath).ShouldBeTrue();
+        relativePath.ShouldBe(RelativePath.Root);
+    }
+
+    [Test]
     public void TryGetRelativePath_FileSystemRootDescendant_ReturnsRelativePath()
     {
         var rootPath = Path.GetPathRoot(_root)!;

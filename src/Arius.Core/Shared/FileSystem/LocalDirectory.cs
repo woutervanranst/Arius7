@@ -57,15 +57,19 @@ internal readonly record struct LocalDirectory
     {
         ArgumentNullException.ThrowIfNull(hostPath);
 
-        var fullPath = Path.GetFullPath(hostPath);
-        if (!IsContained(fullPath))
+        hostPath = Path.GetFullPath(hostPath);
+        if (!IsContained(hostPath))
         {
             relativePath = default;
             return false;
         }
 
-        var relative = Path.GetRelativePath(Value, fullPath);
-        return RelativePath.TryParse(relative.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/'), out relativePath);
+        var relative = Path.GetRelativePath(Value, hostPath);
+        relative = relative == "." // hostPath is pointing to the root
+            ? string.Empty 
+            : relative.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
+
+        return RelativePath.TryParse(relative, out relativePath);
     }
 
     /// <summary>
