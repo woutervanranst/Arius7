@@ -82,12 +82,12 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         initialResult.ChunksPendingRehydration.ShouldBeGreaterThan(0, $"{Name}: pending restore should report pending chunks.");
         initialResult.FilesRestored.ShouldBe(0, $"{Name}: pending restore should not restore files before rehydration is ready.");
 
-        var pendingRehydratedBlobCount = await CountBlobsAsync(azureBlobContainer, RelativePath.Root / "chunks-rehydrated", cancellationToken);
+        var pendingRehydratedBlobCount = await CountBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydratedPrefix, cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
         // 5. Replace the pending staged blob with the preserved readable blob so the next restore
         // observes the post-rehydration path without waiting on Azure's real archive-tier timing.
-        await DeleteBlobsAsync(azureBlobContainer, RelativePath.Root / "chunks-rehydrated", cancellationToken);
+        await DeleteBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydratedPrefix, cancellationToken);
         await UploadReadyRehydratedChunkAsync(azureBlobContainer, targetChunk, cancellationToken);
 
         var cleanupDeletedChunks = 0;
