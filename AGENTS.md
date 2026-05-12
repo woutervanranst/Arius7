@@ -103,11 +103,13 @@ Specialist agents
 
 ## Testing
 
-This project uses **TUnit** (not xUnit/NUnit). Invoke `csharp-tunit` before writing or reviewing tests, especially for data sources, lifecycle hooks, parallelism, async assertions, skips, and filtering.
+This project uses **TUnit** (not xUnit/NUnit). Key differences:
 
 - **Run tests**: `dotnet test --project <path-to-csproj>`
-- **Filter tests**: use `--treenode-filter`, not `--filter`; TUnit/MTP uses tree-node filters.
+- **Filter by class**: use `--treenode-filter "/*/*/<ClassName>/*"` (NOT `--filter`)
+- **Filter by test name**: use `--treenode-filter "/*/*/*/<TestMethodName>"`
 - **List tests**: `dotnet test --project <path-to-csproj> --list-tests`
+- The standard `--filter` flag does NOT work with TUnit; it silently runs zero tests.
 - **Coverage with TUnit/MTP**: use `--coverage`, not `--collect:"XPlat Code Coverage"`
 
 - Use `FakeLogger<T>` from `Microsoft.Extensions.Diagnostics.Testing` instead of `NullLogger<T>` in test projects.
@@ -143,40 +145,40 @@ This project uses **TUnit** (not xUnit/NUnit). Invoke `csharp-tunit` before writ
 
 ## Domain language
 
-Use these terms consistently in code, tests, docs, and reviews. Avoid generic words like "blob" or "pointer" when a precise domain term applies.
-
 - **binary file**: a file on disk that Arius archives and restores.
 - **pointer file**: a file on disk containing the content hash.
 - **FilePair**: the local archive-time view of one path, combining the binary file and its optional pointer file. A `FilePair` can be binary-only, pointer-only, or have both present.
-- **content hash**: the hash of a binary file's original content.
-- **chunk hash**: the name of the chunk that stores the content; identical to the content hash for large chunks and different for tar chunks.
-- **large chunk**: a chunk whose body stores one binary file directly as gzip plus optional encryption.
-- **tar chunk**: a chunk whose body stores a tar bundle of small binary files, then gzip plus optional encryption, to make small-file rehydration affordable.
-- **thin chunk**: a small pointer-like chunk whose body is the tar chunk hash that stores the binary file bytes. It supports deduplication existence checks and metadata lookup.
-- **chunk index**: the repository-wide mapping from content hash to chunk hash, used for TAR lookups, deduplication checks, and metadata lookup.
-- **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+- **hash** Arius is a content addressed storage and deduplicates binary files based on content hash.
+  - **content hash**: the hash of the (original) binary file's content
+  - **chunk hash**: the name of the chunk in which the content is actually stored (identical for large chunks, different for tar chunks)
+- **chunk**: representing unique binary content:
+  - **large chunk**: a chunk whose blob body stores one file directly as gzip plus optional encryption.
+  - **tar chunk**: a chunk whose blob body stores a tar bundle of multiple small files, then gzip plus optional encryption. Why: small files are prohibitively expensive to rehydrate in Azure Blob Storage, so we tar them together into a ~large chunk.
+  - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
+- **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
+  - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
 - **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
 - **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
 
+- Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
+
 ## Strong type guidance
 
-- Prefer strong domain types for Arius-specific paths, hashes, identifiers, and coordinates.
-- Avoid primitive obsession: do not pass raw `string`, `Guid`, `byte[]`, or numeric values through domain code when the value has domain meaning or validation rules.
-- Preserve strong types until a real foreign boundary: storage names, serialized payloads, logs, console/UI output, external SDKs, and configuration.
-- Do not stringify domain values inside Core to inspect, compare, concatenate, or reparse them; add typed APIs instead.
+- Prefer strong domain types over primitives for paths, hashes, identifiers, and domain coordinates.
+- Avoid primitive obsession: do not pass raw `string`, `Guid`, `byte[]`, or numeric values through domain code when the value has Arius-specific meaning or validation rules.
+- Preserve strong types for as long as possible. Convert to primitives only at real foreign boundaries such as storage names, serialized payloads, logs, console/UI output, external SDKs, and configuration.
 
 ### Path type guidance
 
 - Use `RelativePath` for canonical slash-normalized relative paths that may contain multiple segments or denote subtree roots, logical prefixes, repository-relative paths, blob virtual paths, or cache-relative paths.
 - Use `PathSegment` only when the value is semantically exactly one validated name component.
 - Public Arius.Core command/query/result/event contracts should expose `RelativePath` or `PathSegment` when the value is genuinely an Arius relative path or path segment.
-- Contracts may stay string-based for user-entered local filesystem paths, display-only text, external SDK values, and compatibility fields.
+- Contracts that represent user-entered local filesystem paths, display-only text, external storage SDK values, or compatibility-oriented string fields may remain string-based.
 - Pointer-file path derivation belongs on typed path helpers such as `ToPointerPath()` / `ToBinaryPath()`, not scattered string suffix manipulation.
 
 ### Hash type guidance
 
 - Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, and `FileTreeHash`.
-- Do not collapse hash identities into a generic hash type or raw string.
 - Keep persisted and wire formats as canonical lowercase hex strings.
 - Use typed hashes inside the domain and as dictionary/set keys when hash identity is the key.
 
