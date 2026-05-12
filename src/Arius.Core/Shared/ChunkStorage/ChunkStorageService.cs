@@ -21,8 +21,8 @@ public sealed class ChunkStorageService : IChunkStorageService
     public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
         => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeLarge, isTar: false, cancellationToken);
 
-    public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, byte[] content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
-        => UploadChunkAsync(chunkHash, new MemoryStream(content, writable: false), sourceSize, tier, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
+    public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
 
     public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long compressedSize, CancellationToken cancellationToken = default) 
         => UploadThinCoreAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken);

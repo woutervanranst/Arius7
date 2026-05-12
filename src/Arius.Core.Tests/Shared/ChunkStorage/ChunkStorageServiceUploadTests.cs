@@ -56,13 +56,14 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var content = new byte[1024];
         Random.Shared.NextBytes(content);
+        using var tarStream = new MemoryStream(content, writable: false);
 
         await blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(TarChunkHash), [content], BlobTier.Cold);
         blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(TarChunkHash));
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
-            content: content,
+            content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
             progress: null,
@@ -80,10 +81,11 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var content = new byte[1536];
         Random.Shared.NextBytes(content);
+        using var tarStream = new MemoryStream(content, writable: false);
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
-            content: content,
+            content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
             progress: null,

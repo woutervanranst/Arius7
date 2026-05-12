@@ -9,6 +9,11 @@ public static class IEnumerableExtensions
 
 public static class StreamExtensions
 {
+    /// <summary>
+    /// Materializes the current <see cref="MemoryStream"/> contents as an <see cref="ImmutableArray{T}"/>.
+    /// It reuses the underlying buffer when the stream exposes one; otherwise it allocates a new array copy.
+    /// The returned array contains exactly the bytes in the stream payload up to <see cref="MemoryStream.Length"/>.
+    /// </summary>
     public static ImmutableArray<byte> ToImmutableArray(this MemoryStream stream)
     {
         if (stream.TryGetBuffer(out ArraySegment<byte> segment))
@@ -18,5 +23,19 @@ public static class StreamExtensions
         return [..stream.ToArray()];
 
         // NOTE: Unsafe alternative: var sealedBytes = Unsafe.As<MemoryStream, ImmutableArray<byte>>(ref sealedStream);
+    }
+
+    /// <summary>
+    /// Returns the current <see cref="MemoryStream"/> contents as an <see cref="ArraySegment{T}"/> of bytes.
+    /// It reuses the underlying buffer when the stream exposes one; otherwise it allocates a new array copy
+    /// and returns a segment over that copy. The returned segment covers exactly the bytes in the stream
+    /// payload up to <see cref="MemoryStream.Length"/>.
+    /// </summary>
+    public static ArraySegment<byte> ToArraySegment(this MemoryStream stream)
+    {
+        if (stream.TryGetBuffer(out var sealedBuffer))
+            return new ArraySegment<byte>(sealedBuffer.Array!, sealedBuffer.Offset, checked((int)stream.Length));
+
+        return new ArraySegment<byte>(stream.ToArray());
     }
 }

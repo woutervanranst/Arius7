@@ -25,7 +25,7 @@ public interface IChunkStorageService
     /// </summary>
     Task<ChunkUploadResult> UploadTarAsync(
         ChunkHash chunkHash,
-        byte[] content,
+        Stream content,
         long sourceSize,
         BlobTier tier,
         IProgress<long>? progress = null,
