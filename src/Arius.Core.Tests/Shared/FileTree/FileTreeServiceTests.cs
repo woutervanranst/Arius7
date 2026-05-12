@@ -522,8 +522,8 @@ public class FileTreeServiceTests
         const string acct = "tc-val-unsorted", cont = "container";
         var blobs = new UnsortedSnapshotBlobContainerService(
             [
-                BlobPathStrings.Snapshot("2024-06-15T100000.000Z"),
-                BlobPathStrings.Snapshot("2024-01-01T000000.000Z")
+                BlobPaths.SnapshotPath("2024-06-15T100000.000Z").ToString(),
+                BlobPaths.SnapshotPath("2024-01-01T000000.000Z").ToString()
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
@@ -551,7 +551,7 @@ public class FileTreeServiceTests
         const string acct = "tc-val-sibling-prefix", cont = "container";
         var blobs = new UnsortedSnapshotBlobContainerService(
             [
-                BlobPathStrings.Snapshot("2024-06-15T100000.000Z"),
+                BlobPaths.SnapshotPath("2024-06-15T100000.000Z").ToString(),
                 "snapshots-old/2024-07-01T100000.000Z"
             ]);
         var index = new ChunkIndexService(blobs, s_enc, acct, cont);

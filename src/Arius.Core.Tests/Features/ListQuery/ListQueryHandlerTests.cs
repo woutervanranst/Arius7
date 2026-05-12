@@ -4,6 +4,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
@@ -667,7 +668,7 @@ public class ListQueryHandlerTests
             await gzipStream.WriteAsync(payload.Plaintext);
         }
 
-        blobs.AddBlob(BlobPathStrings.FileTree(payload.Hash), ms.ToArray());
+        blobs.AddBlob(BlobPaths.FileTreePath(payload.Hash), ms.ToArray());
         return payload.Hash;
     }
 

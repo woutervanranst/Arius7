@@ -14,6 +14,7 @@ namespace Arius.Architecture.Tests;
 /// </summary>
 public class DependencyTests
 {
+    private static readonly string RepositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     private static readonly ArchUnitNET.Domain.Architecture Architecture = new ArchLoader()
         .LoadAssemblies(
             typeof(Core.AssemblyMarker).Assembly,
@@ -137,6 +138,14 @@ public class DependencyTests
             rule.HasNoViolations(Architecture).ShouldBeTrue(
                 $"Only {archiveNamespace} may depend on {modelName}. Violations: {DescribeViolations(rule)}");
         }
+    }
+
+    [Test]
+    public void TestsShared_Should_Not_Define_BlobPathStrings_Helper()
+    {
+        var helperPath = Path.Combine(RepositoryRoot, "src", "Arius.Tests.Shared", "BlobPathStrings.cs");
+
+        File.Exists(helperPath).ShouldBeFalse($"Remove obsolete helper at '{helperPath}' and use Arius.Core.Shared.Storage.BlobPaths directly.");
     }
 
     // Helper: produce a human-readable summary of rule violations for failure messages

@@ -22,8 +22,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
         var chunkHash = ChunkHash.Parse(contentHash);
 
-        await env.Blobs.SeedLargeBlobAsync(BlobPathStrings.Chunk(chunkHash), content, uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(chunkHash));
+        await env.Blobs.SeedLargeBlobAsync(BlobPaths.ChunkPath(chunkHash), content, uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(chunkHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 
@@ -41,8 +41,8 @@ public class ArchiveRecoveryTests
         var contentHash = env.Encryption.ComputeHash(content);
 
         var tarHash = ComputeTarHash(env, contentHash, content);
-        await env.Blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(tarHash), [content], uploadTier);
-        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(tarHash));
+        await env.Blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(tarHash), [content], uploadTier);
+        env.Blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(tarHash));
 
         var result = await env.ArchiveAsync(uploadTier);
 

@@ -58,8 +58,8 @@ public class ChunkStorageServiceUploadTests
         Random.Shared.NextBytes(content);
         using var tarStream = new MemoryStream(content, writable: false);
 
-        await blobs.SeedTarBlobAsync(BlobPathStrings.Chunk(TarChunkHash), [content], BlobTier.Cold);
-        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPathStrings.Chunk(TarChunkHash));
+        await blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(TarChunkHash), [content], BlobTier.Cold);
+        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(TarChunkHash));
 
         var result = await service.UploadTarAsync(
             chunkHash: TarChunkHash,
