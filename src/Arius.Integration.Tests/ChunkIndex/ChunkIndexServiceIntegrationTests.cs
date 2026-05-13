@@ -16,12 +16,12 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     private const string Account   = "devstoreaccount1";
     private const string Passphrase = "test-passphrase";
 
-    private async Task<(ChunkIndexService service, string tempDir)> CreateServiceAsync()
+    private async Task<(ChunkIndexService service, LocalDirectory tempDir)> CreateServiceAsync()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
         var containerName = container.Name;
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
+        var tempDir       = TestTempRoots.CreateDirectory("test");
+        Directory.CreateDirectory(tempDir.ToString());
 
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,

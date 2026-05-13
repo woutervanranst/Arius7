@@ -1,9 +1,12 @@
+using Arius.Tests.Shared;
+
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class RelativeFileSystemTests : IDisposable
 {
     private readonly string _root;
     private readonly RelativeFileSystem _fileSystem;
+    private readonly List<string> _extraRoots = [];
 
     public RelativeFileSystemTests()
     {
@@ -14,6 +17,12 @@ public class RelativeFileSystemTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var extraRoot in _extraRoots)
+        {
+            if (Directory.Exists(extraRoot))
+                Directory.Delete(extraRoot, recursive: true);
+        }
+
         if (Directory.Exists(_root))
             Directory.Delete(_root, recursive: true);
     }
@@ -56,6 +65,16 @@ public class RelativeFileSystemTests : IDisposable
         }
 
         File.ReadAllText(Path.Combine(_root, "deep", "nested", "file.bin")).ShouldBe("payload");
+    }
+
+    [Test]
+    public void TestTempRoots_CreateDirectory_PlacesRootUnderTempPathArius()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("relative-fs-test");
+        _extraRoots.Add(tempRoot.ToString());
+
+        tempRoot.ToString().ShouldStartWith(Path.Combine(Path.GetTempPath(), TestTempRoots.FolderName) + Path.DirectorySeparatorChar);
+        tempRoot.ToString().ShouldContain("relative-fs-test-");
     }
 
     [Test]

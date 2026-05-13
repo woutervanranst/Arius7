@@ -1,5 +1,6 @@
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -8,7 +9,7 @@ public class FileTreeStagingWriterTests
     private static readonly DateTimeOffset TestTimestamp = new(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
     private static readonly ContentHash TestHash = ContentHash.Parse(new string('a', 64));
 
-    private static LocalDirectory CacheRoot(string cacheDir) => LocalDirectory.Parse(cacheDir);
+    private static LocalDirectory CacheRoot(LocalDirectory cacheDir) => cacheDir;
 
     private static string ResolveStagingNode(LocalDirectory stagingRoot, PathSegment directoryId) =>
         stagingRoot.Resolve(FileTreePaths.GetStagingNodePath(directoryId));
@@ -33,7 +34,7 @@ public class FileTreeStagingWriterTests
     [Test]
     public async Task OpenAsync_DeletesExistingStagingDirectory()
     {
-            var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+            var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             var stagingRoot = FileTreePaths.GetStagingRootDirectory(CacheRoot(cacheDir)).ToString();
@@ -47,15 +48,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task OpenAsync_FailsWhenAnotherSessionHoldsLock()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var first = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -65,15 +66,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task DisposeAsync_RemovesStagingRootBeforeReleasingLock()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             var first = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -86,15 +87,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task DisposeAsync_RemovesStagingRootImmediately()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -106,15 +107,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task AppendFileEntryAsync_WritesSingleNodeFilePerDirectoryId()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -135,15 +136,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task AppendFileEntryAsync_RelativePathInput_WritesSingleNodeFilePerDirectoryId()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -164,15 +165,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task AppendFileEntryAsync_SingleSegmentPath_WritesEntryToRootNodeOnly()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -193,15 +194,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task AppendFileEntryAsync_WritesDirectoryEntriesForNestedPath()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -221,15 +222,15 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
     [Test]
     public async Task AppendFileEntryAsync_PreservesLeadingAndTrailingSpacesInPathSegments()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -250,8 +251,8 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 
@@ -287,7 +288,7 @@ public class FileTreeStagingWriterTests
     [Test]
     public async Task AppendFileEntryAsync_RootRelativePath_Throws()
     {
-        var cacheDir = Path.Combine(Path.GetTempPath(), $"arius-cache-{Guid.NewGuid():N}");
+        var cacheDir = TestTempRoots.CreateDirectory("cache");
         try
         {
             await using var session = await FileTreeStagingSession.OpenAsync(CacheRoot(cacheDir));
@@ -298,8 +299,8 @@ public class FileTreeStagingWriterTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir))
-                Directory.Delete(cacheDir, recursive: true);
+            if (Directory.Exists(cacheDir.ToString()))
+                Directory.Delete(cacheDir.ToString(), recursive: true);
         }
     }
 }

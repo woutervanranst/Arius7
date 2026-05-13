@@ -1,3 +1,5 @@
+using Arius.Tests.Shared;
+
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class LocalDirectoryTests : IDisposable
@@ -6,7 +8,7 @@ public class LocalDirectoryTests : IDisposable
 
     public LocalDirectoryTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), $"arius-local-directory-{Guid.NewGuid():N}");
+        _root = TestTempRoots.CreateDirectory("local-directory").ToString();
         Directory.CreateDirectory(_root);
     }
 

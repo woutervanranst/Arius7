@@ -36,10 +36,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _containerName = $"test-container-{Guid.NewGuid():N}";
         
 
-        _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
+        _rootDirectory = TestTempRoots.CreateDirectory("archive-test").ToString();
         _rootDirectoryInfo = LocalDirectory.Parse(_rootDirectory);
         _rootFileSystem = new RelativeFileSystem(_rootDirectoryInfo);
-        Directory.CreateDirectory(_rootDirectory);
+        _rootFileSystem.CreateDirectory(RelativePath.Root);
         
         _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
 

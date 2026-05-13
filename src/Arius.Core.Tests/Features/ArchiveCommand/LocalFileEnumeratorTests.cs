@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -13,7 +14,7 @@ public class LocalFileEnumeratorTests : IDisposable
 
     public LocalFileEnumeratorTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), $"arius-enum-test-{Guid.NewGuid():N}");
+        _root = TestTempRoots.CreateDirectory("enum-test").ToString();
         Directory.CreateDirectory(_root);
         _rootDirectory = LocalDirectory.Parse(_root);
     }

@@ -165,9 +165,9 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_WithLocalPath_MergesCloudAndLocalFilesInOneDirectory()
     {
-        var tempRoot = LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), $"arius-ls-{Guid.NewGuid():N}"));
+        var tempRoot = TestTempRoots.CreateDirectory("ls");
         var localFileSystem = new RelativeFileSystem(tempRoot);
-        Directory.CreateDirectory(tempRoot.ToString());
+        localFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -240,7 +240,7 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_WithPrefixAndLocalPath_PointerSuffixComparisonIsCaseInsensitive()
     {
-        var tempRoot = LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}"));
+        var tempRoot = TestTempRoots.CreateDirectory("ls-prefix-local");
         var localFileSystem = new RelativeFileSystem(tempRoot);
         localFileSystem.CreateDirectory(RelativePath.Parse("docs"));
 
@@ -474,7 +474,7 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_DirectoryMerge_AllThreeKindsYieldedWithCorrectFlags()
     {
-        var tempRoot = LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), $"arius-ls-38-{Guid.NewGuid():N}"));
+        var tempRoot = TestTempRoots.CreateDirectory("ls-38");
         var localFileSystem = new RelativeFileSystem(tempRoot);
         localFileSystem.CreateDirectory(RelativePath.Parse("cloud-local-dir"));
         localFileSystem.CreateDirectory(RelativePath.Parse("local-only-dir"));
