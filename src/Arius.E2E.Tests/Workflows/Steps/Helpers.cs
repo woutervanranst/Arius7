@@ -34,11 +34,11 @@ internal static class Helpers
         if (preserveConflictBytes)
         {
             var conflictPath = GetConflictPath(state.Definition, expectedVersion);
-            var restoredPath = fixture.RestoreDirectory.Resolve(RelativePath.Parse(conflictPath));
+            var conflictRelativePath = RelativePath.Parse(conflictPath);
             var expectedConflictBytes = CreateConflictBytes(state.Seed, conflictPath);
 
             restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
-            (await File.ReadAllBytesAsync(restoredPath)).ShouldBe(expectedConflictBytes);
+            (await fixture.RestoreFileSystem.ReadAllBytesAsync(conflictRelativePath, CancellationToken.None)).ShouldBe(expectedConflictBytes);
             return;
         }
 
@@ -57,11 +57,10 @@ internal static class Helpers
     public static async Task WriteRestoreConflictAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed)
     {
         var conflictPath = GetConflictPath(definition, expectedVersion);
-        var fullPath = fixture.RestoreDirectory.Resolve(RelativePath.Parse(conflictPath));
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var conflictRelativePath = RelativePath.Parse(conflictPath);
 
         var conflictBytes = CreateConflictBytes(seed, conflictPath);
-        await File.WriteAllBytesAsync(fullPath, conflictBytes);
+        await fixture.RestoreFileSystem.WriteAllBytesAsync(conflictRelativePath, conflictBytes, CancellationToken.None);
     }
 
     public static string? ResolveVersion(RepresentativeWorkflowState state, WorkflowRestoreTarget target) =>
@@ -143,8 +142,7 @@ internal static class Helpers
 
     static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, RelativePath relativePath, CancellationToken cancellationToken)
     {
-        var             fullPath = state.Fixture.LocalDirectory.Resolve(relativePath);
-        await using var f        = File.OpenRead(fullPath);
+        await using var f = state.Fixture.LocalFileSystem.OpenRead(relativePath);
         return await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken);
     }
 }

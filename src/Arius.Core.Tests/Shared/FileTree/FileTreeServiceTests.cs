@@ -495,12 +495,13 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-match", cont = "container";
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
         try
         {
             var timestamp = "2024-06-15T100000.000Z";
 
             // Write a local snapshot marker
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), timestamp), []);
+            await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse(timestamp), [], CancellationToken.None);
 
             // Seed a remote snapshot with the same timestamp
             blobs.SeedBlob(BlobPaths.SnapshotPath(timestamp), [], contentType: null);
@@ -531,11 +532,12 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
+        snapshotsFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-06-15T100000.000Z"), []);
+            await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-06-15T100000.000Z"), [], CancellationToken.None);
 
             await svc.ValidateAsync();
 
@@ -560,11 +562,12 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
+        snapshotsFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-06-15T100000.000Z"), []);
+            await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-06-15T100000.000Z"), [], CancellationToken.None);
 
             await svc.ValidateAsync();
 
@@ -583,12 +586,14 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-miss", cont = "container";
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
 
         // Determine the L2 dir and pre-populate it with a dummy file
         var chunkL2Dir = RepositoryPaths.GetChunkIndexCacheRoot(acct, cont);
-        Directory.CreateDirectory(chunkL2Dir.ToString());
-        var dummyL2File = Path.Combine(chunkL2Dir.ToString(), "dummy-shard.dat");
-        await File.WriteAllTextAsync(dummyL2File, "stale");
+        var chunkL2FileSystem = new RelativeFileSystem(chunkL2Dir);
+        chunkL2FileSystem.CreateDirectory(RelativePath.Root);
+        var dummyL2File = RelativePath.Parse("dummy-shard.dat");
+        await chunkL2FileSystem.WriteAllTextAsync(dummyL2File, "stale", CancellationToken.None);
 
         try
         {
@@ -596,7 +601,7 @@ public class FileTreeServiceTests
             var secondRemoteHash = FakeFileTreeHash('2');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
+            await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-01-01T000000.000Z"), [], CancellationToken.None);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
@@ -611,7 +616,7 @@ public class FileTreeServiceTests
             File.Exists(ResolveCachePath(cacheDir, secondRemoteHash)).ShouldBeTrue();
 
             // L2 dummy file deleted
-            File.Exists(dummyL2File).ShouldBeFalse();
+            chunkL2FileSystem.FileExists(dummyL2File).ShouldBeFalse();
         }
         finally
         {
@@ -627,27 +632,29 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-noover", cont = "container";
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
+        var cacheFileSystem = new RelativeFileSystem(cacheDir);
         try
         {
             var existingHash = FakeFileTreeHash('3');
 
             // Local marker: old snapshot
-            await File.WriteAllBytesAsync(Path.Combine(snapshotsDir.ToString(), "2024-01-01T000000.000Z"), []);
+            await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-01-01T000000.000Z"), [], CancellationToken.None);
 
             // Remote snapshot: newer
             blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);
 
             // One remote blob already present in cache with real content
             var existingContent = new byte[] { 1, 2, 3, 4, 5 };
-            var diskPath = ResolveCachePath(cacheDir, existingHash);
-            await File.WriteAllBytesAsync(diskPath, existingContent);
+            var cachePath = RelativePath.Parse(existingHash.ToString());
+            await cacheFileSystem.WriteAllBytesAsync(cachePath, existingContent, CancellationToken.None);
 
             blobs.SeedBlob(BlobPaths.FileTreePath(existingHash), [], contentType: null);
 
             await svc.ValidateAsync();
 
             // Existing file content must be preserved (not overwritten with empty marker)
-            var after = await File.ReadAllBytesAsync(diskPath);
+            var after = await cacheFileSystem.ReadAllBytesAsync(cachePath, CancellationToken.None);
             after.ShouldBe(existingContent);
         }
         finally
@@ -663,6 +670,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-noloc", cont = "container";
         var (svc, blobs, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var cacheFileSystem = new RelativeFileSystem(cacheDir);
         try
         {
             var remoteHash = FakeFileTreeHash('4');
@@ -678,7 +686,7 @@ public class FileTreeServiceTests
             await svc.ValidateAsync();
 
             // Slow path should create marker for remote blob
-            File.Exists(ResolveCachePath(cacheDir, remoteHash)).ShouldBeTrue();
+            cacheFileSystem.FileExists(RelativePath.Parse(remoteHash.ToString())).ShouldBeTrue();
         }
         finally
         {
@@ -714,12 +722,12 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-exists-true", cont = "container";
         var (svc, _, cacheDir, snapshotsDir) = MakeService(acct, cont);
+        var cacheFileSystem = new RelativeFileSystem(cacheDir);
         try
         {
             await svc.ValidateAsync();
             var hash = FakeFileTreeHash('a');
-            var diskPath = ResolveCachePath(cacheDir, hash);
-            await File.WriteAllBytesAsync(diskPath, []);
+            await cacheFileSystem.WriteAllBytesAsync(RelativePath.Parse(hash.ToString()), [], CancellationToken.None);
 
             svc.ExistsInRemote(hash).ShouldBeTrue();
         }
@@ -773,6 +781,7 @@ public class FileTreeServiceTests
         var blobs        = new FakeInMemoryBlobContainerService();
         var snapshotSvc  = new SnapshotService(blobs, s_enc, acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
+        var snapshotsFileSystem = new RelativeFileSystem(snapshotsDir);
         try
         {
             var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -780,11 +789,11 @@ public class FileTreeServiceTests
             var manifest = await snapshotSvc.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
 
             var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
-            var localPath        = Path.Combine(snapshotsDir.ToString(), expectedFileName);
+            var localPath        = RelativePath.Parse(expectedFileName);
 
             // Disk file exists and is valid JSON
-            File.Exists(localPath).ShouldBeTrue();
-            var json = await File.ReadAllTextAsync(localPath);
+            snapshotsFileSystem.FileExists(localPath).ShouldBeTrue();
+            var json = await snapshotsFileSystem.ReadAllTextAsync(localPath, CancellationToken.None);
             json.ShouldContain(rootHash.ToString());
 
             // Azure was also uploaded
