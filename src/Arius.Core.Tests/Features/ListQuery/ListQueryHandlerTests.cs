@@ -230,10 +230,7 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot.ToString()))
-            {
-                Directory.Delete(tempRoot.ToString(), recursive: true);
-            }
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -302,10 +299,7 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot.ToString()))
-            {
-                Directory.Delete(tempRoot.ToString(), recursive: true);
-            }
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -522,8 +516,7 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot.ToString()))
-                Directory.Delete(tempRoot.ToString(), recursive: true);
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
