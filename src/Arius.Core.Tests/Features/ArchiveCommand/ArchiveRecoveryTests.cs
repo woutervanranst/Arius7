@@ -187,7 +187,7 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         env.RootFileSystem.FileExists(relativePath).ShouldBeFalse();
-        env.RootFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
+        env.RootFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
     }
 
     [Test]

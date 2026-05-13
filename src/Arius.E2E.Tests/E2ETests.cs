@@ -62,7 +62,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.FilesRestored.ShouldBe(1);
 
             fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
-            fixture.RestoreFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
+            fixture.RestoreFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
             fixture.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
         }
         finally

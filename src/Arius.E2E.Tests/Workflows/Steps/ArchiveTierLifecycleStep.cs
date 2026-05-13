@@ -202,7 +202,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            readyRestoreFileSystem.FileExists(targetChunk.TargetRelativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
+            readyRestoreFileSystem.FileExists(targetChunk.TargetRelativePath.ToPointerPath()).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }
 

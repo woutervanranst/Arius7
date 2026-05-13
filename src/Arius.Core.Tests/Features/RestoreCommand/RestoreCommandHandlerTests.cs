@@ -23,10 +23,10 @@ public class RestoreCommandHandlerTests
     {
         var restoreRelativePath = RelativePath.Parse(relativePath);
         var restoredTimestamps = fixture.RestoreFileSystem.GetTimestamps(restoreRelativePath);
-        var pointerTimestamps = fixture.RestoreFileSystem.GetTimestamps(restoreRelativePath.AppendSuffix(".pointer.arius"));
+        var pointerTimestamps = fixture.RestoreFileSystem.GetTimestamps(restoreRelativePath.ToPointerPath());
 
         fixture.RestoreFileSystem.ReadAllBytes(restoreRelativePath).ShouldBe(expectedContent);
-        fixture.RestoreFileSystem.FileExists(restoreRelativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Pointer file should exist for {relativePath}");
+        fixture.RestoreFileSystem.FileExists(restoreRelativePath.ToPointerPath()).ShouldBeTrue($"Pointer file should exist for {relativePath}");
 
         if (!OperatingSystem.IsLinux())
         {

@@ -247,7 +247,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
-        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
@@ -307,7 +307,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Binary should be gone, pointer should exist
         fix.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
-        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
 
         // Second archive: only pointer file present (thin archive)
         var r2 = await fix.CreateArchiveHandler().Handle(
@@ -378,7 +378,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Rename: delete original, create renamed
         fix.LocalFileSystem.DeleteFile(originalPath);
-        fix.LocalFileSystem.DeleteFile(originalPath.AppendSuffix(".pointer.arius"));
+        fix.LocalFileSystem.DeleteFile(originalPath.ToPointerPath());
         await fix.LocalFileSystem.WriteAllBytesAsync(renamedPath, content, CancellationToken.None);
 
         var r2 = await fix.ArchiveAsync();
@@ -416,7 +416,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Delete one file and its pointer
         fix.LocalFileSystem.DeleteFile(deletePath);
-        fix.LocalFileSystem.DeleteFile(deletePath.AppendSuffix(".pointer.arius"));
+        fix.LocalFileSystem.DeleteFile(deletePath.ToPointerPath());
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
@@ -614,7 +614,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // No pointer file should have been created
-        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeFalse();
+        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
 
     // ── 14.10: --remove-local + --no-pointers: should be rejected ────────────
