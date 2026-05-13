@@ -33,16 +33,22 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public ArchiveTestEnvironment()
     {
-        _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _containerName = $"test-container-{Guid.NewGuid():N}";
-        _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
-        _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
+        
+
+        _rootDirectory = Path.Combine(Path.GetTempPath(), $"arius-archive-test-{Guid.NewGuid():N}");
         _rootDirectoryInfo = LocalDirectory.Parse(_rootDirectory);
         _rootFileSystem = new RelativeFileSystem(_rootDirectoryInfo);
         Directory.CreateDirectory(_rootDirectory);
+        
+        _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
+
+        _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
         Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
         Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
+        
         Blobs  = new FakeInMemoryBlobContainerService();
+        
         _index = new ChunkIndexService(Blobs, _encryption, AccountName, _containerName);
     }
 
@@ -50,9 +56,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public IEncryptionService Encryption => _encryption;
 
-    public string FileTreeCacheDirectory => _fileTreeCacheDirectory.ToString();
-
-    public string RootDirectory => _rootDirectory;
+    public LocalDirectory FileTreeCacheDirectory => _fileTreeCacheDirectory;
 
     public LocalDirectory RootDirectoryInfo => _rootDirectoryInfo;
 

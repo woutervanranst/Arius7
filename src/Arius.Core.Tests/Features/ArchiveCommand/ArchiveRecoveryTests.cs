@@ -208,7 +208,7 @@ public class ArchiveRecoveryTests
         using var env = new ArchiveTestEnvironment();
         env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 1024);
 
-        await using var stagingSession = await FileTreeStagingSession.OpenAsync(LocalDirectory.Parse(env.FileTreeCacheDirectory));
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(env.FileTreeCacheDirectory);
 
         var result = await env.ArchiveAsync(BlobTier.Cool);
 
