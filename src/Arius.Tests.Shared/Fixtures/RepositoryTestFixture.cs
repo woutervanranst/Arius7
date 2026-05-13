@@ -13,7 +13,6 @@ using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using AriusLocalDirectory = Arius.Core.Shared.FileSystem.LocalDirectory;
 
 namespace Arius.Tests.Shared.Fixtures;
 
@@ -67,8 +66,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         _tempRoot       = tempRoot;
         LocalRoot       = localRoot;
         RestoreRoot     = restoreRoot;
-        LocalDirectory   = AriusLocalDirectory.Parse(localRoot);
-        RestoreDirectory = AriusLocalDirectory.Parse(restoreRoot);
+        LocalDirectory   = LocalDirectory.Parse(localRoot);
+        RestoreDirectory = LocalDirectory.Parse(restoreRoot);
         LocalFileSystem  = new RelativeFileSystem(LocalDirectory);
         RestoreFileSystem = new RelativeFileSystem(RestoreDirectory);
         _account        = account;
@@ -113,10 +112,10 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     public string RestoreRoot { get; }
 
     /// <summary>Typed source directory used by archive-oriented tests.</summary>
-    internal AriusLocalDirectory LocalDirectory { get; }
+    internal LocalDirectory LocalDirectory { get; }
 
     /// <summary>Typed restore destination directory used by restore-oriented tests.</summary>
-    internal AriusLocalDirectory RestoreDirectory { get; }
+    internal LocalDirectory RestoreDirectory { get; }
 
     /// <summary>Rooted filesystem for the source directory used by archive-oriented tests.</summary>
     internal RelativeFileSystem LocalFileSystem { get; }
@@ -229,7 +228,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     internal static Task DeleteLocalCacheDirectoryAsync(string accountName, string containerName)
         => DeleteLocalCacheDirectoryAsync(RepositoryPaths.GetRepositoryRoot(accountName, containerName));
 
-    internal static Task DeleteLocalCacheDirectoryAsync(Arius.Core.Shared.FileSystem.LocalDirectory cacheDir)
+    internal static Task DeleteLocalCacheDirectoryAsync(LocalDirectory cacheDir)
     {
         try
         {
