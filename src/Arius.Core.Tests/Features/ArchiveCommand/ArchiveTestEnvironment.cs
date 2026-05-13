@@ -56,6 +56,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public LocalDirectory RootDirectoryInfo => _rootDirectoryInfo;
 
+    internal RelativeFileSystem RootFileSystem => _rootFileSystem;
+
     public FakeLogCollector ArchiveLogs => _logger.Collector;
 
     public IMediator Mediator => _mediator;

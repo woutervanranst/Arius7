@@ -50,11 +50,7 @@ internal static class Helpers
         if (!useNoPointers)
         {
             foreach (var relativePath in expectedState.Files.Keys)
-            {
-                var pointerPath = fixture.RestoreDirectory.Resolve(RelativePath.Parse(relativePath).AppendSuffix(".pointer.arius"));
-
-                File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {relativePath}");
-            }
+                fixture.RestoreFileSystem.FileExists(RelativePath.Parse(relativePath).AppendSuffix(".pointer.arius")).ShouldBeTrue($"Expected pointer file for {relativePath}");
         }
     }
 

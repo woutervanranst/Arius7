@@ -247,7 +247,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
-        File.Exists(fix.LocalDirectory.Resolve(relativePath.AppendSuffix(".pointer.arius"))).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
@@ -306,8 +306,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Binary should be gone, pointer should exist
-        File.Exists(fix.LocalDirectory.Resolve(relativePath)).ShouldBeFalse();
-        File.Exists(fix.LocalDirectory.Resolve(relativePath.AppendSuffix(".pointer.arius"))).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
+        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
 
         // Second archive: only pointer file present (thin archive)
         var r2 = await fix.CreateArchiveHandler().Handle(

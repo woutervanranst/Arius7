@@ -48,7 +48,7 @@ public class RestoreCommandHandlerTests
         var relativePath = RelativePath.Parse("nested/file.bin");
         await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, [1, 2, 3], CancellationToken.None);
 
-        File.Exists(fixture.LocalDirectory.Resolve(relativePath)).ShouldBeTrue();
+        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions

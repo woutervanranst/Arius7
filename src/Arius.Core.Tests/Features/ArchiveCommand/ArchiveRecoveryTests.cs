@@ -186,8 +186,8 @@ public class ArchiveRecoveryTests
         var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        File.Exists(env.RootDirectoryInfo.Resolve(relativePath)).ShouldBeFalse();
-        File.Exists(env.RootDirectoryInfo.Resolve(relativePath.AppendSuffix(".pointer.arius"))).ShouldBeTrue();
+        env.RootFileSystem.FileExists(relativePath).ShouldBeFalse();
+        env.RootFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
     }
 
     [Test]

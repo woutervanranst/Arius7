@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
@@ -111,7 +112,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             await AssertArchiveTierRestoreOutcomeAsync(
                 targetChunk,
                 state.Fixture.Encryption,
-                readyRestoreDirectory);
+                readyRestoreDirectory,
+                new RelativeFileSystem(readyRestoreDirectory));
 
             cleanupDeletedChunks.ShouldBeGreaterThan(0, $"{Name}: ready restore should clean up rehydrated tar chunks.");
 
@@ -187,7 +189,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 await blobContainer.DeleteAsync(blobName, cancellationToken);
         }
 
-        static async Task AssertArchiveTierRestoreOutcomeAsync(ArchiveTierTargetChunk targetChunk, IEncryptionService encryption, LocalDirectory readyRestoreDirectory)
+        static async Task AssertArchiveTierRestoreOutcomeAsync(
+            ArchiveTierTargetChunk targetChunk,
+            IEncryptionService encryption,
+            LocalDirectory readyRestoreDirectory,
+            RelativeFileSystem readyRestoreFileSystem)
         {
             var restoredPath = readyRestoreDirectory.Resolve(targetChunk.TargetRelativePath);
             File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
@@ -196,8 +202,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 
-            var pointerPath = readyRestoreDirectory.Resolve(targetChunk.TargetRelativePath.AppendSuffix(".pointer.arius"));
-            File.Exists(pointerPath).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
+            readyRestoreFileSystem.FileExists(targetChunk.TargetRelativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Expected pointer file for {targetChunk.TargetRelativePath}");
         }
     }
 
