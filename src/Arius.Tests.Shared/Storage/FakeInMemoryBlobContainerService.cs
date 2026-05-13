@@ -150,13 +150,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         _blobs[blobName] = blob with { Metadata = new Dictionary<string, string>() };
     }
 
-    public Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
-        => SeedLargeBlobAsyncCore(blobName.ToString(), originalContent, tier);
-
-    public Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
-        => SeedTarBlobAsyncCore(blobName.ToString(), originalContents, tier);
-
-    private async Task SeedLargeBlobAsyncCore(string blobName, byte[] originalContent, BlobTier tier)
+    public async Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
     {
         var payload = await GzipAsync(originalContent);
         SeedBlob(
@@ -165,14 +159,14 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             tier,
             new Dictionary<string, string>
             {
-                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
                 [BlobMetadataKeys.OriginalSize] = originalContent.Length.ToString(),
-                [BlobMetadataKeys.ChunkSize] = payload.Length.ToString(),
+                [BlobMetadataKeys.ChunkSize]    = payload.Length.ToString(),
             },
             ContentTypes.LargePlaintext);
     }
 
-    private async Task SeedTarBlobAsyncCore(string blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
+    public async Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
     {
         var combined = originalContents.SelectMany(bytes => bytes).ToArray();
         var payload = await GzipAsync(combined);
