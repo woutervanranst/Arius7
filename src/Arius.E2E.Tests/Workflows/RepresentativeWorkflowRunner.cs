@@ -45,24 +45,24 @@ internal static class RepresentativeWorkflowRunner
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
         var tempDirectory = LocalDirectory.Parse(Path.GetTempPath());
-        var workflowRoot = tempDirectory.Resolve(RelativePath.Parse($"arius/arius-test-{Guid.NewGuid():N}"));
+        var workflowDirectory = LocalDirectory.Parse(tempDirectory.Resolve(RelativePath.Parse($"arius/arius-test-{Guid.NewGuid():N}")));
         E2EFixture? fixture = null;
         RepresentativeWorkflowState? state = null;
+        var workflowFileSystem = new RelativeFileSystem(workflowDirectory);
 
-        Directory.CreateDirectory(workflowRoot);
+        workflowFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
-            fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
+            fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory.ToString(), cancellationToken);
 
-            var workflowDirectory = LocalDirectory.Parse(workflowRoot);
             var versionedSourceRoot = workflowDirectory.Resolve(RelativePath.Parse("representative-source"));
-            Directory.CreateDirectory(versionedSourceRoot);
+            workflowFileSystem.CreateDirectory(RelativePath.Parse("representative-source"));
 
             state = new RepresentativeWorkflowState
             {
                 Context                 = context,
-                CreateFixtureAsync      = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowRoot, ct),
+                CreateFixtureAsync      = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory.ToString(), ct),
                 Fixture                 = fixture,
                 Definition              = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
                 Seed                    = workflow.Seed,
@@ -93,8 +93,7 @@ internal static class RepresentativeWorkflowRunner
                 System.Diagnostics.Debug.WriteLine(ex);
             }
 
-            if (Directory.Exists(workflowRoot))
-                Directory.Delete(workflowRoot, recursive: true);
+            workflowFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 }
