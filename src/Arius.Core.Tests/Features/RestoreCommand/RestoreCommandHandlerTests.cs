@@ -22,20 +22,20 @@ public class RestoreCommandHandlerTests
     static void AssertRestoredFile(RepositoryTestFixture fixture, string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
     {
         var restoreRelativePath = RelativePath.Parse(relativePath);
-        var restoredPath = fixture.RestoreDirectory.Resolve(restoreRelativePath);
-        var pointerPath  = fixture.RestoreDirectory.Resolve(restoreRelativePath.AppendSuffix(".pointer.arius"));
+        var restoredTimestamps = fixture.RestoreFileSystem.GetTimestamps(restoreRelativePath);
+        var pointerTimestamps = fixture.RestoreFileSystem.GetTimestamps(restoreRelativePath.AppendSuffix(".pointer.arius"));
 
         fixture.RestoreFileSystem.ReadAllBytes(restoreRelativePath).ShouldBe(expectedContent);
         fixture.RestoreFileSystem.FileExists(restoreRelativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Pointer file should exist for {relativePath}");
 
         if (!OperatingSystem.IsLinux())
         {
-            File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
-            File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
+            restoredTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
+            pointerTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
         }
 
-        File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
-        File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
+        restoredTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
+        pointerTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
     }
 
     [Test]

@@ -58,7 +58,7 @@ public class FileTreeServiceTests
 
     private static async Task CleanupAsync(LocalDirectory cacheDir, LocalDirectory snapshotsDir)
     {
-        if (Directory.Exists(cacheDir.ToString()))    Directory.Delete(cacheDir.ToString(),     recursive: true);
+        if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
         if (Directory.Exists(snapshotsDir.ToString())) Directory.Delete(snapshotsDir.ToString(), recursive: true);
         await Task.CompletedTask;
     }

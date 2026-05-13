@@ -377,8 +377,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         await Task.Delay(1100);
 
         // Rename: delete original, create renamed
-        File.Delete(fix.LocalDirectory.Resolve(originalPath));
-        File.Delete(fix.LocalDirectory.Resolve(originalPath.AppendSuffix(".pointer.arius")));
+        fix.LocalFileSystem.DeleteFile(originalPath);
+        fix.LocalFileSystem.DeleteFile(originalPath.AppendSuffix(".pointer.arius"));
         await fix.LocalFileSystem.WriteAllBytesAsync(renamedPath, content, CancellationToken.None);
 
         var r2 = await fix.ArchiveAsync();
@@ -415,8 +415,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         await Task.Delay(1100);
 
         // Delete one file and its pointer
-        File.Delete(fix.LocalDirectory.Resolve(deletePath));
-        File.Delete(fix.LocalDirectory.Resolve(deletePath.AppendSuffix(".pointer.arius")));
+        fix.LocalFileSystem.DeleteFile(deletePath);
+        fix.LocalFileSystem.DeleteFile(deletePath.AppendSuffix(".pointer.arius"));
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
@@ -545,8 +545,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         // Now manufacture an orphan pointer that references a hash that does NOT exist in the index.
         // Write a fake 64-char hex hash into a .pointer.arius file with no corresponding binary.
         var fakeHash = new string('a', 64); // valid hex but no chunk exists for this hash
-        var pointerPath = fix.LocalDirectory.Resolve(RelativePath.Parse("ghost.bin.pointer.arius"));
-        await File.WriteAllTextAsync(pointerPath, fakeHash);
+        await fix.LocalFileSystem.WriteAllTextAsync(RelativePath.Parse("ghost.bin.pointer.arius"), fakeHash, CancellationToken.None);
 
         await Task.Delay(1100); // distinct snapshot timestamp
 
@@ -615,7 +614,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // No pointer file should have been created
-        File.Exists(fix.LocalDirectory.Resolve(relativePath.AppendSuffix(".pointer.arius"))).ShouldBeFalse();
+        fix.LocalFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeFalse();
     }
 
     // ── 14.10: --remove-local + --no-pointers: should be rejected ────────────
