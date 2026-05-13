@@ -1,7 +1,7 @@
 using Arius.Core.Shared.Storage;
-using Arius.Core.Shared.FileSystem;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.Tests.Shared;
 
 namespace Arius.E2E.Tests.Workflows;
 
@@ -44,8 +44,7 @@ internal static class RepresentativeWorkflowRunner
         dependencies ??= new RepresentativeWorkflowRunnerDependencies();
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
-        var tempDirectory = LocalDirectory.Parse(Path.GetTempPath());
-        var workflowDirectory = LocalDirectory.Parse(tempDirectory.Resolve(RelativePath.Parse($"arius/arius-test-{Guid.NewGuid():N}")));
+        var workflowDirectory = TestTempRoots.CreateDirectory($"test-{Guid.NewGuid():N}");
         E2EFixture? fixture = null;
         RepresentativeWorkflowState? state = null;
         var workflowFileSystem = new RelativeFileSystem(workflowDirectory);
