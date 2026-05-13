@@ -76,10 +76,14 @@ public sealed class E2EFixture : IAsyncDisposable
     public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
     public string                                              LocalRoot       { get; }
     public string                                              RestoreRoot     { get; }
+    internal LocalDirectory                                    LocalDirectory    => _repository.LocalDirectory;
+    internal LocalDirectory                                    RestoreDirectory  => _repository.RestoreDirectory;
+    internal RelativeFileSystem                                LocalFileSystem   => _repository.LocalFileSystem;
+    internal RelativeFileSystem                                RestoreFileSystem => _repository.RestoreFileSystem;
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
-        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, deleteTempRoot, cancellationToken: cancellationToken);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, deleteTempRoot: deleteTempRoot, cancellationToken: cancellationToken);
 
         return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
     }
@@ -129,15 +133,6 @@ public sealed class E2EFixture : IAsyncDisposable
         return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
     }
 
-    public string WriteFile(RelativePath relativePath, byte[] content)
-        => _repository.WriteFile(relativePath, content);
-
-    public byte[] ReadRestored(RelativePath relativePath)
-        => _repository.ReadRestored(relativePath);
-
-    public bool RestoredExists(RelativePath relativePath)
-        => _repository.RestoredExists(relativePath);
-
     internal ArchiveCommandHandler CreateArchiveHandler() 
         => _repository.CreateArchiveHandler();
 
@@ -186,18 +181,6 @@ public sealed class E2EFixture : IAsyncDisposable
             throw tempRootDeletionException;
 
         await Task.CompletedTask;
-    }
-
-    internal static string CombineValidatedRelativePath(string rootPath, RelativePath relativePath)
-    {
-        if (Path.IsPathRooted(relativePath.ToString()))
-            throw new ArgumentException($"Path '{relativePath}' must be relative.", nameof(relativePath));
-
-        var parts = relativePath.ToString().Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Contains("..", StringComparer.Ordinal))
-            throw new ArgumentException($"Path '{relativePath}' must not contain '..' segments.", nameof(relativePath));
-
-        return Path.Combine(rootPath, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
     }
 
     bool ShouldResetCacheOnDispose()

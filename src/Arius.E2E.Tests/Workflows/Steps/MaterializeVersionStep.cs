@@ -26,7 +26,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
         {
             case SyntheticRepositoryVersion.V1:
             {
-                var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V1));
+                var versionRootPath = state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V1)));
                 return await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
             }
             case SyntheticRepositoryVersion.V2:
@@ -37,7 +37,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
                 if (!Directory.Exists(v1State.RootPath))
                     v1State = await RematerializeV1Async(state, cancellationToken);
 
-                var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V2));
+                var versionRootPath = state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2)));
                 return await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
             }
             default:
@@ -47,7 +47,7 @@ internal sealed record MaterializeVersionStep(SyntheticRepositoryVersion Version
 
     internal static async Task<SyntheticRepositoryState> RematerializeV1Async(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
-        var versionRootPath = Path.Combine(state.VersionedSourceRoot, nameof(SyntheticRepositoryVersion.V1));
+        var versionRootPath = state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V1)));
         var versionState = await SyntheticRepositoryMaterializer.MaterializeV1Async(state.Definition, state.Seed, versionRootPath, state.Fixture.Encryption);
         state.VersionedSourceStates[SyntheticRepositoryVersion.V1] = versionState;
         return versionState;

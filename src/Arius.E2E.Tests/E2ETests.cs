@@ -49,9 +49,10 @@ internal class E2ETests(AzureFixture azure)
         var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot);
         try
         {
+            var relativePath = RelativePath.Parse("hot.bin");
             var content = new byte[2048];
             Random.Shared.NextBytes(content);
-            fixture.WriteFile(RelativePath.Parse("hot.bin"), content);
+            await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
 
             var archiveResult = await fixture.ArchiveAsync();
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -60,8 +61,9 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
             restoreResult.FilesRestored.ShouldBe(1);
 
-            File.Exists(Path.Combine(fixture.RestoreRoot, "hot.bin.pointer.arius")).ShouldBeTrue();
-            fixture.ReadRestored(RelativePath.Parse("hot.bin")).ShouldBe(content);
+            fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
+            fixture.RestoreFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue();
+            fixture.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
         }
         finally
         {
@@ -84,9 +86,10 @@ internal class E2ETests(AzureFixture azure)
         var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot, ct: cancellationToken);
         try
         {
+            var relativePath = RelativePath.Parse("large.bin");
             var content = new byte[2 * 1024 * 1024];
             Random.Shared.NextBytes(content);
-            fixture.WriteFile(RelativePath.Parse("large.bin"), content);
+            await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, cancellationToken);
 
             var archiveResult = await fixture.ArchiveAsync(cancellationToken);
             archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -96,7 +99,7 @@ internal class E2ETests(AzureFixture azure)
             restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
             restoreResult.FilesRestored.ShouldBe(1);
 
-            fixture.ReadRestored(RelativePath.Parse("large.bin")).ShouldBe(content);
+            fixture.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
         }
         finally
         {

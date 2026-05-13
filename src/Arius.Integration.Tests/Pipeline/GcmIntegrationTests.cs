@@ -26,7 +26,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // 2 MB > 1 MB threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile(RelativePath.Parse("large.bin"), original);
+        var relativePath = RelativePath.Parse("large.bin");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, original, CancellationToken.None);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -54,7 +55,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.ReadRestored(RelativePath.Parse("large.bin")).ShouldBe(original);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(original);
     }
 
     // ── 6.2: GCM tar bundle roundtrip ────────────────────────────────────────
@@ -69,8 +70,10 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         var content2 = new byte[1024];
         Random.Shared.NextBytes(content1);
         Random.Shared.NextBytes(content2);
-        fix.WriteFile(RelativePath.Parse("small1.bin"), content1);
-        fix.WriteFile(RelativePath.Parse("small2.bin"), content2);
+        var relativePath1 = RelativePath.Parse("small1.bin");
+        var relativePath2 = RelativePath.Parse("small2.bin");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath1, content1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath2, content2, CancellationToken.None);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -90,8 +93,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        fix.ReadRestored(RelativePath.Parse("small1.bin")).ShouldBe(content1);
-        fix.ReadRestored(RelativePath.Parse("small2.bin")).ShouldBe(content2);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath1).ShouldBe(content1);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath2).ShouldBe(content2);
     }
 
     // ── 6.3: Mixed CBC+GCM archive roundtrip ─────────────────────────────────
@@ -115,7 +118,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         var cbcLargeContent = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(cbcLargeContent);
-        cbcFix.WriteFile(RelativePath.Parse("cbc-large.bin"), cbcLargeContent);
+        var cbcLargePath = RelativePath.Parse("cbc-large.bin");
+        await cbcFix.LocalFileSystem.WriteAllBytesAsync(cbcLargePath, cbcLargeContent, CancellationToken.None);
 
         var cbcResult = await cbcFix.ArchiveAsync();
         cbcResult.Success.ShouldBeTrue(cbcResult.ErrorMessage);
@@ -131,11 +135,12 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
             new PassphraseEncryptionService(Passphrase),
             existingContainer: cbcFix.Container);
 
-        gcmFix.WriteFile(RelativePath.Parse("cbc-large.bin"), cbcLargeContent); // deduplicates against cbcFix chunk
+        await gcmFix.LocalFileSystem.WriteAllBytesAsync(cbcLargePath, cbcLargeContent, CancellationToken.None); // deduplicates against cbcFix chunk
 
         var gcmContent = new byte[300];
         Random.Shared.NextBytes(gcmContent);
-        gcmFix.WriteFile(RelativePath.Parse("gcm-small.bin"), gcmContent);
+        var gcmSmallPath = RelativePath.Parse("gcm-small.bin");
+        await gcmFix.LocalFileSystem.WriteAllBytesAsync(gcmSmallPath, gcmContent, CancellationToken.None);
 
         var gcmResult = await gcmFix.ArchiveAsync();
         gcmResult.Success.ShouldBeTrue(gcmResult.ErrorMessage);
@@ -164,10 +169,10 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(2);
 
         // GCM-archived file must be restored correctly
-        gcmFix.ReadRestored(RelativePath.Parse("gcm-small.bin")).ShouldBe(gcmContent);
+        gcmFix.RestoreFileSystem.ReadAllBytes(gcmSmallPath).ShouldBe(gcmContent);
 
         // CBC-archived file must also be restored correctly (auto-detection of legacy format)
-        gcmFix.ReadRestored(RelativePath.Parse("cbc-large.bin")).ShouldBe(cbcLargeContent);
+        gcmFix.RestoreFileSystem.ReadAllBytes(cbcLargePath).ShouldBe(cbcLargeContent);
     }
 
 }

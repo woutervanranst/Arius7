@@ -23,10 +23,10 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile(RelativePath.Parse("photos/vacation.jpg"),   Rnd(100));
-        fix.WriteFile(RelativePath.Parse("photos/sunset.jpg"),     Rnd(200));
-        fix.WriteFile(RelativePath.Parse("docs/readme.txt"),       Rnd(50));
-        fix.WriteFile(RelativePath.Parse("root.txt"),              Rnd(20));
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/vacation.jpg"), Rnd(100), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/sunset.jpg"), Rnd(200), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("docs/readme.txt"), Rnd(50), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("root.txt"), Rnd(20), CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -48,9 +48,9 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile(RelativePath.Parse("photos/vacation.jpg"),   Rnd(100));
-        fix.WriteFile(RelativePath.Parse("photos/sunset.jpg"),     Rnd(200));
-        fix.WriteFile(RelativePath.Parse("docs/readme.txt"),       Rnd(50));
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/vacation.jpg"), Rnd(100), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/sunset.jpg"), Rnd(200), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("docs/readme.txt"), Rnd(50), CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -67,9 +67,9 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile(RelativePath.Parse("photos/VACATION.jpg"),   Rnd(100));
-        fix.WriteFile(RelativePath.Parse("photos/sunset.jpg"),     Rnd(200));
-        fix.WriteFile(RelativePath.Parse("docs/readme.txt"),       Rnd(50));
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/VACATION.jpg"), Rnd(100), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/sunset.jpg"), Rnd(200), CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("docs/readme.txt"), Rnd(50), CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -87,7 +87,7 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = Rnd(1234);
-        fix.WriteFile(RelativePath.Parse("file.bin"), content);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("file.bin"), content, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue();
@@ -104,14 +104,14 @@ public class ListQueryIntegrationTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        fix.WriteFile(RelativePath.Parse("v1-only.txt"), Rnd(50));
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("v1-only.txt"), Rnd(50), CancellationToken.None);
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
         var snapshot1 = r1.SnapshotTime.ToString("yyyy-MM-ddTHHmmss");
 
         await Task.Delay(1100);
 
-        fix.WriteFile(RelativePath.Parse("v2-added.txt"), Rnd(50));
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("v2-added.txt"), Rnd(50), CancellationToken.None);
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
 

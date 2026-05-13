@@ -40,6 +40,10 @@ public sealed class PipelineFixture : IAsyncDisposable
     public Mediator.IMediator Mediator => _repository.Mediator;
     public string LocalRoot => _repository.LocalRoot;
     public string RestoreRoot => _repository.RestoreRoot;
+    internal LocalDirectory LocalDirectory => _repository.LocalDirectory;
+    internal LocalDirectory RestoreDirectory => _repository.RestoreDirectory;
+    internal RelativeFileSystem LocalFileSystem => _repository.LocalFileSystem;
+    internal RelativeFileSystem RestoreFileSystem => _repository.RestoreFileSystem;
 
     /// <summary>Creates a fully initialised fixture with unique container and temp dirs.</summary>
     public static async Task<PipelineFixture> CreateAsync(
@@ -141,38 +145,11 @@ public sealed class PipelineFixture : IAsyncDisposable
         return results;
     }
 
-    // ── File helpers ──────────────────────────────────────────────────────────
-
-    /// <summary>Creates a file under <see cref="LocalRoot"/> with the given content.</summary>
-    public string WriteFile(RelativePath relativePath, byte[] content)
-        => _repository.WriteFile(relativePath, content);
-
-    /// <summary>Creates a file under <see cref="LocalRoot"/> with random byte content.</summary>
-    public string WriteRandomFile(RelativePath relativePath, int sizeBytes)
-    {
-        var bytes = new byte[sizeBytes];
-        Random.Shared.NextBytes(bytes);
-        return WriteFile(relativePath, bytes);
-    }
-
-    /// <summary>Reads a restored file's bytes from <see cref="RestoreRoot"/>.</summary>
-    public byte[] ReadRestored(RelativePath relativePath)
-        => _repository.ReadRestored(relativePath);
-
-    /// <summary>Checks whether a restored file exists.</summary>
-    public bool RestoredExists(RelativePath relativePath) =>
-        _repository.RestoredExists(relativePath);
-
     /// <summary>
-    /// Releases resources used by the fixture by removing the fixture's temporary directory and any repository-specific chunk-index cache directory under the current user's profile, if they exist.
-    /// </summary>
+     /// Releases resources used by the fixture by removing the fixture's temporary directory and any repository-specific chunk-index cache directory under the current user's profile, if they exist.
+     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Clean up any cache dirs created by this test's container (unique name)
-        var cacheDir = RepositoryPaths.GetRepositoryRoot(Account, Container.Name);
-        if (Directory.Exists(cacheDir.ToString()))
-            Directory.Delete(cacheDir.ToString(), recursive: true);
-
         await _repository.DisposeAsync();
     }
 }

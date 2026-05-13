@@ -180,13 +180,14 @@ public class ArchiveRecoveryTests
     public async Task Archive_RemoveLocal_WritesPointerAndDeletesBinaryAtRelativePath()
     {
         using var env = new ArchiveTestEnvironment();
-        env.WriteRandomFile(RelativePath.Parse("docs/readme.txt"), 128);
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        env.WriteRandomFile(relativePath, 128);
 
         var result = await env.ArchiveAsync(BlobTier.Cool, removeLocal: true);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt")).ShouldBeFalse();
-        File.Exists(Path.Combine(env.RootDirectory, "docs", "readme.txt.pointer.arius")).ShouldBeTrue();
+        File.Exists(env.RootDirectoryInfo.Resolve(relativePath)).ShouldBeFalse();
+        File.Exists(env.RootDirectoryInfo.Resolve(relativePath.AppendSuffix(".pointer.arius"))).ShouldBeTrue();
     }
 
     [Test]

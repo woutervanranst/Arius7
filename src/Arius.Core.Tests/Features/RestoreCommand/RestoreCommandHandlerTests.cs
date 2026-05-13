@@ -3,6 +3,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -18,29 +19,98 @@ namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class RestoreCommandHandlerTests
 {
+    static void AssertRestoredFile(RepositoryTestFixture fixture, string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
+    {
+        var restoreRelativePath = RelativePath.Parse(relativePath);
+        var restoredPath = fixture.RestoreDirectory.Resolve(restoreRelativePath);
+        var pointerPath  = fixture.RestoreDirectory.Resolve(restoreRelativePath.AppendSuffix(".pointer.arius"));
+
+        fixture.RestoreFileSystem.ReadAllBytes(restoreRelativePath).ShouldBe(expectedContent);
+        fixture.RestoreFileSystem.FileExists(restoreRelativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Pointer file should exist for {relativePath}");
+
+        if (!OperatingSystem.IsLinux())
+        {
+            File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
+            File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
+        }
+
+        File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
+        File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
+    }
+
+    [Test]
+    public async Task Handle_Restores_File_Written_Through_TypedFixtureFileSystems()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-typed-fixture-restore-{Guid.NewGuid():N}",
+            $"ctr-typed-fixture-restore-{Guid.NewGuid():N}");
+
+        var relativePath = RelativePath.Parse("nested/file.bin");
+        await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, [1, 2, 3], CancellationToken.None);
+
+        File.Exists(fixture.LocalDirectory.Resolve(relativePath)).ShouldBeTrue();
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalRoot,
+                UploadTier = BlobTier.Cool,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreRoot,
+                Overwrite = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(1);
+
+        fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
+        fixture.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe([1, 2, 3]);
+        fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
+    }
+
     [Test]
     public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
     {
-        var       blobs           = new ThrowOnCreateBlobContainerService("restore");
-        var       encryption      = new PlaintextPassthroughService();
-        using var index           = new ChunkIndexService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
-        var       fileTreeService = new FileTreeService(blobs, encryption, index, "acct-restore-missing", "ctr-restore-missing");
-        var       snapshotSvc     = new SnapshotService(blobs, encryption, "acct-restore-missing", "ctr-restore-missing");
-        var       mediator        = Substitute.For<IMediator>();
-        var       logger          = new FakeLogger<RestoreCommandHandler>();
+        var accountName   = $"acct-restore-missing-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-missing-{Guid.NewGuid():N}";
 
-        var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, "acct-restore-missing", "ctr-restore-missing");
+        await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
 
-        var result = await handler.Handle(
-            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
-                {
-                    RootDirectory = Path.GetTempPath()
-                }),
-            CancellationToken.None);
+        try
+        {
+            var       blobs           = new ThrowOnCreateBlobContainerService("restore");
+            var       encryption      = new PlaintextPassthroughService();
+            using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+            var       mediator        = Substitute.For<IMediator>();
+            var       logger          = new FakeLogger<RestoreCommandHandler>();
 
-        result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldBe("No snapshots found in this repository.");
-        blobs.CreateCalled.ShouldBeFalse();
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+
+            var result = await handler.Handle(
+                new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+                    {
+                        RootDirectory = Path.GetTempPath()
+                    }),
+                CancellationToken.None);
+
+            result.Success.ShouldBeFalse();
+            result.ErrorMessage.ShouldBe("No snapshots found in this repository.");
+            blobs.CreateCalled.ShouldBeFalse();
+        }
+        finally
+        {
+            await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+        }
     }
 
     [Test]
@@ -53,8 +123,8 @@ public class RestoreCommandHandlerTests
         var content = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(content);
 
-        fixture.WriteFile(RelativePath.Parse("archives/duplicates/binary-a.bin"), content);
-        fixture.WriteFile(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin"),   content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("archives/duplicates/binary-a.bin"), content, CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin"),   content, CancellationToken.None);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -76,8 +146,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fixture.ReadRestored(RelativePath.Parse("archives/duplicates/binary-a.bin")).ShouldBe(content);
-        fixture.ReadRestored(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
+        fixture.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("archives/duplicates/binary-a.bin")).ShouldBe(content);
+        fixture.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
     }
 
     [Test]
@@ -95,8 +165,12 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2023, 6, 7, 8, 9,  10, DateTimeKind.Utc);
         var secondModified = new DateTime(2024, 7, 8, 9, 10, 11, DateTimeKind.Utc);
 
-        fixture.WriteFile(RelativePath.Parse("archives/duplicates/copy-a.bin"), content, firstCreated,  firstModified);
-        fixture.WriteFile(RelativePath.Parse("nested/deep/a/b/c/copy-b.bin"),   content, secondCreated, secondModified);
+        var firstPath = RelativePath.Parse("archives/duplicates/copy-a.bin");
+        var secondPath = RelativePath.Parse("nested/deep/a/b/c/copy-b.bin");
+        await fixture.LocalFileSystem.WriteAllBytesAsync(firstPath, content, CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(secondPath, content, CancellationToken.None);
+        fixture.LocalFileSystem.SetTimestamps(firstPath, new DateTimeOffset(firstCreated), new DateTimeOffset(firstModified));
+        fixture.LocalFileSystem.SetTimestamps(secondPath, new DateTimeOffset(secondCreated), new DateTimeOffset(secondModified));
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -120,26 +194,8 @@ public class RestoreCommandHandlerTests
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        AssertRestoredFile("archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
-        AssertRestoredFile("nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
-
-        void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
-        {
-            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = restoredPath + ".pointer.arius";
-
-            File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
-            File.Exists(pointerPath).ShouldBeTrue($"Pointer file should exist for {relativePath}");
-
-            if (!OperatingSystem.IsLinux())
-            {
-                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
-                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
-            }
-
-            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
-            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
-        }
+        AssertRestoredFile(fixture, "archives/duplicates/copy-a.bin", content, firstCreated,  firstModified);
+        AssertRestoredFile(fixture, "nested/deep/a/b/c/copy-b.bin",   content, secondCreated, secondModified);
 
     }
 
@@ -155,8 +211,12 @@ public class RestoreCommandHandlerTests
         var secondCreated  = new DateTime(2020, 3, 4, 5, 6,  7, DateTimeKind.Utc);
         var secondModified = new DateTime(2020, 4, 5, 6, 7,  8, DateTimeKind.Utc);
 
-        fixture.WriteFile(RelativePath.Parse("zero/a.txt"), Array.Empty<byte>(), firstCreated,  firstModified);
-        fixture.WriteFile(RelativePath.Parse("zero/b.txt"), Array.Empty<byte>(), secondCreated, secondModified);
+        var firstPath = RelativePath.Parse("zero/a.txt");
+        var secondPath = RelativePath.Parse("zero/b.txt");
+        await fixture.LocalFileSystem.WriteAllBytesAsync(firstPath, Array.Empty<byte>(), CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(secondPath, Array.Empty<byte>(), CancellationToken.None);
+        fixture.LocalFileSystem.SetTimestamps(firstPath, new DateTimeOffset(firstCreated), new DateTimeOffset(firstModified));
+        fixture.LocalFileSystem.SetTimestamps(secondPath, new DateTimeOffset(secondCreated), new DateTimeOffset(secondModified));
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -180,26 +240,8 @@ public class RestoreCommandHandlerTests
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        AssertRestoredFile("zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
-        AssertRestoredFile("zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
-
-        void AssertRestoredFile(string relativePath, byte[] expectedContent, DateTime expectedCreated, DateTime expectedModified)
-        {
-            var restoredPath = Path.Combine(fixture.RestoreRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath  = restoredPath + ".pointer.arius";
-
-            File.ReadAllBytes(restoredPath).ShouldBe(expectedContent);
-            File.Exists(pointerPath).ShouldBeTrue($"Pointer file should exist for {relativePath}");
-
-            if (!OperatingSystem.IsLinux())
-            {
-                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated, $"Binary CreationTimeUtc for {relativePath}");
-                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated, $"Pointer CreationTimeUtc for {relativePath}");
-            }
-
-            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified, $"Binary LastWriteTimeUtc for {relativePath}");
-            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified, $"Pointer LastWriteTimeUtc for {relativePath}");
-        }
+        AssertRestoredFile(fixture, "zero/a.txt", Array.Empty<byte>(), firstCreated,  firstModified);
+        AssertRestoredFile(fixture, "zero/b.txt", Array.Empty<byte>(), secondCreated, secondModified);
     }
 
     [Test]
@@ -213,6 +255,7 @@ public class RestoreCommandHandlerTests
         var restoreRoot   = Path.Combine(Path.GetTempPath(), $"arius-restore-invalid-{Guid.NewGuid():N}");
 
         Directory.CreateDirectory(restoreRoot);
+        await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
 
         try
         {
@@ -253,6 +296,8 @@ public class RestoreCommandHandlerTests
         }
         finally
         {
+            await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+
             if (Directory.Exists(restoreRoot))
                 Directory.Delete(restoreRoot, recursive: true);
         }
@@ -265,8 +310,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-target-segments-{Guid.NewGuid():N}",
             $"ctr-restore-target-segments-{Guid.NewGuid():N}");
 
-        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
-        fixture.WriteFile(RelativePath.Parse("photoshop/logo.png"), [4, 5, 6]);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3], CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photoshop/logo.png"), [4, 5, 6], CancellationToken.None);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -289,8 +334,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
-        fixture.RestoredExists(RelativePath.Parse("photoshop/logo.png")).ShouldBeFalse();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photoshop/logo.png")).ShouldBeFalse();
     }
 
     [Test]
@@ -300,8 +345,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-root-target-{Guid.NewGuid():N}",
             $"ctr-restore-root-target-{Guid.NewGuid():N}");
 
-        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
-        fixture.WriteFile(RelativePath.Parse("docs/readme.txt"), [4, 5, 6]);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3], CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("docs/readme.txt"), [4, 5, 6], CancellationToken.None);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -324,8 +369,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
-        fixture.RestoredExists(RelativePath.Parse("docs/readme.txt")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("docs/readme.txt")).ShouldBeTrue();
     }
 
     [Test]
@@ -335,7 +380,7 @@ public class RestoreCommandHandlerTests
             $"acct-restore-no-pointers-{Guid.NewGuid():N}",
             $"ctr-restore-no-pointers-{Guid.NewGuid():N}");
 
-        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3], CancellationToken.None);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -359,8 +404,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
-        File.Exists(Path.Combine(fixture.RestoreRoot, "photos", "pic.jpg.pointer.arius")).ShouldBeFalse();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg.pointer.arius")).ShouldBeFalse();
     }
 
     [Test]
@@ -370,8 +415,8 @@ public class RestoreCommandHandlerTests
             $"acct-restore-file-target-{Guid.NewGuid():N}",
             $"ctr-restore-file-target-{Guid.NewGuid():N}");
 
-        fixture.WriteFile(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3]);
-        fixture.WriteFile(RelativePath.Parse("photos/other.jpg"), [4, 5, 6]);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/pic.jpg"), [1, 2, 3], CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("photos/other.jpg"), [4, 5, 6], CancellationToken.None);
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -394,8 +439,8 @@ public class RestoreCommandHandlerTests
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fixture.RestoredExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
-        fixture.RestoredExists(RelativePath.Parse("photos/other.jpg")).ShouldBeFalse();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/other.jpg")).ShouldBeFalse();
     }
 
     private static async Task<byte[]> CompressAsync(byte[] plaintext)

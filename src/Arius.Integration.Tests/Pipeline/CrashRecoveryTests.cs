@@ -54,10 +54,12 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Two large files (> 1 MB each)
         var content1 = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(content1);
         var content2 = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(content2);
-        fix.WriteFile(RelativePath.Parse("file1.bin"), content1);
-        fix.WriteFile(RelativePath.Parse("file2.bin"), content2);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("file1.bin"), content1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("file2.bin"), content2, CancellationToken.None);
 
-        // ── Run 1: crash after 1 upload (partial — uploads only one chunk)
+        // ── Run 1: crash after the first counted upload completion
+        // Large uploads run in parallel, so the fault can leave multiple chunk bodies
+        // present before any metadata write becomes visible.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
         var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
@@ -72,19 +74,13 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var r1 = await handler1.Handle(new ArchiveCommand(opts), default);
         r1.Success.ShouldBeFalse(); // pipeline should surface the fault
 
-        // After the crash, at least one completed chunk should be present with arius-type set.
+        // After the crash, at least one chunk body should be present.
+        // The large-file path writes metadata in a separate call after OpenWrite completes,
+        // so a concurrent fault can leave uploaded chunk bodies without arius-type metadata.
         var blobs = new List<RelativePath>();
         await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
             blobs.Add(name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
-
-        var metadataStates = new List<BlobMetadata>();
-        foreach (var blobName in blobs)
-            metadataStates.Add(await fix.BlobContainer.GetMetadataAsync(blobName));
-
-        metadataStates.ShouldContain(
-            meta => meta.Exists && meta.Metadata.ContainsKey(BlobMetadataKeys.AriusType),
-            "arius-type is the crash-recovery signal");
 
         // ── Run 2: use real service → should complete, deduplicate already-uploaded chunk
         var r2 = await fix.ArchiveAsync(opts);
@@ -95,8 +91,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        fix.ReadRestored(RelativePath.Parse("file1.bin")).ShouldBe(content1);
-        fix.ReadRestored(RelativePath.Parse("file2.bin")).ShouldBe(content2);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("file1.bin")).ShouldBe(content1);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("file2.bin")).ShouldBe(content2);
     }
 
     // ── 9.5 / 15.2: Crash after tar upload, before thin chunks ───────────────
@@ -110,9 +106,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
         var c3 = new byte[300]; Random.Shared.NextBytes(c3);
-        fix.WriteFile(RelativePath.Parse("small1.txt"), c1);
-        fix.WriteFile(RelativePath.Parse("small2.txt"), c2);
-        fix.WriteFile(RelativePath.Parse("small3.txt"), c3);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small1.txt"), c1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small2.txt"), c2, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small3.txt"), c3, CancellationToken.None);
 
         // Crash after the tar chunk upload completes but before thin chunks are written.
         // Completed upload #1 = tar chunk metadata write; then the next completed upload faults.
@@ -137,9 +133,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(3);
 
-        fix.ReadRestored(RelativePath.Parse("small1.txt")).ShouldBe(c1);
-        fix.ReadRestored(RelativePath.Parse("small2.txt")).ShouldBe(c2);
-        fix.ReadRestored(RelativePath.Parse("small3.txt")).ShouldBe(c3);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("small1.txt")).ShouldBe(c1);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("small2.txt")).ShouldBe(c2);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("small3.txt")).ShouldBe(c3);
     }
 
     // ── 15.3: Crash after all uploads but before index ────────────────────────
@@ -152,8 +148,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Two files, one large, one small
         var large = new byte[2 * 1024 * 1024]; Random.Shared.NextBytes(large);
         var small = new byte[100];              Random.Shared.NextBytes(small);
-        fix.WriteFile(RelativePath.Parse("large.bin"), large);
-        fix.WriteFile(RelativePath.Parse("small.txt"), small);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("large.bin"), large, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small.txt"), small, CancellationToken.None);
 
         // Allow the large chunk upload to complete and the thin chunk upload to complete,
         // then crash when the chunk-index shard is uploaded.
@@ -180,7 +176,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
-        fix.ReadRestored(RelativePath.Parse("large.bin")).ShouldBe(large);
-        fix.ReadRestored(RelativePath.Parse("small.txt")).ShouldBe(small);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("large.bin")).ShouldBe(large);
+        fix.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("small.txt")).ShouldBe(small);
     }
 }

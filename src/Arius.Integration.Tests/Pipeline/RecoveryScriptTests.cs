@@ -106,7 +106,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile(RelativePath.Parse("cbc-large.bin"), original);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("cbc-large.bin"), original, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -162,7 +162,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile(RelativePath.Parse("large.bin"), original);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("large.bin"), original, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -220,8 +220,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile(RelativePath.Parse("small1.txt"), c1);
-        fix.WriteFile(RelativePath.Parse("small2.txt"), c2);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small1.txt"), c1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small2.txt"), c2, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -303,8 +303,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile(RelativePath.Parse("small1.txt"), c1);
-        fix.WriteFile(RelativePath.Parse("small2.txt"), c2);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small1.txt"), c1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small2.txt"), c2, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);

@@ -28,6 +28,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly FakeLogger<ArchiveCommandHandler> _logger     = new();
     private readonly LocalDirectory                    _chunkIndexCacheDirectory;
     private readonly LocalDirectory                    _fileTreeCacheDirectory;
+    private readonly LocalDirectory                    _rootDirectoryInfo;
+    private readonly RelativeFileSystem                _rootFileSystem;
 
     public ArchiveTestEnvironment()
     {
@@ -35,6 +37,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _containerName = $"test-container-{Guid.NewGuid():N}";
         _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
         _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
+        _rootDirectoryInfo = LocalDirectory.Parse(_rootDirectory);
+        _rootFileSystem = new RelativeFileSystem(_rootDirectoryInfo);
         Directory.CreateDirectory(_rootDirectory);
         Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
         Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
@@ -50,6 +54,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public string RootDirectory => _rootDirectory;
 
+    public LocalDirectory RootDirectoryInfo => _rootDirectoryInfo;
+
     public FakeLogCollector ArchiveLogs => _logger.Collector;
 
     public IMediator Mediator => _mediator;
@@ -58,14 +64,12 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     {
         var content = new byte[sizeBytes];
         Random.Shared.NextBytes(content);
-        var fullPath = Path.Combine(_rootDirectory, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        File.WriteAllBytes(fullPath, content);
+        _rootFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None).GetAwaiter().GetResult();
         return content;
     }
 
     public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
-        => new RelativeFileSystem(LocalDirectory.Parse(_rootDirectory)).SetTimestamps(path, created, modified);
+        => _rootFileSystem.SetTimestamps(path, created, modified);
 
     public async Task<FileEntry> ReadRootFileEntryAsync(RelativePath path)
     {

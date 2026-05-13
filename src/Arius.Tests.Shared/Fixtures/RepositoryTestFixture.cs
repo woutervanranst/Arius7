@@ -13,6 +13,7 @@ using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using AriusLocalDirectory = Arius.Core.Shared.FileSystem.LocalDirectory;
 
 namespace Arius.Tests.Shared.Fixtures;
 
@@ -29,6 +30,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly string                            _tempRoot;
     private readonly string                            _account;
     private readonly string                            _container;
+    private readonly bool                              _resetLocalCacheOnDispose;
+    private readonly bool                              _ownsTempRoot;
     private readonly IMediator                         _mediator;
     private readonly Action<string>                    _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
@@ -51,6 +54,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string restoreRoot,
         string account,
         string containerName,
+        bool resetLocalCacheOnDispose = true,
+        bool ownsTempRoot = true,
         Action<string>? deleteTempRoot = null)
     {
         BlobContainer   = blobContainer;
@@ -62,8 +67,14 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         _tempRoot       = tempRoot;
         LocalRoot       = localRoot;
         RestoreRoot     = restoreRoot;
+        LocalDirectory   = AriusLocalDirectory.Parse(localRoot);
+        RestoreDirectory = AriusLocalDirectory.Parse(restoreRoot);
+        LocalFileSystem  = new RelativeFileSystem(LocalDirectory);
+        RestoreFileSystem = new RelativeFileSystem(RestoreDirectory);
         _account        = account;
         _container      = containerName;
+        _resetLocalCacheOnDispose = resetLocalCacheOnDispose;
+        _ownsTempRoot   = ownsTempRoot;
         _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
         _mediator       = Substitute.For<IMediator>();
     }
@@ -101,6 +112,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Restore destination directory used by restore-oriented tests.</summary>
     public string RestoreRoot { get; }
 
+    /// <summary>Typed source directory used by archive-oriented tests.</summary>
+    internal AriusLocalDirectory LocalDirectory { get; }
+
+    /// <summary>Typed restore destination directory used by restore-oriented tests.</summary>
+    internal AriusLocalDirectory RestoreDirectory { get; }
+
+    /// <summary>Rooted filesystem for the source directory used by archive-oriented tests.</summary>
+    internal RelativeFileSystem LocalFileSystem { get; }
+
+    /// <summary>Rooted filesystem for the restore directory used by restore-oriented tests.</summary>
+    internal RelativeFileSystem RestoreFileSystem { get; }
+
     /// <summary>Parent temporary directory that contains <see cref="LocalRoot"/> and <see cref="RestoreRoot"/>.</summary>
     public string TempRoot => _tempRoot;
 
@@ -126,17 +149,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string containerName,
         string? passphrase = null,
         string? tempRoot = null,
+        bool resetLocalCacheOnDispose = true,
         Action<string>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
-        var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
+        var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
         var encryption      = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
         var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot, deleteTempRoot));
     }
 
     /// <summary>
@@ -150,17 +174,18 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string containerName,
         IEncryptionService encryption,
         string? tempRoot = null,
+        bool resetLocalCacheOnDispose = true,
         Action<string>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
-        var (resolvedTempRoot, localRoot, restoreRoot) = CreateTempRoots(tempRoot);
+        var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
 
         var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
         var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot, deleteTempRoot));
     }
 
     /// <summary>
@@ -195,47 +220,9 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         new(Index, FileTreeService, Snapshot, _listLogger, _account, _container);
 
     /// <summary>
-    /// Writes a binary file under <see cref="LocalRoot"/> and returns the full path.
-    /// The relative path is validated to stay inside the fixture source directory.
-    /// </summary>
-    public string WriteFile(RelativePath relativePath, byte[] content)
-    {
-        var full = CombineValidatedRelativePath(LocalRoot, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllBytes(full, content);
-        return full;
-    }
-
-    /// <summary>
-    /// Writes a binary file under <see cref="LocalRoot"/> with explicit UTC creation and modification timestamps.
-    /// Use this for archive/restore tests that assert per-path metadata preservation.
-    /// </summary>
-    public string WriteFile(RelativePath relativePath, byte[] content, DateTime created, DateTime modified)
-    {
-        var full = WriteFile(relativePath, content);
-        File.SetCreationTimeUtc(full, created);
-        File.SetLastWriteTimeUtc(full, modified);
-        return full;
-    }
-
-    /// <summary>
-    /// Reads a restored binary file from <see cref="RestoreRoot"/>.
-    /// The relative path is validated to stay inside the fixture restore directory.
-    /// </summary>
-    public byte[] ReadRestored(RelativePath relativePath)
-        => File.ReadAllBytes(CombineValidatedRelativePath(RestoreRoot, relativePath));
-
-    /// <summary>
-    /// Returns whether a restored binary file exists under <see cref="RestoreRoot"/>.
-    /// The relative path is validated to stay inside the fixture restore directory.
-    /// </summary>
-    public bool RestoredExists(RelativePath relativePath)
-        => File.Exists(CombineValidatedRelativePath(RestoreRoot, relativePath));
-
-    /// <summary>
-    /// Deletes the local repository cache directory for the supplied account/container pair.
-    /// Use this when a test creates repository services directly but still needs standard cache cleanup.
-    /// </summary>
+     /// Deletes the local repository cache directory for the supplied account/container pair.
+     /// Use this when a test creates repository services directly but still needs standard cache cleanup.
+     /// </summary>
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
         => DeleteLocalCacheDirectoryAsync(accountName, containerName);
 
@@ -263,41 +250,37 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Index.Dispose();
-        await ResetLocalCacheAsync(_account, _container);
+        if (_resetLocalCacheOnDispose)
+            await ResetLocalCacheAsync(_account, _container);
 
-        if (Directory.Exists(_tempRoot))
+        if (_ownsTempRoot && Directory.Exists(_tempRoot))
             _deleteTempRoot(_tempRoot);
     }
 
-    private static string CombineValidatedRelativePath(string root, RelativePath relativePath)
-    {
-        var combined = Path.GetFullPath(Path.Combine(root, relativePath.ToString().Replace('/', Path.DirectorySeparatorChar)));
-        var normalizedRoot = Path.GetFullPath(root);
-
-        if (!combined.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
-            !string.Equals(combined, normalizedRoot, StringComparison.Ordinal))
-        {
-            throw new ArgumentOutOfRangeException(nameof(relativePath), "Path must stay within the fixture root.");
-        }
-
-        return combined;
-    }
-
-    private static (string TempRoot, string LocalRoot, string RestoreRoot) CreateTempRoots(string? tempRoot = null)
+    private static (string TempRoot, string LocalRoot, string RestoreRoot, bool OwnsTempRoot) CreateTempRoots(string? tempRoot = null)
     {
         var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
         Directory.CreateDirectory(tempRootBase);
 
+        var ownsTempRoot     = tempRoot is null;
         var resolvedTempRoot = tempRoot ?? Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
         var localRoot        = Path.Combine(resolvedTempRoot, "source");
         var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
 
-        if (Directory.Exists(resolvedTempRoot))
+        if (ownsTempRoot && Directory.Exists(resolvedTempRoot))
             Directory.Delete(resolvedTempRoot, recursive: true);
+        else
+        {
+            if (Directory.Exists(localRoot))
+                Directory.Delete(localRoot, recursive: true);
+
+            if (Directory.Exists(restoreRoot))
+                Directory.Delete(restoreRoot, recursive: true);
+        }
 
         Directory.CreateDirectory(resolvedTempRoot);
         Directory.CreateDirectory(localRoot);
         Directory.CreateDirectory(restoreRoot);
-        return (resolvedTempRoot, localRoot, restoreRoot);
+        return (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot);
     }
 }
