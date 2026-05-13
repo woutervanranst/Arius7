@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Tests.Shared.IO;
 
@@ -23,7 +24,7 @@ internal static class SyntheticRepositoryMaterializer
 
         Directory.CreateDirectory(rootPath);
 
-        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
+        var files = new Dictionary<RelativePath, ContentHash>();
 
         foreach (var file in definition.Files)
         {
@@ -32,7 +33,7 @@ internal static class SyntheticRepositoryMaterializer
             await WriteFileAsync(rootPath, relativePath, CreateBytes(seed, file.ContentId ?? file.Path, file.SizeBytes));
 
             await using var stream = File.OpenRead(GetFullPath(rootPath, relativePath));
-            files[file.Path] = await encryption.ComputeHashAsync(stream);
+            files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
         return new SyntheticRepositoryState(rootPath, files);
@@ -55,13 +56,13 @@ internal static class SyntheticRepositoryMaterializer
 
         FileSystemHelper.CopyDirectory(sourceRootPath, targetRootPath);
 
-        var files = new Dictionary<string, ContentHash>(StringComparer.Ordinal);
+        var files = new Dictionary<RelativePath, ContentHash>();
         foreach (var filePath in Directory.EnumerateFiles(targetRootPath, "*", SearchOption.AllDirectories))
         {
             var relativePath = RelativePath.FromPlatformRelativePath(Path.GetRelativePath(targetRootPath, filePath));
 
             await using var stream = File.OpenRead(filePath);
-            files[relativePath.ToString()] = await encryption.ComputeHashAsync(stream);
+            files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
         await ApplyV2MutationsAsync(definition, seed, targetRootPath, encryption, files);
@@ -93,33 +94,36 @@ internal static class SyntheticRepositoryMaterializer
         int seed,
         string rootPath,
         IEncryptionService encryption,
-        Dictionary<string, ContentHash> files)
+        Dictionary<RelativePath, ContentHash> files)
     {
         foreach (var mutation in definition.V2Mutations)
         {
+            var mutationPath = RelativePath.Parse(mutation.Path);
+
             switch (mutation.Kind)
             {
                 case SyntheticFileMutationKind.Delete:
-                    File.Delete(GetFullPath(rootPath, RelativePath.Parse(mutation.Path)));
-                    files.Remove(mutation.Path);
+                    File.Delete(GetFullPath(rootPath, mutationPath));
+                    files.Remove(mutationPath);
                     break;
 
                 case SyntheticFileMutationKind.Rename:
-                    var sourcePath = GetFullPath(rootPath, RelativePath.Parse(mutation.Path));
-                    var targetPath = GetFullPath(rootPath, RelativePath.Parse(mutation.TargetPath!));
+                    var targetRelativePath = RelativePath.Parse(mutation.TargetPath!);
+                    var sourcePath = GetFullPath(rootPath, mutationPath);
+                    var targetPath = GetFullPath(rootPath, targetRelativePath);
                     Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
                     File.Move(sourcePath, targetPath);
 
-                    var existingHash = files[mutation.Path];
-                    files.Remove(mutation.Path);
-                    files[mutation.TargetPath!] = existingHash;
+                    var existingHash = files[mutationPath];
+                    files.Remove(mutationPath);
+                    files[targetRelativePath] = existingHash;
                     break;
 
                 case SyntheticFileMutationKind.ChangeContent:
                 case SyntheticFileMutationKind.Add:
                     var bytes = CreateBytes(seed, mutation.ReplacementContentId!, mutation.ReplacementSizeBytes!.Value);
-                    await WriteFileAsync(rootPath, RelativePath.Parse(mutation.Path), bytes);
-                    files[mutation.Path] = encryption.ComputeHash(bytes);
+                    await WriteFileAsync(rootPath, mutationPath, bytes);
+                    files[mutationPath] = encryption.ComputeHash(bytes);
                     break;
 
                 default:

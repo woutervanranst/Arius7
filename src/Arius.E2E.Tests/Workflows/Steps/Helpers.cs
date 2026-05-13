@@ -50,7 +50,7 @@ internal static class Helpers
         if (!useNoPointers)
         {
             foreach (var relativePath in expectedState.Files.Keys)
-                fixture.RestoreFileSystem.FileExists(RelativePath.Parse(relativePath).AppendSuffix(".pointer.arius")).ShouldBeTrue($"Expected pointer file for {relativePath}");
+                fixture.RestoreFileSystem.FileExists(relativePath.AppendSuffix(".pointer.arius")).ShouldBeTrue($"Expected pointer file for {relativePath}");
         }
     }
 
@@ -127,12 +127,15 @@ internal static class Helpers
 
     static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
     {
-        expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
-        expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
+        var relativePathA = RelativePath.Parse(pathA);
+        var relativePathB = RelativePath.Parse(pathB);
+
+        expectedState.Files.TryGetValue(relativePathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
+        expectedState.Files.TryGetValue(relativePathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
-        var contentHashA = await ComputeContentHashAsync(state, RelativePath.Parse(pathA), cancellationToken);
-        var contentHashB = await ComputeContentHashAsync(state, RelativePath.Parse(pathB), cancellationToken);
+        var contentHashA = await ComputeContentHashAsync(state, relativePathA, cancellationToken);
+        var contentHashB = await ComputeContentHashAsync(state, relativePathB, cancellationToken);
         contentHashA.ShouldBe(contentHashB, $"Expected '{pathA}' and '{pathB}' to hash to the same content-addressed chunk.");
 
         return contentHashA;
