@@ -20,7 +20,7 @@ namespace Arius.Core.Tests.Features.ArchiveCommand;
 internal sealed class ArchiveTestEnvironment : IDisposable
 {
     private const    string                            AccountName = "test-account";
-    private readonly string                            _rootDirectory;
+    private readonly LocalDirectory                    _rootDirectory;
     private readonly string                            _containerName;
     private readonly ChunkIndexService                 _index;
     private readonly PlaintextPassthroughService       _encryption = new();
@@ -28,7 +28,6 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly FakeLogger<ArchiveCommandHandler> _logger     = new();
     private readonly LocalDirectory                    _chunkIndexCacheDirectory;
     private readonly LocalDirectory                    _fileTreeCacheDirectory;
-    private readonly LocalDirectory                    _rootDirectoryInfo;
     private readonly RelativeFileSystem                _rootFileSystem;
 
     public ArchiveTestEnvironment()
@@ -36,9 +35,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _containerName = $"test-container-{Guid.NewGuid():N}";
         
 
-        _rootDirectory = TestTempRoots.CreateDirectory("archive-test").ToString();
-        _rootDirectoryInfo = LocalDirectory.Parse(_rootDirectory);
-        _rootFileSystem = new RelativeFileSystem(_rootDirectoryInfo);
+        _rootDirectory = TestTempRoots.CreateDirectory("archive-test");
+        _rootFileSystem = new RelativeFileSystem(_rootDirectory);
         _rootFileSystem.CreateDirectory(RelativePath.Root);
         
         _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
@@ -58,7 +56,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public LocalDirectory FileTreeCacheDirectory => _fileTreeCacheDirectory;
 
-    public LocalDirectory RootDirectoryInfo => _rootDirectoryInfo;
+    public LocalDirectory RootDirectory => _rootDirectory;
 
     internal RelativeFileSystem RootFileSystem => _rootFileSystem;
 
@@ -135,7 +133,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         return await handler.Handle(
             new Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = _rootDirectory,
+                RootDirectory = _rootDirectory.ToString(),
                 UploadTier = uploadTier,
                 SmallFileThreshold = smallFileThreshold ?? 1024 * 1024,
                 RemoveLocal = removeLocal,
@@ -150,9 +148,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_rootDirectory))
-            Directory.Delete(_rootDirectory, recursive: true);
-
+        RootFileSystem.DeleteDirectory(RelativePath.Root, true);
+        
         RepositoryTestFixture.ResetLocalCacheAsync(AccountName, _containerName).GetAwaiter().GetResult();
     }
 }
