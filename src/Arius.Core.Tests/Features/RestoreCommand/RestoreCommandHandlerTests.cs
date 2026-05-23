@@ -252,9 +252,10 @@ public class RestoreCommandHandlerTests
         var mediator      = Substitute.For<IMediator>();
         var accountName   = $"acct-restore-invalid-{Guid.NewGuid():N}";
         var containerName = $"ctr-restore-invalid-{Guid.NewGuid():N}";
-        var restoreRoot   = Path.Combine(Path.GetTempPath(), $"arius-restore-invalid-{Guid.NewGuid():N}");
+        var restoreRootDirectory = TestTempRoots.CreateDirectory("restore-invalid");
+        var restoreFileSystem = new RelativeFileSystem(restoreRootDirectory);
 
-        Directory.CreateDirectory(restoreRoot);
+        restoreFileSystem.CreateDirectory(RelativePath.Root);
         await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
 
         try
@@ -284,15 +285,15 @@ public class RestoreCommandHandlerTests
 
             var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
-            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRoot, Overwrite = true }), CancellationToken.None);
+            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 
             result.Success.ShouldBeFalse();
             result.FilesRestored.ShouldBe(0);
             result.FilesSkipped.ShouldBe(0);
             result.ErrorMessage.ShouldNotBeNull();
             result.ErrorMessage.ShouldContain("not-a-hash");
-            File.Exists(Path.Combine(restoreRoot, "broken.txt")).ShouldBeFalse();
-            File.Exists(Path.Combine(restoreRoot, "healthy.txt")).ShouldBeFalse();
+            restoreFileSystem.FileExists(RelativePath.Parse("broken.txt")).ShouldBeFalse();
+            restoreFileSystem.FileExists(RelativePath.Parse("healthy.txt")).ShouldBeFalse();
         }
         finally
         {
