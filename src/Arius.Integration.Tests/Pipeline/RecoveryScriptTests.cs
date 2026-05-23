@@ -120,10 +120,11 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         var chunkBlobName = chunkBlobs[0];
 
         var tempDir       = TestTempRoots.CreateDirectory("recover-cbc");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
         var encryptedFile = tempDir.Resolve(RelativePath.Parse("chunk.enc"));
         var recoveredFile = tempDir.Resolve(RelativePath.Parse("recovered.bin"));
 
-        Directory.CreateDirectory(tempDir.ToString());
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -142,8 +143,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir.ToString()))
-                Directory.Delete(tempDir.ToString(), recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -176,10 +176,11 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         var chunkBlobName = chunkBlobs[0];
 
         var tempDir       = TestTempRoots.CreateDirectory("recover");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
         var encryptedFile = tempDir.Resolve(RelativePath.Parse("chunk.enc"));
         var recoveredFile = tempDir.Resolve(RelativePath.Parse("recovered.bin"));
 
-        Directory.CreateDirectory(tempDir.ToString());
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -198,8 +199,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir.ToString()))
-                Directory.Delete(tempDir.ToString(), recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -238,10 +238,11 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         chunkBlobs.Count.ShouldBe(1);
 
         var tempDir       = TestTempRoots.CreateDirectory("recover-cbc-tar");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
         var encryptedFile = tempDir.Resolve(RelativePath.Parse("tar.enc"));
         var tarFile       = tempDir.Resolve(RelativePath.Parse("bundle.tar"));
 
-        Directory.CreateDirectory(tempDir.ToString());
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -283,8 +284,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir.ToString()))
-                Directory.Delete(tempDir.ToString(), recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -321,10 +321,11 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         chunkBlobs.Count.ShouldBe(1);
 
         var tempDir       = TestTempRoots.CreateDirectory("recover-tar");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
         var encryptedFile = tempDir.Resolve(RelativePath.Parse("tar.enc"));
         var tarFile       = tempDir.Resolve(RelativePath.Parse("bundle.tar"));
 
-        Directory.CreateDirectory(tempDir.ToString());
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -366,8 +367,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir.ToString()))
-                Directory.Delete(tempDir.ToString(), recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 }

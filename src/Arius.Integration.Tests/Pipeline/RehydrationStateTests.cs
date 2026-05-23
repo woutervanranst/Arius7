@@ -45,7 +45,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Archive with Hot tier (Azurite) so blobs are accessible
         var archiveOpts = new ArchiveCommandOptions
         {
-            RootDirectory = fix.LocalRoot,
+            RootDirectory = fix.LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
         var archiveResult = await fix.ArchiveAsync(archiveOpts);
@@ -98,7 +98,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory    = fix.RestoreRoot,
+            RootDirectory    = fix.RestoreDirectory.ToString(),
             Overwrite        = true,
             // Auto-confirm rehydration with Standard priority
             ConfirmRehydration = (_, __) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
@@ -129,7 +129,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory    = fix.RestoreRoot,
+            RootDirectory    = fix.RestoreDirectory.ToString(),
             Overwrite        = true,
             ConfirmRehydration = (_, __) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
         };
@@ -178,7 +178,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         };
 
@@ -208,7 +208,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var firstResult = await MakeRestoreHandler(sim, fix)
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fix.RestoreRoot,
+                RootDirectory = fix.RestoreDirectory.ToString(),
                 Overwrite     = false,
             }), default).AsTask();
         firstResult.Success.ShouldBeTrue(firstResult.ErrorMessage);
@@ -232,7 +232,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var secondResult = await MakeRestoreHandler(sim, fix)
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory  = fix.RestoreRoot,
+                RootDirectory  = fix.RestoreDirectory.ToString(),
                 Overwrite      = false,
                 ConfirmCleanup = (count, bytes, ct) =>
                 {
@@ -303,7 +303,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
             ConfirmCleanup = (count, bytes, ct) =>
             {

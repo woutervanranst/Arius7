@@ -67,7 +67,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         }
         finally
         {
-            Directory.Delete(tempRoot.ToString(), recursive: true);
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 

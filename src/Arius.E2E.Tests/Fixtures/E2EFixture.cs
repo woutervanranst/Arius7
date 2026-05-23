@@ -9,7 +9,6 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 
@@ -23,7 +22,6 @@ public sealed class E2EFixture : IAsyncDisposable
 {
     private static readonly Lock RepositoryCacheLeaseLock = new();
     private static readonly Dictionary<string, RepositoryCacheLease> RepositoryCacheLeases = new(StringComparer.Ordinal);
-    private readonly string _tempRoot;
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
@@ -37,9 +35,6 @@ public sealed class E2EFixture : IAsyncDisposable
         IChunkStorageService chunkStorage,
         FileTreeService fileTreeService,
         SnapshotService snapshot,
-        string tempRoot,
-        string localRoot,
-        string restoreRoot,
         string account,
         string containerName,
         BlobTier defaultTier,
@@ -51,9 +46,6 @@ public sealed class E2EFixture : IAsyncDisposable
         ChunkStorage    = chunkStorage;
         FileTreeService = fileTreeService;
         Snapshot        = snapshot;
-        _tempRoot       = tempRoot;
-        LocalRoot       = localRoot;
-        RestoreRoot     = restoreRoot;
         _account        = account;
         _container      = containerName;
         _defaultTier    = defaultTier;
@@ -74,18 +66,16 @@ public sealed class E2EFixture : IAsyncDisposable
     public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage    { get; }
     public Arius.Core.Shared.FileTree.FileTreeService          FileTreeService { get; }
     public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
-    public string                                              LocalRoot       { get; }
-    public string                                              RestoreRoot     { get; }
-    internal LocalDirectory                                    LocalDirectory    => _repository.LocalDirectory;
-    internal LocalDirectory                                    RestoreDirectory  => _repository.RestoreDirectory;
-    internal RelativeFileSystem                                LocalFileSystem   => _repository.LocalFileSystem;
+    internal LocalDirectory                                    LocalDirectory   => _repository.LocalDirectory;
+    internal LocalDirectory                                    RestoreDirectory => _repository.RestoreDirectory;
+    internal RelativeFileSystem                                LocalFileSystem  => _repository.LocalFileSystem;
     internal RelativeFileSystem                                RestoreFileSystem => _repository.RestoreFileSystem;
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
         var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, deleteTempRoot: deleteTempRoot, cancellationToken: cancellationToken);
 
-        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, repository.TempRoot, repository.LocalRoot, repository.RestoreRoot, accountName, containerName, defaultTier, repository);
+        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, accountName, containerName, defaultTier, repository);
     }
 
     public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)
@@ -124,14 +114,7 @@ public sealed class E2EFixture : IAsyncDisposable
     }
 
     internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
-    {
-        if (Directory.Exists(LocalRoot))
-            Directory.Delete(LocalRoot, recursive: true);
-
-        Directory.CreateDirectory(LocalRoot);
-
-        return SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalRoot, Encryption);
-    }
+        => SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalDirectory.ToString(), Encryption);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 
         => _repository.CreateArchiveHandler();
@@ -143,7 +126,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = LocalRoot,
+                RootDirectory = LocalDirectory.ToString(),
                 UploadTier = _defaultTier,
             }),
             ct).AsTask();
@@ -152,7 +135,7 @@ public sealed class E2EFixture : IAsyncDisposable
         => CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = RestoreRoot,
+                RootDirectory = RestoreDirectory.ToString(),
                 Overwrite = true,
             }),
             ct).AsTask();

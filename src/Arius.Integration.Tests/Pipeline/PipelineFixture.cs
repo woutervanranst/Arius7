@@ -38,8 +38,6 @@ public sealed class PipelineFixture : IAsyncDisposable
     public Arius.Core.Shared.FileTree.FileTreeService FileTreeService => _repository.FileTreeService;
     public Arius.Core.Shared.Snapshot.SnapshotService Snapshot => _repository.Snapshot;
     public Mediator.IMediator Mediator => _repository.Mediator;
-    public string LocalRoot => _repository.LocalRoot;
-    public string RestoreRoot => _repository.RestoreRoot;
     internal LocalDirectory LocalDirectory => _repository.LocalDirectory;
     internal LocalDirectory RestoreDirectory => _repository.RestoreDirectory;
     internal RelativeFileSystem LocalFileSystem => _repository.LocalFileSystem;
@@ -102,7 +100,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             Account, Container.Name);
 
     /// <summary>
-    /// Runs the archive pipeline against <see cref="LocalRoot"/> with Hot tier
+    /// Runs the archive pipeline against the fixture's local directory with Hot tier
     /// (so restore works without rehydration in tests).
     /// </summary>
     public Task<ArchiveResult> ArchiveAsync(
@@ -111,20 +109,20 @@ public sealed class PipelineFixture : IAsyncDisposable
     {
         opts ??= new ArchiveCommandOptions
         {
-            RootDirectory = LocalRoot,
+            RootDirectory = LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
         return CreateArchiveHandler().Handle(new ArchiveCommand(opts), ct).AsTask();
     }
 
-    /// <summary>Runs the restore pipeline into <see cref="RestoreRoot"/>.</summary>
+    /// <summary>Runs the restore pipeline into the fixture's restore directory.</summary>
     public Task<RestoreResult> RestoreAsync(
         RestoreOptions? opts = null,
         CancellationToken ct = default)
     {
         opts ??= new RestoreOptions
         {
-            RootDirectory = RestoreRoot,
+            RootDirectory = RestoreDirectory.ToString(),
             Overwrite     = true,
         };
         return CreateRestoreHandler().Handle(new RestoreCommand(opts), ct).AsTask();

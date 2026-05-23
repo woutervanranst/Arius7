@@ -126,7 +126,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         cbcResult.FilesUploaded.ShouldBe(1);
 
         // Phase 2: archive more files using new GCM encryption into the same container.
-        // Also place cbc-large.bin in gcmFix's LocalRoot so the new GCM snapshot includes it.
+        // Also place cbc-large.bin in gcmFix's local directory so the new GCM snapshot includes it.
         // Its hash is already in the chunk index (from cbcFix), so the chunk is deduplicated —
         // no re-upload happens, but the file appears in the latest snapshot that restore reads.
         // When restore downloads that chunk it auto-detects the Salted__ magic and decrypts via CBC.

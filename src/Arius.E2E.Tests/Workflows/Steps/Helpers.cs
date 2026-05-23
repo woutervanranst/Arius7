@@ -15,7 +15,7 @@ internal static class Helpers
     {
         var options = new RestoreOptions
         {
-            RootDirectory = fixture.RestoreRoot,
+            RootDirectory = fixture.RestoreDirectory.ToString(),
             Overwrite = overwrite,
             Version = version,
         };
@@ -45,7 +45,7 @@ internal static class Helpers
         if (!state.VersionedSourceStates.TryGetValue(expectedVersion, out var expectedState))
             throw new InvalidOperationException($"Expected source state for version '{expectedVersion}' is not available.");
 
-        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreRoot, fixture.Encryption, includePointerFiles: false);
+        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreDirectory.ToString(), fixture.Encryption, includePointerFiles: false);
 
         if (!useNoPointers)
         {

@@ -66,7 +66,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
 
         var opts = new ArchiveCommandOptions
         {
-            RootDirectory = fix.LocalRoot,
+            RootDirectory = fix.LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
 
@@ -118,7 +118,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
 
         var opts = new ArchiveCommandOptions
         {
-            RootDirectory = fix.LocalRoot,
+            RootDirectory = fix.LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
 
@@ -162,7 +162,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
 
         var opts = new ArchiveCommandOptions
         {
-            RootDirectory = fix.LocalRoot,
+            RootDirectory = fix.LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
 
