@@ -25,8 +25,7 @@ namespace Arius.Tests.Shared.Fixtures;
 public sealed class RepositoryTestFixture : IAsyncDisposable
 {
     internal const   string                            DefaultPassphrase  = "arius-test-passphrase";
-    private const    string                            TempRootFolderName = "arius";
-    private readonly string                            _tempRoot;
+    private readonly LocalDirectory                    _tempDirectory;
     private readonly string                            _account;
     private readonly string                            _container;
     private readonly bool                              _resetLocalCacheOnDispose;
@@ -63,9 +62,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         ChunkStorage    = chunkStorage;
         FileTreeService = fileTreeService;
         Snapshot        = snapshot;
-        _tempRoot       = tempRoot;
-        LocalRoot       = localRoot;
-        RestoreRoot     = restoreRoot;
+        _tempDirectory  = LocalDirectory.Parse(tempRoot);
         LocalDirectory   = LocalDirectory.Parse(localRoot);
         RestoreDirectory = LocalDirectory.Parse(restoreRoot);
         LocalFileSystem  = new RelativeFileSystem(LocalDirectory);
@@ -99,18 +96,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Snapshot service used for creating, listing, and resolving snapshots.</summary>
     public SnapshotService Snapshot { get; }
 
-    /// <summary>
-    /// Typed access to the fixture-owned in-memory storage fake when created with <see cref="CreateInMemoryAsync"/>.
-    /// Returns <see langword="null"/> for fixtures backed by Azurite, Azure, or another custom storage fake.
-    /// </summary>
-    public FakeInMemoryBlobContainerService? InMemoryBlobContainer => BlobContainer as FakeInMemoryBlobContainerService;
-
-    /// <summary>Source directory used by archive-oriented tests.</summary>
-    public string LocalRoot { get; }
-
-    /// <summary>Restore destination directory used by restore-oriented tests.</summary>
-    public string RestoreRoot { get; }
-
     /// <summary>Typed source directory used by archive-oriented tests.</summary>
     internal LocalDirectory LocalDirectory { get; }
 
@@ -123,8 +108,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Rooted filesystem for the restore directory used by restore-oriented tests.</summary>
     internal RelativeFileSystem RestoreFileSystem { get; }
 
-    /// <summary>Parent temporary directory that contains <see cref="LocalRoot"/> and <see cref="RestoreRoot"/>.</summary>
-    public string TempRoot => _tempRoot;
+    /// <summary>Parent temporary directory that contains the source and restore directories.</summary>
+    public string TempRoot => _tempDirectory.ToString();
 
     /// <summary>Substitute mediator shared by handler factories so tests can inspect or ignore published events.</summary>
     public IMediator Mediator => _mediator;
@@ -230,10 +215,11 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
 
     internal static Task DeleteLocalCacheDirectoryAsync(LocalDirectory cacheDir)
     {
+        var cacheFileSystem = new RelativeFileSystem(cacheDir);
+
         try
         {
-            if (Directory.Exists(cacheDir.ToString()))
-                Directory.Delete(cacheDir.ToString(), recursive: true);
+            cacheFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
         catch (DirectoryNotFoundException ex)
         {
@@ -252,34 +238,32 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         if (_resetLocalCacheOnDispose)
             await ResetLocalCacheAsync(_account, _container);
 
-        if (_ownsTempRoot && Directory.Exists(_tempRoot))
-            _deleteTempRoot(_tempRoot);
+        if (_ownsTempRoot)
+            _deleteTempRoot(_tempDirectory.ToString());
     }
 
-    private static (string TempRoot, string LocalRoot, string RestoreRoot, bool OwnsTempRoot) CreateTempRoots(string? tempRoot = null)
+    private static (string TempRoot, string SourceRoot, string RestoreDestinationRoot, bool OwnsTempRoot) CreateTempRoots(string? tempRoot = null)
     {
-        var tempRootBase = Path.Combine(Path.GetTempPath(), TempRootFolderName);
-        Directory.CreateDirectory(tempRootBase);
-
         var ownsTempRoot     = tempRoot is null;
-        var resolvedTempRoot = tempRoot ?? Path.Combine(tempRootBase, $"arius-test-{Guid.NewGuid():N}");
-        var localRoot        = Path.Combine(resolvedTempRoot, "source");
+        var resolvedTempRoot = tempRoot ?? TestTempRoots.CreateDirectory("test").ToString();
+        var sourceRoot       = Path.Combine(resolvedTempRoot, "source");
         var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
+        var tempRootDirectory = LocalDirectory.Parse(resolvedTempRoot);
+        var tempRootFileSystem = new RelativeFileSystem(tempRootDirectory);
+        var sourceDirectory = LocalDirectory.Parse(sourceRoot);
+        var restoreDirectory = LocalDirectory.Parse(restoreRoot);
 
-        if (ownsTempRoot && Directory.Exists(resolvedTempRoot))
-            Directory.Delete(resolvedTempRoot, recursive: true);
+        if (ownsTempRoot)
+            tempRootFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         else
         {
-            if (Directory.Exists(localRoot))
-                Directory.Delete(localRoot, recursive: true);
-
-            if (Directory.Exists(restoreRoot))
-                Directory.Delete(restoreRoot, recursive: true);
+            tempRootFileSystem.DeleteDirectory(sourceDirectory, recursive: true);
+            tempRootFileSystem.DeleteDirectory(restoreDirectory, recursive: true);
         }
 
-        Directory.CreateDirectory(resolvedTempRoot);
-        Directory.CreateDirectory(localRoot);
-        Directory.CreateDirectory(restoreRoot);
-        return (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot);
+        tempRootFileSystem.CreateDirectory(RelativePath.Root);
+        tempRootFileSystem.CreateDirectory(sourceDirectory);
+        tempRootFileSystem.CreateDirectory(restoreDirectory);
+        return (resolvedTempRoot, sourceRoot, restoreRoot, ownsTempRoot);
     }
 }
