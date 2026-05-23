@@ -44,8 +44,7 @@ public class FileTreeServiceTests
     private static string ResolveCachePath(LocalDirectory cacheDir, FileTreeHash hash)
         => cacheDir.Resolve(FileTreePaths.GetCachePath(hash));
 
-    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, LocalDirectory cacheDir, LocalDirectory snapshotsDir)
-        MakeService(string acct, string cont)
+    private static (FileTreeService svc, FakeInMemoryBlobContainerService blobs, LocalDirectory cacheDir, LocalDirectory snapshotsDir) MakeService(string acct, string cont)
     {
         var blobs        = new FakeInMemoryBlobContainerService();
         var index        = new ChunkIndexService(blobs, s_enc, acct, cont);

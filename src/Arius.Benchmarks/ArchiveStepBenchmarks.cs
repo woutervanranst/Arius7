@@ -61,10 +61,12 @@ public class ArchiveStepBenchmarks
             _context.AccountName,
             _context.ContainerName);
 
-        if (Directory.Exists(_fixture.LocalRoot))
-            Directory.Delete(_fixture.LocalRoot, recursive: true);
+        var localRoot = Path.Combine(_fixture.TempRoot, "source");
 
-        FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalRoot);
+        if (Directory.Exists(localRoot))
+            Directory.Delete(localRoot, recursive: true);
+
+        FileSystemHelper.CopyDirectory(_preparedSourceRoot, localRoot);
     }
 
     [IterationCleanup]
@@ -96,7 +98,7 @@ public class ArchiveStepBenchmarks
             .Handle(
                 new ArchiveCommand(new ArchiveCommandOptions
                 {
-                    RootDirectory = _fixture.LocalRoot,
+                    RootDirectory = Path.Combine(_fixture.TempRoot, "source"),
                 }),
                 CancellationToken.None)
             .AsTask();
