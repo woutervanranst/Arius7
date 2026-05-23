@@ -187,6 +187,7 @@ internal sealed class RelativeFileSystem
             File.Delete(filePath);
     }
 
+
     public void DeleteDirectory(RelativePath path, bool recursive)
     {
         var fullPath = _root.Resolve(path);
