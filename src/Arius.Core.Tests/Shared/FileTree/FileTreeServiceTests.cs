@@ -52,14 +52,14 @@ public class FileTreeServiceTests
         var svc          = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir     = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString()); // ensure dir exists for tests that seed files directly
+        new RelativeFileSystem(snapshotsDir).CreateDirectory(RelativePath.Root); // ensure dir exists for tests that seed files directly
         return (svc, blobs, cacheDir, snapshotsDir);
     }
 
     private static async Task CleanupAsync(LocalDirectory cacheDir, LocalDirectory snapshotsDir)
     {
-        if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
-        if (Directory.Exists(snapshotsDir.ToString())) Directory.Delete(snapshotsDir.ToString(), recursive: true);
+        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        new RelativeFileSystem(snapshotsDir).DeleteDirectory(RelativePath.Root, recursive: true);
         await Task.CompletedTask;
     }
 
@@ -183,7 +183,7 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        new RelativeFileSystem(snapshotsDir).CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -204,7 +204,7 @@ public class FileTreeServiceTests
             results.SelectMany(result => result).All(entry => entry.Name == PathSegment.Parse("partial.txt")).ShouldBeTrue();
 
             var diskPath = ResolveCachePath(cacheDir, hash);
-            File.Exists(diskPath).ShouldBeTrue();
+            new RelativeFileSystem(cacheDir).FileExists(FileTreePaths.GetCachePath(hash)).ShouldBeTrue();
             FileTreeSerializer.Deserialize(await File.ReadAllBytesAsync(diskPath))[0].Name.ShouldBe(PathSegment.Parse("partial.txt"));
             blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBe(1);
         }
@@ -224,7 +224,7 @@ public class FileTreeServiceTests
         var svc = new FileTreeService(blobs, s_enc, index, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        new RelativeFileSystem(snapshotsDir).CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -321,7 +321,7 @@ public class FileTreeServiceTests
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        new RelativeFileSystem(snapshotsDir).CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -365,7 +365,7 @@ public class FileTreeServiceTests
         var service = new FileTreeService(blobs, encryption, chunkIndex, acct, cont);
         var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(acct, cont);
         var snapshotsDir = RepositoryPaths.GetSnapshotCacheRoot(acct, cont);
-        Directory.CreateDirectory(snapshotsDir.ToString());
+        new RelativeFileSystem(snapshotsDir).CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -621,7 +621,7 @@ public class FileTreeServiceTests
         finally
         {
             await CleanupAsync(cacheDir, snapshotsDir);
-            if (Directory.Exists(chunkL2Dir.ToString())) Directory.Delete(chunkL2Dir.ToString(), recursive: true);
+            chunkL2FileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -767,8 +767,8 @@ public class FileTreeServiceTests
         }
         finally
         {
-            if (Directory.Exists(cacheDir.ToString()))    Directory.Delete(cacheDir.ToString(),     recursive: true);
-            if (Directory.Exists(snapshotsDir.ToString())) Directory.Delete(snapshotsDir.ToString(), recursive: true);
+            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            new RelativeFileSystem(snapshotsDir).DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -801,7 +801,7 @@ public class FileTreeServiceTests
         }
         finally
         {
-            if (Directory.Exists(snapshotsDir.ToString())) Directory.Delete(snapshotsDir.ToString(), recursive: true);
+            snapshotsFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 

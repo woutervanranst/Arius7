@@ -22,9 +22,9 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void Parse_AbsoluteDirectory_NormalizesRoot()
     {
-        var root = LocalDirectory.Parse(_root + Path.DirectorySeparatorChar);
+        var root = LocalDirectory.Parse(_rootDirectory + Path.DirectorySeparatorChar.ToString());
 
-        root.ToString().ShouldBe(Path.GetFullPath(_root));
+        root.ToString().ShouldBe(Path.GetFullPath(_rootDirectory.ToString()));
     }
 
     [Test]
