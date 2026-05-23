@@ -13,11 +13,6 @@ internal sealed class RepresentativeWorkflowRunnerDependencies
 
 internal static class RepresentativeWorkflowRunner
 {
-    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, CancellationToken cancellationToken)
-    {
-        return await E2EFixture.CreateAsync(context.BlobContainer, context.AccountName, context.ContainerName, BlobTier.Cool, cancellationToken: cancellationToken);
-    }
-
     internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, string workflowRoot, CancellationToken cancellationToken)
     {
         var workflowDirectory = LocalDirectory.Parse(workflowRoot);
