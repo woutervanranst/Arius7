@@ -34,7 +34,6 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     {
         _containerName = $"test-container-{Guid.NewGuid():N}";
         
-
         _rootDirectory = TestTempRoots.CreateDirectory("archive-test");
         _rootFileSystem = new RelativeFileSystem(_rootDirectory);
         _rootFileSystem.CreateDirectory(RelativePath.Root);
@@ -42,6 +41,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         _chunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(AccountName, _containerName);
 
         _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
+
         Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
         Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
         
