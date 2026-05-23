@@ -19,11 +19,11 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        if (Directory.Exists(rootPath))
-            Directory.Delete(rootPath, recursive: true);
+        var rootDirectory = LocalDirectory.Parse(rootPath);
+        var fileSystem = new RelativeFileSystem(rootDirectory);
 
-        Directory.CreateDirectory(rootPath);
-        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootPath));
+        fileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        fileSystem.CreateDirectory(RelativePath.Root);
 
         var files = new Dictionary<RelativePath, ContentHash>();
 
@@ -37,7 +37,7 @@ internal static class SyntheticRepositoryMaterializer
             files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
-        return new SyntheticRepositoryState(rootPath, files);
+        return new SyntheticRepositoryState(rootDirectory, files);
     }
 
     public static async Task<SyntheticRepositoryState> MaterializeV2FromExistingAsync(
@@ -52,11 +52,10 @@ internal static class SyntheticRepositoryMaterializer
         ArgumentException.ThrowIfNullOrWhiteSpace(targetRootPath);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        if (Directory.Exists(targetRootPath))
-            Directory.Delete(targetRootPath, recursive: true);
+        var targetRootDirectory = LocalDirectory.Parse(targetRootPath);
+        var fileSystem = new RelativeFileSystem(targetRootDirectory);
 
-        FileSystemHelper.CopyDirectory(sourceRootPath, targetRootPath);
-        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(targetRootPath));
+        FileSystemHelper.CopyDirectory(LocalDirectory.Parse(sourceRootPath), targetRootDirectory);
 
         var files = new Dictionary<RelativePath, ContentHash>();
         foreach (var file in fileSystem.EnumerateFiles())
@@ -69,7 +68,7 @@ internal static class SyntheticRepositoryMaterializer
 
         await ApplyV2MutationsAsync(definition, seed, targetRootPath, encryption, files);
 
-        return new SyntheticRepositoryState(targetRootPath, files);
+        return new SyntheticRepositoryState(targetRootDirectory, files);
     }
 
     static byte[] CreateBytes(int seed, string contentId, long sizeBytes)
@@ -114,7 +113,7 @@ internal static class SyntheticRepositoryMaterializer
 
                 case SyntheticFileMutationKind.Rename:
                     var targetRelativePath = RelativePath.Parse(mutation.TargetPath!);
-                    Directory.CreateDirectory(Path.GetDirectoryName(rootDirectory.Resolve(targetRelativePath))!);
+                    fileSystem.CreateDirectory(targetRelativePath.Parent ?? RelativePath.Root);
                     File.Move(rootDirectory.Resolve(mutationPath), rootDirectory.Resolve(targetRelativePath));
 
                     var existingHash = files[mutationPath];
