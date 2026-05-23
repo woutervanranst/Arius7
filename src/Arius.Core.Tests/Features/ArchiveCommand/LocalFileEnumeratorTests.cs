@@ -8,27 +8,27 @@ namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 public class LocalFileEnumeratorTests : IDisposable
 {
-    private readonly string _root;
     private readonly LocalDirectory _rootDirectory;
+    private readonly RelativeFileSystem _fileSystem;
     private readonly LocalFileEnumerator _enumerator = new();
 
     public LocalFileEnumeratorTests()
     {
-        _root = TestTempRoots.CreateDirectory("enum-test").ToString();
-        Directory.CreateDirectory(_root);
-        _rootDirectory = LocalDirectory.Parse(_root);
+        _rootDirectory = TestTempRoots.CreateDirectory("enum-test");
+        _fileSystem = new RelativeFileSystem(_rootDirectory);
+        _fileSystem.CreateDirectory(RelativePath.Root);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        _fileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
     }
 
     private string CreateFile(string relPath, string? content = null)
     {
-        var full = Path.Combine(_root, relPath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var relativePath = RelativePath.Parse(relPath);
+        var full = _rootDirectory.Resolve(relativePath);
+        _fileSystem.CreateDirectory(relativePath.Parent ?? RelativePath.Root);
         File.WriteAllText(full, content ?? "binary-data");
         return full;
     }
@@ -165,7 +165,7 @@ public class LocalFileEnumeratorTests : IDisposable
     [Test]
     public void Enumerate_EmptyDirectory_ProducesNoPairs()
     {
-        Directory.CreateDirectory(Path.Combine(_root, "empty-dir"));
+        _fileSystem.CreateDirectory(RelativePath.Parse("empty-dir"));
 
         var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
 
