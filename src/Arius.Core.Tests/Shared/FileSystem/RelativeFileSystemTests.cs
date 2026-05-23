@@ -94,7 +94,7 @@ public class RelativeFileSystemTests : IDisposable
         var path = RelativePath.Parse("docs/report.txt");
         var created = new DateTimeOffset(2024, 6, 15, 10, 20, 30, TimeSpan.Zero);
         var modified = new DateTimeOffset(2025, 7, 16, 11, 21, 31, TimeSpan.Zero);
-        var fullPath = Path.Combine(_root, "docs", "report.txt");
+        var fullPath = _rootDirectory.Resolve(path);
 
         await _fileSystem.WriteAllTextAsync(path, "report", CancellationToken.None);
         _fileSystem.SetTimestamps(path, created, modified);

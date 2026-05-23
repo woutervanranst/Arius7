@@ -4,18 +4,19 @@ namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class LocalDirectoryTests : IDisposable
 {
-    private readonly string _root;
+    private readonly LocalDirectory _rootDirectory;
+    private readonly RelativeFileSystem _fileSystem;
 
     public LocalDirectoryTests()
     {
-        _root = TestTempRoots.CreateDirectory("local-directory").ToString();
-        Directory.CreateDirectory(_root);
+        _rootDirectory = TestTempRoots.CreateDirectory("local-directory");
+        _fileSystem = new RelativeFileSystem(_rootDirectory);
+        _fileSystem.CreateDirectory(RelativePath.Root);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        _fileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
     }
 
     [Test]
