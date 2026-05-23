@@ -56,6 +56,8 @@ internal sealed class RelativeFileSystem
 
     public bool DirectoryExists(RelativePath path) => Directory.Exists(_root.Resolve(path));
 
+    public bool DirectoryExists(LocalDirectory directory) => Directory.Exists(GetContainedDirectoryPath(directory));
+
     public IEnumerable<PathSegment> EnumerateFileNames(RelativePath path)
     {
         var fullPath = _root.Resolve(path);
@@ -82,14 +84,14 @@ internal sealed class RelativeFileSystem
     public Stream CreateFile(RelativePath path)
     {
         var fullPath = _root.Resolve(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
         return new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
     }
 
     public FileStream OpenOrCreateFile(RelativePath path, FileAccess access, FileShare share, int bufferSize = 4096, bool useAsync = true)
     {
         var fullPath = _root.Resolve(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
         return new FileStream(fullPath, FileMode.OpenOrCreate, access, share, bufferSize, useAsync);
     }
 
@@ -112,14 +114,14 @@ internal sealed class RelativeFileSystem
     public async Task WriteAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = _root.Resolve(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
     }
 
     public async Task WriteAllBytesAsync(RelativePath path, byte[] content, CancellationToken cancellationToken)
     {
         var fullPath = _root.Resolve(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
         await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
     }
 
@@ -129,7 +131,7 @@ internal sealed class RelativeFileSystem
 
         var sourcePath = _root.Resolve(source);
         var destinationPath = _root.Resolve(destination);
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        CreateDirectory(destination.Parent ?? RelativePath.Root);
 
         if (OperatingSystem.IsWindows() && File.Exists(destinationPath))
             File.Replace(sourcePath, destinationPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
@@ -140,6 +142,8 @@ internal sealed class RelativeFileSystem
     }
 
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));
+
+    public void CreateDirectory(LocalDirectory directory) => Directory.CreateDirectory(GetContainedDirectoryPath(directory));
 
     public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
 
@@ -173,7 +177,7 @@ internal sealed class RelativeFileSystem
     public void CopyFile(RelativePath source, RelativePath destination, bool overwrite)
     {
         var destinationPath = _root.Resolve(destination);
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        CreateDirectory(destination.Parent ?? RelativePath.Root);
         File.Copy(_root.Resolve(source), destinationPath, overwrite);
     }
 
@@ -191,9 +195,34 @@ internal sealed class RelativeFileSystem
     public void DeleteDirectory(RelativePath path, bool recursive)
     {
         var fullPath = _root.Resolve(path);
-        if (Directory.Exists(fullPath))
+        try
+        {
             Directory.Delete(fullPath, recursive);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+    }
+
+    public void DeleteDirectory(LocalDirectory directory, bool recursive)
+    {
+        var fullPath = GetContainedDirectoryPath(directory);
+        try
+        {
+            Directory.Delete(fullPath, recursive);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
+
+    private string GetContainedDirectoryPath(LocalDirectory directory)
+    {
+        if (!_root.TryGetRelativePath(directory.ToString(), out _))
+            throw new ArgumentException($"Directory '{directory}' is not contained within root '{_root}'.", nameof(directory));
+
+        return directory.ToString();
+    }
 }

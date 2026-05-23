@@ -6,17 +6,16 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal sealed record SyntheticRepositoryState
 {
-    public SyntheticRepositoryState(string rootPath, IReadOnlyDictionary<RelativePath, ContentHash> files)
+    public SyntheticRepositoryState(LocalDirectory rootDirectory, IReadOnlyDictionary<RelativePath, ContentHash> files)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(files);
 
-        RootPath = rootPath;
+        RootDirectory = rootDirectory;
         Files = new ReadOnlyDictionary<RelativePath, ContentHash>(
             new Dictionary<RelativePath, ContentHash>(files));
     }
 
-    public string RootPath { get; }
+    public LocalDirectory RootDirectory { get; }
 
     public IReadOnlyDictionary<RelativePath, ContentHash> Files { get; }
 }

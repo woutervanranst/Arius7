@@ -298,7 +298,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fix.LocalRoot,
+                RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
             }), default);
@@ -313,7 +313,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var r2 = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fix.LocalRoot,
+                RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
             }), default);
 
@@ -513,7 +513,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory      = fix.LocalRoot,
+                RootDirectory      = fix.LocalDirectory.ToString(),
                 UploadTier         = BlobTier.Hot,
                 SmallFileThreshold = 1024 * 1024, // = file size → routes to large
             }), default);
@@ -606,7 +606,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fix.LocalRoot,
+                RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 NoPointers    = true,
             }), default);
@@ -629,7 +629,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
             {
-                RootDirectory = fix.LocalRoot,
+                RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
                 NoPointers    = true,

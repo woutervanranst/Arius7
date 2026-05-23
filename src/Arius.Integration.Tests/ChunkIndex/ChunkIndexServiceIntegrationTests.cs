@@ -1,6 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared;
+using Arius.Core.Shared.FileSystem;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
@@ -21,7 +22,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var (container, blobs) = await azurite.CreateTestServiceAsync();
         var containerName = container.Name;
         var tempDir       = TestTempRoots.CreateDirectory("test");
-        Directory.CreateDirectory(tempDir.ToString());
+        new RelativeFileSystem(tempDir).CreateDirectory(RelativePath.Root);
 
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,

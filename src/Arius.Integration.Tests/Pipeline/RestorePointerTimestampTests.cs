@@ -48,7 +48,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = fix.LocalRoot,
+            RootDirectory      = fix.LocalDirectory.ToString(),
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -56,7 +56,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
@@ -121,7 +121,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = fix.LocalRoot,
+            RootDirectory      = fix.LocalDirectory.ToString(),
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -129,7 +129,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);

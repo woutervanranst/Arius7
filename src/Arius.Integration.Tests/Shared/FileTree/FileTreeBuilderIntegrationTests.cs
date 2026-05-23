@@ -3,6 +3,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
@@ -81,7 +82,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         {
             // clean up disk cache
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
+            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -125,7 +126,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
+            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -162,7 +163,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            if (Directory.Exists(cacheDir.ToString())) Directory.Delete(cacheDir.ToString(), recursive: true);
+            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
