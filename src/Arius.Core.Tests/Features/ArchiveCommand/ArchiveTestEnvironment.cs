@@ -29,6 +29,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly LocalDirectory                    _chunkIndexCacheDirectory;
     private readonly LocalDirectory                    _fileTreeCacheDirectory;
     private readonly RelativeFileSystem                _rootFileSystem;
+    private readonly RelativeFileSystem                _repositoryCacheFileSystem;
 
     public ArchiveTestEnvironment()
     {
@@ -42,8 +43,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
         _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
 
-        Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
-        Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
+        _repositoryCacheFileSystem = new RelativeFileSystem(RepositoryPaths.GetRepositoryRoot(AccountName, _containerName));
+
+        _repositoryCacheFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
+        _repositoryCacheFileSystem.CreateDirectory(_fileTreeCacheDirectory);
         
         Blobs  = new FakeInMemoryBlobContainerService();
         
@@ -105,8 +108,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
-        Directory.CreateDirectory(_chunkIndexCacheDirectory.ToString());
-        Directory.CreateDirectory(_fileTreeCacheDirectory.ToString());
+        _repositoryCacheFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
+        _repositoryCacheFileSystem.CreateDirectory(_fileTreeCacheDirectory);
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);
