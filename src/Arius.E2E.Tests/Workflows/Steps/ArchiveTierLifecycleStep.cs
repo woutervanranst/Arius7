@@ -37,16 +37,17 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         if (!state.VersionedSourceStates.TryGetValue(sourceVersion, out var sourceState))
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
-        if (!Directory.Exists(sourceState.RootPath) && sourceVersion == SyntheticRepositoryVersion.V2)
+        var versionedSourceFileSystem = new RelativeFileSystem(state.VersionedSourceDirectory);
+        if (!versionedSourceFileSystem.DirectoryExists(sourceState.RootDirectory) && sourceVersion == SyntheticRepositoryVersion.V2)
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
-            var versionRootPath = state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2)));
-            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootPath, versionRootPath, state.Fixture.Encryption);
+            var versionRootPath = LocalDirectory.Parse(state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2))));
+            sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootDirectory, versionRootPath, state.Fixture.Encryption);
             state.VersionedSourceStates[SyntheticRepositoryVersion.V2] = sourceState;
         }
 
         // 1. Reuse the existing archived source content from the canonical workflow.
-        FileSystemHelper.CopyDirectory(sourceState.RootPath, state.Fixture.LocalRoot);
+        FileSystemHelper.CopyDirectory(sourceState.RootDirectory, state.Fixture.LocalDirectory);
 
         // 2. Pick one representative tar-backed file under the target subtree and preserve the
         // exact existing chunk blob so we can later stage it as a ready rehydrated blob.
@@ -61,7 +62,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         var initialResult = await state.Fixture.CreateRestoreHandler()
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = state.Fixture.RestoreRoot,
+                RootDirectory = state.Fixture.RestoreDirectory.ToString(),
                 TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmRehydration = (estimate, _) =>
@@ -88,7 +89,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         var cleanupDeletedChunks = 0;
         var readyRestoreRoot = state.WorkflowDirectory.Resolve(RelativePath.Parse("archive-tier-ready"));
         var readyRestoreDirectory = LocalDirectory.Parse(readyRestoreRoot);
-        Directory.CreateDirectory(readyRestoreRoot);
+        var readyRestoreFileSystem = new RelativeFileSystem(readyRestoreDirectory);
+        readyRestoreFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -130,8 +132,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         }
         finally
         {
-            if (Directory.Exists(readyRestoreRoot))
-                Directory.Delete(readyRestoreRoot, recursive: true);
+            readyRestoreFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
 
         static async Task<ArchiveTierTargetChunk> IdentifyTargetTarChunkAsync(E2EFixture fixture, RelativePath targetPath, CancellationToken cancellationToken)

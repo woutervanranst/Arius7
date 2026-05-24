@@ -114,7 +114,7 @@ public sealed class E2EFixture : IAsyncDisposable
     }
 
     internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
-        => SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalDirectory.ToString(), Encryption);
+        => SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalDirectory, Encryption);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 
         => _repository.CreateArchiveHandler();
