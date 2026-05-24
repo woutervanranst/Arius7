@@ -74,10 +74,10 @@ internal static class Helpers
         => await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
 
     public static Task<SnapshotManifest?> ResolveLatestSnapshotAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
-        => state.Fixture.Snapshot.ResolveAsync(cancellationToken: cancellationToken);
+        => state.Fixture.Repository.Snapshot.ResolveAsync(cancellationToken: cancellationToken);
 
     public static Task<SnapshotManifest?> ResolveSnapshotByVersionAsync(RepresentativeWorkflowState state, string version, CancellationToken cancellationToken)
-        => state.Fixture.Snapshot.ResolveAsync(version, cancellationToken);
+        => state.Fixture.Repository.Snapshot.ResolveAsync(version, cancellationToken);
 
     public static async Task AssertLargeDuplicateLookupAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, CancellationToken cancellationToken)
     {
@@ -105,7 +105,7 @@ internal static class Helpers
     }
 
     static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)
-        => state.Fixture.Index.LookupAsync(contentHash, cancellationToken);
+        => state.Fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);
 
     static string GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
     {

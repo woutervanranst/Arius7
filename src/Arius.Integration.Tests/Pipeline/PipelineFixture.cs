@@ -18,8 +18,8 @@ namespace Arius.Integration.Tests.Pipeline;
 /// </summary>
 public sealed class PipelineFixture : IAsyncDisposable
 {
-    private readonly RepositoryTestFixture _repository;
-    public           BlobContainerClient Container { get; private set; } = null!;
+    public BlobContainerClient Container { get; }
+    public RepositoryTestFixture Repository { get; }
 
     private readonly FakeLogger<ListQueryHandler> _listLogger = new();
 
@@ -28,20 +28,16 @@ public sealed class PipelineFixture : IAsyncDisposable
     private PipelineFixture(BlobContainerClient container, RepositoryTestFixture repository)
     {
         Container = container;
-        _repository = repository;
+        Repository = repository;
     }
 
-    public IBlobContainerService BlobContainer => _repository.BlobContainer;
-    public IEncryptionService Encryption => _repository.Encryption;
-    public Arius.Core.Shared.ChunkIndex.ChunkIndexService Index => _repository.Index;
-    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage => _repository.ChunkStorage;
-    public Arius.Core.Shared.FileTree.FileTreeService FileTreeService => _repository.FileTreeService;
-    public Arius.Core.Shared.Snapshot.SnapshotService Snapshot => _repository.Snapshot;
-    public Mediator.IMediator Mediator => _repository.Mediator;
-    internal LocalDirectory LocalDirectory => _repository.LocalDirectory;
-    internal LocalDirectory RestoreDirectory => _repository.RestoreDirectory;
-    internal RelativeFileSystem LocalFileSystem => _repository.LocalFileSystem;
-    internal RelativeFileSystem RestoreFileSystem => _repository.RestoreFileSystem;
+    public IBlobContainerService BlobContainer => Repository.BlobContainer;
+    public IEncryptionService Encryption => Repository.Encryption;
+    public Mediator.IMediator Mediator => Repository.Mediator;
+    internal LocalDirectory LocalDirectory => Repository.LocalDirectory;
+    internal LocalDirectory RestoreDirectory => Repository.RestoreDirectory;
+    internal RelativeFileSystem LocalFileSystem => Repository.LocalFileSystem;
+    internal RelativeFileSystem RestoreFileSystem => Repository.RestoreFileSystem;
 
     /// <summary>Creates a fully initialised fixture with unique container and temp dirs.</summary>
     public static async Task<PipelineFixture> CreateAsync(
@@ -89,13 +85,13 @@ public sealed class PipelineFixture : IAsyncDisposable
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
     public ArchiveCommandHandler CreateArchiveHandler() =>
-        _repository.CreateArchiveHandler();
+        Repository.CreateArchiveHandler();
 
     public RestoreCommandHandler CreateRestoreHandler() =>
-        _repository.CreateRestoreHandler();
+        Repository.CreateRestoreHandler();
 
     public ListQueryHandler CreateListQueryHandler() =>
-        new(Index, FileTreeService, Snapshot,
+        new(Repository.Index, Repository.FileTreeService, Repository.Snapshot,
             _listLogger,
             Account, Container.Name);
 
@@ -148,6 +144,6 @@ public sealed class PipelineFixture : IAsyncDisposable
      /// </summary>
     public async ValueTask DisposeAsync()
     {
-        await _repository.DisposeAsync();
+        await Repository.DisposeAsync();
     }
 }

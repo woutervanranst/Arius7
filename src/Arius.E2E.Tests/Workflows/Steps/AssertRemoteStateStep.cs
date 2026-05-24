@@ -20,7 +20,7 @@ internal sealed record AssertRemoteStateStep(string Name, RemoteAssertionKind Ki
             ?? throw new InvalidOperationException($"{Name}: current synthetic repository state is not available.");
 
         state.LatestSnapshotVersion.ShouldNotBeNullOrWhiteSpace($"{Name}: latest snapshot version should be available.");
-        (await state.Fixture.Snapshot.ListBlobNamesAsync(cancellationToken))[^1].Name.ToString()
+        (await state.Fixture.Repository.Snapshot.ListBlobNamesAsync(cancellationToken))[^1].Name.ToString()
             .ShouldBe(state.LatestSnapshotVersion, $"{Name}: latest resolved snapshot should match the most recent archive result.");
 
         switch (Kind)

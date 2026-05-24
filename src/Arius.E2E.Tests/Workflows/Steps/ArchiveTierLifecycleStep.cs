@@ -145,7 +145,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             {
                 var bytes       = await File.ReadAllBytesAsync(filePath, cancellationToken); // todo use streaming
                 var contentHash = fixture.Encryption.ComputeHash(bytes);
-                var entry       = await fixture.Index.LookupAsync(contentHash, cancellationToken);
+                var entry       = await fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);
 
                 entry.ShouldNotBeNull($"Expected chunk index entry for '{filePath}'.");
                 if (entry!.IsLargeChunk)

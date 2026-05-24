@@ -25,31 +25,18 @@ public sealed class E2EFixture : IAsyncDisposable
     private readonly BlobTier _defaultTier;
     private readonly string _account;
     private readonly string _container;
-    private readonly RepositoryTestFixture _repository;
     private bool _disposed;
 
     internal E2EFixture(
-        IBlobContainerService blobContainer,
-        IEncryptionService encryption,
-        ChunkIndexService index,
-        IChunkStorageService chunkStorage,
-        FileTreeService fileTreeService,
-        SnapshotService snapshot,
         string account,
         string containerName,
         BlobTier defaultTier,
         RepositoryTestFixture repository)
     {
-        BlobContainer   = blobContainer;
-        Encryption      = encryption;
-        Index           = index;
-        ChunkStorage    = chunkStorage;
-        FileTreeService = fileTreeService;
-        Snapshot        = snapshot;
         _account        = account;
         _container      = containerName;
         _defaultTier    = defaultTier;
-        _repository     = repository;
+        Repository      = repository;
 
         lock (RepositoryCacheLeaseLock)
         {
@@ -60,22 +47,19 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    public IBlobContainerService                               BlobContainer   { get; }
-    public IEncryptionService                                  Encryption      { get; }
-    public Arius.Core.Shared.ChunkIndex.ChunkIndexService      Index           { get; }
-    public Arius.Core.Shared.ChunkStorage.IChunkStorageService ChunkStorage    { get; }
-    public Arius.Core.Shared.FileTree.FileTreeService          FileTreeService { get; }
-    public Arius.Core.Shared.Snapshot.SnapshotService          Snapshot        { get; }
-    internal LocalDirectory                                    LocalDirectory   => _repository.LocalDirectory;
-    internal LocalDirectory                                    RestoreDirectory => _repository.RestoreDirectory;
-    internal RelativeFileSystem                                LocalFileSystem  => _repository.LocalFileSystem;
-    internal RelativeFileSystem                                RestoreFileSystem => _repository.RestoreFileSystem;
+    public RepositoryTestFixture Repository { get; }
+    public IBlobContainerService BlobContainer => Repository.BlobContainer;
+    public IEncryptionService Encryption => Repository.Encryption;
+    internal LocalDirectory LocalDirectory => Repository.LocalDirectory;
+    internal LocalDirectory RestoreDirectory => Repository.RestoreDirectory;
+    internal RelativeFileSystem LocalFileSystem => Repository.LocalFileSystem;
+    internal RelativeFileSystem RestoreFileSystem => Repository.RestoreFileSystem;
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
         var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, deleteTempRoot: deleteTempRoot, cancellationToken: cancellationToken);
 
-        return new E2EFixture(blobContainer, repository.Encryption, repository.Index, repository.ChunkStorage, repository.FileTreeService, repository.Snapshot, accountName, containerName, defaultTier, repository);
+        return new E2EFixture(accountName, containerName, defaultTier, repository);
     }
 
     public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)
@@ -117,10 +101,10 @@ public sealed class E2EFixture : IAsyncDisposable
         => SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalDirectory, Encryption);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 
-        => _repository.CreateArchiveHandler();
+        => Repository.CreateArchiveHandler();
 
     internal RestoreCommandHandler CreateRestoreHandler() 
-        => _repository.CreateRestoreHandler();
+        => Repository.CreateRestoreHandler();
 
     public Task<ArchiveResult> ArchiveAsync(CancellationToken ct = default) 
         => CreateArchiveHandler().Handle(
@@ -150,7 +134,7 @@ public sealed class E2EFixture : IAsyncDisposable
         Exception? tempRootDeletionException = null;
         try
         {
-            await _repository.DisposeAsync();
+            await Repository.DisposeAsync();
         }
         catch (Exception ex)
         {
