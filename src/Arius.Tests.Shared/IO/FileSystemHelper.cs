@@ -1,3 +1,5 @@
+using Arius.Core.Shared.FileSystem;
+
 namespace Arius.Tests.Shared.IO;
 
 public static class FileSystemHelper
@@ -21,7 +23,7 @@ public static class FileSystemHelper
         foreach (var filePath in Directory.EnumerateFiles(sourceRootPath, "*", SearchOption.AllDirectories))
         {
             var relativePath = Path.GetRelativePath(sourceRootPath, filePath);
-            var targetPath = Path.Combine(targetRootPath, relativePath);
+            var targetPath   = Path.Combine(targetRootPath, relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
             File.Copy(filePath, targetPath, overwrite: true);
@@ -29,4 +31,7 @@ public static class FileSystemHelper
             File.SetLastWriteTimeUtc(targetPath, File.GetLastWriteTimeUtc(filePath));
         }
     }
+
+    internal static void CopyDirectory(LocalDirectory sourceRoot, LocalDirectory targetRoot) 
+        => CopyDirectory(sourceRoot.ToString(), targetRoot.ToString());
 }
