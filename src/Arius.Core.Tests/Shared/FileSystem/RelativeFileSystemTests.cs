@@ -232,27 +232,60 @@ public class RelativeFileSystemTests : IDisposable
     }
 
     [Test]
-    [Skip("Not implemented yet")]
     public void EnumerateDirectories_ReturnsImmediateChildDirectoriesOnly()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        Directory.CreateDirectory(Path.Combine(_root, "cache", "a"));
+        Directory.CreateDirectory(Path.Combine(_root, "cache", "b"));
+        Directory.CreateDirectory(Path.Combine(_root, "cache", "a", "nested"));
 
-        // Arrange direct and nested directories on disk, then assert only the direct children are returned as relative paths.
+        var directories = _fileSystem.EnumerateDirectories(RelativePath.Parse("cache"))
+            .Select(entry => entry.Path)
+            .ToArray();
+
+        directories.ShouldBe([
+            RelativePath.Parse("cache/a"),
+            RelativePath.Parse("cache/b")
+        ], ignoreOrder: true);
     }
 
     [Test]
-    [Skip("Not implemented yet")]
     public void OpenOrCreateFile_UsesTheProvidedModeWithinTheRootedFilesystem()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        var path = RelativePath.Parse("cache/tree.bin");
+        var fullPath = Path.Combine(_root, "cache", "tree.bin");
 
-        // Exercise both a missing file and an existing file so the test proves parent directory creation and non-truncating reopen behavior.
+        using (var stream = _fileSystem.OpenOrCreateFile(path, FileAccess.ReadWrite, FileShare.None))
+        using (var writer = new StreamWriter(stream, leaveOpen: true))
+        {
+            writer.Write("abc");
+            writer.Flush();
+        }
+
+        File.Exists(fullPath).ShouldBeTrue();
+        File.ReadAllText(fullPath).ShouldBe("abc");
+
+        using var reopenedStream = _fileSystem.OpenOrCreateFile(path, FileAccess.ReadWrite, FileShare.None);
+        reopenedStream.Length.ShouldBe(3);
     }
 
     [Test]
-    [Skip("Not implemented yet")]
     public void CopyFile_CopiesContentsToDestinationAndCreatesMissingParentDirectories()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        var source = RelativePath.Parse("source/data.bin");
+        var destination = RelativePath.Parse("copies/nested/data.bin");
+        var sourcePath = Path.Combine(_root, "source", "data.bin");
+        var destinationPath = Path.Combine(_root, "copies", "nested", "data.bin");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        File.WriteAllBytes(sourcePath, [1, 2, 3, 4]);
+
+        _fileSystem.CopyFile(source, destination, overwrite: false);
+
+        Directory.Exists(Path.Combine(_root, "copies", "nested")).ShouldBeTrue();
+        File.ReadAllBytes(destinationPath).ShouldBe([1, 2, 3, 4]);
+        File.ReadAllBytes(sourcePath).ShouldBe([1, 2, 3, 4]);
     }
 }
