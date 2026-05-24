@@ -8,6 +8,13 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryMaterializer
 {
+    public static Task<SyntheticRepositoryState> MaterializeV1Async(
+        SyntheticRepositoryDefinition definition,
+        int seed,
+        string rootPath,
+        IEncryptionService encryption)
+        => MaterializeV1Async(definition, seed, LocalDirectory.Parse(rootPath), encryption);
+
     public static async Task<SyntheticRepositoryState> MaterializeV1Async(
         SyntheticRepositoryDefinition definition,
         int seed,
