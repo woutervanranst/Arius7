@@ -1,9 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Tests.Shared.IO;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Arius.E2E.Tests.Datasets;
 
@@ -12,14 +11,12 @@ internal static class SyntheticRepositoryMaterializer
     public static async Task<SyntheticRepositoryState> MaterializeV1Async(
         SyntheticRepositoryDefinition definition,
         int seed,
-        string rootPath,
+        LocalDirectory rootDirectory,
         IEncryptionService encryption)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var rootDirectory = LocalDirectory.Parse(rootPath);
         var fileSystem = new RelativeFileSystem(rootDirectory);
 
         fileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
@@ -43,19 +40,16 @@ internal static class SyntheticRepositoryMaterializer
     public static async Task<SyntheticRepositoryState> MaterializeV2FromExistingAsync(
         SyntheticRepositoryDefinition definition,
         int seed,
-        string sourceRootPath,
-        string targetRootPath,
+        LocalDirectory sourceRootDirectory,
+        LocalDirectory targetRootDirectory,
         IEncryptionService encryption)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRootPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetRootPath);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var targetRootDirectory = LocalDirectory.Parse(targetRootPath);
         var fileSystem = new RelativeFileSystem(targetRootDirectory);
 
-        FileSystemHelper.CopyDirectory(LocalDirectory.Parse(sourceRootPath), targetRootDirectory);
+        FileSystemHelper.CopyDirectory(sourceRootDirectory, targetRootDirectory);
 
         var files = new Dictionary<RelativePath, ContentHash>();
         foreach (var file in fileSystem.EnumerateFiles())
@@ -66,12 +60,12 @@ internal static class SyntheticRepositoryMaterializer
             files[relativePath] = await encryption.ComputeHashAsync(stream);
         }
 
-        await ApplyV2MutationsAsync(definition, seed, targetRootPath, encryption, files);
+        await ApplyV2MutationsAsync(definition, seed, targetRootDirectory, encryption, files);
 
         return new SyntheticRepositoryState(targetRootDirectory, files);
     }
 
-    static byte[] CreateBytes(int seed, string contentId, long sizeBytes)
+    private static byte[] CreateBytes(int seed, string contentId, long sizeBytes)
     {
         var length = checked((int)sizeBytes);
         var bytes = new byte[length];
@@ -93,11 +87,10 @@ internal static class SyntheticRepositoryMaterializer
     static async Task ApplyV2MutationsAsync(
         SyntheticRepositoryDefinition definition,
         int seed,
-        string rootPath,
+        LocalDirectory rootDirectory,
         IEncryptionService encryption,
         Dictionary<RelativePath, ContentHash> files)
     {
-        var rootDirectory = LocalDirectory.Parse(rootPath);
         var fileSystem = new RelativeFileSystem(rootDirectory);
 
         foreach (var mutation in definition.V2Mutations)
