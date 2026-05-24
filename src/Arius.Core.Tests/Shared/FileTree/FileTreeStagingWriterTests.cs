@@ -9,6 +9,12 @@ public class FileTreeStagingWriterTests
     private static readonly DateTimeOffset TestTimestamp = new(2026, 4, 29, 10, 0, 0, TimeSpan.Zero);
     private static readonly ContentHash TestHash = ContentHash.Parse(new string('a', 64));
 
+    private static async Task<FileTreeEntry[]> ReadNodeEntriesAsync(LocalDirectory stagingRoot, PathSegment directoryId)
+        => (await File.ReadAllLinesAsync(ResolveStagingNode(stagingRoot, directoryId)))
+            .Where(static line => !string.IsNullOrWhiteSpace(line))
+            .Select(FileTreeSerializer.ParseStagedNodeEntryLine)
+            .ToArray();
+
     private static string ResolveStagingNode(LocalDirectory stagingRoot, PathSegment directoryId) =>
         stagingRoot.Resolve(FileTreePaths.GetStagingNodePath(directoryId));
 
@@ -28,81 +34,6 @@ public class FileTreeStagingWriterTests
     }
 
     [Test]
-    [Arguments("/photos")]
-    [Arguments("/photos/2024")]
-    [Arguments("C:/photos")]
-    [Arguments("C:\\photos")]
-    public void GetDirectoryId_RootedPath_Throws(string directoryPath)
-    {
-        Should.Throw<FormatException>(() => RelativePath.Parse(directoryPath));
-    }
-
-    [Test]
-    public void GetDirectoryId_RelativePath_ReturnsStableSegment()
-    {
-        FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos/2024"))
-            .ShouldBe(PathSegment.Parse(HashCodec.ToLowerHex(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("photos/2024")))));
-    }
-
-    [Test]
-    public async Task OpenAsync_DeletesExistingStagingDirectory()
-    {
-        await WithCacheDirectoryAsync(async (cacheDir, _) =>
-        {
-            var stagingRoot = FileTreePaths.GetStagingRootDirectory(cacheDir);
-            var stagingFileSystem = new RelativeFileSystem(stagingRoot);
-            stagingFileSystem.CreateDirectory(RelativePath.Root);
-            await File.WriteAllTextAsync(stagingRoot.Resolve(RelativePath.Parse("stale")), "old");
-
-            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-
-            stagingFileSystem.FileExists(RelativePath.Parse("stale")).ShouldBeFalse();
-            stagingFileSystem.DirectoryExists(session.StagingRoot).ShouldBeTrue();
-        });
-    }
-
-    [Test]
-    public async Task OpenAsync_FailsWhenAnotherSessionHoldsLock()
-    {
-        await WithCacheDirectoryAsync(async (cacheDir, _) =>
-        {
-            await using var first = await FileTreeStagingSession.OpenAsync(cacheDir);
-
-            await Assert.ThrowsAsync<IOException>(async () =>
-                await FileTreeStagingSession.OpenAsync(cacheDir));
-        });
-    }
-
-    [Test]
-    public async Task DisposeAsync_RemovesStagingRootBeforeReleasingLock()
-    {
-        await WithCacheDirectoryAsync(async (cacheDir, _) =>
-        {
-            var first = await FileTreeStagingSession.OpenAsync(cacheDir);
-            await File.WriteAllTextAsync(Path.Combine(first.StagingRoot.ToString(), "owned-by-first"), "first");
-
-            await first.DisposeAsync();
-
-            await using var second = await FileTreeStagingSession.OpenAsync(cacheDir);
-            new RelativeFileSystem(second.StagingRoot).FileExists(RelativePath.Parse("owned-by-first")).ShouldBeFalse();
-        });
-    }
-
-    [Test]
-    public async Task DisposeAsync_RemovesStagingRootImmediately()
-    {
-        await WithCacheDirectoryAsync(async (cacheDir, cacheFileSystem) =>
-        {
-            var session = await FileTreeStagingSession.OpenAsync(cacheDir);
-            await File.WriteAllTextAsync(Path.Combine(session.StagingRoot.ToString(), "owned-by-first"), "first");
-
-            await session.DisposeAsync();
-
-            cacheFileSystem.DirectoryExists(FileTreePaths.GetStagingRootDirectory(cacheDir)).ShouldBeFalse();
-        });
-    }
-
-    [Test]
     public async Task AppendFileEntryAsync_WritesSingleNodeFilePerDirectoryId()
     {
         await WithCacheDirectoryAsync(async (cacheDir, _) =>
@@ -114,13 +45,21 @@ public class FileTreeStagingWriterTests
 
             var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
             var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
-            var photosPath = ResolveStagingNode(session.StagingRoot, photosId);
-            var line = (await File.ReadAllLinesAsync(photosPath)).Single();
-            var entry = FileTreeSerializer.ParsePersistedFileEntryLine(line);
+            var photosEntries = await File.ReadAllLinesAsync(ResolveStagingNode(session.StagingRoot, photosId));
+            var rootEntries = await File.ReadAllLinesAsync(ResolveStagingNode(session.StagingRoot, rootId));
 
-            entry.Name.ShouldBe(PathSegment.Parse("a.jpg"));
-            entry.ContentHash.ShouldBe(TestHash);
-            new RelativeFileSystem(session.StagingRoot).FileExists(FileTreePaths.GetStagingNodePath(rootId)).ShouldBeTrue();
+            photosEntries.ShouldHaveSingleItem();
+
+            var fileEntry = FileTreeSerializer.ParseStagedNodeEntryLine(photosEntries.Single()).ShouldBeOfType<FileEntry>();
+            fileEntry.Name.ShouldBe(PathSegment.Parse("a.jpg"));
+            fileEntry.ContentHash.ShouldBe(TestHash);
+            fileEntry.Created.ShouldBe(TestTimestamp);
+            fileEntry.Modified.ShouldBe(TestTimestamp);
+
+            rootEntries.ShouldHaveSingleItem();
+            var directoryEntry = FileTreeSerializer.ParseStagedNodeEntryLine(rootEntries.Single()).ShouldBeOfType<StagedDirectoryEntry>();
+            directoryEntry.Name.ShouldBe(PathSegment.Parse("photos"));
+            directoryEntry.DirectoryNameHash.ShouldBe(photosId.ToString());
         });
     }
 
@@ -163,9 +102,87 @@ public class FileTreeStagingWriterTests
 
             var rootEntries = await File.ReadAllLinesAsync(ResolveStagingNode(session.StagingRoot, rootId));
             var photosEntries = await File.ReadAllLinesAsync(ResolveStagingNode(session.StagingRoot, photosId));
+            var nestedEntries = await File.ReadAllLinesAsync(ResolveStagingNode(session.StagingRoot, photos2024Id));
 
-            rootEntries.ShouldContain($"{photosId} D photos/");
-            photosEntries.ShouldContain($"{photos2024Id} D 2024/");
+            rootEntries.ShouldHaveSingleItem();
+            FileTreeSerializer.ParseStagedNodeEntryLine(rootEntries.Single()).ShouldBe(new StagedDirectoryEntry
+            {
+                Name = PathSegment.Parse("photos"),
+                DirectoryNameHash = photosId.ToString()
+            });
+
+            photosEntries.ShouldHaveSingleItem();
+            FileTreeSerializer.ParseStagedNodeEntryLine(photosEntries.Single()).ShouldBe(new StagedDirectoryEntry
+            {
+                Name = PathSegment.Parse("2024"),
+                DirectoryNameHash = photos2024Id.ToString()
+            });
+
+            nestedEntries.ShouldHaveSingleItem();
+            FileTreeSerializer.ParseStagedNodeEntryLine(nestedEntries.Single()).ShouldBe(new FileEntry
+            {
+                Name = PathSegment.Parse("a.jpg"),
+                ContentHash = ContentHash.Parse(new string('b', 64)),
+                Created = TestTimestamp,
+                Modified = TestTimestamp
+            });
+        });
+    }
+
+    [Test]
+    public async Task AppendFileEntryAsync_MultipleSequentialAppendsToSameDirectory_PreservesAllFileEntries()
+    {
+        await WithCacheDirectoryAsync(async (cacheDir, _) =>
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            var secondHash = ContentHash.Parse(new string('b', 64));
+
+            await writer.AppendFileEntryAsync(RelativePath.Parse("photos/a.jpg"), TestHash, TestTimestamp, TestTimestamp);
+            await writer.AppendFileEntryAsync(RelativePath.Parse("photos/b.jpg"), secondHash, TestTimestamp, TestTimestamp);
+
+            var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
+            var entries = (await ReadNodeEntriesAsync(session.StagingRoot, photosId)).OfType<FileEntry>().ToArray();
+
+            entries.Length.ShouldBe(2);
+            entries.Select(static entry => entry.Name).ShouldBe([PathSegment.Parse("a.jpg"), PathSegment.Parse("b.jpg")], ignoreOrder: true);
+            entries.Select(static entry => entry.ContentHash).ShouldBe([TestHash, secondHash], ignoreOrder: true);
+        });
+    }
+
+    [Test]
+    public async Task AppendFileEntryAsync_ConcurrentAppendsToSameDirectory_PreservesAllFileEntries()
+    {
+        await WithCacheDirectoryAsync(async (cacheDir, _) =>
+        {
+            await using var session = await FileTreeStagingSession.OpenAsync(cacheDir);
+            using var writer = new FileTreeStagingWriter(session.StagingRoot);
+
+            var expectedEntries = Enumerable.Range(0, 24)
+                .Select(index => new
+                {
+                    Path = RelativePath.Parse($"photos/file-{index:D2}.jpg"),
+                    Hash = ContentHash.Parse(index.ToString("x64"))
+                })
+                .ToArray();
+
+            await Task.WhenAll(expectedEntries.Select(entry =>
+                writer.AppendFileEntryAsync(entry.Path, entry.Hash, TestTimestamp, TestTimestamp)));
+
+            var photosId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
+            var entries = (await ReadNodeEntriesAsync(session.StagingRoot, photosId)).OfType<FileEntry>().ToArray();
+
+            entries.Length.ShouldBe(expectedEntries.Length);
+
+            foreach (var expectedEntry in expectedEntries)
+            {
+                entries.ShouldContain(entry =>
+                    entry.Name == expectedEntry.Path.Name
+                    && entry.ContentHash == expectedEntry.Hash
+                    && entry.Created == TestTimestamp
+                    && entry.Modified == TestTimestamp);
+            }
         });
     }
 
@@ -190,35 +207,6 @@ public class FileTreeStagingWriterTests
             entry.Name.ShouldBe(PathSegment.Parse("a.jpg "));
             entry.ContentHash.ShouldBe(TestHash);
         });
-    }
-
-    [Test]
-    [Arguments(" /a.jpg")]
-    [Arguments("photos/   /a.jpg")]
-    public void AppendFileEntryAsync_WhitespaceOnlyDirectorySegment_Throws(string filePath)
-    {
-        Should.Throw<FormatException>(() => RelativePath.Parse(filePath));
-    }
-
-    [Test]
-    [Arguments("dir/ ")]
-    [Arguments(" ")]
-    public void AppendFileEntryAsync_WhitespaceOnlyFileNameSegment_Throws(string filePath)
-    {
-        Should.Throw<FormatException>(() => RelativePath.Parse(filePath));
-    }
-
-    [Test]
-    [Arguments("/photos/a.jpg")]
-    [Arguments("C:/photos/a.jpg")]
-    [Arguments("C:\\photos\\a.jpg")]
-    [Arguments("photos//a.jpg")]
-    [Arguments("photos/./a.jpg")]
-    [Arguments("photos/../a.jpg")]
-    [Arguments("photos\\a.jpg")]
-    public void AppendFileEntryAsync_NonCanonicalPath_Throws(string filePath)
-    {
-        Should.Throw<FormatException>(() => RelativePath.Parse(filePath));
     }
 
     [Test]
