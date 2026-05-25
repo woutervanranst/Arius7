@@ -49,18 +49,18 @@ internal static class RepresentativeWorkflowRunner
         {
             fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory, cancellationToken);
 
-            var versionedSourceRoot = workflowDirectory.Resolve(RelativePath.Parse("representative-source"));
+            var versionedSourceRoot = workflowDirectory / "representative-source";
             workflowFileSystem.CreateDirectory(RelativePath.Parse("representative-source"));
 
             state = new RepresentativeWorkflowState
             {
-                Context                 = context,
-                CreateFixtureAsync      = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory, ct),
-                Fixture                 = fixture,
-                Definition              = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
-                Seed                    = workflow.Seed,
-                WorkflowDirectory       = workflowDirectory,
-                VersionedSourceDirectory = LocalDirectory.Parse(versionedSourceRoot),
+                Context                  = context,
+                CreateFixtureAsync       = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory, ct),
+                Fixture                  = fixture,
+                Definition               = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
+                Seed                     = workflow.Seed,
+                WorkflowDirectory        = workflowDirectory,
+                VersionedSourceDirectory = versionedSourceRoot,
             };
 
             foreach (var step in workflow.Steps)
