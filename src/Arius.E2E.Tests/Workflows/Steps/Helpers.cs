@@ -102,10 +102,10 @@ internal static class Helpers
         parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk body should point at the tar chunk recorded in the chunk index.");
     }
 
-    static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)
+    private static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)
         => state.Fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);
 
-    static RelativePath GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
+    private static RelativePath GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
     {
         var v1ChangedPath = RelativePath.Parse("src/module-00/group-00/file-0000.bin");
 
@@ -115,14 +115,14 @@ internal static class Helpers
         return definition.Files[0].Path;
     }
 
-    static byte[] CreateConflictBytes(int seed, RelativePath path)
+    private static byte[] CreateConflictBytes(int seed, RelativePath path)
     {
         var bytes = new byte[1024];
         new Random(HashCode.Combine(seed, path, "restore-conflict")).NextBytes(bytes);
         return bytes;
     }
 
-    static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, RelativePath pathA, RelativePath pathB, CancellationToken cancellationToken)
+    private static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, RelativePath pathA, RelativePath pathB, CancellationToken cancellationToken)
     {
         expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
         expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
@@ -135,7 +135,7 @@ internal static class Helpers
         return contentHashA;
     }
 
-    static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, RelativePath relativePath, CancellationToken cancellationToken)
+    private static async Task<ContentHash> ComputeContentHashAsync(RepresentativeWorkflowState state, RelativePath relativePath, CancellationToken cancellationToken)
     {
         await using var f = state.Fixture.LocalFileSystem.OpenRead(relativePath);
         return await state.Fixture.Encryption.ComputeHashAsync(f, cancellationToken);
