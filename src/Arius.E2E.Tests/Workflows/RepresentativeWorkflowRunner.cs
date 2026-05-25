@@ -7,16 +7,15 @@ namespace Arius.E2E.Tests.Workflows;
 
 internal sealed class RepresentativeWorkflowRunnerDependencies
 {
-    public Func<E2EStorageBackendContext, string, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
+    public Func<E2EStorageBackendContext, LocalDirectory, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
         static (context, workflowRoot, cancellationToken) => RepresentativeWorkflowRunner.CreateFixtureAsync(context, workflowRoot, cancellationToken);
 }
 
 internal static class RepresentativeWorkflowRunner
 {
-    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, string workflowRoot, CancellationToken cancellationToken)
+    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, LocalDirectory workflowRoot, CancellationToken cancellationToken)
     {
-        var workflowDirectory = LocalDirectory.Parse(workflowRoot);
-        var fixtureRoot = workflowDirectory.Resolve(RelativePath.Parse("fixture"));
+        var fixtureRoot = LocalDirectory.Parse(workflowRoot.Resolve(RelativePath.Parse("fixture")));
 
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
@@ -48,7 +47,7 @@ internal static class RepresentativeWorkflowRunner
 
         try
         {
-            fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory.ToString(), cancellationToken);
+            fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory, cancellationToken);
 
             var versionedSourceRoot = workflowDirectory.Resolve(RelativePath.Parse("representative-source"));
             workflowFileSystem.CreateDirectory(RelativePath.Parse("representative-source"));
@@ -56,7 +55,7 @@ internal static class RepresentativeWorkflowRunner
             state = new RepresentativeWorkflowState
             {
                 Context                 = context,
-                CreateFixtureAsync      = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory.ToString(), ct),
+                CreateFixtureAsync      = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory, ct),
                 Fixture                 = fixture,
                 Definition              = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
                 Seed                    = workflow.Seed,

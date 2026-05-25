@@ -46,7 +46,7 @@ internal class E2ETests(AzureFixture azure)
         }
 
         var (container, service, cleanup) = await azure.CreateTestContainerAsync();
-        var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot);
+        var fixture = await E2EFixture.CreateAsync(service, container.AccountName, container.Name, BlobTier.Hot);
         try
         {
             var relativePath = RelativePath.Parse("hot.bin");
@@ -83,7 +83,7 @@ internal class E2ETests(AzureFixture azure)
         }
 
         var (container, service, cleanup) = await azure.CreateTestContainerAsync(cancellationToken);
-        var fixture = await E2EFixture.CreateAsync(container, service, BlobTier.Hot, ct: cancellationToken);
+        var fixture = await E2EFixture.CreateAsync(service, container.AccountName, container.Name, BlobTier.Hot, cancellationToken: cancellationToken);
         try
         {
             var relativePath = RelativePath.Parse("large.bin");

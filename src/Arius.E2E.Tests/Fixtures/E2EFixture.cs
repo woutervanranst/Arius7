@@ -18,7 +18,7 @@ namespace Arius.E2E.Tests.Fixtures;
 /// Lightweight pipeline fixture for E2E tests backed by real Azure.
 /// Mirrors the structure of PipelineFixture in integration tests.
 /// </summary>
-public sealed class E2EFixture : IAsyncDisposable
+internal sealed class E2EFixture : IAsyncDisposable
 {
     private static readonly Lock RepositoryCacheLeaseLock = new();
     private static readonly Dictionary<string, RepositoryCacheLease> RepositoryCacheLeases = new(StringComparer.Ordinal);
@@ -47,24 +47,19 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    public RepositoryTestFixture Repository { get; }
-    public IBlobContainerService BlobContainer => Repository.BlobContainer;
-    public IEncryptionService Encryption => Repository.Encryption;
-    internal LocalDirectory LocalDirectory => Repository.LocalDirectory;
-    internal LocalDirectory RestoreDirectory => Repository.RestoreDirectory;
-    internal RelativeFileSystem LocalFileSystem => Repository.LocalFileSystem;
-    internal RelativeFileSystem RestoreFileSystem => Repository.RestoreFileSystem;
+    public   RepositoryTestFixture Repository        { get; }
+    public   IBlobContainerService BlobContainer     => Repository.BlobContainer;
+    public   IEncryptionService    Encryption        => Repository.Encryption;
+    internal LocalDirectory        LocalDirectory    => Repository.LocalDirectory;
+    internal LocalDirectory        RestoreDirectory  => Repository.RestoreDirectory;
+    internal RelativeFileSystem    LocalFileSystem   => Repository.LocalFileSystem;
+    internal RelativeFileSystem    RestoreFileSystem => Repository.RestoreFileSystem;
 
-    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken cancellationToken = default)
+    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, Action<LocalDirectory>? deleteTempRoot = null, CancellationToken cancellationToken = default)
     {
         var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, deleteTempRoot: deleteTempRoot, cancellationToken: cancellationToken);
 
         return new E2EFixture(accountName, containerName, defaultTier, repository);
-    }
-
-    public static Task<E2EFixture> CreateAsync(BlobContainerClient container, AzureBlobContainerService svc, BlobTier defaultTier, string? passphrase = null, string? tempRoot = null, Action<string>? deleteTempRoot = null, CancellationToken ct = default)
-    {
-        return CreateAsync(svc, container.AccountName, container.Name, defaultTier, passphrase, tempRoot, deleteTempRoot, ct);
     }
 
     public static Task ResetLocalCacheAsync(string accountName, string containerName)
@@ -96,9 +91,6 @@ public sealed class E2EFixture : IAsyncDisposable
 
         return Task.CompletedTask;
     }
-
-    internal Task<SyntheticRepositoryState> MaterializeSourceV1Async(SyntheticRepositoryDefinition definition, int seed)
-        => SyntheticRepositoryMaterializer.MaterializeV1Async(definition, seed, LocalDirectory, Encryption);
 
     internal ArchiveCommandHandler CreateArchiveHandler() 
         => Repository.CreateArchiveHandler();
@@ -150,7 +142,7 @@ public sealed class E2EFixture : IAsyncDisposable
         await Task.CompletedTask;
     }
 
-    bool ShouldResetCacheOnDispose()
+    private bool ShouldResetCacheOnDispose()
     {
         lock (RepositoryCacheLeaseLock)
         {
@@ -171,15 +163,15 @@ public sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    static bool HasActiveLease(string accountName, string containerName)
+    private static bool HasActiveLease(string accountName, string containerName)
     {
         var cacheKey = GetRepositoryCacheKey(accountName, containerName);
         return RepositoryCacheLeases.TryGetValue(cacheKey, out var lease) && lease.LiveFixtureCount > 0;
     }
 
-    static string GetRepositoryCacheKey(string accountName, string containerName) => $"{accountName}\n{containerName}";
+    private static string GetRepositoryCacheKey(string accountName, string containerName) => $"{accountName}\n{containerName}";
 
-    struct RepositoryCacheLease
+    private struct RepositoryCacheLease
     {
         public int LiveFixtureCount { get; set; }
         public bool PreserveRequested { get; set; }

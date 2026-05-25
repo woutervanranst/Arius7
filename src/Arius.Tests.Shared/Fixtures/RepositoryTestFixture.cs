@@ -31,7 +31,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly bool                              _resetLocalCacheOnDispose;
     private readonly bool                              _ownsTempRoot;
     private readonly IMediator                         _mediator;
-    private readonly Action<string>                    _deleteTempRoot;
+    private readonly Action<LocalDirectory>            _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
@@ -40,39 +40,39 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Creates a fixture from already-constructed repository services.
     /// Prefer the static factory methods unless a test needs full control over the service graph.
     /// </summary>
-    public RepositoryTestFixture(
+    internal RepositoryTestFixture(
         IBlobContainerService blobContainer,
         IEncryptionService encryption,
         ChunkIndexService index,
         IChunkStorageService chunkStorage,
         FileTreeService fileTreeService,
         SnapshotService snapshot,
-        string tempRoot,
-        string localRoot,
-        string restoreRoot,
+        LocalDirectory tempRoot,
+        LocalDirectory localRoot,
+        LocalDirectory restoreRoot,
         string account,
         string containerName,
         bool resetLocalCacheOnDispose = true,
         bool ownsTempRoot = true,
-        Action<string>? deleteTempRoot = null)
+        Action<LocalDirectory>? deleteTempRoot = null)
     {
-        BlobContainer   = blobContainer;
-        Encryption      = encryption;
-        Index           = index;
-        ChunkStorage    = chunkStorage;
-        FileTreeService = fileTreeService;
-        Snapshot        = snapshot;
-        _tempDirectory  = LocalDirectory.Parse(tempRoot);
-        LocalDirectory   = LocalDirectory.Parse(localRoot);
-        RestoreDirectory = LocalDirectory.Parse(restoreRoot);
-        LocalFileSystem  = new RelativeFileSystem(LocalDirectory);
-        RestoreFileSystem = new RelativeFileSystem(RestoreDirectory);
-        _account        = account;
-        _container      = containerName;
+        BlobContainer             = blobContainer;
+        Encryption                = encryption;
+        Index                     = index;
+        ChunkStorage              = chunkStorage;
+        FileTreeService           = fileTreeService;
+        Snapshot                  = snapshot;
+        _tempDirectory            = tempRoot;
+        LocalDirectory            = localRoot;
+        RestoreDirectory          = restoreRoot;
+        LocalFileSystem           = new RelativeFileSystem(LocalDirectory);
+        RestoreFileSystem         = new RelativeFileSystem(RestoreDirectory);
+        _account                  = account;
+        _container                = containerName;
         _resetLocalCacheOnDispose = resetLocalCacheOnDispose;
-        _ownsTempRoot   = ownsTempRoot;
-        _deleteTempRoot = deleteTempRoot ?? (path => Directory.Delete(path, recursive: true));
-        _mediator       = Substitute.For<IMediator>();
+        _ownsTempRoot             = ownsTempRoot;
+        _deleteTempRoot           = deleteTempRoot ?? (path => Directory.Delete(path.ToString(), recursive: true));
+        _mediator                 = Substitute.For<IMediator>();
     }
 
     /// <summary>
@@ -127,14 +127,14 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this for pipeline-style tests that exercise the same encryption path as production while
     /// still controlling the storage boundary, such as Azurite-backed integration and E2E tests.
     /// </summary>
-    public static Task<RepositoryTestFixture> CreateWithPassphraseAsync(
+    internal static Task<RepositoryTestFixture> CreateWithPassphraseAsync(
         IBlobContainerService blobContainer,
         string accountName,
         string containerName,
         string? passphrase = null,
-        string? tempRoot = null,
+        LocalDirectory? tempRoot = null,
         bool resetLocalCacheOnDispose = true,
-        Action<string>? deleteTempRoot = null,
+        Action<LocalDirectory>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
@@ -152,14 +152,14 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this when a test must control encryption behavior explicitly, for example legacy-format
     /// compatibility tests or focused Core tests that seed serialized repository data directly.
     /// </summary>
-    public static Task<RepositoryTestFixture> CreateWithEncryptionAsync(
+    internal static Task<RepositoryTestFixture> CreateWithEncryptionAsync(
         IBlobContainerService blobContainer,
         string accountName,
         string containerName,
         IEncryptionService encryption,
-        string? tempRoot = null,
+        LocalDirectory? tempRoot = null,
         bool resetLocalCacheOnDispose = true,
-        Action<string>? deleteTempRoot = null,
+        Action<LocalDirectory>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
@@ -177,9 +177,10 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this for Core tests that need a complete repository service graph without Azurite, real
     /// Azure behavior, or passphrase encryption semantics.
     /// </summary>
-    public static Task<RepositoryTestFixture> CreateInMemoryAsync(
+    internal static Task<RepositoryTestFixture> CreateInMemoryAsync(
         string? accountName = null,
         string? containerName = null,
+        LocalDirectory? tempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var blobContainer = new FakeInMemoryBlobContainerService();
@@ -188,6 +189,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
             new PlaintextPassthroughService(),
+            tempRoot,
             cancellationToken: cancellationToken);
     }
 
@@ -239,19 +241,16 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             await ResetLocalCacheAsync(_account, _container);
 
         if (_ownsTempRoot)
-            _deleteTempRoot(_tempDirectory.ToString());
+            _deleteTempRoot(_tempDirectory);
     }
 
-    private static (string TempRoot, string SourceRoot, string RestoreDestinationRoot, bool OwnsTempRoot) CreateTempRoots(string? tempRoot = null)
+    private static (LocalDirectory TempRoot, LocalDirectory SourceRoot, LocalDirectory RestoreDestinationRoot, bool OwnsTempRoot) CreateTempRoots(LocalDirectory? tempRoot = null)
     {
-        var ownsTempRoot     = tempRoot is null;
-        var resolvedTempRoot = tempRoot ?? TestTempRoots.CreateDirectory("test").ToString();
-        var sourceRoot       = Path.Combine(resolvedTempRoot, "source");
-        var restoreRoot      = Path.Combine(resolvedTempRoot, "restore");
-        var tempRootDirectory = LocalDirectory.Parse(resolvedTempRoot);
-        var tempRootFileSystem = new RelativeFileSystem(tempRootDirectory);
-        var sourceDirectory = LocalDirectory.Parse(sourceRoot);
-        var restoreDirectory = LocalDirectory.Parse(restoreRoot);
+        var ownsTempRoot       = tempRoot is null;
+        var resolvedTempRoot   = tempRoot ?? TestTempRoots.CreateDirectory("test");
+        var tempRootFileSystem = new RelativeFileSystem(resolvedTempRoot);
+        var sourceDirectory    = resolvedTempRoot / "source";
+        var restoreDirectory   = resolvedTempRoot / "restore";
 
         if (ownsTempRoot)
             tempRootFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
@@ -264,6 +263,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         tempRootFileSystem.CreateDirectory(RelativePath.Root);
         tempRootFileSystem.CreateDirectory(sourceDirectory);
         tempRootFileSystem.CreateDirectory(restoreDirectory);
-        return (resolvedTempRoot, sourceRoot, restoreRoot, ownsTempRoot);
+        return (resolvedTempRoot, sourceDirectory, restoreDirectory, ownsTempRoot);
     }
 }
