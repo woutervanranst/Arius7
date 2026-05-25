@@ -17,6 +17,9 @@ internal static class SyntheticRepositoryDefinitionFactory
 
     public static readonly RelativePath LargeDuplicatePathA = RelativePath.Parse("archives/duplicates/binary-a.bin");
     public static readonly RelativePath LargeDuplicatePathB = RelativePath.Parse("nested/deep/a/b/c/binary-b.bin");
+    public static readonly RelativePath UpdatedV1Path       = RelativePath.Parse("src/module-00/group-00/file-0000.bin");
+    public static readonly RelativePath AddedV2Path         = RelativePath.Parse("src/module-00/group-00/new-file-0000.bin");
+    public static readonly RelativePath DeletedV2Path       = RelativePath.Parse("docs/batch-00/doc-0000.txt");
 
     public static SyntheticRepositoryDefinition Create(SyntheticRepositoryProfile profile)
     {
@@ -76,10 +79,10 @@ internal static class SyntheticRepositoryDefinitionFactory
 
         IReadOnlyList<SyntheticFileMutation> mutations =
         [
-            new(SyntheticFileMutationKind.ChangeContent, RelativePath.Parse("src/module-00/group-00/file-0000.bin"), ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
-            new(SyntheticFileMutationKind.Delete, RelativePath.Parse("docs/batch-00/doc-0000.txt")),
+            new(SyntheticFileMutationKind.ChangeContent, UpdatedV1Path, ReplacementContentId: "small-updated-000", ReplacementSizeBytes: 4 * 1024),
+            new(SyntheticFileMutationKind.Delete, DeletedV2Path),
             new(SyntheticFileMutationKind.Rename, SmallDuplicateRenameSourcePath, TargetPath: SmallDuplicateRenameTargetPath),
-            new(SyntheticFileMutationKind.Add, RelativePath.Parse("src/module-00/group-00/new-file-0000.bin"), ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
+            new(SyntheticFileMutationKind.Add, AddedV2Path, ReplacementContentId: "new-000", ReplacementSizeBytes: 24 * 1024),
         ];
 
         return new SyntheticRepositoryDefinition(
