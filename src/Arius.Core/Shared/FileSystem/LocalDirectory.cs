@@ -84,6 +84,9 @@ internal readonly record struct LocalDirectory
         return candidate;
     }
 
+    public static LocalDirectory operator /(LocalDirectory directory, RelativePath path) => new (directory.Resolve(path));
+    public static LocalDirectory operator /(LocalDirectory directory, string path) => directory / RelativePath.Parse(path);
+
     public override string ToString() => Value;
 
     private bool IsContained(string fullPath)
