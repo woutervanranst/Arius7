@@ -1,8 +1,10 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.IO;
 using BenchmarkDotNet.Attributes;
@@ -15,7 +17,7 @@ public class ArchiveStepBenchmarks
 {
     private AzuriteE2EBackendFixture? _backend;
     private SyntheticRepositoryDefinition? _definition;
-    private string? _preparedSourceRoot;
+    private LocalDirectory _preparedSourceRoot;
     private E2EStorageBackendContext? _context;
     private RepositoryTestFixture? _fixture;
 
@@ -25,9 +27,9 @@ public class ArchiveStepBenchmarks
         _backend = new AzuriteE2EBackendFixture();
         await _backend.InitializeAsync();
 
-        _definition = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
-        _preparedSourceRoot = Path.Combine(Path.GetTempPath(), "arius", $"benchmark-source-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_preparedSourceRoot);
+        _definition         = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
+        _preparedSourceRoot = TestTempRoots.CreateDirectory("benchmark-source");
+        new RelativeFileSystem(_preparedSourceRoot).CreateDirectory(RelativePath.Root);
 
         await SyntheticRepositoryMaterializer.MaterializeV1Async(
             _definition,
@@ -42,8 +44,7 @@ public class ArchiveStepBenchmarks
         if (_backend is not null)
             await _backend.DisposeAsync();
 
-        if (_preparedSourceRoot is not null && Directory.Exists(_preparedSourceRoot))
-            Directory.Delete(_preparedSourceRoot, recursive: true);
+        new RelativeFileSystem(_preparedSourceRoot).DeleteDirectory(RelativePath.Root, recursive: true);
     }
 
     [IterationSetup]
@@ -52,7 +53,7 @@ public class ArchiveStepBenchmarks
 
     async Task IterationSetupCoreAsync()
     {
-        if (_backend is null || _preparedSourceRoot is null)
+        if (_backend is null)
             throw new InvalidOperationException("Benchmark state was not initialized.");
 
         _context = await _backend.CreateContextAsync();
@@ -61,12 +62,9 @@ public class ArchiveStepBenchmarks
             _context.AccountName,
             _context.ContainerName);
 
-        var localRoot = _fixture.LocalDirectory;
+        new RelativeFileSystem(_fixture.LocalDirectory).DeleteDirectory(_fixture.LocalDirectory, true);
 
-        if (Directory.Exists(localRoot.ToString()))
-            Directory.Delete(localRoot.ToString(), recursive: true);
-
-        FileSystemHelper.CopyDirectory(_preparedSourceRoot, localRoot.ToString());
+        FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalDirectory);
     }
 
     [IterationCleanup]

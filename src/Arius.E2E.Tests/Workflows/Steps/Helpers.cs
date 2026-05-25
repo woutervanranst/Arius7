@@ -34,18 +34,17 @@ internal static class Helpers
         if (preserveConflictBytes)
         {
             var conflictPath = GetConflictPath(state.Definition, expectedVersion);
-            var conflictRelativePath = RelativePath.Parse(conflictPath);
             var expectedConflictBytes = CreateConflictBytes(state.Seed, conflictPath);
 
             restoreResult.FilesSkipped.ShouldBeGreaterThan(0);
-            (await fixture.RestoreFileSystem.ReadAllBytesAsync(conflictRelativePath, CancellationToken.None)).ShouldBe(expectedConflictBytes);
+            (await fixture.RestoreFileSystem.ReadAllBytesAsync(conflictPath, CancellationToken.None)).ShouldBe(expectedConflictBytes);
             return;
         }
 
         if (!state.VersionedSourceStates.TryGetValue(expectedVersion, out var expectedState))
             throw new InvalidOperationException($"Expected source state for version '{expectedVersion}' is not available.");
 
-        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreDirectory.ToString(), fixture.Encryption, includePointerFiles: false);
+        await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreDirectory, fixture.Encryption, includePointerFiles: false);
 
         if (!useNoPointers)
         {
@@ -57,10 +56,9 @@ internal static class Helpers
     public static async Task WriteRestoreConflictAsync(E2EFixture fixture, SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion, int seed)
     {
         var conflictPath = GetConflictPath(definition, expectedVersion);
-        var conflictRelativePath = RelativePath.Parse(conflictPath);
 
         var conflictBytes = CreateConflictBytes(seed, conflictPath);
-        await fixture.RestoreFileSystem.WriteAllBytesAsync(conflictRelativePath, conflictBytes, CancellationToken.None);
+        await fixture.RestoreFileSystem.WriteAllBytesAsync(conflictPath, conflictBytes, CancellationToken.None);
     }
 
     public static string? ResolveVersion(RepresentativeWorkflowState state, WorkflowRestoreTarget target) =>
@@ -107,9 +105,9 @@ internal static class Helpers
     static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)
         => state.Fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);
 
-    static string GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
+    static RelativePath GetConflictPath(SyntheticRepositoryDefinition definition, SyntheticRepositoryVersion expectedVersion)
     {
-        const string v1ChangedPath = "src/module-00/group-00/file-0000.bin";
+        var v1ChangedPath = RelativePath.Parse("src/module-00/group-00/file-0000.bin");
 
         if (definition.Files.Any(file => file.Path == v1ChangedPath) && expectedVersion == SyntheticRepositoryVersion.V1)
             return v1ChangedPath;
@@ -117,24 +115,21 @@ internal static class Helpers
         return definition.Files[0].Path;
     }
 
-    static byte[] CreateConflictBytes(int seed, string path)
+    static byte[] CreateConflictBytes(int seed, RelativePath path)
     {
         var bytes = new byte[1024];
         new Random(HashCode.Combine(seed, path, "restore-conflict")).NextBytes(bytes);
         return bytes;
     }
 
-    static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, string pathA, string pathB, CancellationToken cancellationToken)
+    static async Task<ContentHash> AssertDuplicateContentHashAsync(RepresentativeWorkflowState state, SyntheticRepositoryState expectedState, RelativePath pathA, RelativePath pathB, CancellationToken cancellationToken)
     {
-        var relativePathA = RelativePath.Parse(pathA);
-        var relativePathB = RelativePath.Parse(pathB);
-
-        expectedState.Files.TryGetValue(relativePathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
-        expectedState.Files.TryGetValue(relativePathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
+        expectedState.Files.TryGetValue(pathA, out var hashA).ShouldBeTrue($"Expected synthetic repository state to contain '{pathA}'.");
+        expectedState.Files.TryGetValue(pathB, out var hashB).ShouldBeTrue($"Expected synthetic repository state to contain '{pathB}'.");
         hashA.ShouldBe(hashB, $"Expected '{pathA}' and '{pathB}' to share the same content hash.");
 
-        var contentHashA = await ComputeContentHashAsync(state, relativePathA, cancellationToken);
-        var contentHashB = await ComputeContentHashAsync(state, relativePathB, cancellationToken);
+        var contentHashA = await ComputeContentHashAsync(state, pathA, cancellationToken);
+        var contentHashB = await ComputeContentHashAsync(state, pathB, cancellationToken);
         contentHashA.ShouldBe(contentHashB, $"Expected '{pathA}' and '{pathB}' to hash to the same content-addressed chunk.");
 
         return contentHashA;

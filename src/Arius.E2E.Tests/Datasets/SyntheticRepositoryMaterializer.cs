@@ -8,13 +8,6 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryMaterializer
 {
-    public static Task<SyntheticRepositoryState> MaterializeV1Async(
-        SyntheticRepositoryDefinition definition,
-        int seed,
-        string rootPath,
-        IEncryptionService encryption)
-        => MaterializeV1Async(definition, seed, LocalDirectory.Parse(rootPath), encryption);
-
     public static async Task<SyntheticRepositoryState> MaterializeV1Async(
         SyntheticRepositoryDefinition definition,
         int seed,
@@ -33,12 +26,10 @@ internal static class SyntheticRepositoryMaterializer
 
         foreach (var file in definition.Files)
         {
-            var relativePath = RelativePath.Parse(file.Path);
+            await fileSystem.WriteAllBytesAsync(file.Path, CreateBytes(seed, file.ContentId ?? file.Path.ToString(), file.SizeBytes), CancellationToken.None);
 
-            await fileSystem.WriteAllBytesAsync(relativePath, CreateBytes(seed, file.ContentId ?? file.Path, file.SizeBytes), CancellationToken.None);
-
-            await using var stream = fileSystem.OpenRead(relativePath);
-            files[relativePath] = await encryption.ComputeHashAsync(stream);
+            await using var stream = fileSystem.OpenRead(file.Path);
+            files[file.Path] = await encryption.ComputeHashAsync(stream);
         }
 
         return new SyntheticRepositoryState(rootDirectory, files);
@@ -102,30 +93,28 @@ internal static class SyntheticRepositoryMaterializer
 
         foreach (var mutation in definition.V2Mutations)
         {
-            var mutationPath = RelativePath.Parse(mutation.Path);
-
             switch (mutation.Kind)
             {
                 case SyntheticFileMutationKind.Delete:
-                    fileSystem.DeleteFile(mutationPath);
-                    files.Remove(mutationPath);
+                    fileSystem.DeleteFile(mutation.Path);
+                    files.Remove(mutation.Path);
                     break;
 
                 case SyntheticFileMutationKind.Rename:
-                    var targetRelativePath = RelativePath.Parse(mutation.TargetPath!);
+                    var targetRelativePath = mutation.TargetPath!.Value;
                     fileSystem.CreateDirectory(targetRelativePath.Parent ?? RelativePath.Root);
-                    File.Move(rootDirectory.Resolve(mutationPath), rootDirectory.Resolve(targetRelativePath));
+                    File.Move((rootDirectory / mutation.Path).ToString(), (rootDirectory / targetRelativePath).ToString());
 
-                    var existingHash = files[mutationPath];
-                    files.Remove(mutationPath);
+                    var existingHash = files[mutation.Path];
+                    files.Remove(mutation.Path);
                     files[targetRelativePath] = existingHash;
                     break;
 
                 case SyntheticFileMutationKind.ChangeContent:
                 case SyntheticFileMutationKind.Add:
                     var bytes = CreateBytes(seed, mutation.ReplacementContentId!, mutation.ReplacementSizeBytes!.Value);
-                    await fileSystem.WriteAllBytesAsync(mutationPath, bytes, CancellationToken.None);
-                    files[mutationPath] = encryption.ComputeHash(bytes);
+                    await fileSystem.WriteAllBytesAsync(mutation.Path, bytes, CancellationToken.None);
+                    files[mutation.Path] = encryption.ComputeHash(bytes);
                     break;
 
                 default:

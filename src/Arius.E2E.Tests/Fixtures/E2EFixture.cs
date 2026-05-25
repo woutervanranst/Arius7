@@ -55,9 +55,9 @@ internal sealed class E2EFixture : IAsyncDisposable
     internal RelativeFileSystem    LocalFileSystem   => Repository.LocalFileSystem;
     internal RelativeFileSystem    RestoreFileSystem => Repository.RestoreFileSystem;
 
-    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, Action<LocalDirectory>? deleteTempRoot = null, CancellationToken cancellationToken = default)
+    public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, CancellationToken cancellationToken = default)
     {
-        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, deleteTempRoot: deleteTempRoot, cancellationToken: cancellationToken);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, cancellationToken: cancellationToken);
 
         return new E2EFixture(accountName, containerName, defaultTier, repository);
     }

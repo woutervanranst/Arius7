@@ -23,7 +23,6 @@ internal static class RepresentativeWorkflowRunner
             context.ContainerName,
             BlobTier.Cool,
             tempRoot: fixtureRoot,
-            deleteTempRoot: static _ => { },
             cancellationToken: cancellationToken);
     }
 

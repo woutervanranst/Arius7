@@ -31,7 +31,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly bool                              _resetLocalCacheOnDispose;
     private readonly bool                              _ownsTempRoot;
     private readonly IMediator                         _mediator;
-    private readonly Action<LocalDirectory>            _deleteTempRoot;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
@@ -53,8 +52,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string account,
         string containerName,
         bool resetLocalCacheOnDispose = true,
-        bool ownsTempRoot = true,
-        Action<LocalDirectory>? deleteTempRoot = null)
+        bool ownsTempRoot = true)
     {
         BlobContainer             = blobContainer;
         Encryption                = encryption;
@@ -71,7 +69,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         _container                = containerName;
         _resetLocalCacheOnDispose = resetLocalCacheOnDispose;
         _ownsTempRoot             = ownsTempRoot;
-        _deleteTempRoot           = deleteTempRoot ?? (path => Directory.Delete(path.ToString(), recursive: true));
         _mediator                 = Substitute.For<IMediator>();
     }
 
@@ -108,9 +105,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Rooted filesystem for the restore directory used by restore-oriented tests.</summary>
     internal RelativeFileSystem RestoreFileSystem { get; }
 
-    /// <summary>Parent temporary directory that contains the source and restore directories.</summary>
-    public string TempRoot => _tempDirectory.ToString();
-
     /// <summary>Substitute mediator shared by handler factories so tests can inspect or ignore published events.</summary>
     public IMediator Mediator => _mediator;
 
@@ -134,7 +128,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         string? passphrase = null,
         LocalDirectory? tempRoot = null,
         bool resetLocalCacheOnDispose = true,
-        Action<LocalDirectory>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
@@ -144,7 +137,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot, deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot));
     }
 
     /// <summary>
@@ -159,7 +152,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         IEncryptionService encryption,
         LocalDirectory? tempRoot = null,
         bool resetLocalCacheOnDispose = true,
-        Action<LocalDirectory>? deleteTempRoot = null,
         CancellationToken cancellationToken = default)
     {
         var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
@@ -169,7 +161,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
         var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
 
-        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot, deleteTempRoot));
+        return Task.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot));
     }
 
     /// <summary>
@@ -241,7 +233,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             await ResetLocalCacheAsync(_account, _container);
 
         if (_ownsTempRoot)
-            _deleteTempRoot(_tempDirectory);
+            new RelativeFileSystem(_tempDirectory).DeleteDirectory(_tempDirectory, true);
     }
 
     private static (LocalDirectory TempRoot, LocalDirectory SourceRoot, LocalDirectory RestoreDestinationRoot, bool OwnsTempRoot) CreateTempRoots(LocalDirectory? tempRoot = null)

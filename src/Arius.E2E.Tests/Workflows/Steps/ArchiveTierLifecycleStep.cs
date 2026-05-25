@@ -87,8 +87,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         await UploadReadyRehydratedChunkAsync(azureBlobContainer, targetChunk, cancellationToken);
 
         var cleanupDeletedChunks = 0;
-        var readyRestoreRoot = state.WorkflowDirectory.Resolve(RelativePath.Parse("archive-tier-ready"));
-        var readyRestoreDirectory = LocalDirectory.Parse(readyRestoreRoot);
+        var readyRestoreDirectory = state.WorkflowDirectory / "archive-tier-ready";
         var readyRestoreFileSystem = new RelativeFileSystem(readyRestoreDirectory);
         readyRestoreFileSystem.CreateDirectory(RelativePath.Root);
 
@@ -98,7 +97,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             // and that it cleans up the temporary rehydrated blob afterward.
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = readyRestoreRoot,
+                RootDirectory = readyRestoreDirectory.ToString(),
                 TargetPath = targetChunk.TargetRelativePath,
                 Overwrite = true,
                 ConfirmCleanup = (count, _, _) =>

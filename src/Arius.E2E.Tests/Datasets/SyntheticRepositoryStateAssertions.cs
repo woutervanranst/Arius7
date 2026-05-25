@@ -6,9 +6,9 @@ namespace Arius.E2E.Tests.Datasets;
 
 internal static class SyntheticRepositoryStateAssertions
 {
-    public static async Task AssertMatchesDiskTreeAsync(SyntheticRepositoryState expected, string rootPath, IEncryptionService encryption, bool includePointerFiles)
+    public static async Task AssertMatchesDiskTreeAsync(SyntheticRepositoryState expected, LocalDirectory rootDirectory, IEncryptionService encryption, bool includePointerFiles)
     {
-        var fileSystem = new RelativeFileSystem(LocalDirectory.Parse(rootPath));
+        var fileSystem = new RelativeFileSystem(rootDirectory);
         var actual = new Dictionary<RelativePath, ContentHash>();
 
         foreach (var file in fileSystem.EnumerateFiles())
