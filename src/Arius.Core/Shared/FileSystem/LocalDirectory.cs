@@ -72,6 +72,9 @@ internal readonly record struct LocalDirectory
         return RelativePath.TryParse(relative, out relativePath);
     }
 
+    public bool TryGetRelativePath(LocalDirectory hostPath, out RelativePath relativePath)
+        => TryGetRelativePath(hostPath.Value, out relativePath);
+
     /// <summary>
     /// Resolves a repository-relative path under this local root and rejects root escape.
     /// </summary>
