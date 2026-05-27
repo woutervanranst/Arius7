@@ -105,7 +105,7 @@ public class RelativeFileSystemTests
         Directory.Exists(cacheDirectoryPath).ShouldBeTrue();
         _fileSystem.DirectoryExists(cacheDirectory).ShouldBeTrue();
 
-        RelativeFileSystem.DeleteDirectory(cacheDirectory, recursive: true);
+        RelativeFileSystem.DeleteDirectory(_rootDirectory, cacheDirectory, recursive: true);
 
         Directory.Exists(cacheDirectoryPath).ShouldBeFalse();
         _fileSystem.DirectoryExists(cacheDirectory).ShouldBeFalse();
@@ -195,7 +195,7 @@ public class RelativeFileSystemTests
 
         await _fileSystem.WriteAllBytesAsync(temp, [1, 2, 3], CancellationToken.None);
 
-        await _fileSystem.ReplaceFileAtomicallyAsync(temp, destination, CancellationToken.None);
+        _fileSystem.ReplaceFileAtomically(temp, destination);
 
         File.Exists(tempPath).ShouldBeFalse();
         File.ReadAllBytes(destinationPath).ShouldBe([1, 2, 3]);

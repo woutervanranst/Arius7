@@ -80,9 +80,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            // clean up disk cache
-            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
-            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
+            //// clean up disk cache
+            //var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
+            //RelativeFileSystem.DeleteDirectory(_rootDirectory, cacheDir, recursive: true);
         }
     }
 
@@ -125,8 +125,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
-            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
+            //var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
+            //RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
 
@@ -162,8 +162,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
-            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
+            //var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
+            //RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
 

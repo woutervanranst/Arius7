@@ -229,7 +229,7 @@ public sealed class FileTreeService
         try
         {
             await _diskCacheFileSystem.WriteAllBytesAsync(tempPath, plaintext.ToArray(), cancellationToken);
-            await _diskCacheFileSystem.ReplaceFileAtomicallyAsync(tempPath, diskPath, cancellationToken);
+            _diskCacheFileSystem.ReplaceFileAtomically(tempPath, diskPath);
         }
         finally
         {

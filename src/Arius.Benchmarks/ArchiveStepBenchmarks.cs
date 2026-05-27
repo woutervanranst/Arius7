@@ -29,7 +29,7 @@ public class ArchiveStepBenchmarks
 
         _definition         = SyntheticRepositoryDefinitionFactory.Create(SyntheticRepositoryProfile.Representative);
         _preparedSourceRoot = TestTempRoots.CreateDirectory("benchmark-source");
-        new RelativeFileSystem(_preparedSourceRoot).CreateDirectory(RelativePath.Root);
+        RelativeFileSystem.CreateDirectory(_preparedSourceRoot, RelativePath.Root);
 
         await SyntheticRepositoryMaterializer.MaterializeV1Async(
             _definition,
@@ -62,7 +62,7 @@ public class ArchiveStepBenchmarks
             _context.AccountName,
             _context.ContainerName);
 
-        RelativeFileSystem.DeleteDirectory(_fixture.LocalDirectory, true);
+        RelativeFileSystem.DeleteDirectory(_fixture.LocalDirectory, RelativePath.Root, true);
 
         FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalDirectory);
     }
