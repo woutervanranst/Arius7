@@ -1,16 +1,8 @@
-using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.E2E.Tests.Datasets;
 using Arius.Tests.Shared.Fixtures;
-using Azure.Storage.Blobs;
 
 namespace Arius.E2E.Tests.Fixtures;
 
@@ -57,12 +49,12 @@ internal sealed class E2EFixture : IAsyncDisposable
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, CancellationToken cancellationToken = default)
     {
-        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false, cancellationToken: cancellationToken);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false);
 
         return new E2EFixture(accountName, containerName, defaultTier, repository);
     }
 
-    public static Task ResetLocalCacheAsync(string accountName, string containerName)
+    public static void ResetLocalCache(string accountName, string containerName)
     {
         lock (RepositoryCacheLeaseLock)
         {
@@ -72,7 +64,7 @@ internal sealed class E2EFixture : IAsyncDisposable
                     $"Cannot reset local repository cache for account '{accountName}' and container '{containerName}' because an active lease exists. Dispose the active fixture before resetting the cache so workflow transitions remain explicit.");
             }
 
-            return RepositoryTestFixture.DeleteLocalCacheDirectoryAsync(accountName, containerName);
+            RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
         }
     }
 
@@ -118,49 +110,8 @@ internal sealed class E2EFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
-        Exception? tempRootDeletionException = null;
-        try
-        {
-            await Repository.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            tempRootDeletionException = ex;
-        }
-
-        if (ShouldResetCacheOnDispose())
-            await ResetLocalCacheAsync(_account, _container);
-
-        if (tempRootDeletionException is not null)
-            throw tempRootDeletionException;
-
+        await Repository.DisposeAsync();
         await Task.CompletedTask;
-    }
-
-    private bool ShouldResetCacheOnDispose()
-    {
-        lock (RepositoryCacheLeaseLock)
-        {
-            var cacheKey = GetRepositoryCacheKey(_account, _container);
-            if (!RepositoryCacheLeases.TryGetValue(cacheKey, out var lease))
-                return true;
-
-            lease.LiveFixtureCount--;
-
-            if (lease.LiveFixtureCount > 0)
-            {
-                RepositoryCacheLeases[cacheKey] = lease;
-                return false;
-            }
-
-            RepositoryCacheLeases.Remove(cacheKey);
-            return !lease.PreserveRequested;
-        }
     }
 
     private static bool HasActiveLease(string accountName, string containerName)

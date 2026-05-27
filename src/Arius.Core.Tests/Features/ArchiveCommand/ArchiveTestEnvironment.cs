@@ -153,6 +153,6 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     {
         RootFileSystem.DeleteDirectory(RelativePath.Root, true);
         
-        RepositoryTestFixture.ResetLocalCacheAsync(AccountName, _containerName).GetAwaiter().GetResult();
+        RepositoryTestFixture.DeleteLocalCacheDirectory(AccountName, _containerName);
     }
 }

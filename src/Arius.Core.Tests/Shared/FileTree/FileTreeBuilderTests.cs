@@ -1,13 +1,12 @@
-using Arius.Core.Shared;
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using System.Runtime.CompilerServices;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Fixtures;
+using System.Runtime.CompilerServices;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -15,24 +14,15 @@ public class FileTreeBuilderTests
 {
     private static readonly PlaintextPassthroughService s_enc = new();
 
-    private static async Task<(FileTreeStagingSession Session, LocalDirectory StagingRoot)> CreateStagingAsync(string accountName, string containerName, params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
+    private static async Task<(FileTreeStagingSession Session, LocalDirectory StagingRoot)> CreateStagingAsync(RepositoryTestFixture fixture, params (string Path, ContentHash Hash, DateTimeOffset Created, DateTimeOffset Modified)[] files)
     {
-        var       cacheDir = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        var       session  = await FileTreeStagingSession.OpenAsync(cacheDir);
-        using var writer   = new FileTreeStagingWriter(session.StagingRoot);
+        var       session = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        using var writer  = new FileTreeStagingWriter(session.StagingRoot);
 
         foreach (var file in files)
             await writer.AppendFileEntryAsync(RelativePath.Parse(file.Path), file.Hash, file.Created, file.Modified);
 
         return (session, session.StagingRoot);
-    }
-
-    private static FileTreeBuilder CreateBuilder(IBlobContainerService blobs, string accountName, string containerName, out FileTreeService fileTreeService) 
-    {
-        var index = new ChunkIndexService(blobs, s_enc, accountName, containerName);
-        fileTreeService = new FileTreeService(blobs, s_enc, index, accountName, containerName);
-
-        return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
     private static async Task WriteNodeLinesAsync(LocalDirectory stagingRoot, PathSegment directoryId, params string[] lines)
@@ -45,24 +35,15 @@ public class FileTreeBuilderTests
     {
         const string accountName = "account-empty";
         const string cont        = "container-empty";
-        var          cacheDir    = RepositoryPaths.GetFileTreeCacheRoot(accountName, cont);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, cont, s_enc);
 
-        try
-        {
-            var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, cont, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(RepositoryPaths.GetFileTreeCacheRoot(accountName, cont));
-            var             root           = await builder.SynchronizeAsync(stagingSession.StagingRoot);
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
 
-            root.ShouldBeNull();
-            blobs.Uploaded.ShouldBeEmpty();
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        root.ShouldBeNull();
+        ((FakeRecordingBlobContainerService)fixture.BlobContainer).Uploaded.ShouldBeEmpty();
     }
 
     [Test]
@@ -70,28 +51,19 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acct-single";
         const string containerName = "cont-single";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        try
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var (stagingSession, stagingRoot) = await CreateStagingAsync(fixture, ("readme.txt", FakeContentHash('b'), now, now));
+
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+        await using (stagingSession)
         {
-            var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var (stagingSession, stagingRoot) = await CreateStagingAsync(accountName, containerName, ("readme.txt", FakeContentHash('b'), now, now));
+            var root = await builder.SynchronizeAsync(stagingRoot);
 
-            var blobs   = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-            await using (stagingSession)
-            {
-                var root = await builder.SynchronizeAsync(stagingRoot);
-
-                root.ShouldNotBeNull();
-                blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
-            }
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            root.ShouldNotBeNull();
+            ((FakeRecordingBlobContainerService)fixture.BlobContainer).Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
     }
 
@@ -100,78 +72,54 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acct-single-relative";
         const string containerName = "cont-single-relative";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        try
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        using (var writer = new FileTreeStagingWriter(stagingSession.StagingRoot))
         {
-            var             now            = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName));
-            using (var writer = new FileTreeStagingWriter(stagingSession.StagingRoot))
-            {
-                await writer.AppendFileEntryAsync(RelativePath.Parse("docs/readme.txt"), FakeContentHash('b'), now, now);
-            }
-
-            var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-
-            var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
-
-            root.ShouldNotBeNull();
-            blobs.Uploaded.Count.ShouldBeGreaterThanOrEqualTo(2);
+            await writer.AppendFileEntryAsync(RelativePath.Parse("docs/readme.txt"), FakeContentHash('b'), now, now);
         }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+
+        var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
+
+        root.ShouldNotBeNull();
+        ((FakeRecordingBlobContainerService)fixture.BlobContainer).Uploaded.Count.ShouldBeGreaterThanOrEqualTo(2);
     }
 
     [Test]
     public async Task SynchronizeAsync_IdenticalManifest_SameRootHash()
     {
-        const string acct1  = "acc-identical-1", cont1 = "con-identical-1";
-        const string acct2  = "acc-identical-2", cont2 = "con-identical-2";
-        var          cache1 = RepositoryPaths.GetFileTreeCacheRoot(acct1, cont1);
-        var          cache2 = RepositoryPaths.GetFileTreeCacheRoot(acct2, cont2);
-        new RelativeFileSystem(cache1).DeleteDirectory(RelativePath.Root, recursive: true);
-        new RelativeFileSystem(cache2).DeleteDirectory(RelativePath.Root, recursive: true);
+        const string acct1 = "acc-identical-1";
+        const string cont1 = "con-identical-1";
+        const string acct2 = "acc-identical-2";
+        const string cont2 = "con-identical-2";
+        await using var fixture1 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct1, cont1, s_enc);
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct2, cont2, s_enc);
 
-        try
-        {
-            var now   = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await using var stagingSession1 = (await CreateStagingAsync(
-                acct1,
-                cont1,
-                ("photos/a.jpg", FakeContentHash('c'), now, now),
-                ("photos/b.jpg", FakeContentHash('d'), now, now),
-                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
-            var stagingRoot1 = stagingSession1.StagingRoot;
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        await using var stagingSession1 = (await CreateStagingAsync(
+            fixture1,
+            ("photos/a.jpg", FakeContentHash('c'), now, now),
+            ("photos/b.jpg", FakeContentHash('d'), now, now),
+            ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
+        await using var stagingSession2 = (await CreateStagingAsync(
+            fixture2,
+            ("photos/a.jpg", FakeContentHash('c'), now, now),
+            ("photos/b.jpg", FakeContentHash('d'), now, now),
+            ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
 
-            await using var stagingSession2 = (await CreateStagingAsync(
-                acct2,
-                cont2,
-                ("photos/a.jpg", FakeContentHash('c'), now, now),
-                ("photos/b.jpg", FakeContentHash('d'), now, now),
-                ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
-            var stagingRoot2 = stagingSession2.StagingRoot;
+        var builder1 = new FileTreeBuilder(s_enc, fixture1.FileTreeService);
+        var builder2 = new FileTreeBuilder(s_enc, fixture2.FileTreeService);
+        await fixture1.FileTreeService.ValidateAsync();
+        await fixture2.FileTreeService.ValidateAsync();
+        var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
+        var root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
 
-            var blobs1   = new FakeRecordingBlobContainerService();
-            var blobs2   = new FakeRecordingBlobContainerService();
-            var builder1 = CreateBuilder(blobs1, acct1, cont1, out var fileTreeService1);
-            var builder2 = CreateBuilder(blobs2, acct2, cont2, out var fileTreeService2);
-            await fileTreeService1.ValidateAsync();
-            await fileTreeService2.ValidateAsync();
-            var root1    = await builder1.SynchronizeAsync(stagingRoot1);
-            var root2    = await builder2.SynchronizeAsync(stagingRoot2);
-
-            root1.ShouldBe(root2);
-        }
-        finally
-        {
-            new RelativeFileSystem(cache1).DeleteDirectory(RelativePath.Root, recursive: true);
-            new RelativeFileSystem(cache2).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        root1.ShouldBe(root2);
     }
 
     [Test]
@@ -179,40 +127,31 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-meta";
         const string containerName = "con-meta";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
+        var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var now2  = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        FileTreeHash? root1;
+        await using (var stagingSession1 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now1) ])).Session)
         {
-            var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var now2  = new DateTimeOffset(2025, 1, 1,  0,  0, 0, TimeSpan.Zero);
-
-            var blobs1 = new FakeRecordingBlobContainerService();
-            var blobs2 = new FakeRecordingBlobContainerService();
-            FileTreeHash? root1;
-            await using (var stagingSession1 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('f'), now1, now1))).Session)
-            {
-                var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
-                await fileTreeService1.ValidateAsync();
-                root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
-            }
-
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-
-            FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('f'), now1, now2))).Session)
-            {
-                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-                await fileTreeService2.ValidateAsync();
-                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
-            }
-
-            root1.ShouldNotBe(root2);
+            var builder1 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
-        finally
+
+        fixture.DeleteLocalCacheDirectory();
+        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+
+        FileTreeHash? root2;
+        await using (var stagingSession2 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now2) ])).Session)
         {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            var builder2 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
+
+        root1.ShouldNotBe(root2);
     }
 
     [Test]
@@ -220,41 +159,32 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-dup-file";
         const string containerName = "con-dup-file";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
+        var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
-            var first = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
-            {
-                Name = PathSegment.Parse("a.txt"),
-                ContentHash = FakeContentHash('a'),
-                Created = now,
-                Modified = now
-            });
-            var second = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
-            {
-                Name = PathSegment.Parse("a.txt"),
-                ContentHash = FakeContentHash('b'),
-                Created = now,
-                Modified = now
-            });
-
-            await using var stagingSession = await FileTreeStagingSession.OpenAsync(RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName));
-            await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
-
-            var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
-
-            await Should.ThrowAsync<InvalidOperationException>(() => builder.SynchronizeAsync(stagingSession.StagingRoot));
-        }
-        finally
+            Name = PathSegment.Parse("a.txt"),
+            ContentHash = FakeContentHash('a'),
+            Created = now,
+            Modified = now
+        });
+        var second = FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
         {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+            Name = PathSegment.Parse("a.txt"),
+            ContentHash = FakeContentHash('b'),
+            Created = now,
+            Modified = now
+        });
+
+        await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
+
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => builder.SynchronizeAsync(stagingSession.StagingRoot));
     }
 
     [Test]
@@ -303,67 +233,51 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-dup-dir";
         const string containerName = "con-dup-dir";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
-        {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
-            var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
+        var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
 
-            await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName));
-            await WriteNodeLinesAsync(
-                stagingSession1.StagingRoot,
-                rootId,
-                $"{childId} D photos/",
-                $"{childId} D photos/");
-            await WriteNodeLinesAsync(
-                stagingSession1.StagingRoot,
-                childId,
-                FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
-                {
-                    Name = PathSegment.Parse("a.jpg"),
-                    ContentHash = FakeContentHash('c'),
-                    Created = now,
-                    Modified = now
-                }));
+        await using var stagingSession1 = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        await WriteNodeLinesAsync(stagingSession1.StagingRoot, rootId, [ $"{childId} D photos/", $"{childId} D photos/" ]);
+        await WriteNodeLinesAsync(
+            stagingSession1.StagingRoot,
+            childId,
+            FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
+            {
+                Name = PathSegment.Parse("a.jpg"),
+                ContentHash = FakeContentHash('c'),
+                Created = now,
+                Modified = now
+            }));
 
-            var blobs1 = new FakeRecordingBlobContainerService();
-            var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
-            await fileTreeService1.ValidateAsync();
-            var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
+        var builder1 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+        var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
 
-            await stagingSession1.DisposeAsync();
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await stagingSession1.DisposeAsync();
+        fixture.DeleteLocalCacheDirectory();
+        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
 
-            await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName));
-            await WriteNodeLinesAsync(
-                stagingSession2.StagingRoot,
-                rootId,
-                $"{childId} D photos/");
-            await WriteNodeLinesAsync(
-                stagingSession2.StagingRoot,
-                childId,
-                FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
-                {
-                    Name = PathSegment.Parse("a.jpg"),
-                    ContentHash = FakeContentHash('c'),
-                    Created = now,
-                    Modified = now
-                }));
+        await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
+        await WriteNodeLinesAsync(stagingSession2.StagingRoot, rootId, [ $"{childId} D photos/" ]);
+        await WriteNodeLinesAsync(
+            stagingSession2.StagingRoot,
+            childId,
+            FileTreeSerializer.SerializePersistedFileEntryLine(new FileEntry
+            {
+                Name = PathSegment.Parse("a.jpg"),
+                ContentHash = FakeContentHash('c'),
+                Created = now,
+                Modified = now
+            }));
 
-            var blobs2 = new FakeRecordingBlobContainerService();
-            var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-            await fileTreeService2.ValidateAsync();
-            var root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
+        var builder2 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+        var root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
 
-            root1.ShouldBe(root2);
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        root1.ShouldBe(root2);
     }
 
     [Test]
@@ -371,33 +285,24 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-blocked-uploads";
         const string containerName = "con-blocked-uploads";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);
 
-        try
-        {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("photos/a.jpg", FakeContentHash('d'), now, now),
-                ("docs/b.jpg", FakeContentHash('e'), now, now))).Session;
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        await using var stagingSession = (await CreateStagingAsync(
+            fixture,
+            ("photos/a.jpg", FakeContentHash('d'), now, now),
+            ("docs/b.jpg", FakeContentHash('e'), now, now))).Session;
 
-            var blobs = new BlockingFileTreeUploadBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
+        var blobs = (BlockingFileTreeUploadBlobContainerService)fixture.BlobContainer;
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
 
-            var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
+        var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
 
-            (await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(5))).ShouldBeTrue();
-            blobs.AllowUploads();
+        (await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(5))).ShouldBeTrue();
+        blobs.AllowUploads();
 
-            (await syncTask).ShouldNotBeNull();
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        (await syncTask).ShouldNotBeNull();
     }
 
     [Test]
@@ -405,44 +310,36 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc";
         const string containerName = "con";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
+        var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        FileTreeHash? root;
+        await using (var stagingSession1 = (await CreateStagingAsync(fixture, ("file.txt", FakeContentHash('1'), now, now))).Session)
         {
-            var now   = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-
-            var blobs   = new FakeRecordingBlobContainerService();
-            FileTreeHash? root;
-            await using (var stagingSession1 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
-            {
-                var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService1);
-                await fileTreeService1.ValidateAsync();
-                root = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
-            }
-
-            var uploadCount1 = blobs.Uploaded.Count;
-            uploadCount1.ShouldBeGreaterThan(0);
-
-            var blobs2   = new FakeRecordingBlobContainerService();
-            foreach (var blobName in blobs.Uploaded)
-                blobs2.SeedRemoteBlob(blobName);
-
-            FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('1'), now, now))).Session)
-            {
-                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-                await fileTreeService2.ValidateAsync();
-                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
-            }
-
-            root2.ShouldBe(root);
-            blobs2.Uploaded.Count.ShouldBe(0);
+            var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
         }
-        finally
+
+        var firstBlobs = (FakeRecordingBlobContainerService)fixture.BlobContainer;
+        firstBlobs.Uploaded.Count.ShouldBeGreaterThan(0);
+
+        var blobs2 = new FakeRecordingBlobContainerService();
+        foreach (var blobName in firstBlobs.Uploaded)
+            blobs2.SeedRemoteBlob(blobName);
+
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs2, accountName, containerName, s_enc);
+        FileTreeHash? root2;
+        await using (var stagingSession2 = (await CreateStagingAsync(fixture2, ("file.txt", FakeContentHash('1'), now, now))).Session)
         {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            var builder2 = new FileTreeBuilder(s_enc, fixture2.FileTreeService);
+            await fixture2.FileTreeService.ValidateAsync();
+            root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
+
+        root2.ShouldBe(root);
+        blobs2.Uploaded.Count.ShouldBe(0);
     }
 
     [Test]
@@ -450,28 +347,19 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-unvalidated";
         const string containerName = "con-unvalidated";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
-        {
-            var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, ("file.txt", FakeContentHash('2'), now, now))).Session;
+        var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        await using var stagingSession = (await CreateStagingAsync(fixture, ("file.txt", FakeContentHash('2'), now, now))).Session;
 
-            var blobs = new FakeRecordingBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out _);
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await builder.SynchronizeAsync(stagingSession.StagingRoot));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await builder.SynchronizeAsync(stagingSession.StagingRoot));
 
-            ex.ShouldNotBeNull();
-            ex.Message.ShouldContain("ValidateAsync");
-            blobs.Uploaded.ShouldBeEmpty();
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        ex.ShouldNotBeNull();
+        ex.Message.ShouldContain("ValidateAsync");
+        ((FakeRecordingBlobContainerService)fixture.BlobContainer).Uploaded.ShouldBeEmpty();
     }
 
     [Test]
@@ -480,9 +368,8 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-parallel";
         const string containerName = "con-parallel";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
         ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);
 
         try
         {
@@ -490,15 +377,14 @@ public class FileTreeBuilderTests
 
             var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
             await using var stagingSession = (await CreateStagingAsync(
-                accountName,
-                containerName,
+                fixture,
                 ("photos/2024/june/a.jpg", FakeContentHash('7'), now, now),
                 ("photos/2024/june/b.jpg", FakeContentHash('8'), now, now),
                 ("docs/report.pdf", FakeContentHash('9'), now, now))).Session;
 
-            var blobs = new BlockingFileTreeUploadBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
+            var blobs = (BlockingFileTreeUploadBlobContainerService)fixture.BlobContainer;
+            var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
 
             var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
             var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(1));
@@ -512,8 +398,6 @@ public class FileTreeBuilderTests
         finally
         {
             ThreadPool.SetMinThreads(originalWorkerThreads, originalCompletionPortThreads);
-
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -522,37 +406,28 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-upload-failure";
         const string containerName = "con-upload-failure";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FaultingAndBlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);
 
-        try
-        {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            const string hexChars = "0123456789abcdef";
-            var files = Enumerable.Range(0, 32)
-                .Select(i => (
-                    Path: $"dir-{i:D2}/file.txt",
-                    Hash: FakeContentHash(hexChars[i % hexChars.Length]),
-                    Created: now,
-                    Modified: now))
-                .ToArray();
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        const string hexChars = "0123456789abcdef";
+        var files = Enumerable.Range(0, 32)
+            .Select(i => (
+                Path: $"dir-{i:D2}/file.txt",
+                Hash: FakeContentHash(hexChars[i % hexChars.Length]),
+                Created: now,
+                Modified: now))
+            .ToArray();
 
-            await using var stagingSession = (await CreateStagingAsync(accountName, containerName, files)).Session;
+        await using var stagingSession = (await CreateStagingAsync(fixture, files)).Session;
 
-            var blobs = new FaultingAndBlockingFileTreeUploadBlobContainerService();
-            var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-            await fileTreeService.ValidateAsync();
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await builder.SynchronizeAsync(stagingSession.StagingRoot).WaitAsync(TimeSpan.FromSeconds(5)));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await builder.SynchronizeAsync(stagingSession.StagingRoot).WaitAsync(TimeSpan.FromSeconds(5)));
 
-            ex.ShouldNotBeNull();
-            ex.Message.ShouldContain("Simulated filetree upload failure.");
-        }
-        finally
-        {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-        }
+        ex.ShouldNotBeNull();
+        ex.Message.ShouldContain("Simulated filetree upload failure.");
     }
 
     [Test]
@@ -668,55 +543,44 @@ public class FileTreeBuilderTests
 
         Should.Throw<FormatException>(() => FileTreeSerializer.ParseStagedNodeEntryLine($"{directoryId} D {name}"));
     }
-        
+
     [Test]
     public async Task SynchronizeAsync_NestedDirectories_ProducesStableRootHash()
     {
         const string accountName   = "acc-nested-core";
         const string containerName = "con-nested-core";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        FileTreeHash? root1;
+        await using (var stagingSession1 = (await CreateStagingAsync(
+            fixture,
+            ("a/b/c/file.txt", FakeContentHash('a'), now, now),
+            ("a/b/other.txt", FakeContentHash('b'), now, now),
+            ("z.txt", FakeContentHash('c'), now, now))).Session)
         {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var blobs = new FakeRecordingBlobContainerService();
-            FileTreeHash? root1;
-            await using (var stagingSession1 = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
-                ("a/b/other.txt", FakeContentHash('b'), now, now),
-                ("z.txt", FakeContentHash('c'), now, now))).Session)
-            {
-                var builder = CreateBuilder(blobs, accountName, containerName, out var fileTreeService);
-                await fileTreeService.ValidateAsync();
-                root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
-            }
-
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-
-            var blobs2 = new FakeRecordingBlobContainerService();
-            FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("a/b/c/file.txt", FakeContentHash('a'), now, now),
-                ("a/b/other.txt", FakeContentHash('b'), now, now),
-                ("z.txt", FakeContentHash('c'), now, now))).Session)
-            {
-                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-                await fileTreeService2.ValidateAsync();
-                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
-            }
-
-            root1.ShouldNotBeNull();
-            root2.ShouldBe(root1);
+            var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
         }
-        finally
+
+        fixture.DeleteLocalCacheDirectory();
+        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+
+        FileTreeHash? root2;
+        await using (var stagingSession2 = (await CreateStagingAsync(
+            fixture,
+            ("a/b/c/file.txt", FakeContentHash('a'), now, now),
+            ("a/b/other.txt", FakeContentHash('b'), now, now),
+            ("z.txt", FakeContentHash('c'), now, now))).Session)
         {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            var builder2 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
+
+        root1.ShouldNotBeNull();
+        root2.ShouldBe(root1);
     }
 
     [Test]
@@ -724,51 +588,39 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-ordering";
         const string containerName = "con-ordering";
-        var          cacheDir      = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
-        try
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        FileTreeHash? root1;
+        await using (var stagingSession1 = (await CreateStagingAsync(
+            fixture,
+            ("b.txt", FakeContentHash('1'), now, now),
+            ("a.txt", FakeContentHash('2'), now, now),
+            ("docs/z.txt", FakeContentHash('3'), now, now),
+            ("docs/a.txt", FakeContentHash('4'), now, now))).Session)
         {
-            var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
-            var blobs1 = new FakeRecordingBlobContainerService();
-            FileTreeHash? root1;
-            await using (var stagingSession1 = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("b.txt", FakeContentHash('1'), now, now),
-                ("a.txt", FakeContentHash('2'), now, now),
-                ("docs/z.txt", FakeContentHash('3'), now, now),
-                ("docs/a.txt", FakeContentHash('4'), now, now))).Session)
-            {
-                var builder1 = CreateBuilder(blobs1, accountName, containerName, out var fileTreeService1);
-                await fileTreeService1.ValidateAsync();
-                root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
-            }
-
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
-
-            var blobs2 = new FakeRecordingBlobContainerService();
-            FileTreeHash? root2;
-            await using (var stagingSession2 = (await CreateStagingAsync(
-                accountName,
-                containerName,
-                ("docs/a.txt", FakeContentHash('4'), now, now),
-                ("docs/z.txt", FakeContentHash('3'), now, now),
-                ("a.txt", FakeContentHash('2'), now, now),
-                ("b.txt", FakeContentHash('1'), now, now))).Session)
-            {
-                var builder2 = CreateBuilder(blobs2, accountName, containerName, out var fileTreeService2);
-                await fileTreeService2.ValidateAsync();
-                root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
-            }
-
-            root1.ShouldNotBeNull();
-            root2.ShouldBe(root1);
+            var builder1 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
-        finally
+
+        fixture.DeleteLocalCacheDirectory();
+        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+
+        FileTreeHash? root2;
+        await using (var stagingSession2 = (await CreateStagingAsync(
+            fixture,
+            ("docs/a.txt", FakeContentHash('4'), now, now),
+            ("docs/z.txt", FakeContentHash('3'), now, now),
+            ("a.txt", FakeContentHash('2'), now, now),
+            ("b.txt", FakeContentHash('1'), now, now))).Session)
         {
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            var builder2 = new FileTreeBuilder(s_enc, fixture.FileTreeService);
+            await fixture.FileTreeService.ValidateAsync();
+            root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
+
+        root1.ShouldNotBeNull();
+        root2.ShouldBe(root1);
     }
-
 }

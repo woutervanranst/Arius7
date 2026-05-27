@@ -16,7 +16,7 @@ namespace Arius.Integration.Tests.Pipeline;
 /// Per-test pipeline fixture: unique Azurite container, pre-wired archive/restore/list query handlers.
 /// Uses NSubstitute for IMediator (event capture not needed for most tests).
 /// </summary>
-public sealed class PipelineFixture : IAsyncDisposable
+internal sealed class PipelineFixture : IAsyncDisposable
 {
     public BlobContainerClient Container { get; }
     public RepositoryTestFixture Repository { get; }
@@ -46,7 +46,7 @@ public sealed class PipelineFixture : IAsyncDisposable
         CancellationToken ct = default)
     {
         var (container, svc) = await azurite.CreateTestServiceAsync(ct);
-        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(svc, Account, container.Name, passphrase, cancellationToken: ct);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(svc, Account, container.Name, passphrase);
         return new PipelineFixture(container, repository);
     }
 
@@ -77,7 +77,7 @@ public sealed class PipelineFixture : IAsyncDisposable
             blobContainer = created.Service;
         }
 
-        var repository = await RepositoryTestFixture.CreateWithEncryptionAsync(blobContainer, Account, container.Name, encryption, cancellationToken: ct);
+        var repository = await RepositoryTestFixture.CreateWithEncryptionAsync(blobContainer, Account, container.Name, encryption);
 
         return new PipelineFixture(container, repository);
     }

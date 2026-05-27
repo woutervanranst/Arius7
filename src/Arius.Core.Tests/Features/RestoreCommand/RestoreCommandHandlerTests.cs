@@ -82,7 +82,7 @@ public class RestoreCommandHandlerTests
         var accountName   = $"acct-restore-missing-{Guid.NewGuid():N}";
         var containerName = $"ctr-restore-missing-{Guid.NewGuid():N}";
 
-        await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+        RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
 
         try
         {
@@ -109,7 +109,7 @@ public class RestoreCommandHandlerTests
         }
         finally
         {
-            await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+            RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
         }
     }
 
@@ -256,7 +256,7 @@ public class RestoreCommandHandlerTests
         var restoreFileSystem = new RelativeFileSystem(restoreRootDirectory);
 
         restoreFileSystem.CreateDirectory(RelativePath.Root);
-        await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+        RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
 
         try
         {
@@ -297,7 +297,7 @@ public class RestoreCommandHandlerTests
         }
         finally
         {
-            await RepositoryTestFixture.ResetLocalCacheAsync(accountName, containerName);
+            RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
 
             restoreFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }

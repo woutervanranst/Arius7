@@ -22,72 +22,47 @@ namespace Arius.Tests.Shared.Fixtures;
 /// Unlike <see cref="AzuriteFixture"/>, this fixture represents one logical repository under test
 /// layered on top of in-memory, Azurite, Azure, or another blob container implementation.
 /// </summary>
-public sealed class RepositoryTestFixture : IAsyncDisposable
+internal sealed class RepositoryTestFixture : IAsyncDisposable
 {
-    internal const   string                            DefaultPassphrase  = "arius-test-passphrase";
-    private readonly LocalDirectory                    _tempDirectory;
-    private readonly string                            _account;
-    private readonly string                            _container;
-    private readonly bool                              _resetLocalCacheOnDispose;
-    private readonly bool                              _ownsTempRoot;
-    private readonly IMediator                         _mediator;
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
-
-    /// <summary>
-    /// Creates a fixture from already-constructed repository services.
-    /// Prefer the static factory methods unless a test needs full control over the service graph.
-    /// </summary>
-    private RepositoryTestFixture(
-        IBlobContainerService blobContainer,
-        IEncryptionService encryption,
-        ChunkIndexService index,
-        IChunkStorageService chunkStorage,
-        FileTreeService fileTreeService,
-        SnapshotService snapshot,
-        LocalDirectory tempRoot,
-        LocalDirectory localRoot,
-        LocalDirectory restoreRoot,
-        string account,
-        string containerName,
-        bool resetLocalCacheOnDispose = true,
-        bool ownsTempRoot = true)
-    {
-        BlobContainer             = blobContainer;
-        Encryption                = encryption;
-        Index                     = index;
-        ChunkStorage              = chunkStorage;
-        FileTreeService           = fileTreeService;
-        Snapshot                  = snapshot;
-        _tempDirectory            = tempRoot;
-        LocalDirectory            = localRoot;
-        RestoreDirectory          = restoreRoot;
-        LocalFileSystem           = new RelativeFileSystem(LocalDirectory);
-        RestoreFileSystem         = new RelativeFileSystem(RestoreDirectory);
-        _account                  = account;
-        _container                = containerName;
-        _resetLocalCacheOnDispose = resetLocalCacheOnDispose;
-        _ownsTempRoot             = ownsTempRoot;
-        _mediator                 = Substitute.For<IMediator>();
-    }
-
 
     /// <summary>
     /// Creates a fixture around a caller-provided blob container using normal passphrase encryption.
     /// Use this for pipeline-style tests that exercise the same encryption path as production while
     /// still controlling the storage boundary, such as Azurite-backed integration and E2E tests.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateWithPassphraseAsync(IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true, CancellationToken cancellationToken = default)
+    internal static ValueTask<RepositoryTestFixture> CreateWithPassphraseAsync(
+        IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, 
+        LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
     {
-        var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
-        var encryption      = new PassphraseEncryptionService(passphrase ?? DefaultPassphrase);
-        var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
-        var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
-        var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
-        var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        const string defaultPassphrase = "arius-test-passphrase";
+        var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
+        var encryption = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
+        var index      = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
 
-        return ValueTask.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot));
+        return ValueTask.FromResult(new RepositoryTestFixture
+        {
+            BlobContainer            = blobContainer,
+            Encryption               = encryption,
+            Index                    = index,
+            ChunkStorage             = new ChunkStorageService(blobContainer, encryption),
+            FileTreeService          = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
+            Snapshot                 = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            RepositoryRoot           = RepositoryPaths.GetRepositoryRoot(accountName, containerName),
+            ChunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName),
+            FileTreeCacheDirectory   = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName),
+            SnapshotCacheDirectory   = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName),
+            LocalDirectory           = localRoot,
+            RestoreDirectory         = restoreRoot,
+            LocalFileSystem          = new RelativeFileSystem(localRoot),
+            RestoreFileSystem        = new RelativeFileSystem(restoreRoot),
+            AccountName              = accountName,
+            ContainerName            = containerName,
+            ResetLocalCacheOnDispose = resetLocalCacheOnDispose,
+            Mediator                 = Substitute.For<IMediator>()
+        });
     }
 
     /// <summary>
@@ -95,16 +70,49 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this when a test must control encryption behavior explicitly, for example legacy-format
     /// compatibility tests or focused Core tests that seed serialized repository data directly.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateWithEncryptionAsync(IBlobContainerService blobContainer, string accountName, string containerName, IEncryptionService encryption, LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true, CancellationToken cancellationToken = default)
+    internal static ValueTask<RepositoryTestFixture> CreateWithEncryptionAsync(
+        IBlobContainerService blobContainer, string accountName, string containerName, 
+        IEncryptionService encryption, 
+        LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
     {
-        var (resolvedTempRoot, localRoot, restoreRoot, ownsTempRoot) = CreateTempRoots(tempRoot);
+        var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
 
-        var index           = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
-        var chunkStorage    = new ChunkStorageService(blobContainer, encryption);
-        var fileTreeService = new FileTreeService(blobContainer, encryption, index, accountName, containerName);
-        var snapshot        = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
 
-        return ValueTask.FromResult(new RepositoryTestFixture(blobContainer, encryption, index, chunkStorage, fileTreeService, snapshot, resolvedTempRoot, localRoot, restoreRoot, accountName, containerName, resetLocalCacheOnDispose, ownsTempRoot));
+        return ValueTask.FromResult(new RepositoryTestFixture
+        {
+            BlobContainer            = blobContainer,
+            Encryption               = encryption,
+            Index                    = index,
+            ChunkStorage             = new ChunkStorageService(blobContainer, encryption),
+            FileTreeService          = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
+            Snapshot                 = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            RepositoryRoot           = RepositoryPaths.GetRepositoryRoot(accountName, containerName),
+            ChunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName),
+            FileTreeCacheDirectory   = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName),
+            SnapshotCacheDirectory   = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName),
+            LocalDirectory           = localRoot,
+            RestoreDirectory         = restoreRoot,
+            LocalFileSystem          = new RelativeFileSystem(localRoot),
+            RestoreFileSystem        = new RelativeFileSystem(restoreRoot),
+            AccountName              = accountName,
+            ContainerName            = containerName,
+            ResetLocalCacheOnDispose = resetLocalCacheOnDispose,
+            Mediator                 = Substitute.For<IMediator>()
+        });
+    }
+
+    private static (LocalDirectory SourceRoot, LocalDirectory RestoreDestinationRoot) CreateTempRoots(LocalDirectory? tempRoot = null)
+    {
+        tempRoot ??= TestTempRoots.CreateDirectory("test");
+
+        var sourceDirectory  = tempRoot.Value / RelativePath.Parse("source");
+        var restoreDirectory = tempRoot.Value / RelativePath.Parse("restore");
+
+        Directory.CreateDirectory(sourceDirectory.ToString());
+        Directory.CreateDirectory(restoreDirectory.ToString());
+
+        return (sourceDirectory, restoreDirectory);
     }
 
     /// <summary>
@@ -112,7 +120,7 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this for Core tests that need a complete repository service graph without Azurite, real
     /// Azure behavior, or passphrase encryption semantics.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateInMemoryAsync(string? accountName = null, string? containerName = null, LocalDirectory? tempRoot = null, CancellationToken cancellationToken = default) 
+    internal static ValueTask<RepositoryTestFixture> CreateInMemoryAsync(string? accountName = null, string? containerName = null, LocalDirectory? tempRoot = null)
     {
         var blobContainer = new FakeInMemoryBlobContainerService();
         return CreateWithEncryptionAsync(
@@ -120,123 +128,110 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
             new PlaintextPassthroughService(),
-            tempRoot,
-            cancellationToken: cancellationToken);
+            tempRoot);
     }
+
+
+
+
+
+
+
+
+
+    
+
+
+
 
 
     /// <summary>
     /// Storage boundary shared by the repository services in this fixture instance.
     /// This is usually fresh per test even when the underlying backend process is shared.
     /// </summary>
-    public IBlobContainerService BlobContainer { get; }
+    public required IBlobContainerService BlobContainer { get; init; }
 
     /// <summary>Encryption service used for repository serialization and chunk payloads.</summary>
-    public IEncryptionService Encryption { get; }
+    public required IEncryptionService Encryption { get; init; }
 
     /// <summary>Chunk index service used for content-to-chunk lookup and mutation.</summary>
-    public ChunkIndexService Index { get; }
+    public required ChunkIndexService Index { get; init; }
 
     /// <summary>Chunk storage service used by archive and restore handlers.</summary>
-    public IChunkStorageService ChunkStorage { get; }
+    public required IChunkStorageService ChunkStorage { get; init; }
 
     /// <summary>Filetree service used for reading and writing repository structure.</summary>
-    public FileTreeService FileTreeService { get; }
+    public required FileTreeService FileTreeService { get; init; }
 
     /// <summary>Snapshot service used for creating, listing, and resolving snapshots.</summary>
-    public SnapshotService Snapshot { get; }
+    public required SnapshotService Snapshot { get; init; }
 
     /// <summary>Typed source directory used by archive-oriented tests.</summary>
-    internal LocalDirectory LocalDirectory { get; }
+    internal required LocalDirectory LocalDirectory { get; init; }
 
     /// <summary>Typed restore destination directory used by restore-oriented tests.</summary>
-    internal LocalDirectory RestoreDirectory { get; }
+    public required LocalDirectory RestoreDirectory { get; init; }
+
+    internal required LocalDirectory RepositoryRoot { get; init; }
+
+    internal required LocalDirectory ChunkIndexCacheDirectory { get; init; }
+
+    internal required LocalDirectory FileTreeCacheDirectory { get; init; }
+
+    internal required LocalDirectory SnapshotCacheDirectory { get; init; }
 
     /// <summary>Rooted filesystem for the source directory used by archive-oriented tests.</summary>
-    internal RelativeFileSystem LocalFileSystem { get; }
+    internal required RelativeFileSystem LocalFileSystem { get; init; }
 
     /// <summary>Rooted filesystem for the restore directory used by restore-oriented tests.</summary>
-    internal RelativeFileSystem RestoreFileSystem { get; }
+    internal required RelativeFileSystem RestoreFileSystem { get; init; }
 
     /// <summary>Substitute mediator shared by handler factories so tests can inspect or ignore published events.</summary>
-    public IMediator Mediator => _mediator;
+    public required IMediator Mediator { get; init; }
 
     /// <summary>Repository account name used for cache paths and service wiring.</summary>
-    public string AccountName => _account;
+    public required string AccountName { get; init; }
 
     /// <summary>Repository container name used for cache paths and service wiring.</summary>
-    public string ContainerName => _container;
+    public required string ContainerName { get; init; }
+
+    public required bool ResetLocalCacheOnDispose { get; init; }
 
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 
 
+
     /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
-    public ArchiveCommandHandler CreateArchiveHandler() 
-        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _archiveLogger, _account, _container);
+    public ArchiveCommandHandler CreateArchiveHandler()
+        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
-    public RestoreCommandHandler CreateRestoreHandler() 
-        => new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, _mediator, _restoreLogger, _account, _container);
+    public RestoreCommandHandler CreateRestoreHandler()
+        => new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
     public ListQueryHandler CreateListQueryHandler()
-        => new(Index, FileTreeService, Snapshot, _listLogger, _account, _container);
+        => new(Index, FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+
 
 
     /// <summary>
-     /// Deletes the local repository cache directory for the supplied account/container pair.
-     /// Use this when a test creates repository services directly but still needs standard cache cleanup.
-     /// </summary>
-    public static Task ResetLocalCacheAsync(string accountName, string containerName)
-        => DeleteLocalCacheDirectoryAsync(accountName, containerName);
-
-    internal static Task DeleteLocalCacheDirectoryAsync(string accountName, string containerName)
-        => DeleteLocalCacheDirectoryAsync(RepositoryPaths.GetRepositoryRoot(accountName, containerName));
-
-    internal static Task DeleteLocalCacheDirectoryAsync(LocalDirectory cacheDir)
+    /// Deletes the local repository cache directory for the supplied account/container pair.
+    /// Use this when a test creates repository services directly but still needs standard cache cleanup.
+    /// </summary>
+    public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        var cacheFileSystem = new RelativeFileSystem(cacheDir);
-
-        try
-        {
-            cacheFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-        }
-
-        return Task.CompletedTask;
+        Directory.Delete(RepositoryPaths.GetRepositoryRoot(accountName, containerName).ToString(), true);
     }
 
-    /// <summary>
-    /// Releases the chunk index and removes both fixture temp directories and repository cache directories.
-    /// </summary>
-    public async ValueTask DisposeAsync()
+    public void DeleteLocalCacheDirectory()
+    {
+        Directory.Delete(FileTreeCacheDirectory.ToString(), true);
+    }
+
+    public ValueTask DisposeAsync()
     {
         Index.Dispose();
-        if (_resetLocalCacheOnDispose)
-            await ResetLocalCacheAsync(_account, _container);
-
-        if (_ownsTempRoot)
-            new RelativeFileSystem(_tempDirectory).DeleteDirectory(_tempDirectory, true);
-    }
-
-    private static (LocalDirectory TempRoot, LocalDirectory SourceRoot, LocalDirectory RestoreDestinationRoot, bool OwnsTempRoot) CreateTempRoots(LocalDirectory? tempRoot = null)
-    {
-        using var dirs             = new ManagedLocalDirectoriesFixture();
-        var       tempRootLocalDir = tempRoot ?? dirs.CreateOwnedDirectory("test");
-
-        var ownsTempRoot       = tempRoot is null;
-        if (!ownsTempRoot)
-            dirs.OwnDirectory(tempRootLocalDir);
-
-        var tempRootFileSystem = new RelativeFileSystem(tempRootLocalDir);
-        var sourceDirectory    = tempRootLocalDir / RelativePath.Parse("source");
-        var restoreDirectory   = tempRootLocalDir / RelativePath.Parse("restore");
-
-        tempRootFileSystem.CreateDirectory(RelativePath.Root);
-        tempRootFileSystem.CreateDirectory(sourceDirectory);
-        tempRootFileSystem.CreateDirectory(restoreDirectory);
-        return (tempRootLocalDir, sourceDirectory, restoreDirectory, ownsTempRoot);
+        return ValueTask.CompletedTask;
     }
 }

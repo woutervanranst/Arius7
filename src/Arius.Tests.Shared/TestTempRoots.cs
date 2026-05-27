@@ -12,4 +12,10 @@ internal static class TestTempRoots
 
         return LocalDirectory.Parse(Path.Combine(Path.GetTempPath(), FolderName, $"{prefix}-{Guid.NewGuid():N}"));
     }
+
+    [After(TestSession)]
+    public static void CleanupAllTempDirs()
+    {
+        Directory.Delete(Path.Combine(Path.GetTempPath(), FolderName), recursive: true);
+    }
 }
