@@ -136,7 +136,7 @@ public sealed class SnapshotService
     {
         _blobs        = blobs;
         _encryption   = encryption;
-        var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+        var diskCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
     }

@@ -121,11 +121,11 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     private static (LocalDirectory chunkIndexCacheDirectory, LocalDirectory fileTreeCacheDirectory, LocalDirectory snapshotCacheDirectory) CreateCacheFolders(string accountName, string containerName)
     {
-        var chunkIndexCacheDirectory          = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
-        var fileTreeCacheDirectory            = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        var snapshotCacheDirectory            = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+        var chunkIndexCacheDirectory          = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var fileTreeCacheDirectory            = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
+        var snapshotCacheDirectory            = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
 
-        var fs = new RelativeFileSystem(RepositoryPaths.GetRepositoryLocalPersistentTempRoot(accountName, containerName));
+        var fs = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName));
         
         fs.CreateDirectory(chunkIndexCacheDirectory);
         fs.CreateDirectory(fileTreeCacheDirectory);
@@ -232,7 +232,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        var repositoryRoot = RepositoryPaths.GetRepositoryLocalPersistentTempRoot(accountName, containerName).ToString();
+        var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
     }

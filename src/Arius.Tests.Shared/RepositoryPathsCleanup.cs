@@ -9,7 +9,7 @@ public class RepositoryPathsCleanup
     [Before(TestSession)]
     public static void CleanupUnitTestRepositoryCachesBeforeSession()
     {
-        var root = RepositoryPaths.GetRoot().ToString();
+        var root = RepositoryLocalStatePaths.GetAriusRoot().ToString();
 
         if (!Directory.Exists(root))
             return;

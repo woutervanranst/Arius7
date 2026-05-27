@@ -57,9 +57,9 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        var diskCacheRoot = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        var snapshotCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
-        var chunkIndexCacheRoot = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
+        var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
+        var chunkIndexCacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
 
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _snapshotCacheFileSystem = new RelativeFileSystem(snapshotCacheRoot);

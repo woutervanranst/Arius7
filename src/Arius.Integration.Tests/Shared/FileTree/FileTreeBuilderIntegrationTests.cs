@@ -35,7 +35,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         params (string Path, ContentHash Hash, DateTimeOffset Timestamp)[] files)
     {
-        var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, containerName);
+        var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, containerName);
         var session = await FileTreeStagingSession.OpenAsync(cacheDir);
         using var writer = new FileTreeStagingWriter(session.StagingRoot);
         foreach (var file in files)
@@ -81,7 +81,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             // clean up disk cache
-            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
             RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
@@ -125,7 +125,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
             RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
@@ -162,7 +162,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         }
         finally
         {
-            var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
+            var cacheDir = RepositoryLocalStatePaths.GetFileTreeCacheRoot(Account, container.Name);
             RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
