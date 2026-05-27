@@ -28,21 +28,21 @@ public static class RepositoryPaths
     internal static PathSegment GetRepoDirectoryName(string accountName, string containerName) 
         => GetRepositoryDirectoryName(accountName, containerName);
 
-    internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName)
+    internal static LocalDirectory GetRepositoryLocalPersistentTempRoot(string accountName, string containerName)
     {
         var homeRoot = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / PathSegment.Parse(".arius") / GetRepoDirectoryName(accountName, containerName)));
     }
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) 
-        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(chunkIndexCacheRelativePath));
+        => LocalDirectory.Parse(GetRepositoryLocalPersistentTempRoot(accountName, containerName).Resolve(chunkIndexCacheRelativePath));
 
     internal static LocalDirectory GetFileTreeCacheRoot(string accountName, string containerName) 
-        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(fileTreeCacheRelativePath));
+        => LocalDirectory.Parse(GetRepositoryLocalPersistentTempRoot(accountName, containerName).Resolve(fileTreeCacheRelativePath));
 
     internal static LocalDirectory GetSnapshotCacheRoot(string accountName, string containerName) 
-        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(snapshotCacheRelativePath));
+        => LocalDirectory.Parse(GetRepositoryLocalPersistentTempRoot(accountName, containerName).Resolve(snapshotCacheRelativePath));
 
     internal static LocalDirectory GetLogsRoot(string accountName, string containerName) 
-        => LocalDirectory.Parse(GetRepositoryRoot(accountName, containerName).Resolve(logsRelativePath));
+        => LocalDirectory.Parse(GetRepositoryLocalPersistentTempRoot(accountName, containerName).Resolve(logsRelativePath));
 }
