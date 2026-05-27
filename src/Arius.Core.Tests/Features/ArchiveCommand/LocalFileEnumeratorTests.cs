@@ -1,5 +1,4 @@
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.Hashes;
 using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;

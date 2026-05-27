@@ -1,5 +1,3 @@
-using Arius.Core.Shared.Hashes;
-
 namespace Arius.Core.Tests.Shared.Hashes;
 
 public class HashValueObjectTests

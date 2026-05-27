@@ -1,5 +1,3 @@
-using Arius.Core.Shared.Storage;
-
 namespace Arius.Core.Tests.Fakes;
 
 internal sealed class ThrowOnCreateBlobContainerService(string operationName) : IBlobContainerService

@@ -1,5 +1,4 @@
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

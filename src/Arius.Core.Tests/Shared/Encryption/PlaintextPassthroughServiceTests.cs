@@ -1,6 +1,4 @@
 using System.Security.Cryptography;
-using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Streaming;
 using Arius.Core.Tests.Shared.Streaming;
 

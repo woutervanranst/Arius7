@@ -1,7 +1,6 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using Arius.Core.Shared.Encryption;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 

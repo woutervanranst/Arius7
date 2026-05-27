@@ -1,10 +1,7 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Hashes;
-using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;

@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
 
 namespace Arius.Core.Tests.Shared.Encryption;
