@@ -82,7 +82,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         {
             // clean up disk cache
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
 
@@ -126,7 +126,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
 
@@ -163,7 +163,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         finally
         {
             var cacheDir = RepositoryPaths.GetFileTreeCacheRoot(Account, container.Name);
-            new RelativeFileSystem(cacheDir).DeleteDirectory(RelativePath.Root, recursive: true);
+            RelativeFileSystem.DeleteDirectory(cacheDir, recursive: true);
         }
     }
 
