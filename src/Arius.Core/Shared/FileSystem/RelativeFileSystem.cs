@@ -29,18 +29,16 @@ internal sealed class RelativeFileSystem
     }
 
     /// <summary>
-    /// Enumerates all files under the rooted directory as repository-relative entries.
+    /// Enumerates all files recursively under the rooted directory as repository-relative entries.
     /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles() => EnumerateFiles(_root.ToString(), SearchOption.AllDirectories);
+    public IEnumerable<LocalFileEntry> EnumerateFiles() => EnumerateFiles(RelativePath.Root, SearchOption.AllDirectories);
 
     /// <summary>
     /// Enumerates immediate child files of the provided relative path.
     /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path) => EnumerateFiles(_root.Resolve(path), SearchOption.TopDirectoryOnly);
-
-    private IEnumerable<LocalFileEntry> EnumerateFiles(string fullPath, SearchOption searchOption)
+    public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path, SearchOption searchOption)
     {
-        foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", searchOption))
+        foreach (var filePath in Directory.EnumerateFiles(_root.Resolve(path), "*", searchOption))
         {
             if (!_root.TryGetRelativePath(filePath, out var relativePath))
                 continue;

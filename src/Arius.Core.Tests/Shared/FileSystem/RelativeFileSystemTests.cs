@@ -250,6 +250,26 @@ public class RelativeFileSystemTests : IDisposable
     }
 
     [Test]
+    public void EnumerateFilesRecursively_ReturnsContainedFilesBelowRelativePath()
+    {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        Directory.CreateDirectory(Path.Combine(_root, "cache", "a", "nested"));
+        Directory.CreateDirectory(Path.Combine(_root, "other"));
+        File.WriteAllText(Path.Combine(_root, "cache", "a.txt"), "a");
+        File.WriteAllText(Path.Combine(_root, "cache", "a", "nested", "b.txt"), "b");
+        File.WriteAllText(Path.Combine(_root, "other", "c.txt"), "c");
+
+        var files = _fileSystem.EnumerateFilesRecursively(RelativePath.Parse("cache"))
+            .Select(entry => entry.Path)
+            .ToArray();
+
+        files.ShouldBe([
+            RelativePath.Parse("cache/a.txt"),
+            RelativePath.Parse("cache/a/nested/b.txt")
+        ], ignoreOrder: true);
+    }
+
+    [Test]
     public void OpenOrCreateFile_UsesTheProvidedModeWithinTheRootedFilesystem()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself

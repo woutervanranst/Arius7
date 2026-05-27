@@ -17,7 +17,7 @@ namespace Arius.E2E.Tests.Workflows.Steps;
 /// 3. verifying the pending rehydration path, then
 /// 4. restoring successfully from a ready rehydrated blob plus cleanup.
 /// </summary>
-internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath = "src") : IRepresentativeWorkflowStep
+internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath TargetPath) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
@@ -51,7 +51,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
 
         // 2. Pick one representative tar-backed file under the target subtree and preserve the
         // exact existing chunk blob so we can later stage it as a ready rehydrated blob.
-        var targetChunk = await IdentifyTargetTarChunkAsync(state.Fixture, RelativePath.Parse(TargetPath), cancellationToken);
+        var targetChunk = await IdentifyTargetTarChunkAsync(state.Fixture, TargetPath, cancellationToken);
 
         // 3. Force that existing chunk into archive tier.
         await MoveChunksToArchiveAsync(azureBlobContainer, targetChunk.ChunkHash, cancellationToken);
@@ -113,8 +113,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
             await AssertArchiveTierRestoreOutcomeAsync(
                 targetChunk,
                 state.Fixture.Encryption,
-                readyRestoreDirectory,
-                new RelativeFileSystem(readyRestoreDirectory));
+                readyRestoreFileSystem);
 
             cleanupDeletedChunks.ShouldBeGreaterThan(0, $"{Name}: ready restore should clean up rehydrated tar chunks.");
 
@@ -138,15 +137,14 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         {
             // Select one representative tar-backed file under the subtree and preserve the exact
             // existing chunk blob bytes/metadata so the ready path can reuse the real blob.
-            var targetRoot = fixture.LocalDirectory.Resolve(targetPath);
-
-            foreach (var filePath in Directory.EnumerateFiles(targetRoot, "*", SearchOption.AllDirectories))
+            foreach (var file in fixture.LocalFileSystem.EnumerateFiles(targetPath, SearchOption.AllDirectories))
             {
-                var bytes       = await File.ReadAllBytesAsync(filePath, cancellationToken); // todo use streaming
+                var relativePath = file.Path;
+                var bytes       = await fixture.LocalFileSystem.ReadAllBytesAsync(relativePath, cancellationToken); // todo use streaming
                 var contentHash = fixture.Encryption.ComputeHash(bytes);
                 var entry       = await fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);
 
-                entry.ShouldNotBeNull($"Expected chunk index entry for '{filePath}'.");
+                entry.ShouldNotBeNull($"Expected chunk index entry for '{relativePath}'.");
                 if (entry!.IsLargeChunk)
                     continue;
 
@@ -156,9 +154,6 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
 
                 var metadata = await fixture.BlobContainer.GetMetadataAsync(chunkBlobName, cancellationToken);
-                if (!fixture.LocalDirectory.TryGetRelativePath(filePath, out var relativePath))
-                    throw new InvalidOperationException($"Expected '{filePath}' to be contained within the local fixture root.");
-
                 return new ArchiveTierTargetChunk(relativePath, contentHash, entry.ChunkHash, preservedChunk.ToArray(), metadata.Metadata);
             }
 
@@ -192,13 +187,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, string TargetPath =
         static async Task AssertArchiveTierRestoreOutcomeAsync(
             ArchiveTierTargetChunk targetChunk,
             IEncryptionService encryption,
-            LocalDirectory readyRestoreDirectory,
             RelativeFileSystem readyRestoreFileSystem)
         {
-            var restoredPath = readyRestoreDirectory.Resolve(targetChunk.TargetRelativePath);
-            File.Exists(restoredPath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
+            readyRestoreFileSystem.FileExists(targetChunk.TargetRelativePath).ShouldBeTrue($"Expected restored file for {targetChunk.TargetRelativePath}");
 
-            await using var stream = File.OpenRead(restoredPath);
+            await using var stream = readyRestoreFileSystem.OpenRead(targetChunk.TargetRelativePath);
             var restoredHash = await encryption.ComputeHashAsync(stream);
             restoredHash.ShouldBe(targetChunk.ContentHash, $"Expected restored content for {targetChunk.TargetRelativePath}");
 

@@ -35,8 +35,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
     /// Archives a single small file and returns the chunk blob name used for that file,
     /// along with the fixture and the simulating service.
     /// </summary>
-    private static async Task<(PipelineFixture Fix, RehydrationSimulatingBlobService Sim, RelativePath ChunkBlobName)>
-        SetupArchivedFixtureAsync(AzuriteFixture azurite)
+    private static async Task<(PipelineFixture Fix, RehydrationSimulatingBlobService Sim, RelativePath ChunkBlobName)> SetupArchivedFixtureAsync(AzuriteFixture azurite)
     {
         var fix = await PipelineFixture.CreateAsync(azurite);
         var content = new byte[200];
@@ -71,8 +70,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         return (fix, sim, resolvedChunkBlobName);
     }
 
-    private static RestoreCommandHandler MakeRestoreHandler(
-        RehydrationSimulatingBlobService sim, PipelineFixture fix)
+    private static RestoreCommandHandler MakeRestoreHandler(RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
         var logger = new FakeLogger<RestoreCommandHandler>();
