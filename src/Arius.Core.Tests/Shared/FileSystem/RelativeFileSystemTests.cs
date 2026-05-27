@@ -4,15 +4,18 @@ namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class RelativeFileSystemTests : IDisposable
 {
-    private readonly string _root;
+    private readonly string             _root;
+    private readonly LocalDirectory     _rootDirectory;
     private readonly RelativeFileSystem _fileSystem;
-    private readonly List<string> _extraRoots = [];
+    private readonly List<string>       _extraRoots = [];
 
     public RelativeFileSystemTests()
     {
         _root = Path.Combine(Path.GetTempPath(), TestTempRoots.FolderName, $"relative-fs-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
-        _fileSystem = new RelativeFileSystem(LocalDirectory.Parse(_root));
+
+        _rootDirectory = LocalDirectory.Parse(_root);
+        _fileSystem    = new RelativeFileSystem(_rootDirectory);
     }
 
     public void Dispose()
@@ -125,13 +128,12 @@ public class RelativeFileSystemTests : IDisposable
     [Test]
     public void LocalDirectoryOperations_OutsideRoot_ThrowArgumentException()
     {
-        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var outsideRoot = TestTempRoots.CreateDirectory("relative-fs-outside");
         _extraRoots.Add(outsideRoot.ToString());
 
         Should.Throw<ArgumentException>(() => _fileSystem.DirectoryExists(outsideRoot));
         Should.Throw<ArgumentException>(() => _fileSystem.CreateDirectory(outsideRoot));
-        Should.Throw<ArgumentException>(() => RelativeFileSystem.DeleteDirectory(outsideRoot, recursive: true));
+        Should.Throw<ArgumentException>(() => RelativeFileSystem.DeleteDirectory(_rootDirectory, outsideRoot, recursive: true));
     }
 
     [Test]
@@ -234,10 +236,14 @@ public class RelativeFileSystemTests : IDisposable
     [Test]
     public void DeleteDirectory_MissingRootPath_ThrowsDirectoryNotFoundException()
     {
-        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
-        Directory.Delete(_root, recursive: true);
+        // Arrange
+        var missingRoot = TestTempRoots.CreateDirectory("relative-fs-missing-root");
+        _extraRoots.Add(missingRoot.ToString());
+        Directory.Exists(missingRoot.ToString()).ShouldBeFalse(); // this directory should not exist
+        var fileSystem = new RelativeFileSystem(missingRoot);
 
-        Should.Throw<DirectoryNotFoundException>(() => _fileSystem.DeleteDirectory(RelativePath.Root, recursive: true));
+        // Act & Assert
+        Should.Throw<DirectoryNotFoundException>(() => fileSystem.DeleteDirectory(RelativePath.Root, recursive: true));
     }
 
     [Test]
