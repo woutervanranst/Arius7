@@ -232,6 +232,15 @@ public class RelativeFileSystemTests : IDisposable
     }
 
     [Test]
+    public void DeleteDirectory_MissingRootPath_ThrowsDirectoryNotFoundException()
+    {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        Directory.Delete(_root, recursive: true);
+
+        Should.Throw<DirectoryNotFoundException>(() => _fileSystem.DeleteDirectory(RelativePath.Root, recursive: true));
+    }
+
+    [Test]
     public void EnumerateDirectories_ReturnsImmediateChildDirectoriesOnly()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself

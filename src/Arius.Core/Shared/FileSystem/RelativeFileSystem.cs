@@ -193,27 +193,13 @@ internal sealed class RelativeFileSystem
     public void DeleteDirectory(RelativePath path, bool recursive)
     {
         var fullPath = _root.Resolve(path);
-        try
-        {
-            Directory.Delete(fullPath, recursive);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            throw new ArgumentException("Directory not found", nameof(path));
-        }
+        Directory.Delete(fullPath, recursive);
     }
 
     public void DeleteDirectory(LocalDirectory directory, bool recursive)
     {
         var fullPath = GetContainedDirectoryPath(directory);
-        try
-        {
-            Directory.Delete(fullPath, recursive);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            throw new ArgumentException("Directory not found", nameof(directory));
-        }
+        Directory.Delete(fullPath, recursive);
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
