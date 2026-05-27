@@ -2,32 +2,19 @@ using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.FileSystem;
 
-public class RelativeFileSystemTests : IDisposable
+public class RelativeFileSystemTests
 {
     private readonly string             _root;
     private readonly LocalDirectory     _rootDirectory;
     private readonly RelativeFileSystem _fileSystem;
-    private readonly List<string>       _extraRoots = [];
 
     public RelativeFileSystemTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), TestTempRoots.FolderName, $"relative-fs-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_root);
+        _rootDirectory = TestTempRoots.CreateDirectory($"relative-fs");
+        _root          = _rootDirectory.ToString();
 
-        _rootDirectory = LocalDirectory.Parse(_root);
         _fileSystem    = new RelativeFileSystem(_rootDirectory);
-    }
-
-    public void Dispose()
-    {
-        foreach (var extraRoot in _extraRoots)
-        {
-            if (Directory.Exists(extraRoot))
-                Directory.Delete(extraRoot, recursive: true);
-        }
-
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        _fileSystem.CreateDirectory(RelativePath.Root);
     }
 
     [Test]
@@ -87,7 +74,6 @@ public class RelativeFileSystemTests : IDisposable
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var tempRoot = TestTempRoots.CreateDirectory("relative-fs-test");
-        _extraRoots.Add(tempRoot.ToString());
 
         tempRoot.ToString().ShouldStartWith(Path.Combine(Path.GetTempPath(), TestTempRoots.FolderName) + Path.DirectorySeparatorChar);
         tempRoot.ToString().ShouldContain("relative-fs-test-");
@@ -129,7 +115,6 @@ public class RelativeFileSystemTests : IDisposable
     public void LocalDirectoryOperations_OutsideRoot_ThrowArgumentException()
     {
         var outsideRoot = TestTempRoots.CreateDirectory("relative-fs-outside");
-        _extraRoots.Add(outsideRoot.ToString());
 
         Should.Throw<ArgumentException>(() => _fileSystem.DirectoryExists(outsideRoot));
         Should.Throw<ArgumentException>(() => _fileSystem.CreateDirectory(outsideRoot));
@@ -238,7 +223,6 @@ public class RelativeFileSystemTests : IDisposable
     {
         // Arrange
         var missingRoot = TestTempRoots.CreateDirectory("relative-fs-missing-root");
-        _extraRoots.Add(missingRoot.ToString());
         Directory.Exists(missingRoot.ToString()).ShouldBeFalse(); // this directory should not exist
         var fileSystem = new RelativeFileSystem(missingRoot);
 
