@@ -39,7 +39,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
             throw new InvalidOperationException($"{Name}: source state for version '{sourceVersion}' is not available.");
 
         var versionedSourceFileSystem = new RelativeFileSystem(state.VersionedSourceDirectory);
-        if (!versionedSourceFileSystem.DirectoryExists(sourceState.RootDirectory) && sourceVersion == SyntheticRepositoryVersion.V2)
+        if (sourceVersion == SyntheticRepositoryVersion.V2 && !versionedSourceFileSystem.DirectoryExists(sourceState.RootDirectory))
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
             var versionRootPath = LocalDirectory.Parse(state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2))));
