@@ -199,6 +199,7 @@ internal sealed class RelativeFileSystem
         }
         catch (DirectoryNotFoundException)
         {
+            throw new ArgumentException("Directory not found", nameof(path));
         }
     }
 
@@ -211,6 +212,7 @@ internal sealed class RelativeFileSystem
         }
         catch (DirectoryNotFoundException)
         {
+            throw new ArgumentException("Directory not found", nameof(directory));
         }
     }
 

@@ -217,7 +217,6 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         }
         catch (DirectoryNotFoundException ex)
         {
-            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         return Task.CompletedTask;
