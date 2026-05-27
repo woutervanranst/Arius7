@@ -14,10 +14,32 @@ internal static class TestTempRoots
     }
 
     [After(TestSession)]
-    public static void CleanupAllTempDirs()
+    public static void CleanupOldTempDirs()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), FolderName);
-        if (Directory.Exists(tempRoot))
-            Directory.Delete(tempRoot, recursive: true);
+        if (!Directory.Exists(tempRoot))
+            return;
+
+        foreach (var directory in Directory.EnumerateDirectories(tempRoot, "*", SearchOption.TopDirectoryOnly).ToArray())
+        {
+            var lastWriteUtc = Directory.GetLastWriteTimeUtc(directory);
+            if (DateTime.UtcNow - lastWriteUtc <= TimeSpan.FromHours(24))
+                continue;
+
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException exception)
+            {
+                // Another test process may still be touching the directory; leave it for a later cleanup pass.
+                Console.Error.WriteLine($"Skipping temp cleanup for '{directory}': {exception.Message}");
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                // Antivirus or another process can temporarily block deletion; leave it for a later cleanup pass.
+                Console.Error.WriteLine($"Skipping temp cleanup for '{directory}': {exception.Message}");
+            }
+        }
     }
 }
