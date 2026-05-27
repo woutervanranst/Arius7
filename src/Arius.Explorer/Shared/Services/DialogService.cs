@@ -1,4 +1,3 @@
-using System;
 using System.Windows;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Settings;

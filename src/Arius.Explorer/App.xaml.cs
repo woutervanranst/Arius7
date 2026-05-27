@@ -1,6 +1,4 @@
-using System;
 using System.Reflection;
-using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

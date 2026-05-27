@@ -1,4 +1,3 @@
-using System;
 using System.IO;
 using Arius.Core.Shared.Storage;
 using Arius.Explorer.ChooseRepository;
