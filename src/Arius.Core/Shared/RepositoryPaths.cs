@@ -28,11 +28,11 @@ public static class RepositoryPaths
     internal static PathSegment GetRepoDirectoryName(string accountName, string containerName) 
         => GetRepositoryDirectoryName(accountName, containerName);
 
-    internal static LocalDirectory GetRepositoryLocalPersistentTempRoot(string accountName, string containerName)
-    {
-        var homeRoot = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / PathSegment.Parse(".arius") / GetRepoDirectoryName(accountName, containerName)));
-    }
+    internal static LocalDirectory GetRoot() 
+        => LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    internal static LocalDirectory GetRepositoryLocalPersistentTempRoot(string accountName, string containerName) 
+        => GetRoot() / PathSegment.Parse(".arius") / GetRepoDirectoryName(accountName, containerName);
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) 
         => LocalDirectory.Parse(GetRepositoryLocalPersistentTempRoot(accountName, containerName).Resolve(chunkIndexCacheRelativePath));

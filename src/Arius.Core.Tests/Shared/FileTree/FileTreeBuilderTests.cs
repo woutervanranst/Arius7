@@ -49,7 +49,7 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_SingleFile_RootTreeUploaded()
     {
-        const string accountName   = "acct-single";
+        const string accountName = "unittest-acct-single";
         const string containerName = "cont-single";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
@@ -70,7 +70,7 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_RelativePathStagedFile_ProducesRootHash()
     {
-        const string accountName   = "acct-single-relative";
+        const string accountName = "unittest-acct-single-relative";
         const string containerName = "cont-single-relative";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
@@ -281,7 +281,7 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_CalculatesSiblingNodes_WhileUploadsAreBlocked()
     {
-        const string accountName   = "acc-blocked-uploads";
+        const string accountName = "unittest-acc-blocked-uploads";
         const string containerName = "con-blocked-uploads";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);
 
@@ -306,7 +306,7 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_DeduplicatesBlob_WhenAlreadyOnDisk()
     {
-        const string accountName   = "acc";
+        const string accountName = "unittest-acc";
         const string containerName = "con";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
@@ -364,7 +364,7 @@ public class FileTreeBuilderTests
     [NotInParallel("FileTreeBuilderParallelUploadTests")]
     public async Task SynchronizeAsync_StartsMultipleFileTreeUploadsBeforeReturning()
     {
-        const string accountName   = "acc-parallel";
+        const string accountName = "unittest-acc-parallel";
         const string containerName = "con-parallel";
         ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);

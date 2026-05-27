@@ -87,7 +87,17 @@ internal readonly record struct LocalDirectory
         return candidate;
     }
 
-    public static LocalDirectory operator /(LocalDirectory directory, RelativePath path) => new (directory.Resolve(path));
+    public string Resolve(PathSegment path)
+    {
+        var candidate = Path.GetFullPath(Path.Combine(Value, path.ToString()));
+        if (!IsContained(candidate))
+            throw new InvalidOperationException($"Resolved path escapes local root: '{path}'.");
+
+        return candidate;
+    }
+
+    public static LocalDirectory operator /(LocalDirectory directory, RelativePath path)   => new (directory.Resolve(path));
+    public static LocalDirectory operator /(LocalDirectory directory, PathSegment segment) => new(directory.Resolve(segment));
 
     public override string ToString() => Value;
 

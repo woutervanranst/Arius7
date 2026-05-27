@@ -72,7 +72,8 @@ public class FileTreeServiceTests
     [Test]
     public async Task ReadAsync_CacheMiss_DownloadsFromAzureAndWritesToDisk()
     {
-        const string acct = "tc-read-miss", cont = "container";
+        const string acct = "unittest-tc-read-miss";
+        const string cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
 
@@ -104,7 +105,8 @@ public class FileTreeServiceTests
     [Test]
     public async Task ReadAsync_ConcurrentReads_NoDiskCorruption_AtMostOneAzureDownload()
     {
-        const string acct = "tc-read-conc", cont = "container";
+        const string acct = "unittest-tc-read-conc";
+        const string cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
 
@@ -140,7 +142,7 @@ public class FileTreeServiceTests
     [Test]
     public async Task ReadAsync_ConcurrentReads_DoesNotExposePartialCacheFile()
     {
-        var acct = $"tc-read-conc-partial-{Guid.NewGuid():N}";
+        const string acct = "unittest-tc-read-conc-partial";
         const string cont = "container";
         var blobs = new SlowDownloadBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
@@ -170,7 +172,8 @@ public class FileTreeServiceTests
     [Test]
     public async Task ReadAsync_DownloadFailure_PropagatesExceptionWithoutHanging()
     {
-        const string acct = "tc-read-failure", cont = "container";
+        const string acct = "unittest-tc-read-failure";
+        const string cont = "container";
         var expected = new InvalidOperationException("download failed");
         var blobs = new ThrowingDownloadBlobContainerService(expected);
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
