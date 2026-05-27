@@ -212,6 +212,9 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public ArchiveCommandHandler CreateArchiveHandler()
         => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
 
+    internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
+        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
+
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
         => new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
