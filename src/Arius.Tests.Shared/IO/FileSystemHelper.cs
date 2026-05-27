@@ -2,12 +2,12 @@ using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Tests.Shared.IO;
 
-public static class FileSystemHelper
+internal static class FileSystemHelper
 {
-    public static void CopyDirectory(string sourceRootPath, string targetRootPath)
+    public static void CopyDirectory(LocalDirectory sourceRoot, LocalDirectory targetRoot)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRootPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetRootPath);
+        var sourceRootPath = sourceRoot.ToString();
+        var targetRootPath = targetRoot.ToString();
 
         if (Directory.Exists(targetRootPath))
             Directory.Delete(targetRootPath, recursive: true);
@@ -31,7 +31,4 @@ public static class FileSystemHelper
             File.SetLastWriteTimeUtc(targetPath, File.GetLastWriteTimeUtc(filePath));
         }
     }
-
-    internal static void CopyDirectory(LocalDirectory sourceRoot, LocalDirectory targetRoot) 
-        => CopyDirectory(sourceRoot.ToString(), targetRoot.ToString());
 }
