@@ -45,8 +45,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
         _repositoryPersistentTempFileSystem = new RelativeFileSystem(RepositoryPaths.GetRepositoryLocalPersistentTempRoot(AccountName, _containerName));
 
-        _rootFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
-        _rootFileSystem.CreateDirectory(_fileTreeCacheDirectory);
+        _repositoryPersistentTempFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
+        _repositoryPersistentTempFileSystem.CreateDirectory(_fileTreeCacheDirectory);
         
         Blobs  = new FakeInMemoryBlobContainerService();
         

@@ -140,7 +140,8 @@ public class FileTreeServiceTests
     [Test]
     public async Task ReadAsync_ConcurrentReads_DoesNotExposePartialCacheFile()
     {
-        const string acct = "tc-read-conc-partial", cont = "container";
+        var acct = $"tc-read-conc-partial-{Guid.NewGuid():N}";
+        const string cont = "container";
         var blobs = new SlowDownloadBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
 
