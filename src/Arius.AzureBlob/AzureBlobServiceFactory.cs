@@ -1,7 +1,5 @@
-using Arius.Core.Shared.Storage;
 using Azure.Identity;
 using Azure.Storage;
-using Azure.Storage.Blobs;
 
 namespace Arius.AzureBlob;
 
