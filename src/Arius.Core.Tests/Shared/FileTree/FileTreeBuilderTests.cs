@@ -141,7 +141,7 @@ public class FileTreeBuilderTests
         }
 
         fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now2) ])).Session)
@@ -258,7 +258,7 @@ public class FileTreeBuilderTests
 
         await stagingSession1.DisposeAsync();
         fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
 
         await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
         await WriteNodeLinesAsync(stagingSession2.StagingRoot, rootId, [ $"{childId} D photos/" ]);
@@ -565,7 +565,7 @@ public class FileTreeBuilderTests
         }
 
         fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        RelativeFileSystem.CreateDirectory(fixture.RepositoryPersistentTempRoot, fixture.FileTreeCacheDirectory);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(
@@ -605,7 +605,7 @@ public class FileTreeBuilderTests
         }
 
         fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(

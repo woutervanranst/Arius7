@@ -44,7 +44,7 @@ public class ArchiveStepBenchmarks
         if (_backend is not null)
             await _backend.DisposeAsync();
 
-        new RelativeFileSystem(_preparedSourceRoot).DeleteDirectory(RelativePath.Root, recursive: true);
+        RelativeFileSystem.DeleteDirectory(_preparedSourceRoot, RelativePath.Root, recursive: true);
     }
 
     [IterationSetup]
@@ -62,7 +62,7 @@ public class ArchiveStepBenchmarks
             _context.AccountName,
             _context.ContainerName);
 
-        new RelativeFileSystem(_fixture.LocalDirectory).DeleteDirectory(_fixture.LocalDirectory, true);
+        RelativeFileSystem.DeleteDirectory(_fixture.LocalDirectory, true);
 
         FileSystemHelper.CopyDirectory(_preparedSourceRoot, _fixture.LocalDirectory);
     }

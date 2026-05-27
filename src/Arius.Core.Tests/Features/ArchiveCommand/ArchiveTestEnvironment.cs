@@ -29,7 +29,7 @@ internal sealed class ArchiveTestEnvironment : IDisposable
     private readonly LocalDirectory                    _chunkIndexCacheDirectory;
     private readonly LocalDirectory                    _fileTreeCacheDirectory;
     private readonly RelativeFileSystem                _rootFileSystem;
-    private readonly RelativeFileSystem                _repositoryCacheFileSystem;
+    private readonly RelativeFileSystem                _repositoryPersistentTempFileSystem;
 
     public ArchiveTestEnvironment()
     {
@@ -43,10 +43,10 @@ internal sealed class ArchiveTestEnvironment : IDisposable
 
         _fileTreeCacheDirectory = RepositoryPaths.GetFileTreeCacheRoot(AccountName, _containerName);
 
-        _repositoryCacheFileSystem = new RelativeFileSystem(RepositoryPaths.GetRepositoryRoot(AccountName, _containerName));
+        _repositoryPersistentTempFileSystem = new RelativeFileSystem(RepositoryPaths.GetRepositoryLocalPersistentTempRoot(AccountName, _containerName));
 
-        _repositoryCacheFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
-        _repositoryCacheFileSystem.CreateDirectory(_fileTreeCacheDirectory);
+        _rootFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
+        _rootFileSystem.CreateDirectory(_fileTreeCacheDirectory);
         
         Blobs  = new FakeInMemoryBlobContainerService();
         
@@ -108,8 +108,8 @@ internal sealed class ArchiveTestEnvironment : IDisposable
         Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null)
     {
-        _repositoryCacheFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
-        _repositoryCacheFileSystem.CreateDirectory(_fileTreeCacheDirectory);
+        _repositoryPersistentTempFileSystem.CreateDirectory(_chunkIndexCacheDirectory);
+        _repositoryPersistentTempFileSystem.CreateDirectory(_fileTreeCacheDirectory);
 
         var fileTreeService = new FileTreeService(Blobs, _encryption, _index, AccountName, _containerName);
         var chunkStorage    = new ChunkStorageService(Blobs, _encryption);

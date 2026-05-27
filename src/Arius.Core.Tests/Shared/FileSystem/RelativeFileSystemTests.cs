@@ -116,7 +116,7 @@ public class RelativeFileSystemTests : IDisposable
         Directory.Exists(cacheDirectoryPath).ShouldBeTrue();
         _fileSystem.DirectoryExists(cacheDirectory).ShouldBeTrue();
 
-        _fileSystem.DeleteDirectory(cacheDirectory, recursive: true);
+        RelativeFileSystem.DeleteDirectory(cacheDirectory, recursive: true);
 
         Directory.Exists(cacheDirectoryPath).ShouldBeFalse();
         _fileSystem.DirectoryExists(cacheDirectory).ShouldBeFalse();
@@ -131,7 +131,7 @@ public class RelativeFileSystemTests : IDisposable
 
         Should.Throw<ArgumentException>(() => _fileSystem.DirectoryExists(outsideRoot));
         Should.Throw<ArgumentException>(() => _fileSystem.CreateDirectory(outsideRoot));
-        Should.Throw<ArgumentException>(() => _fileSystem.DeleteDirectory(outsideRoot, recursive: true));
+        Should.Throw<ArgumentException>(() => RelativeFileSystem.DeleteDirectory(outsideRoot, recursive: true));
     }
 
     [Test]
