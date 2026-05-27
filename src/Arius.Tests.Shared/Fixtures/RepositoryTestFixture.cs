@@ -33,7 +33,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this for pipeline-style tests that exercise the same encryption path as production while
     /// still controlling the storage boundary, such as Azurite-backed integration and E2E tests.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateWithPassphraseAsync(
+    public static ValueTask<RepositoryTestFixture> CreateWithPassphraseAsync(
         IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, 
         LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
     {
@@ -72,7 +72,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this when a test must control encryption behavior explicitly, for example legacy-format
     /// compatibility tests or focused Core tests that seed serialized repository data directly.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateWithEncryptionAsync(
+    public static ValueTask<RepositoryTestFixture> CreateWithEncryptionAsync(
         IBlobContainerService blobContainer, string accountName, string containerName, 
         IEncryptionService encryption, 
         LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
@@ -139,7 +139,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// Use this for Core tests that need a complete repository service graph without Azurite, real
     /// Azure behavior, or passphrase encryption semantics.
     /// </summary>
-    internal static ValueTask<RepositoryTestFixture> CreateInMemoryAsync(string? accountName = null, string? containerName = null, LocalDirectory? tempRoot = null)
+    public static ValueTask<RepositoryTestFixture> CreateInMemoryAsync(string? accountName = null, string? containerName = null, LocalDirectory? tempRoot = null)
     {
         var blobContainer = new FakeInMemoryBlobContainerService();
         return CreateWithEncryptionAsync(
@@ -151,18 +151,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     }
 
 
-
-
-
-
-
-
-
-    
-
-
-
-
+    // --- FIELDS ---
 
     /// <summary>
     /// Storage boundary shared by the repository services in this fixture instance.
@@ -217,6 +206,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 
 
+    // --- COMMAND HELPERS ---
 
     /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
     public ArchiveCommandHandler CreateArchiveHandler()
@@ -231,6 +221,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         => new(Index, FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
 
 
+    // --- OTHER HELPERS ---
 
     /// <summary>
     /// Deletes the local repository cache directory for the supplied account/container pair.
@@ -256,6 +247,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Index.Dispose();
+
         return ValueTask.CompletedTask;
     }
 }
