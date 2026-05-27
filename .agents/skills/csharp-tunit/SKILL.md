@@ -9,6 +9,8 @@ description: Use when writing or reviewing C# tests in a repository that uses TU
 
 TUnit's highest-value differences are discovery-time data generation, property injection, parallel-by-default execution, async assertions, and first-class static and runtime skip controls. Prefer the smallest TUnit feature that solves the real testing problem; do not cargo-cult every attribute.
 
+For simple per-test setup, prefer the constructor. Use hooks when setup or cleanup is asynchronous, shared across tests, or needs lifecycle-specific context.
+
 ## High-Value Patterns
 
 - Use `[Arguments(...)]` only for compile-time constants.
@@ -32,8 +34,17 @@ TUnit's highest-value differences are discovery-time data generation, property i
 ## Hooks And Fixtures
 
 - Use `[Before(Test)]` and `[After(Test)]` for per-test setup and cleanup that belongs to the test class instance.
-- Use `[Before(Class)]` and `[After(Class)]` for class-scoped coordination, remembering these hooks are static.
+- Use `[Before(Class)]`, `[Before(Assembly)]`, `[Before(TestSession)]`, and `[Before(TestDiscovery)]` for broader setup scopes; these hooks must be static.
+- Use `[After(Class)]`, `[After(Assembly)]`, `[After(TestSession)]`, and `[After(TestDiscovery)]` for broader cleanup scopes; these hooks must be static.
+- Use `[BeforeEvery(...)]` and `[AfterEvery(...)]` only for truly global hooks that should affect every test, class, or assembly in the session. Keep them static and place them in a dedicated file such as `GlobalHooks.cs`.
+- Hook methods may be `void` or `async Task`. Do not use `async void`, `.Wait()`, or `.Result` in hooks.
+- Hooks can optionally accept the relevant context object and/or a `CancellationToken`.
+- Use `TestContext` with test hooks, `ClassHookContext` with class hooks, `AssemblyHookContext` with assembly hooks, `TestSessionContext` with session hooks, and `BeforeTestDiscoveryContext` with discovery hooks.
+- In `[After(Test)]`, inspect `context.Execution.Result?.State` when cleanup should only run on failure, for example to capture screenshots or dumps.
+- `Before(Test)` inheritance runs base-class hooks first; `After(Test)` cleanup runs the current class first. Keep inherited hooks small and unsurprising.
 - If a hook discovers a missing runtime prerequisite, call `Skip.Test("reason")` there instead of letting every test fail with the same setup error.
+- If you set `AsyncLocal` values in a hook, call `context.AddAsyncLocalValues()` so the values flow into the framework-managed execution path.
+- TUnit supports `IDisposable` and `IAsyncDisposable` on test classes, but prefer `[After]` hooks because they allow multiple cleanup methods and aggregate cleanup exceptions.
 - Prefer fixture objects with `IAsyncInitializer` and `IAsyncDisposable` when setup is async, expensive, or shared across tests.
 - Keep hooks thin. If setup grows into infrastructure orchestration, move it into a fixture and inject it.
 - Use session- or assembly-level hooks sparingly; they are powerful but easy to overuse.
@@ -67,6 +78,8 @@ TUnit's highest-value differences are discovery-time data generation, property i
 | expensive reusable fixture | `ClassDataSource<T>(Shared = ...)` |
 | discovery-time async data loading | `IAsyncDiscoveryInitializer` |
 | execution-time async setup | `IAsyncInitializer` |
+| global per-test setup/cleanup | `[BeforeEvery(Test)]` / `[AfterEvery(Test)]` |
+| hook needing cancellation or metadata | hook parameters with context and/or `CancellationToken` |
 | wait for eventual condition | `WaitsFor` / `Eventually` |
 | block overlap on a shared resource | `NotInParallel("key")` |
 | cap concurrency without serializing everything | `ParallelLimiter<T>` |
@@ -144,8 +157,13 @@ public class UserTests
 - Using `[Arguments]` for objects or other non-constant values.
 - Returning the same mutable reference from a data source and accidentally coupling tests.
 - Using `InstanceMethodDataSource` with execution-time initialized state.
+- Using hooks when a simple constructor would be clearer and sufficient.
 - Using `[Skip]` for conditions that are only known after setup has started; use `Skip.Test(...)` instead.
 - Calling `Skip.Test(...)` for a static condition that should have been expressed once with `[Skip("reason")]`.
+- Mixing instance and static hook requirements, such as making `[Before(Class)]` non-static or `[Before(Test)]` static.
+- Using `async void` hooks or blocking on async work with `.Wait()` or `.Result`.
+- Forgetting that `[BeforeEvery(...)]` and `[AfterEvery(...)]` apply globally and should live in a dedicated file.
+- Forgetting to call `AddAsyncLocalValues()` after setting `AsyncLocal` state in a hook.
 - Serializing the whole suite instead of scoping the parallel constraint to the actual shared resource.
 - Using `[Order]` or `[Retry]` to hide poor isolation.
 - Treating `TestContext` as available during discovery; use `TestBuilderContext` there instead.
