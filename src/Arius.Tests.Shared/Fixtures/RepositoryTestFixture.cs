@@ -35,7 +35,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static ValueTask<RepositoryTestFixture> CreateWithPassphraseAsync(
         IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, 
-        LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
+        LocalDirectory? tempRoot = null)
     {
         const string defaultPassphrase = "arius-test-passphrase";
 
@@ -62,7 +62,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             RestoreFileSystem            = new RelativeFileSystem(restoreRoot),
             AccountName                  = accountName,
             ContainerName                = containerName,
-            ResetLocalCacheOnDispose     = resetLocalCacheOnDispose,
             Mediator                     = Substitute.For<IMediator>()
         });
     }
@@ -75,7 +74,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public static ValueTask<RepositoryTestFixture> CreateWithEncryptionAsync(
         IBlobContainerService blobContainer, string accountName, string containerName, 
         IEncryptionService encryption, 
-        LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
+        LocalDirectory? tempRoot = null)
     {
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
@@ -99,7 +98,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             RestoreFileSystem            = new RelativeFileSystem(restoreRoot),
             AccountName                  = accountName,
             ContainerName                = containerName,
-            ResetLocalCacheOnDispose     = resetLocalCacheOnDispose,
             Mediator                     = Substitute.For<IMediator>()
         });
     }
@@ -200,8 +198,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Repository container name used for cache paths and service wiring.</summary>
     public required string ContainerName { get; init; }
-
-    public required bool ResetLocalCacheOnDispose { get; init; }
 
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 

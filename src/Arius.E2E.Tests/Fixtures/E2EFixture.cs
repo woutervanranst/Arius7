@@ -49,7 +49,7 @@ internal sealed class E2EFixture : IAsyncDisposable
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, CancellationToken cancellationToken = default)
     {
-        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot, resetLocalCacheOnDispose: false);
+        var repository = await RepositoryTestFixture.CreateWithPassphraseAsync(blobContainer, accountName, containerName, passphrase, tempRoot);
 
         return new E2EFixture(accountName, containerName, defaultTier, repository);
     }
