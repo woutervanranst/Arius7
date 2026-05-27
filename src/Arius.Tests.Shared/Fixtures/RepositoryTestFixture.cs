@@ -38,30 +38,32 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
     {
         const string defaultPassphrase = "arius-test-passphrase";
+
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
+        var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
+
         var encryption = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
         var index      = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
-            BlobContainer            = blobContainer,
-            Encryption               = encryption,
-            Index                    = index,
-            ChunkStorage             = new ChunkStorageService(blobContainer, encryption),
-            FileTreeService          = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
-            Snapshot                 = new SnapshotService(blobContainer, encryption, accountName, containerName),
-            RepositoryRoot           = RepositoryPaths.GetRepositoryRoot(accountName, containerName),
-            ChunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName),
-            FileTreeCacheDirectory   = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName),
-            SnapshotCacheDirectory   = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName),
-            LocalDirectory           = localRoot,
-            RestoreDirectory         = restoreRoot,
-            LocalFileSystem          = new RelativeFileSystem(localRoot),
-            RestoreFileSystem        = new RelativeFileSystem(restoreRoot),
-            AccountName              = accountName,
-            ContainerName            = containerName,
-            ResetLocalCacheOnDispose = resetLocalCacheOnDispose,
-            Mediator                 = Substitute.For<IMediator>()
+            BlobContainer                = blobContainer,
+            Encryption                   = encryption,
+            Index                        = index,
+            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
+            FileTreeService              = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
+            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
+            FileTreeCacheDirectory       = fileTreeCacheDirectory,
+            SnapshotCacheDirectory       = snapshotCacheDirectory,
+            LocalDirectory               = localRoot,
+            RestoreDirectory             = restoreRoot,
+            LocalFileSystem              = new RelativeFileSystem(localRoot),
+            RestoreFileSystem            = new RelativeFileSystem(restoreRoot),
+            AccountName                  = accountName,
+            ContainerName                = containerName,
+            ResetLocalCacheOnDispose     = resetLocalCacheOnDispose,
+            Mediator                     = Substitute.For<IMediator>()
         });
     }
 
@@ -76,29 +78,29 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         LocalDirectory? tempRoot = null, bool resetLocalCacheOnDispose = true)
     {
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
+        var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
         var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
-            BlobContainer            = blobContainer,
-            Encryption               = encryption,
-            Index                    = index,
-            ChunkStorage             = new ChunkStorageService(blobContainer, encryption),
-            FileTreeService          = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
-            Snapshot                 = new SnapshotService(blobContainer, encryption, accountName, containerName),
-            RepositoryRoot           = RepositoryPaths.GetRepositoryRoot(accountName, containerName),
-            ChunkIndexCacheDirectory = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName),
-            FileTreeCacheDirectory   = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName),
-            SnapshotCacheDirectory   = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName),
-            LocalDirectory           = localRoot,
-            RestoreDirectory         = restoreRoot,
-            LocalFileSystem          = new RelativeFileSystem(localRoot),
-            RestoreFileSystem        = new RelativeFileSystem(restoreRoot),
-            AccountName              = accountName,
-            ContainerName            = containerName,
-            ResetLocalCacheOnDispose = resetLocalCacheOnDispose,
-            Mediator                 = Substitute.For<IMediator>()
+            BlobContainer                = blobContainer,
+            Encryption                   = encryption,
+            Index                        = index,
+            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
+            FileTreeService              = new FileTreeService(blobContainer, encryption, index, accountName, containerName),
+            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
+            FileTreeCacheDirectory       = fileTreeCacheDirectory,
+            SnapshotCacheDirectory       = snapshotCacheDirectory,
+            LocalDirectory               = localRoot,
+            RestoreDirectory             = restoreRoot,
+            LocalFileSystem              = new RelativeFileSystem(localRoot),
+            RestoreFileSystem            = new RelativeFileSystem(restoreRoot),
+            AccountName                  = accountName,
+            ContainerName                = containerName,
+            ResetLocalCacheOnDispose     = resetLocalCacheOnDispose,
+            Mediator                     = Substitute.For<IMediator>()
         });
     }
 
@@ -109,10 +111,27 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var sourceDirectory  = tempRoot.Value / RelativePath.Parse("source");
         var restoreDirectory = tempRoot.Value / RelativePath.Parse("restore");
 
-        Directory.CreateDirectory(sourceDirectory.ToString());
-        Directory.CreateDirectory(restoreDirectory.ToString());
+        var fs = new RelativeFileSystem(tempRoot.Value);
+
+        fs.CreateDirectory(sourceDirectory);
+        fs.CreateDirectory(restoreDirectory);
 
         return (sourceDirectory, restoreDirectory);
+    }
+
+    private static (LocalDirectory chunkIndexCacheDirectory, LocalDirectory fileTreeCacheDirectory, LocalDirectory snapshotCacheDirectory) CreateCacheFolders(string accountName, string containerName)
+    {
+        var chunkIndexCacheDirectory          = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var fileTreeCacheDirectory            = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
+        var snapshotCacheDirectory            = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+
+        var fs = new RelativeFileSystem(RepositoryPaths.GetRepositoryLocalPersistentTempRoot(accountName, containerName));
+        
+        fs.CreateDirectory(chunkIndexCacheDirectory);
+        fs.CreateDirectory(fileTreeCacheDirectory);
+        fs.CreateDirectory(snapshotCacheDirectory);
+
+        return (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory);
     }
 
     /// <summary>
@@ -172,8 +191,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Typed restore destination directory used by restore-oriented tests.</summary>
     public required LocalDirectory RestoreDirectory { get; init; }
 
-    internal required LocalDirectory RepositoryRoot { get; init; }
-
     internal required LocalDirectory ChunkIndexCacheDirectory { get; init; }
 
     internal required LocalDirectory FileTreeCacheDirectory { get; init; }
@@ -221,12 +238,19 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        Directory.Delete(RepositoryPaths.GetRepositoryRoot(accountName, containerName).ToString(), true);
+        var repositoryRoot = RepositoryPaths.GetRepositoryLocalPersistentTempRoot(accountName, containerName).ToString();
+        if (Directory.Exists(repositoryRoot))
+            Directory.Delete(repositoryRoot, true);
     }
 
-    public void DeleteLocalCacheDirectory()
+    public void DeleteLocalCacheDirectory(bool recreate)
     {
-        Directory.Delete(FileTreeCacheDirectory.ToString(), true);
+        var d = FileTreeCacheDirectory.ToString();
+        if (Directory.Exists(d))
+            Directory.Delete(d, true);
+
+        if (recreate)
+            Directory.CreateDirectory(d);
     }
 
     public ValueTask DisposeAsync()

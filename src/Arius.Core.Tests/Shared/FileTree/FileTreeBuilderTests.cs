@@ -140,8 +140,7 @@ public class FileTreeBuilderTests
             root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
 
-        fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        fixture.DeleteLocalCacheDirectory(recreate: true);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now2) ])).Session)
@@ -257,8 +256,7 @@ public class FileTreeBuilderTests
         var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
 
         await stagingSession1.DisposeAsync();
-        fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        fixture.DeleteLocalCacheDirectory(recreate: true);
 
         await using var stagingSession2 = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
         await WriteNodeLinesAsync(stagingSession2.StagingRoot, rootId, [ $"{childId} D photos/" ]);
@@ -564,8 +562,7 @@ public class FileTreeBuilderTests
             root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
         }
 
-        fixture.DeleteLocalCacheDirectory();
-        RelativeFileSystem.CreateDirectory(fixture.RepositoryPersistentTempRoot, fixture.FileTreeCacheDirectory);
+        fixture.DeleteLocalCacheDirectory(recreate: true);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(
@@ -604,8 +601,7 @@ public class FileTreeBuilderTests
             root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
 
-        fixture.DeleteLocalCacheDirectory();
-        new RelativeFileSystem(fixture.RepositoryPersistentTempRoot).CreateDirectory(fixture.FileTreeCacheDirectory);
+        fixture.DeleteLocalCacheDirectory(recreate: true);
 
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(

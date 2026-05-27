@@ -16,6 +16,8 @@ internal static class TestTempRoots
     [After(TestSession)]
     public static void CleanupAllTempDirs()
     {
-        Directory.Delete(Path.Combine(Path.GetTempPath(), FolderName), recursive: true);
+        var tempRoot = Path.Combine(Path.GetTempPath(), FolderName);
+        if (Directory.Exists(tempRoot))
+            Directory.Delete(tempRoot, recursive: true);
     }
 }
