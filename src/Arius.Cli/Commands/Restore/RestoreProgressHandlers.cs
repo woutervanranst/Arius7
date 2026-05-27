@@ -1,5 +1,4 @@
 using Arius.Core.Features.RestoreCommand;
-using Mediator;
 
 namespace Arius.Cli.Commands.Restore;
 

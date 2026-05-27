@@ -1,7 +1,5 @@
 using Arius.AzureBlob;
 using Arius.Cli;
-using Serilog;
-using Spectre.Console;
 
 try
 {

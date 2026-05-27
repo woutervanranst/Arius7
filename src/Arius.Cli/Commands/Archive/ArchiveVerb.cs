@@ -1,13 +1,8 @@
-using System.CommandLine;
 using System.Globalization;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
-using Humanizer;
-using Mediator;
 using Microsoft.Extensions.DependencyInjection;
-using Serilog;
-using Spectre.Console;
 using Spectre.Console.Rendering;
 
 namespace Arius.Cli.Commands.Archive;

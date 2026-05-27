@@ -1,11 +1,6 @@
-using System.CommandLine;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
-using Humanizer;
-using Mediator;
 using Microsoft.Extensions.DependencyInjection;
-using Serilog;
-using Spectre.Console;
 using Spectre.Console.Rendering;
 
 namespace Arius.Cli.Commands.Restore;

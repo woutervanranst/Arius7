@@ -1,6 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
-using Mediator;
 
 namespace Arius.Cli.Commands.Archive;
 
