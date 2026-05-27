@@ -1,5 +1,6 @@
 using Arius.AzureBlob;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Storage;
@@ -58,7 +59,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
 
-        var result = await svc.GetMetadataAsync(BlobPaths.ChunksPrefix / "does-not-exist");
+        var result = await svc.GetMetadataAsync(BlobPaths.ChunkPath("does-not-exist"));
 
         result.Exists.ShouldBeFalse();
     }
@@ -110,13 +111,13 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var original = new byte[] { 42, 43, 44 };
 
-        await svc.UploadAsync(BlobPaths.ChunksPrefix / "setmeta", new MemoryStream(original),
+        await svc.UploadAsync(BlobPaths.ChunkPath("setmeta"), new MemoryStream(original),
             new Dictionary<string, string> { ["initial"] = "value" }, BlobTier.Hot);
 
-        await svc.SetMetadataAsync(BlobPaths.ChunksPrefix / "setmeta",
+        await svc.SetMetadataAsync(BlobPaths.ChunkPath("setmeta"),
             new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge });
 
-        var meta = await svc.GetMetadataAsync(BlobPaths.ChunksPrefix / "setmeta");
+        var meta = await svc.GetMetadataAsync(BlobPaths.ChunkPath("setmeta"));
         meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
         meta.Metadata.ContainsKey("initial").ShouldBeFalse(); // replaced, not merged
         meta.ContentLength.ShouldBe(3);
@@ -130,13 +131,13 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var empty    = new Dictionary<string, string>();
 
-        await svc.UploadAsync(BlobPaths.ChunksPrefix / "ow", new MemoryStream([1, 2]), empty, BlobTier.Hot);
-        await svc.UploadAsync(BlobPaths.ChunksPrefix / "ow", new MemoryStream([3, 4, 5]), empty, BlobTier.Hot, overwrite: true);
+        await svc.UploadAsync(BlobPaths.ChunkPath("ow"), new MemoryStream([1, 2]), empty, BlobTier.Hot);
+        await svc.UploadAsync(BlobPaths.ChunkPath("ow"), new MemoryStream([3, 4, 5]), empty, BlobTier.Hot, overwrite: true);
 
-        await using var stream = await svc.DownloadAsync(BlobPaths.ChunksPrefix / "ow");
+        await using var stream = await svc.DownloadAsync(BlobPaths.ChunkPath("ow"));
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
-        ms.ToArray().ShouldBe(new byte[] { 3, 4, 5 });
+        ms.ToArray().ShouldBe([3, 4, 5]);
     }
 
     // ── OpenWriteAsync behaviour ──────────────────────────────────────────────
@@ -147,10 +148,10 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         var (_, svc) = await azurite.CreateTestServiceAsync();
         var payload  = "streaming upload roundtrip"u8.ToArray();
 
-        await using (var ws = await svc.OpenWriteAsync(BlobPaths.ChunksPrefix / "ow-roundtrip"))
+        await using (var ws = await svc.OpenWriteAsync(BlobPaths.ChunkPath("ow-roundtrip")))
             await new MemoryStream(payload).CopyToAsync(ws);
 
-        await using var rs = await svc.DownloadAsync(BlobPaths.ChunksPrefix / "ow-roundtrip");
+        await using var rs = await svc.DownloadAsync(BlobPaths.ChunkPath("ow-roundtrip"));
         var ms = new MemoryStream();
         await rs.CopyToAsync(ms);
         ms.ToArray().ShouldBe(payload);
@@ -161,12 +162,12 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
     {
         var (_, svc) = await azurite.CreateTestServiceAsync();
 
-        await using (var ws1 = await svc.OpenWriteAsync(BlobPaths.ChunksPrefix / "ow-replace"))
+        await using (var ws1 = await svc.OpenWriteAsync(BlobPaths.ChunkPath("ow-replace")))
             await new MemoryStream([1, 2]).CopyToAsync(ws1);
 
         await Should.ThrowAsync<BlobAlreadyExistsException>(async () =>
         {
-            await using var ws2 = await svc.OpenWriteAsync(BlobPaths.ChunksPrefix / "ow-replace");
+            await using var ws2 = await svc.OpenWriteAsync(BlobPaths.ChunkPath("ow-replace"));
             await new MemoryStream([3, 4, 5]).CopyToAsync(ws2);
         });
     }

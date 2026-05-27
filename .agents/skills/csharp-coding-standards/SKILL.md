@@ -156,44 +156,6 @@ public void ProcessOrder(Order? order)
 
 ---
 
-### C# 14 Ergonomics
-
-- Use null-conditional assignment (`customer?.Order = order`) for simple null-guarded writes. Keep explicit `if` statements when the assignment body is complex enough to hide work.
-- Use `field` backed properties for simple accessor validation or normalization without a manual backing field. If the accessor logic becomes non-trivial, or the backing field must be shared across members, declare the field explicitly.
-
-### Extension Members (C# 14+)
-
-Use `extension` blocks for cohesive receiver-focused APIs. Keep classic `this` extension methods for isolated helpers, older language targets, and generic signatures that do not port cleanly.
-
-```csharp
-public static class OrderExtensions
-{
-    extension(Order order)
-    {
-        public bool IsDraft => order.Status is OrderStatus.Draft;
-
-        public OrderDto ToDto() => new(
-            order.Id.ToString(),
-            order.Total.Amount,
-            order.Status.ToString());
-    }
-
-    public static OrderSummary ToSummary(this Order order)
-        => new(order.Id.ToString(), order.Total.Amount);
-}
-```
-
-**Guidelines:**
-- Prefer `extension` blocks when you add multiple related members to the same receiver, or when you need extension properties or static extension members.
-- Keep classic extension methods for one-off helpers, files that already use the older style, older `LangVersion` targets, or generic signatures that do not port cleanly to extension blocks.
-- Do not mass-convert existing extension methods just for syntax consistency. The runtime shape is compatible, but moving members between container classes can break callers that disambiguate on the static class name.
-- Keep extension properties cheap, side-effect-free, and obviously derived from the receiver. Use a method instead for I/O, async work, allocation-heavy mapping, or anything surprising.
-- Real members always win over extensions. Use narrow namespaces and specific names to reduce ambiguity and IntelliSense noise.
-- For explicit mapping, keep verb-based methods such as `ToDto()` and `ToSummary()`. Do not model mappings as extension properties.
-- Some classic generic extension methods cannot be ported directly. If the receiver's type parameters do not come first in the lowered method, or receiver constraints depend on member type parameters, keep the classic `this` syntax.
-
----
-
 ### C# 13 API and Runtime Guidance
 
 **`params` collections**
@@ -279,6 +241,57 @@ Use `Span<T>` for synchronous zero-allocation operations, `Memory<T>` for async,
 C# 14 makes `Span<T>` and `ReadOnlySpan<T>` participate more naturally in overload resolution and type inference. Treat new span overloads as versioning-sensitive API changes: adding a `ReadOnlySpan<T>` overload beside array, string, or collection overloads can change which overload existing call sites bind to. Prefer one canonical span overload when possible, and verify representative call sites before adding more.
 
 See [performance-and-api-design.md](performance-and-api-design.md) for complete Span/Memory examples and the API design section.
+
+---
+
+### C# 14 Ergonomics
+
+- Use null-conditional assignment (`customer?.Order = order`) for simple null-guarded writes. Keep explicit `if` statements when the assignment body is complex enough to hide work.
+- Use `field` backed properties for simple accessor validation or normalization without a manual backing field. If the accessor logic becomes non-trivial, or the backing field must be shared across members, declare the field explicitly.
+
+### Extension Members (C# 14+)
+
+Use `extension` blocks for cohesive receiver-focused APIs. When extending instances:
+
+```csharp
+public static class OrderExtensions
+{
+    extension(Order order)
+    {
+        public bool IsDraft => order.Status is OrderStatus.Draft;
+
+        public OrderDto ToDto() => new(
+            order.Id.ToString(),
+            order.Total.Amount,
+            order.Status.ToString());
+    }
+
+    public static OrderSummary ToSummary(this Order order)
+        => new(order.Id.ToString(), order.Total.Amount);
+}
+```
+
+When adding static extension members, including extension operators:
+
+```csharp
+public static class OrderExtensions
+{
+    extension(Order)
+    {
+        public static Order operator +(Order left, Order right)
+            => Order.Combine(left, right);
+    }
+}
+```
+
+**Guidelines:**
+- Prefer `extension` blocks when you add multiple related members to the same receiver, or when you need extension properties or static extension members.
+- Keep classic extension methods for one-off helpers, files that already use the older style, older `LangVersion` targets, or generic signatures that do not port cleanly to extension blocks.
+- Do not mass-convert existing extension methods just for syntax consistency. The runtime shape is compatible, but moving members between container classes can break callers that disambiguate on the static class name.
+- Keep extension properties cheap, side-effect-free, and obviously derived from the receiver. Use a method instead for I/O, async work, allocation-heavy mapping, or anything surprising.
+- Real members always win over extensions. Use narrow namespaces and specific names to reduce ambiguity and IntelliSense noise.
+- For explicit mapping, keep verb-based methods such as `ToDto()` and `ToSummary()`. Do not model mappings as extension properties.
+- Some classic generic extension methods cannot be ported directly. If the receiver's type parameters do not come first in the lowered method, or receiver constraints depend on member type parameters, keep the classic `this` syntax.
 
 ---
 

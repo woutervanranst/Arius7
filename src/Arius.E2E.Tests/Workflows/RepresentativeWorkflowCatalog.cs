@@ -39,6 +39,6 @@ internal static class RepresentativeWorkflowCatalog
                 new AssertConflictBehaviorStep("restore-conflict-overwrite", WorkflowRestoreTarget.Latest, SyntheticRepositoryVersion.V2, Overwrite: true),
 
                 new MaterializeVersionStep(SyntheticRepositoryVersion.V2),
-                new ArchiveTierLifecycleStep("archive-tier-lifecycle", "src"),
+                new ArchiveTierLifecycleStep("archive-tier-lifecycle", RelativePath.Parse("src")),
             ]);
 }

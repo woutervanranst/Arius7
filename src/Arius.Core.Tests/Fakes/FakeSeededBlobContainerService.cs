@@ -10,11 +10,9 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 {
-    private readonly Dictionary<string, byte[]> _blobs = new(StringComparer.Ordinal);
+    private readonly Dictionary<RelativePath, byte[]> _blobs = [];
 
-    public void AddBlob(RelativePath blobName, byte[] content) => _blobs[blobName.ToString()] = content;
-
-    public void AddBlob(string blobName, byte[] content) => _blobs[blobName] = content;
+    public void AddBlob(RelativePath blobName, byte[] content) => _blobs[blobName] = content;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -26,21 +24,18 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
-        if (!_blobs.TryGetValue(blobKey, out var content))
-            throw new FileNotFoundException(blobKey);
+        if (!_blobs.TryGetValue(blobName, out var content))
+            throw new FileNotFoundException(blobName.ToString());
 
         return Task.FromResult<Stream>(new MemoryStream(content, writable: false));
     }
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName.ToString()) });
+        Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName) });
 
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var name in _blobs.Keys
-                     .Select(name => RelativePath.TryParse(name, out var relativePath) ? relativePath : (RelativePath?)null)
-                     .OfType<RelativePath>()
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {

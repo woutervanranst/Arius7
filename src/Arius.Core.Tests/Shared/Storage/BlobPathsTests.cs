@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Storage;
 
@@ -49,5 +50,12 @@ public class BlobPathsTests
         var fileTreeHash = FileTreeHash.Parse(new string('b', 64));
 
         BlobPaths.FileTreePath(fileTreeHash).ShouldBe(RelativePath.Parse($"filetrees/{fileTreeHash}"));
+    }
+
+    [Test]
+    public void TestConvenienceOverloads_AppendLeafSegmentsWithoutHashParsing()
+    {
+        BlobPaths.ChunkPath("ow").ShouldBe(RelativePath.Parse("chunks/ow"));
+        BlobPaths.FileTreePath("blob-0").ShouldBe(RelativePath.Parse("filetrees/blob-0"));
     }
 }

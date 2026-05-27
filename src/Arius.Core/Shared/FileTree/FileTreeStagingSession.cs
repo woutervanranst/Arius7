@@ -44,8 +44,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
         try
         {
             var stagingRoot = FileTreePaths.GetStagingRootDirectory(fileTreeCacheDirectory);
-            if (cacheFileSystem.DirectoryExists(StagingRootPath))
-                cacheFileSystem.DeleteDirectory(StagingRootPath, recursive: true);
+            cacheFileSystem.DeleteDirectoryIfExists(StagingRootPath, recursive: true);
 
             cacheFileSystem.CreateDirectory(StagingRootPath);
             return Task.FromResult(new FileTreeStagingSession(stagingRoot, lockStream, cacheFileSystem));
@@ -61,8 +60,7 @@ internal sealed class FileTreeStagingSession : IFileTreeStagingSession
     {
         try
         {
-            if (_cacheFileSystem.DirectoryExists(StagingRootPath))
-                _cacheFileSystem.DeleteDirectory(StagingRootPath, recursive: true);
+            _cacheFileSystem.DeleteDirectoryIfExists(StagingRootPath, recursive: true);
         }
         finally
         {

@@ -160,10 +160,8 @@ public readonly record struct RelativePath
         return Parse(Value[..^suffix.Length]);
     }
 
-    public static RelativePath operator /(RelativePath path, PathSegment segment) =>
-        path.Value.Length == 0 ? new RelativePath(segment.ToString()) : new RelativePath($"{path.Value}/{segment}");
-
-    public static RelativePath operator /(RelativePath path, string segment) => path / PathSegment.Parse(segment);
+    public static RelativePath operator /(RelativePath path, PathSegment segment) 
+        => path.Value.Length == 0 ? new RelativePath(segment.ToString()) : new RelativePath($"{path.Value}/{segment}");
 
     public override string ToString() => Value;
 }

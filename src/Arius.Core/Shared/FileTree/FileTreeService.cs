@@ -57,9 +57,9 @@ public sealed class FileTreeService
         _blobs           = blobs;
         _encryption      = encryption;
         _chunkIndex      = chunkIndex;
-        var diskCacheRoot = RepositoryPaths.GetFileTreeCacheRoot(accountName, containerName);
-        var snapshotCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
-        var chunkIndexCacheRoot = RepositoryPaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
+        var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
+        var chunkIndexCacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
 
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _snapshotCacheFileSystem = new RelativeFileSystem(snapshotCacheRoot);
@@ -224,12 +224,12 @@ public sealed class FileTreeService
 
     private async Task WriteCacheAtomicallyAsync(RelativePath diskPath, ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
     {
-        var tempPath = RelativePath.Root / $".{diskPath.Name}.{Guid.NewGuid():N}.tmp";
+        var tempPath = RelativePath.Root / PathSegment.Parse($".{diskPath.Name}.{Guid.NewGuid():N}.tmp");
 
         try
         {
             await _diskCacheFileSystem.WriteAllBytesAsync(tempPath, plaintext.ToArray(), cancellationToken);
-            await _diskCacheFileSystem.ReplaceFileAtomicallyAsync(tempPath, diskPath, cancellationToken);
+            _diskCacheFileSystem.ReplaceFileAtomically(tempPath, diskPath);
         }
         finally
         {
@@ -320,7 +320,7 @@ public sealed class FileTreeService
         }
 
         // Invalidate chunk-index L2 (another machine may have updated shards)
-        _chunkIndexCacheFileSystem.DeleteFilesInDirectory(RelativePath.Root);
+        _chunkIndexCacheFileSystem.ClearDirectory(RelativePath.Root);
 
         // Also clear the in-memory L1 cache so stale shard data is not served from memory.
         _chunkIndex.InvalidateL1();

@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -39,15 +40,15 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         foreach (var (relPath, content, created, modified) in smallFiles)
         {
-            var fullPath = fix.WriteFile(relPath, content);
-            File.SetCreationTimeUtc(fullPath, created);
-            File.SetLastWriteTimeUtc(fullPath, modified);
+            var relativePath = RelativePath.Parse(relPath);
+            await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+            fix.LocalFileSystem.SetTimestamps(relativePath, new DateTimeOffset(created), new DateTimeOffset(modified));
         }
 
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = fix.LocalRoot,
+            RootDirectory      = fix.LocalDirectory.ToString(),
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -55,7 +56,7 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
@@ -64,31 +65,31 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         // ── Assert ────────────────────────────────────────────────────────
         foreach (var (relPath, _, expectedCreated, expectedModified) in smallFiles)
         {
-            var restoredPath = Path.Combine(fix.RestoreRoot,
-                relPath.Replace('/', Path.DirectorySeparatorChar));
-            var pointerPath = restoredPath + ".pointer.arius";
+            var relativePath = RelativePath.Parse(relPath);
+            fix.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue($"Binary should exist: {relPath}");
+            fix.RestoreFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue($"Pointer should exist: {relPath}");
 
-            File.Exists(restoredPath).ShouldBeTrue($"Binary should exist: {relPath}");
-            File.Exists(pointerPath).ShouldBeTrue($"Pointer should exist: {relPath}");
+            var restoredTimestamps = fix.RestoreFileSystem.GetTimestamps(relativePath);
+            var pointerTimestamps = fix.RestoreFileSystem.GetTimestamps(relativePath.ToPointerPath());
 
             // Binary timestamps should match the originals
             // Note: CreationTimeUtc is not reliably settable on Linux (ext4 has no birth time),
             // so only assert it on Windows/macOS.
             if (!OperatingSystem.IsLinux())
             {
-                File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
+                restoredTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated,
                     $"Binary CreationTimeUtc for {relPath}");
             }
-            File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified,
+            restoredTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified,
                 $"Binary LastWriteTimeUtc for {relPath}");
 
             // Pointer timestamps should match the binary
             if (!OperatingSystem.IsLinux())
             {
-                File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
+                pointerTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated,
                     $"Pointer CreationTimeUtc should match binary for {relPath}");
             }
-            File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified,
+            pointerTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified,
                 $"Pointer LastWriteTimeUtc should match binary for {relPath}");
         }
     }
@@ -113,14 +114,14 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
         var expectedCreated  = new DateTime(2021, 6, 15, 10, 30, 0, DateTimeKind.Utc);
         var expectedModified = new DateTime(2024, 12, 25, 18, 0, 0, DateTimeKind.Utc);
 
-        var sourcePath = fix.WriteFile(relPath, content);
-        File.SetCreationTimeUtc(sourcePath, expectedCreated);
-        File.SetLastWriteTimeUtc(sourcePath, expectedModified);
+        var relativePath = RelativePath.Parse(relPath);
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+        fix.LocalFileSystem.SetTimestamps(relativePath, new DateTimeOffset(expectedCreated), new DateTimeOffset(expectedModified));
 
         // ── Act ───────────────────────────────────────────────────────────
         var archiveResult = await fix.ArchiveAsync(new ArchiveCommandOptions
         {
-            RootDirectory      = fix.LocalRoot,
+            RootDirectory      = fix.LocalDirectory.ToString(),
             UploadTier         = BlobTier.Hot,
             SmallFileThreshold = 1024 * 1024,
         });
@@ -128,41 +129,40 @@ public class RestorePointerTimestampTests(AzuriteFixture azurite)
 
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
         // ── Assert ────────────────────────────────────────────────────────
-        var restoredPath = Path.Combine(fix.RestoreRoot,
-            relPath.Replace('/', Path.DirectorySeparatorChar));
-        var pointerPath = restoredPath + ".pointer.arius";
+        fix.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue("Binary should exist");
+        fix.RestoreFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue("Pointer should exist");
 
-        File.Exists(restoredPath).ShouldBeTrue("Binary should exist");
-        File.Exists(pointerPath).ShouldBeTrue("Pointer should exist");
+        var restoredTimestamps = fix.RestoreFileSystem.GetTimestamps(relativePath);
+        var pointerTimestamps = fix.RestoreFileSystem.GetTimestamps(relativePath.ToPointerPath());
 
         // Binary content should be correct
-        File.ReadAllBytes(restoredPath).ShouldBe(content);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
 
         // Binary timestamps should match the originals
         // Note: CreationTimeUtc is not reliably settable on Linux (ext4 has no birth time),
         // so only assert it on Windows/macOS.
         if (!OperatingSystem.IsLinux())
         {
-            File.GetCreationTimeUtc(restoredPath).ShouldBe(expectedCreated,
+            restoredTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated,
                 "Binary CreationTimeUtc");
         }
-        File.GetLastWriteTimeUtc(restoredPath).ShouldBe(expectedModified,
+        restoredTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified,
             "Binary LastWriteTimeUtc");
 
         // Pointer timestamps should match the binary
         if (!OperatingSystem.IsLinux())
         {
-            File.GetCreationTimeUtc(pointerPath).ShouldBe(expectedCreated,
+            pointerTimestamps.Created.UtcDateTime.ShouldBe(expectedCreated,
                 "Pointer CreationTimeUtc should match binary");
         }
-        File.GetLastWriteTimeUtc(pointerPath).ShouldBe(expectedModified,
+        pointerTimestamps.Modified.UtcDateTime.ShouldBe(expectedModified,
             "Pointer LastWriteTimeUtc should match binary");
     }
 }

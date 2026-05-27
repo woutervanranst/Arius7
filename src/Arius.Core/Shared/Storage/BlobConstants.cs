@@ -70,25 +70,27 @@ public static class ContentTypes
 /// </summary>
 public static class BlobPaths
 {
+    // NOTE: These methods require a strong domain type (unless there is none). For string convenience overloads used in Test suites, see Arius.Tests.Shared.BlobPathsExtensions.
+
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
-    public static RelativePath ChunksPrefix => RelativePath.Root / "chunks";
+    public static RelativePath ChunksPrefix => RelativePath.Root / PathSegment.Parse("chunks");
 
     /// <summary>Temporary Hot-tier copies for in-progress rehydration.</summary>
-    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / "chunks-rehydrated";
+    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / PathSegment.Parse("chunks-rehydrated");
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
-    public static RelativePath FileTreesPrefix => RelativePath.Root / "filetrees";
+    public static RelativePath FileTreesPrefix => RelativePath.Root / PathSegment.Parse("filetrees");
 
     /// <summary>Snapshot manifests.</summary>
-    public static RelativePath SnapshotsPrefix => RelativePath.Root / "snapshots";
+    public static RelativePath SnapshotsPrefix => RelativePath.Root / PathSegment.Parse("snapshots");
 
     /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
-    public static RelativePath ChunkIndexPrefix => RelativePath.Root / "chunk-index";
+    public static RelativePath ChunkIndexPrefix => RelativePath.Root / PathSegment.Parse("chunk-index");
 
-    public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / hash.ToString();
-    public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / hash.ToString();
-    public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / hash.ToString();
-    public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / hash.ToString();
-    public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / name;
+    public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / PathSegment.Parse(hash.ToString());
+    public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / PathSegment.Parse(hash.ToString());
+    public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / PathSegment.Parse(hash.ToString());
+    public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / PathSegment.Parse(hash.ToString());
+    public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / PathSegment.Parse(name);
     public static RelativePath ChunkIndexShardPath(PathSegment prefix) => ChunkIndexPrefix / prefix;
 }

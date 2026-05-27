@@ -10,16 +10,11 @@ internal enum SyntheticFileMutationKind
 
 internal sealed record SyntheticFileMutation
 {
-    public SyntheticFileMutation(SyntheticFileMutationKind Kind, string Path, string? TargetPath = null, string? ReplacementContentId = null, long? ReplacementSizeBytes = null)
+    public SyntheticFileMutation(SyntheticFileMutationKind Kind, RelativePath Path, RelativePath? TargetPath = null, string? ReplacementContentId = null, long? ReplacementSizeBytes = null)
     {
-        var normalizedPath = SyntheticRepositoryPath.NormalizeRelativePath(Path, nameof(Path));
-        var normalizedTargetPath = TargetPath is null
-            ? null
-            : SyntheticRepositoryPath.NormalizeRelativePath(TargetPath, nameof(TargetPath));
-
         this.Kind                 = Kind;
-        this.Path                 = normalizedPath;
-        this.TargetPath           = normalizedTargetPath;
+        this.Path                 = Path;
+        this.TargetPath           = TargetPath;
         this.ReplacementContentId = ReplacementContentId;
         this.ReplacementSizeBytes = ReplacementSizeBytes;
 
@@ -41,7 +36,8 @@ internal sealed record SyntheticFileMutation
                 break;
 
             case SyntheticFileMutationKind.Rename:
-                ArgumentException.ThrowIfNullOrWhiteSpace(TargetPath);
+                if (TargetPath is null)
+                    throw new ArgumentException("Rename target is required.", nameof(TargetPath));
 
                 if (ReplacementContentId is not null)
                     throw new ArgumentException("Replacement content is not valid for rename mutations.", nameof(ReplacementContentId));
@@ -69,8 +65,8 @@ internal sealed record SyntheticFileMutation
     }
 
     public SyntheticFileMutationKind Kind                 { get; }
-    public string                Path                 { get; }
-    public string?               TargetPath           { get; }
-    public string?               ReplacementContentId { get; }
-    public long?                 ReplacementSizeBytes { get; }
+    public RelativePath              Path                 { get; }
+    public RelativePath?             TargetPath           { get; }
+    public string?                   ReplacementContentId { get; }
+    public long?                     ReplacementSizeBytes { get; }
 }

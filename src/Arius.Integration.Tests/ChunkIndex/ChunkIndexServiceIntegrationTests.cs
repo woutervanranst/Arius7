@@ -1,5 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared;
+using Arius.Core.Shared.FileSystem;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
@@ -15,12 +17,12 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     private const string Account   = "devstoreaccount1";
     private const string Passphrase = "test-passphrase";
 
-    private async Task<(ChunkIndexService service, string tempDir)> CreateServiceAsync()
+    private async Task<(ChunkIndexService service, LocalDirectory tempDir)> CreateServiceAsync()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
         var containerName = container.Name;
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
+        var tempDir       = TestTempRoots.CreateDirectory("test");
+        new RelativeFileSystem(tempDir).CreateDirectory(RelativePath.Root);
 
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,
@@ -105,7 +107,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
         var prefix = Shard.PrefixOf(contentHash);
-        var l2Path = Path.Combine(RepositoryPathStrings.GetChunkIndexCacheDirectory(Account, containerName), prefix.ToString());
+        var l2Path = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName).Resolve(RelativePath.Parse(prefix.ToString()));
         await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
 
         // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3

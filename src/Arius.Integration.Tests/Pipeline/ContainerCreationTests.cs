@@ -3,9 +3,11 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -49,13 +51,14 @@ public class ContainerCreationTests(AzuriteFixture azurite)
             logger,
             Account, containerName);
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-cc-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRoot);
+        var tempRoot = TestTempRoots.CreateDirectory("cc");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
         try
         {
-            File.WriteAllText(Path.Combine(tempRoot, "hello.txt"), "hello");
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("hello.txt"), "hello", CancellationToken.None);
 
-            var opts   = new ArchiveCommandOptions { RootDirectory = tempRoot, UploadTier = BlobTier.Hot };
+            var opts   = new ArchiveCommandOptions { RootDirectory = tempRoot.ToString(), UploadTier = BlobTier.Hot };
             var result = await handler.Handle(new ArchiveCommand(opts), CancellationToken.None);
 
             result.Success.ShouldBeTrue(result.ErrorMessage);
@@ -64,7 +67,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         }
         finally
         {
-            Directory.Delete(tempRoot, recursive: true);
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -74,14 +77,14 @@ public class ContainerCreationTests(AzuriteFixture azurite)
     public async Task Archive_ExistingContainer_Succeeds_Idempotent()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
-        fix.WriteFile("hello.txt", "hello"u8.ToArray());
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("hello.txt"), "hello"u8.ToArray(), CancellationToken.None);
 
         // First archive — container was pre-created by fixture
         var result1 = await fix.ArchiveAsync();
         result1.Success.ShouldBeTrue(result1.ErrorMessage);
 
         // Second archive — same existing container, CreateContainerIfNotExistsAsync is a no-op
-        fix.WriteFile("hello2.txt", "world"u8.ToArray());
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("hello2.txt"), "world"u8.ToArray(), CancellationToken.None);
         var result2 = await fix.ArchiveAsync();
         result2.Success.ShouldBeTrue(result2.ErrorMessage);
     }

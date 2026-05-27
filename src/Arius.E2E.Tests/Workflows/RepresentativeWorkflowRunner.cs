@@ -1,25 +1,21 @@
 using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
+using Arius.Tests.Shared;
 
 namespace Arius.E2E.Tests.Workflows;
 
 internal sealed class RepresentativeWorkflowRunnerDependencies
 {
-    public Func<E2EStorageBackendContext, string, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
+    public Func<E2EStorageBackendContext, LocalDirectory, CancellationToken, Task<E2EFixture>> CreateFixtureAsync { get; init; } =
         static (context, workflowRoot, cancellationToken) => RepresentativeWorkflowRunner.CreateFixtureAsync(context, workflowRoot, cancellationToken);
 }
 
 internal static class RepresentativeWorkflowRunner
 {
-    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, CancellationToken cancellationToken)
+    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, LocalDirectory workflowRoot, CancellationToken cancellationToken)
     {
-        return await E2EFixture.CreateAsync(context.BlobContainer, context.AccountName, context.ContainerName, BlobTier.Cool, cancellationToken: cancellationToken);
-    }
-
-    internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, string workflowRoot, CancellationToken cancellationToken)
-    {
-        var fixtureRoot = Path.Combine(workflowRoot, "fixture");
+        var fixtureRoot = LocalDirectory.Parse(workflowRoot.Resolve(RelativePath.Parse("fixture")));
 
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
@@ -27,7 +23,6 @@ internal static class RepresentativeWorkflowRunner
             context.ContainerName,
             BlobTier.Cool,
             tempRoot: fixtureRoot,
-            deleteTempRoot: static _ => { },
             cancellationToken: cancellationToken);
     }
 
@@ -42,27 +37,30 @@ internal static class RepresentativeWorkflowRunner
         dependencies ??= new RepresentativeWorkflowRunnerDependencies();
 
         await using var context = await backend.CreateContextAsync(cancellationToken);
-        var workflowRoot = Path.Combine(Path.GetTempPath(), "arius", $"arius-test-{Guid.NewGuid():N}");
+        var workflowDirectory = TestTempRoots.CreateDirectory($"test-{Guid.NewGuid():N}");
         E2EFixture? fixture = null;
         RepresentativeWorkflowState? state = null;
+        var workflowFileSystem = new RelativeFileSystem(workflowDirectory);
 
-        Directory.CreateDirectory(workflowRoot);
+        workflowFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
-            fixture = await dependencies.CreateFixtureAsync(context, workflowRoot, cancellationToken);
+            fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory, cancellationToken);
 
-            var versionedSourceRoot = Path.Combine(workflowRoot, "representative-source");
-            Directory.CreateDirectory(versionedSourceRoot);
+            var rs                  = RelativePath.Parse("representative-source");
+            var versionedSourceRoot = workflowDirectory / rs;
+            workflowFileSystem.CreateDirectory(rs);
 
             state = new RepresentativeWorkflowState
             {
-                Context            = context,
-                CreateFixtureAsync = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowRoot, ct),
-                Fixture            = fixture,
-                Definition         = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
-                Seed               = workflow.Seed,
-                VersionedSourceRoot = versionedSourceRoot,
+                Context                  = context,
+                CreateFixtureAsync       = (backendContext, ct) => dependencies.CreateFixtureAsync(backendContext, workflowDirectory, ct),
+                Fixture                  = fixture,
+                Definition               = SyntheticRepositoryDefinitionFactory.Create(workflow.Profile),
+                Seed                     = workflow.Seed,
+                WorkflowDirectory        = workflowDirectory,
+                VersionedSourceDirectory = versionedSourceRoot,
             };
 
             foreach (var step in workflow.Steps)
@@ -88,8 +86,7 @@ internal static class RepresentativeWorkflowRunner
                 System.Diagnostics.Debug.WriteLine(ex);
             }
 
-            if (Directory.Exists(workflowRoot))
-                Directory.Delete(workflowRoot, recursive: true);
+            workflowFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 }

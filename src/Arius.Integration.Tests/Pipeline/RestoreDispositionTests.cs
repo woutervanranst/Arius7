@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Tests.Shared.Fixtures;
 using NSubstitute;
 
@@ -20,27 +21,26 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         // Archive a small file
         var originalContent = new byte[] { 1, 2, 3, 4, 5 };
-        fix.WriteFile("test.txt", originalContent);
+        var relativePath = RelativePath.Parse("test.txt");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, originalContent, CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Place a DIFFERENT file at the restore path (simulating local modification)
         var localContent = new byte[] { 99, 98, 97, 96, 95 };
-        var restoredPath = Path.Combine(fix.RestoreRoot, "test.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, localContent);
+        await fix.RestoreFileSystem.WriteAllBytesAsync(relativePath, localContent, CancellationToken.None);
 
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = false,
         });
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
         // The local file should NOT have been overwritten
-        File.ReadAllBytes(restoredPath).ShouldBe(localContent);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(localContent);
         restoreResult.FilesRestored.ShouldBe(0);
         restoreResult.FilesSkipped.ShouldBe(1, "KeepLocalDiffers files should be counted as skipped");
     }
@@ -51,14 +51,13 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Archive a small file
-        fix.WriteFile("test.txt", new byte[] { 1, 2, 3, 4, 5 });
+        var relativePath = RelativePath.Parse("test.txt");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, [1, 2, 3, 4, 5], CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Place a DIFFERENT file at the restore path
-        var restoredPath = Path.Combine(fix.RestoreRoot, "test.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, new byte[] { 99, 98, 97 });
+        await fix.RestoreFileSystem.WriteAllBytesAsync(relativePath, [99, 98, 97], CancellationToken.None);
 
         // Clear any previous mediator calls
         fix.Mediator.ClearReceivedCalls();
@@ -66,7 +65,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Restore WITHOUT --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = false,
         });
 
@@ -75,13 +74,13 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         // Verify FileDispositionEvent with KeepLocalDiffers was published
         await fix.Mediator.Received().Publish(
             Arg.Is<FileDispositionEvent>(e =>
-                e.RelativePath == RelativePath.Parse("test.txt") &&
+                e.RelativePath == relativePath &&
                 e.Disposition == RestoreDisposition.KeepLocalDiffers),
             Arg.Any<CancellationToken>());
 
         // Verify exactly 1 FileSkippedEvent was published with the file's size
         await fix.Mediator.Received(1).Publish(
-            Arg.Is<FileSkippedEvent>(e => e.RelativePath == RelativePath.Parse("test.txt") && e.FileSize > 0),
+            Arg.Is<FileSkippedEvent>(e => e.RelativePath == relativePath && e.FileSize > 0),
             Arg.Any<CancellationToken>());
     }
 
@@ -94,14 +93,14 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         // Archive a file
         var content = new byte[] { 10, 20, 30, 40, 50 };
-        fix.WriteFile("same.txt", content);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("same.txt"), content, CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Restore once to get the correct file in place
         var r1 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
@@ -111,7 +110,7 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         fix.Mediator.ClearReceivedCalls();
         var r2 = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = false,
         });
 
@@ -128,20 +127,21 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var content = new byte[] { 1, 2, 3 };
-        fix.WriteFile("new.txt", content);
+        var relativePath = RelativePath.Parse("new.txt");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Restore to empty dir (no local file) → should restore
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = false,
         });
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fix.ReadRestored("new.txt").ShouldBe(content);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
     }
 
     // ── Overwrite: file exists, hash differs, --overwrite set → restore ──
@@ -152,24 +152,23 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         var originalContent = new byte[] { 1, 2, 3, 4, 5 };
-        fix.WriteFile("overwrite.txt", originalContent);
+        var relativePath = RelativePath.Parse("overwrite.txt");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, originalContent, CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // Place a different file at the restore path
-        var restoredPath = Path.Combine(fix.RestoreRoot, "overwrite.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(restoredPath)!);
-        File.WriteAllBytes(restoredPath, new byte[] { 99, 98, 97 });
+        await fix.RestoreFileSystem.WriteAllBytesAsync(relativePath, [99, 98, 97], CancellationToken.None);
 
         // Restore WITH --overwrite
         var restoreResult = await fix.RestoreAsync(new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         });
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
-        fix.ReadRestored("overwrite.txt").ShouldBe(originalContent);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(originalContent);
     }
 }

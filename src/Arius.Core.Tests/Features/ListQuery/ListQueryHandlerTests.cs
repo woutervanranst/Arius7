@@ -165,14 +165,15 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_WithLocalPath_MergesCloudAndLocalFilesInOneDirectory()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRoot);
+        var tempRoot = TestTempRoots.CreateDirectory("ls");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt"), "local-shared");
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "shared.txt.pointer.arius"), FakeContentHash('2').ToString());
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "local-only.txt"), "local-only");
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("shared.txt"), "local-shared", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("shared.txt.pointer.arius"), FakeContentHash('2').ToString(), CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("local-only.txt"), "local-only", CancellationToken.None);
 
             var rootTree = Entries(
                 FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
@@ -196,7 +197,7 @@ public class ListQueryHandlerTests
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot.ToString(), Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -229,24 +230,22 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
     [Test]
     public async Task Handle_WithPrefixAndLocalPath_PointerSuffixComparisonIsCaseInsensitive()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-prefix-local-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+        var tempRoot = TestTempRoots.CreateDirectory("ls-prefix-local");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Parse("docs"));
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt"), "local-shared");
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "shared.txt.POINTER.ARIUS"), FakeContentHash('2').ToString());
-            await File.WriteAllTextAsync(Path.Combine(tempRoot, "docs", "local-only.txt"), "local-only");
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("docs/shared.txt"), "local-shared", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("docs/shared.txt.POINTER.ARIUS"), FakeContentHash('2').ToString(), CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("docs/local-only.txt"), "local-only", CancellationToken.None);
 
             var docsTree = Entries(
                 FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
@@ -273,7 +272,7 @@ public class ListQueryHandlerTests
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
-            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("docs"), LocalPath = tempRoot, Recursive = false }), CancellationToken.None))
+            await foreach (var entry in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("docs"), LocalPath = tempRoot.ToString(), Recursive = false }), CancellationToken.None))
             {
                 if (entry is RepositoryFileEntry file)
                 {
@@ -300,10 +299,7 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -472,9 +468,10 @@ public class ListQueryHandlerTests
     [Test]
     public async Task Handle_DirectoryMerge_AllThreeKindsYieldedWithCorrectFlags()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"arius-ls-38-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(tempRoot, "cloud-local-dir"));
-        Directory.CreateDirectory(Path.Combine(tempRoot, "local-only-dir"));
+        var tempRoot = TestTempRoots.CreateDirectory("ls-38");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Parse("cloud-local-dir"));
+        localFileSystem.CreateDirectory(RelativePath.Parse("local-only-dir"));
 
         try
         {
@@ -499,7 +496,7 @@ public class ListQueryHandlerTests
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
             var handler = fixture.CreateListQueryHandler();
 
-            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot }), CancellationToken.None)
+            var dirs = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false, LocalPath = tempRoot.ToString() }), CancellationToken.None)
                 .OfType<RepositoryDirectoryEntry>()
                 .ToListAsync();
 
@@ -519,8 +516,7 @@ public class ListQueryHandlerTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-                Directory.Delete(tempRoot, recursive: true);
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 

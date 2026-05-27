@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 
@@ -107,7 +108,7 @@ public class SnapshotSerializerTests
     {
         var ts       = new DateTimeOffset(2024, 1, 15, 9, 30, 45, TimeSpan.Zero);
         var rawName  = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
-        var parsed   = SnapshotService.ParseTimestamp(rawName);
+        var parsed   = SnapshotService.ParseTimestamp(RelativePath.Parse(rawName));
 
         parsed.ShouldBe(ts);
     }

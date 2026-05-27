@@ -1,3 +1,5 @@
+using Arius.Tests.Shared;
+
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class LocalDirectoryTests : IDisposable
@@ -6,7 +8,7 @@ public class LocalDirectoryTests : IDisposable
 
     public LocalDirectoryTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), $"arius-local-directory-{Guid.NewGuid():N}");
+        _root = Path.Combine(Path.GetTempPath(), TestTempRoots.FolderName, $"local-directory-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
     }
 
@@ -19,7 +21,8 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void Parse_AbsoluteDirectory_NormalizesRoot()
     {
-        var root = LocalDirectory.Parse(_root + Path.DirectorySeparatorChar);
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        var root = LocalDirectory.Parse(_root + Path.DirectorySeparatorChar.ToString());
 
         root.ToString().ShouldBe(Path.GetFullPath(_root));
     }
@@ -27,12 +30,14 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void Parse_RelativeDirectory_Throws()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         Should.Throw<FormatException>(() => LocalDirectory.Parse("relative/root"));
     }
 
     [Test]
     public void TryGetRelativePath_PathUnderRoot_ReturnsRelativePath()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var directory = LocalDirectory.Parse(_root);
         var filePath = Path.Combine(_root, "photos", "pic.jpg");
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
@@ -45,6 +50,7 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void TryGetRelativePath_PathOutsideRoot_ReturnsFalse()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var directory = LocalDirectory.Parse(_root);
         var outsidePath = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}.txt");
 
@@ -54,6 +60,7 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void TryGetRelativePath_RootPath_ReturnsRootRelativePath()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var directory = LocalDirectory.Parse(_root);
 
         directory.TryGetRelativePath(_root, out var relativePath).ShouldBeTrue();
@@ -63,6 +70,7 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void TryGetRelativePath_FileSystemRootDescendant_ReturnsRelativePath()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var rootPath = Path.GetPathRoot(_root)!;
         var directory = LocalDirectory.Parse(rootPath);
         var childPath = Path.Combine(rootPath, $"arius-local-directory-{Guid.NewGuid():N}.txt");
@@ -74,6 +82,7 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void TryGetRelativePath_RootDescendant_Resolve_RoundTrips()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         var rootPath = Path.GetPathRoot(_root)!;
         var directory = LocalDirectory.Parse(rootPath);
         var relativePath = RelativePath.Parse($"arius-local-directory-{Guid.NewGuid():N}.txt");
@@ -84,6 +93,7 @@ public class LocalDirectoryTests : IDisposable
     [Test]
     public void TryGetRelativePath_CaseDifferenceOnWindows_ReturnsRelativePath()
     {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         if (Path.DirectorySeparatorChar != '\\')
             return;
 

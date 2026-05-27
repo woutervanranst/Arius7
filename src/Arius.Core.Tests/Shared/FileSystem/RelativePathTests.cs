@@ -1,3 +1,5 @@
+using Arius.Tests.Shared;
+
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class RelativePathTests
@@ -58,27 +60,6 @@ public class RelativePathTests
     public void StartsWith_PartialSegmentMatch_ReturnsFalse()
     {
         RelativePath.Parse("photoshop/pic.jpg").StartsWith(RelativePath.Parse("photos")).ShouldBeFalse();
-    }
-
-    [Test]
-    public void SlashStringOperator_ComposesSingleSegments()
-    {
-        var path = RelativePath.Root / "photos" / "pic.jpg";
-
-        path.ToString().ShouldBe("photos/pic.jpg");
-    }
-
-    [Test]
-    public void SlashStringOperator_MultiSegmentAppend_Throws()
-    {
-        Should.Throw<FormatException>(() => _ = RelativePath.Root / "photos/pic.jpg");
-    }
-
-    [Test]
-    public void SlashStringOperator_UnsafeAppend_Throws()
-    {
-        Should.Throw<FormatException>(() => _ = RelativePath.Root / ".."
-        );
     }
 
     [Test]

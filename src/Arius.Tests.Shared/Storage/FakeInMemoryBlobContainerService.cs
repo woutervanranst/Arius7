@@ -13,8 +13,8 @@ namespace Arius.Tests.Shared.Storage;
 /// </summary>
 public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 {
-    private readonly ConcurrentDictionary<string, StoredBlob> _blobs = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, int> _openWriteAlreadyExists = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<RelativePath, StoredBlob> _blobs = new();
+    private readonly ConcurrentDictionary<RelativePath, int> _openWriteAlreadyExists = new();
 
     private readonly ConcurrentQueue<RelativePath> _requestedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _deletedBlobNames = new();
@@ -28,54 +28,49 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
         await using var ms = new MemoryStream();
         await content.CopyToAsync(ms, cancellationToken);
 
-        if (!overwrite && _blobs.ContainsKey(blobKey))
+        if (!overwrite && _blobs.ContainsKey(blobName))
             throw new BlobAlreadyExistsException(blobName);
 
-        _blobs[blobKey] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
+        _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
         _uploadedBlobNames.Enqueue(blobName);
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
-
-        if (_openWriteAlreadyExists.TryGetValue(blobKey, out var remaining) && remaining > 0)
+        if (_openWriteAlreadyExists.TryGetValue(blobName, out var remaining) && remaining > 0)
         {
             if (remaining == 1)
-                _openWriteAlreadyExists.TryRemove(blobKey, out _);
+                _openWriteAlreadyExists.TryRemove(blobName, out _);
             else
-                _openWriteAlreadyExists[blobKey] = remaining - 1;
+                _openWriteAlreadyExists[blobName] = remaining - 1;
 
             throw new BlobAlreadyExistsException(blobName);
         }
 
-        if (_blobs.ContainsKey(blobKey))
+        if (_blobs.ContainsKey(blobName))
             throw new BlobAlreadyExistsException(blobName);
 
         return Task.FromResult<Stream>(new CommitOnDisposeStream(bytes =>
         {
-            _blobs[blobKey] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false);
+            _blobs[blobName] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false);
             _uploadedBlobNames.Enqueue(blobName);
         }));
     }
 
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
         _requestedBlobNames.Enqueue(blobName);
-        var blob = _blobs[blobKey];
+        var blob = _blobs[blobName];
         return Task.FromResult<Stream>(new MemoryStream(blob.Content, writable: false));
     }
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
         _requestedBlobNames.Enqueue(blobName);
-        if (!_blobs.TryGetValue(blobKey, out var blob))
+        if (!_blobs.TryGetValue(blobName, out var blob))
             return Task.FromResult(new BlobMetadata { Exists = false });
 
         return Task.FromResult(new BlobMetadata
@@ -91,7 +86,6 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _blobs.Keys
-                     .Select(RelativePath.Parse)
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
@@ -103,57 +97,47 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
-        var blob = _blobs[blobKey];
-        _blobs[blobKey] = blob with { Metadata = new Dictionary<string, string>(metadata) };
+        var blob = _blobs[blobName];
+        _blobs[blobName] = blob with { Metadata = new Dictionary<string, string>(metadata) };
         return Task.CompletedTask;
     }
 
     public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
-        var blob = _blobs[blobKey];
-        _blobs[blobKey] = blob with { Tier = tier };
+        var blob = _blobs[blobName];
+        _blobs[blobName] = blob with { Tier = tier };
         return Task.CompletedTask;
     }
 
     public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
     {
-        var source = _blobs[sourceBlobName.ToString()];
-        _blobs[destinationBlobName.ToString()] = source with { Tier = destinationTier, IsRehydrating = false };
+        var source = _blobs[sourceBlobName];
+        _blobs[destinationBlobName] = source with { Tier = destinationTier, IsRehydrating = false };
         return Task.CompletedTask;
     }
 
     public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        var blobKey = blobName.ToString();
         _deletedBlobNames.Enqueue(blobName);
-        _blobs.TryRemove(blobKey, out _);
-        _openWriteAlreadyExists.TryRemove(blobKey, out _);
+        _blobs.TryRemove(blobName, out _);
+        _openWriteAlreadyExists.TryRemove(blobName, out _);
         return Task.CompletedTask;
     }
 
-    public void ThrowAlreadyExistsOnOpenWrite(string blobName, bool throwOnce = false)
+    public void ThrowAlreadyExistsOnOpenWrite(RelativePath blobName, bool throwOnce = false)
         => _openWriteAlreadyExists[blobName] = throwOnce ? 1 : int.MaxValue;
 
-    public void ThrowAlreadyExistsOnOpenWrite(RelativePath blobName, bool throwOnce = false)
-        => ThrowAlreadyExistsOnOpenWrite(blobName.ToString(), throwOnce);
-
     public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
-        => SeedBlob(blobName.ToString(), content, tier, metadata, contentType, isRehydrating);
-
-    private void SeedBlob(string blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
         => _blobs[blobName] = new StoredBlob(content, metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata), tier, contentType, isRehydrating);
 
 
     public void ClearMetadata(RelativePath blobPath)
     {
-        var blobName = blobPath.ToString();
-        var blob     = _blobs[blobName];
-        _blobs[blobName] = blob with { Metadata = new Dictionary<string, string>() };
+        var blob = _blobs[blobPath];
+        _blobs[blobPath] = blob with { Metadata = new Dictionary<string, string>() };
     }
 
-    public async Task SeedLargeBlobAsync(string blobName, byte[] originalContent, BlobTier tier)
+    public async Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
     {
         var payload = await GzipAsync(originalContent);
         SeedBlob(
@@ -162,17 +146,14 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             tier,
             new Dictionary<string, string>
             {
-                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
                 [BlobMetadataKeys.OriginalSize] = originalContent.Length.ToString(),
-                [BlobMetadataKeys.ChunkSize] = payload.Length.ToString(),
+                [BlobMetadataKeys.ChunkSize]    = payload.Length.ToString(),
             },
             ContentTypes.LargePlaintext);
     }
 
-    public Task SeedLargeBlobAsync(RelativePath blobName, byte[] originalContent, BlobTier tier)
-        => SeedLargeBlobAsync(blobName.ToString(), originalContent, tier);
-
-    public async Task SeedTarBlobAsync(string blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
+    public async Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
     {
         var combined = originalContents.SelectMany(bytes => bytes).ToArray();
         var payload = await GzipAsync(combined);
@@ -187,9 +168,6 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             },
             ContentTypes.TarPlaintext);
     }
-
-    public Task SeedTarBlobAsync(RelativePath blobName, IReadOnlyList<byte[]> originalContents, BlobTier tier)
-        => SeedTarBlobAsync(blobName.ToString(), originalContents, tier);
 
     private static async Task<byte[]> GzipAsync(byte[] content)
     {

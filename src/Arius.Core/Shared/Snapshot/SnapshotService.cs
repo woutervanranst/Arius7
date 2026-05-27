@@ -136,7 +136,7 @@ public sealed class SnapshotService
     {
         _blobs        = blobs;
         _encryption   = encryption;
-        var diskCacheRoot = RepositoryPaths.GetSnapshotCacheRoot(accountName, containerName);
+        var diskCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
     }
@@ -149,10 +149,6 @@ public sealed class SnapshotService
 
     internal static RelativePath BlobPath(DateTimeOffset timestamp) =>
         BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
-
-    /// <summary>Parses a snapshot timestamp from a blob name.</summary>
-    public static DateTimeOffset ParseTimestamp(string blobName)
-        => ParseTimestamp(RelativePath.Parse(blobName));
 
     public static DateTimeOffset ParseTimestamp(RelativePath blobName)
     {

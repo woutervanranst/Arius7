@@ -1,9 +1,10 @@
-using System.Diagnostics;
-using System.Formats.Tar;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using System.Diagnostics;
+using System.Formats.Tar;
 
 namespace Arius.Integration.Tests.Pipeline;
 
@@ -105,7 +106,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("cbc-large.bin", original);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("cbc-large.bin"), original, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -117,11 +118,12 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-cbc-{Guid.NewGuid():N}");
-        var encryptedFile = Path.Combine(tempDir, "chunk.enc");
-        var recoveredFile = Path.Combine(tempDir, "recovered.bin");
+        var tempDir       = TestTempRoots.CreateDirectory("recover-cbc");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
+        var encryptedFile = tempDir.Resolve(RelativePath.Parse("chunk.enc"));
+        var recoveredFile = tempDir.Resolve(RelativePath.Parse("recovered.bin"));
 
-        Directory.CreateDirectory(tempDir);
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -140,8 +142,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -161,7 +162,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("large.bin", original);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("large.bin"), original, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -173,11 +174,12 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-{Guid.NewGuid():N}");
-        var encryptedFile = Path.Combine(tempDir, "chunk.enc");
-        var recoveredFile = Path.Combine(tempDir, "recovered.bin");
+        var tempDir       = TestTempRoots.CreateDirectory("recover");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
+        var encryptedFile = tempDir.Resolve(RelativePath.Parse("chunk.enc"));
+        var recoveredFile = tempDir.Resolve(RelativePath.Parse("recovered.bin"));
 
-        Directory.CreateDirectory(tempDir);
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -196,8 +198,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -219,8 +220,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile("small1.txt", c1);
-        fix.WriteFile("small2.txt", c2);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small1.txt"), c1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small2.txt"), c2, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -235,11 +236,12 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         chunkBlobs.Count.ShouldBe(1);
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-cbc-tar-{Guid.NewGuid():N}");
-        var encryptedFile = Path.Combine(tempDir, "tar.enc");
-        var tarFile       = Path.Combine(tempDir, "bundle.tar");
+        var tempDir       = TestTempRoots.CreateDirectory("recover-cbc-tar");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
+        var encryptedFile = tempDir.Resolve(RelativePath.Parse("tar.enc"));
+        var tarFile       = tempDir.Resolve(RelativePath.Parse("bundle.tar"));
 
-        Directory.CreateDirectory(tempDir);
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -281,8 +283,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 
@@ -302,8 +303,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
         var c2 = new byte[200]; Random.Shared.NextBytes(c2);
-        fix.WriteFile("small1.txt", c1);
-        fix.WriteFile("small2.txt", c2);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small1.txt"), c1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("small2.txt"), c2, CancellationToken.None);
 
         var ar = await fix.ArchiveAsync();
         ar.Success.ShouldBeTrue(ar.ErrorMessage);
@@ -318,11 +319,12 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         chunkBlobs.Count.ShouldBe(1);
 
-        var tempDir       = Path.Combine(Path.GetTempPath(), $"arius-recover-tar-{Guid.NewGuid():N}");
-        var encryptedFile = Path.Combine(tempDir, "tar.enc");
-        var tarFile       = Path.Combine(tempDir, "bundle.tar");
+        var tempDir       = TestTempRoots.CreateDirectory("recover-tar");
+        var tempFileSystem = new RelativeFileSystem(tempDir);
+        var encryptedFile = tempDir.Resolve(RelativePath.Parse("tar.enc"));
+        var tarFile       = tempDir.Resolve(RelativePath.Parse("bundle.tar"));
 
-        Directory.CreateDirectory(tempDir);
+        tempFileSystem.CreateDirectory(RelativePath.Root);
 
         try
         {
@@ -364,8 +366,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         }
         finally
         {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            tempFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
     }
 }

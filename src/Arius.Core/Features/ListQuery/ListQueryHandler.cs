@@ -282,7 +282,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         IEnumerable<LocalFileEntry> fileInfos;
         try
         {
-            fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory)
+            fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory, SearchOption.AllDirectories)
                 .OrderBy(f => f.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
                 .ToList();
         }

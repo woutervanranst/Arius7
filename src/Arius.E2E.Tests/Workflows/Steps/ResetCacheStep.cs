@@ -7,7 +7,7 @@ internal sealed record ResetCacheStep(string Name = "reset-cache") : IRepresenta
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
         await state.Fixture.DisposeAsync();
-        await E2EFixture.ResetLocalCacheAsync(state.Context.AccountName, state.Context.ContainerName);
+        E2EFixture.ResetLocalCache(state.Context.AccountName, state.Context.ContainerName);
         state.Fixture = await state.CreateFixtureAsync(state.Context, cancellationToken);
     }
 }

@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
@@ -11,6 +12,7 @@ using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using Arius.Core.Shared;
 
 namespace Arius.Integration.Tests.Pipeline;
 
@@ -33,18 +35,17 @@ public class RehydrationStateTests(AzuriteFixture azurite)
     /// Archives a single small file and returns the chunk blob name used for that file,
     /// along with the fixture and the simulating service.
     /// </summary>
-    private static async Task<(PipelineFixture Fix, RehydrationSimulatingBlobService Sim, RelativePath ChunkBlobName)>
-        SetupArchivedFixtureAsync(AzuriteFixture azurite)
+    private static async Task<(PipelineFixture Fix, RehydrationSimulatingBlobService Sim, RelativePath ChunkBlobName)> SetupArchivedFixtureAsync(AzuriteFixture azurite)
     {
         var fix = await PipelineFixture.CreateAsync(azurite);
         var content = new byte[200];
         Random.Shared.NextBytes(content);
-        fix.WriteFile("test.bin", content);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("test.bin"), content, CancellationToken.None);
 
         // Archive with Hot tier (Azurite) so blobs are accessible
         var archiveOpts = new ArchiveCommandOptions
         {
-            RootDirectory = fix.LocalRoot,
+            RootDirectory = fix.LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
         var archiveResult = await fix.ArchiveAsync(archiveOpts);
@@ -69,8 +70,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         return (fix, sim, resolvedChunkBlobName);
     }
 
-    private static RestoreCommandHandler MakeRestoreHandler(
-        RehydrationSimulatingBlobService sim, PipelineFixture fix)
+    private static RestoreCommandHandler MakeRestoreHandler(RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
         var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
         var logger = new FakeLogger<RestoreCommandHandler>();
@@ -97,14 +97,14 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory    = fix.RestoreRoot,
+            RootDirectory    = fix.RestoreDirectory.ToString(),
             Overwrite        = true,
             // Auto-confirm rehydration with Standard priority
             ConfirmRehydration = (_, __) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.ChunksPendingRehydration.ShouldBe(1, "one chunk should be pending rehydration");
@@ -112,7 +112,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Pipeline should have issued exactly one copy-to-rehydrate call
         sim.CopyCalls.Count.ShouldBe(1, "expected exactly one rehydration copy call");
         sim.CopyCalls[0].Source.ShouldBe(chunkBlobName);
-        sim.CopyCalls[0].Destination.ShouldBe(BlobPaths.ChunksRehydratedPrefix / chunkBlobName.Name.ToString());
+        sim.CopyCalls[0].Destination.ShouldBe(BlobPaths.ChunkRehydratedPath(ChunkHash.Parse(chunkBlobName.Name.ToString())));
     }
 
     // ── 1.3: chunk rehydration pending — verify no duplicate request issued ──────
@@ -128,13 +128,13 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory    = fix.RestoreRoot,
+            RootDirectory    = fix.RestoreDirectory.ToString(),
             Overwrite        = true,
             ConfirmRehydration = (_, __) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.ChunksPendingRehydration.ShouldBe(1, "chunk is still pending");
@@ -155,7 +155,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // The chunk blob name is e.g. "chunks/<hash>" — get just the hash
         var chunkHash = ChunkHash.Parse(chunkBlobName.Name.ToString());
-        var rehydratedBlobName = BlobPaths.ChunksRehydratedPrefix / chunkHash.ToString();
+        var rehydratedBlobName = BlobPaths.ChunkRehydratedPath(chunkHash);
 
         // Sideload: copy the real blob content to chunks-rehydrated/<hash>
         // (simulating what Azure does after rehydration completes)
@@ -177,12 +177,12 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.FilesRestored.ShouldBe(1, "file should be restored from the rehydrated blob");
@@ -201,15 +201,15 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         await using var _ = fix;
 
         var chunkHash = ChunkHash.Parse(chunkBlobName.Name.ToString());
-        var rehydratedBlobName = BlobPaths.ChunksRehydratedPrefix / chunkHash.ToString();
+        var rehydratedBlobName = BlobPaths.ChunkRehydratedPath(chunkHash);
 
         // First restore: get the file on disk so the second restore sees it as identical.
         var firstResult = await MakeRestoreHandler(sim, fix)
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory = fix.RestoreRoot,
+                RootDirectory = fix.RestoreDirectory.ToString(),
                 Overwrite     = false,
-            }), default).AsTask();
+            }), CancellationToken.None).AsTask();
         firstResult.Success.ShouldBeTrue(firstResult.ErrorMessage);
         firstResult.FilesRestored.ShouldBe(1);
 
@@ -231,7 +231,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var secondResult = await MakeRestoreHandler(sim, fix)
             .Handle(new RestoreCommand(new RestoreOptions
             {
-                RootDirectory  = fix.RestoreRoot,
+                RootDirectory  = fix.RestoreDirectory.ToString(),
                 Overwrite      = false,
                 ConfirmCleanup = (count, bytes, ct) =>
                 {
@@ -239,7 +239,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
                     cleanupCount   = count;
                     return Task.FromResult(true);
                 },
-            }), default).AsTask();
+            }), CancellationToken.None).AsTask();
 
         secondResult.Success.ShouldBeTrue(secondResult.ErrorMessage);
         secondResult.FilesRestored.ShouldBe(0, "all files are identical, nothing to restore");
@@ -265,7 +265,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         await using var _ = fix;
 
         var chunkHash = ChunkHash.Parse(chunkBlobName.Name.ToString());
-        var rehydratedBlobName = BlobPaths.ChunksRehydratedPrefix / chunkHash.ToString();
+        var rehydratedBlobName = BlobPaths.ChunkRehydratedPath(chunkHash);
 
         // Sideload: copy the real chunk blob to chunks-rehydrated/ (simulating completed rehydration)
         await using (var srcStream = await fix.BlobContainer.DownloadAsync(chunkBlobName))
@@ -280,7 +280,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Sideload an EXTRA rehydrated blob that is NOT related to the current restore.
         // This simulates a leftover rehydrated chunk from a previous restore of different files.
         var extraHash = FakeChunkHash('e');
-        var extraRehydratedBlob = BlobPaths.ChunksRehydratedPrefix / extraHash.ToString();
+        var extraRehydratedBlob = BlobPaths.ChunkRehydratedPath(extraHash);
         using (var extraMs = new MemoryStream(new byte[] { 0x00, 0x01, 0x02 }))
         {
             await fix.BlobContainer.UploadAsync(extraRehydratedBlob, extraMs,
@@ -302,7 +302,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         var restoreOpts = new RestoreOptions
         {
-            RootDirectory = fix.RestoreRoot,
+            RootDirectory = fix.RestoreDirectory.ToString(),
             Overwrite     = true,
             ConfirmCleanup = (count, bytes, ct) =>
             {
@@ -314,7 +314,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.FilesRestored.ShouldBe(1);

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;
@@ -25,7 +26,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // 2 MB > 1 MB threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(original);
-        fix.WriteFile("large.bin", original);
+        var relativePath = RelativePath.Parse("large.bin");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, original, CancellationToken.None);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -53,7 +55,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(1);
 
-        fix.ReadRestored("large.bin").ShouldBe(original);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(original);
     }
 
     // ── 6.2: GCM tar bundle roundtrip ────────────────────────────────────────
@@ -68,8 +70,10 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         var content2 = new byte[1024];
         Random.Shared.NextBytes(content1);
         Random.Shared.NextBytes(content2);
-        fix.WriteFile("small1.bin", content1);
-        fix.WriteFile("small2.bin", content2);
+        var relativePath1 = RelativePath.Parse("small1.bin");
+        var relativePath2 = RelativePath.Parse("small2.bin");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath1, content1, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath2, content2, CancellationToken.None);
 
         var archiveResult = await fix.ArchiveAsync();
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -89,8 +93,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         restoreResult.FilesRestored.ShouldBe(2);
 
-        fix.ReadRestored("small1.bin").ShouldBe(content1);
-        fix.ReadRestored("small2.bin").ShouldBe(content2);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath1).ShouldBe(content1);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath2).ShouldBe(content2);
     }
 
     // ── 6.3: Mixed CBC+GCM archive roundtrip ─────────────────────────────────
@@ -114,14 +118,15 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         var cbcLargeContent = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(cbcLargeContent);
-        cbcFix.WriteFile("cbc-large.bin", cbcLargeContent);
+        var cbcLargePath = RelativePath.Parse("cbc-large.bin");
+        await cbcFix.LocalFileSystem.WriteAllBytesAsync(cbcLargePath, cbcLargeContent, CancellationToken.None);
 
         var cbcResult = await cbcFix.ArchiveAsync();
         cbcResult.Success.ShouldBeTrue(cbcResult.ErrorMessage);
         cbcResult.FilesUploaded.ShouldBe(1);
 
         // Phase 2: archive more files using new GCM encryption into the same container.
-        // Also place cbc-large.bin in gcmFix's LocalRoot so the new GCM snapshot includes it.
+        // Also place cbc-large.bin in gcmFix's local directory so the new GCM snapshot includes it.
         // Its hash is already in the chunk index (from cbcFix), so the chunk is deduplicated —
         // no re-upload happens, but the file appears in the latest snapshot that restore reads.
         // When restore downloads that chunk it auto-detects the Salted__ magic and decrypts via CBC.
@@ -130,11 +135,12 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
             new PassphraseEncryptionService(Passphrase),
             existingContainer: cbcFix.Container);
 
-        gcmFix.WriteFile("cbc-large.bin", cbcLargeContent); // deduplicates against cbcFix chunk
+        await gcmFix.LocalFileSystem.WriteAllBytesAsync(cbcLargePath, cbcLargeContent, CancellationToken.None); // deduplicates against cbcFix chunk
 
         var gcmContent = new byte[300];
         Random.Shared.NextBytes(gcmContent);
-        gcmFix.WriteFile("gcm-small.bin", gcmContent);
+        var gcmSmallPath = RelativePath.Parse("gcm-small.bin");
+        await gcmFix.LocalFileSystem.WriteAllBytesAsync(gcmSmallPath, gcmContent, CancellationToken.None);
 
         var gcmResult = await gcmFix.ArchiveAsync();
         gcmResult.Success.ShouldBeTrue(gcmResult.ErrorMessage);
@@ -163,10 +169,10 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         restoreResult.FilesRestored.ShouldBe(2);
 
         // GCM-archived file must be restored correctly
-        gcmFix.ReadRestored("gcm-small.bin").ShouldBe(gcmContent);
+        gcmFix.RestoreFileSystem.ReadAllBytes(gcmSmallPath).ShouldBe(gcmContent);
 
         // CBC-archived file must also be restored correctly (auto-detection of legacy format)
-        gcmFix.ReadRestored("cbc-large.bin").ShouldBe(cbcLargeContent);
+        gcmFix.RestoreFileSystem.ReadAllBytes(cbcLargePath).ShouldBe(cbcLargeContent);
     }
 
 }
