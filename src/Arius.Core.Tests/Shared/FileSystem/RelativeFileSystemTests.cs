@@ -204,18 +204,20 @@ public class RelativeFileSystemTests
     }
 
     [Test]
-    public async Task DeleteFilesInDirectory_RemovesOnlyImmediateFiles()
+    public async Task ClearDirectory_RemovesAllFiles()
     {
-        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        // Arrange
         await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/one.txt"), "1", CancellationToken.None);
         await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/two.txt"), "2", CancellationToken.None);
         await _fileSystem.WriteAllTextAsync(RelativePath.Parse("cache/nested/three.txt"), "3", CancellationToken.None);
 
-        _fileSystem.DeleteFilesInDirectory(RelativePath.Parse("cache"));
+        // Act
+        _fileSystem.ClearDirectory(RelativePath.Parse("cache"));
 
+        // Assert - NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
         File.Exists(Path.Combine(_root, "cache", "one.txt")).ShouldBeFalse();
         File.Exists(Path.Combine(_root, "cache", "two.txt")).ShouldBeFalse();
-        File.Exists(Path.Combine(_root, "cache", "nested", "three.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(_root, "cache", "nested", "three.txt")).ShouldBeFalse();
     }
 
     [Test]

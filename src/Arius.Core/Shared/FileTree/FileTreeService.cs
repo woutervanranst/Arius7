@@ -320,7 +320,7 @@ public sealed class FileTreeService
         }
 
         // Invalidate chunk-index L2 (another machine may have updated shards)
-        _chunkIndexCacheFileSystem.DeleteFilesInDirectory(RelativePath.Root);
+        _chunkIndexCacheFileSystem.ClearDirectory(RelativePath.Root);
 
         // Also clear the in-memory L1 cache so stale shard data is not served from memory.
         _chunkIndex.InvalidateL1();

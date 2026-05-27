@@ -104,10 +104,18 @@ internal sealed class RelativeFileSystem
 
     // --- DIRECTORY DELETE FILES IN DIRECTORY
 
-    public void DeleteFilesInDirectory(RelativePath path)
+    /// <summary>
+    /// Deletes all (nested) files in the directory
+    /// </summary>
+    /// <param name="path"></param>
+    public void ClearDirectory(RelativePath path)
     {
-        DeleteDirectory(path, true);
-        CreateDirectory(path);
+        var fullPath = _root.Resolve(path);
+        if (!Directory.Exists(fullPath))
+            return;
+
+        foreach (var filePath in Directory.EnumerateFiles(fullPath, "*", SearchOption.AllDirectories))
+            File.Delete(filePath);
     }
 
     
