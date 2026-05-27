@@ -1,7 +1,6 @@
 using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Shared.FileSystem;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;

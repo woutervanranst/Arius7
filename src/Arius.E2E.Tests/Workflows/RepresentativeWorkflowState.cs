@@ -1,6 +1,5 @@
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
-using Arius.Core.Shared.FileSystem;
 
 namespace Arius.E2E.Tests.Workflows;
 

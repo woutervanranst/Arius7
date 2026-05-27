@@ -3,10 +3,8 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Shared.FileTree;

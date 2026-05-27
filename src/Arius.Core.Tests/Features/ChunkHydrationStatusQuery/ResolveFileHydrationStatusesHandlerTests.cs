@@ -6,7 +6,6 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
-using Arius.Tests.Shared;
 using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
