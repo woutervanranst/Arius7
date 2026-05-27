@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
@@ -7,7 +8,6 @@ using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
-using System.IO.Compression;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -8,8 +10,6 @@ using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using NSubstitute;
-using System.Collections.Concurrent;
-using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
