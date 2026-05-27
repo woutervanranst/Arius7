@@ -7,6 +7,7 @@ using Arius.Core.Shared.Storage;
 using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.Tests.Shared.IO;
+using Arius.Tests.Shared;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
@@ -87,7 +88,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         await UploadReadyRehydratedChunkAsync(azureBlobContainer, targetChunk, cancellationToken);
 
         var cleanupDeletedChunks = 0;
-        var readyRestoreDirectory = state.WorkflowDirectory / "archive-tier-ready";
+        var readyRestoreDirectory = state.WorkflowDirectory / RelativePath.Parse("archive-tier-ready");
         var readyRestoreFileSystem = new RelativeFileSystem(readyRestoreDirectory);
         readyRestoreFileSystem.CreateDirectory(RelativePath.Root);
 

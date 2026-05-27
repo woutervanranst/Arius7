@@ -63,27 +63,6 @@ public class RelativePathTests
     }
 
     [Test]
-    public void SlashStringOperator_ComposesSingleSegments()
-    {
-        var path = RelativePath.Root / "photos" / "pic.jpg";
-
-        path.ToString().ShouldBe("photos/pic.jpg");
-    }
-
-    [Test]
-    public void SlashStringOperator_MultiSegmentAppend_Throws()
-    {
-        Should.Throw<FormatException>(() => _ = RelativePath.Root / "photos/pic.jpg");
-    }
-
-    [Test]
-    public void SlashStringOperator_UnsafeAppend_Throws()
-    {
-        Should.Throw<FormatException>(() => _ = RelativePath.Root / ".."
-        );
-    }
-
-    [Test]
     public void ToPointerPath_AppendsPointerSuffix()
     {
         RelativePath.Parse("photos/pic.jpg").ToPointerPath().ToString().ShouldBe("photos/pic.jpg.pointer.arius");

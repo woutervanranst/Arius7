@@ -45,7 +45,3 @@ internal static class StreamExtensions
         }
     }
 }
-
-
-    }
-}

@@ -70,6 +70,8 @@ public static class ContentTypes
 /// </summary>
 public static class BlobPaths
 {
+    // NOTE: These methods require a strong domain type (unless there is none). For string convenience overloads used in Test suites, see Arius.Tests.Shared.BlobPathsExtensions.
+
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
     public static RelativePath ChunksPrefix => RelativePath.Root / PathSegment.Parse("chunks");
 

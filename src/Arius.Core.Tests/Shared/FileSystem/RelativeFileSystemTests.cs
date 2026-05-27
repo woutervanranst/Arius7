@@ -259,7 +259,7 @@ public class RelativeFileSystemTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "cache", "a", "nested", "b.txt"), "b");
         File.WriteAllText(Path.Combine(_root, "other", "c.txt"), "c");
 
-        var files = _fileSystem.EnumerateFilesRecursively(RelativePath.Parse("cache"))
+        var files = _fileSystem.EnumerateFiles(RelativePath.Parse("cache"), SearchOption.AllDirectories)
             .Select(entry => entry.Path)
             .ToArray();
 

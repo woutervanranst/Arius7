@@ -48,8 +48,9 @@ internal static class RepresentativeWorkflowRunner
         {
             fixture = await dependencies.CreateFixtureAsync(context, workflowDirectory, cancellationToken);
 
-            var versionedSourceRoot = workflowDirectory / "representative-source";
-            workflowFileSystem.CreateDirectory(RelativePath.Parse("representative-source"));
+            var rs                  = RelativePath.Parse("representative-source");
+            var versionedSourceRoot = workflowDirectory / rs;
+            workflowFileSystem.CreateDirectory(rs);
 
             state = new RepresentativeWorkflowState
             {

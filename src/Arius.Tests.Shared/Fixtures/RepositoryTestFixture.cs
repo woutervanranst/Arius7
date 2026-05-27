@@ -241,8 +241,8 @@ public sealed class RepositoryTestFixture : IAsyncDisposable
         var ownsTempRoot       = tempRoot is null;
         var resolvedTempRoot   = tempRoot ?? TestTempRoots.CreateDirectory("test");
         var tempRootFileSystem = new RelativeFileSystem(resolvedTempRoot);
-        var sourceDirectory    = resolvedTempRoot / "source";
-        var restoreDirectory   = resolvedTempRoot / "restore";
+        var sourceDirectory    = resolvedTempRoot / RelativePath.Parse("source");
+        var restoreDirectory   = resolvedTempRoot / RelativePath.Parse("restore");
 
         if (ownsTempRoot)
             tempRootFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);

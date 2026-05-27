@@ -7,6 +7,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using System.Runtime.CompilerServices;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -562,7 +563,7 @@ public class FileTreeBuilderTests
             .Select(async i =>
             {
                 using var content = new MemoryStream();
-                await blobs.UploadAsync(BlobPaths.FileTreesPrefix / $"blob-{i}", content, new Dictionary<string, string>(), BlobTier.Hot);
+                await blobs.UploadAsync(BlobPaths.FileTreePath($"blob-{i}"), content, new Dictionary<string, string>(), BlobTier.Hot);
             })
             .ToArray();
 
@@ -573,8 +574,8 @@ public class FileTreeBuilderTests
         await Task.WhenAll(uploads);
 
         blobs.Uploaded.Count.ShouldBe(2_000);
-        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreesPrefix / "blob-0");
-        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreesPrefix / "blob-1999");
+        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreePath("blob-0"));
+        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreePath("blob-1999"));
     }
 
     [Test]
