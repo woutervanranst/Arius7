@@ -54,7 +54,12 @@ internal sealed class RelativeFileSystem
 
     public bool DirectoryExists(RelativePath path) => Directory.Exists(_root.Resolve(path));
 
-    public bool DirectoryExists(LocalDirectory directory) => Directory.Exists(GetContainedDirectoryPath(directory));
+    public bool DirectoryExists(LocalDirectory directory)
+    {
+        EnsureContained(_root, directory);
+
+        return Directory.Exists(directory.ToString());
+    }
 
     public IEnumerable<PathSegment> EnumerateFileNames(RelativePath path)
     {
@@ -141,7 +146,17 @@ internal sealed class RelativeFileSystem
 
     public void CreateDirectory(RelativePath path) => Directory.CreateDirectory(_root.Resolve(path));
 
-    public void CreateDirectory(LocalDirectory directory) => Directory.CreateDirectory(GetContainedDirectoryPath(directory));
+    public static void CreateDirectory(LocalDirectory root, LocalDirectory directory)
+    {
+        EnsureContained(root, directory);
+
+        Directory.CreateDirectory(directory.ToString());
+    }
+
+    public void CreateDirectory(LocalDirectory directory)
+    {
+        CreateDirectory(_root, directory);
+    }
 
     public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
 
@@ -189,26 +204,34 @@ internal sealed class RelativeFileSystem
             File.Delete(filePath);
     }
 
-
     public void DeleteDirectory(RelativePath path, bool recursive)
     {
         var fullPath = _root.Resolve(path);
         Directory.Delete(fullPath, recursive);
     }
 
-    public void DeleteDirectory(LocalDirectory directory, bool recursive)
+    public static void DeleteDirectory(LocalDirectory directory, bool recursive)
     {
-        var fullPath = GetContainedDirectoryPath(directory);
-        Directory.Delete(fullPath, recursive);
+        Directory.Delete(directory.ToString(), recursive);
+    }
+
+    public static void DeleteDirectory(LocalDirectory root, LocalDirectory directory, bool recursive)
+    {
+        EnsureContained(root, directory);
+
+        Directory.Delete(directory.ToString(), recursive);
+    }
+
+    public static void DeleteDirectory(LocalDirectory root, RelativePath path, bool recursive)
+    {
+        Directory.Delete((root / path).ToString(), recursive);
     }
 
     public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
 
-    private string GetContainedDirectoryPath(LocalDirectory directory)
+    private static void EnsureContained(LocalDirectory root, LocalDirectory directory)
     {
-        if (!_root.TryGetRelativePath(directory.ToString(), out _))
-            throw new ArgumentException($"Directory '{directory}' is not contained within root '{_root}'.", nameof(directory));
-
-        return directory.ToString();
+        if (!root.TryGetRelativePath(directory, out _))
+            throw new ArgumentException($"Directory '{directory}' is not contained within root '{root}'.", nameof(directory));
     }
 }
