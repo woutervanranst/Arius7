@@ -32,7 +32,7 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        await fixture.Index.LookupAsync(contentHash).ShouldNotBeNull();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]
@@ -52,7 +52,7 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        await fixture.Index.LookupAsync(contentHash).ShouldNotBeNull();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]
