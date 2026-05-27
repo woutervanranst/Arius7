@@ -68,22 +68,6 @@ internal sealed class E2EFixture : IAsyncDisposable
         }
     }
 
-    public Task PreserveLocalCacheAsync()
-    {
-        if (_disposed)
-            throw new InvalidOperationException("Cannot preserve cache after fixture disposal.");
-
-        lock (RepositoryCacheLeaseLock)
-        {
-            var cacheKey = GetRepositoryCacheKey(_account, _container);
-            var lease = RepositoryCacheLeases.GetValueOrDefault(cacheKey);
-            lease.PreserveRequested = true;
-            RepositoryCacheLeases[cacheKey] = lease;
-        }
-
-        return Task.CompletedTask;
-    }
-
     internal ArchiveCommandHandler CreateArchiveHandler() 
         => Repository.CreateArchiveHandler();
 
@@ -143,6 +127,5 @@ internal sealed class E2EFixture : IAsyncDisposable
     private struct RepositoryCacheLease
     {
         public int LiveFixtureCount { get; set; }
-        public bool PreserveRequested { get; set; }
     }
 }

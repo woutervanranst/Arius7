@@ -31,7 +31,6 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         var sourceVersion = state.CurrentSourceVersion
             ?? throw new InvalidOperationException($"{Name}: current source version is not available.");
 
-        await state.Fixture.PreserveLocalCacheAsync();
         await state.Fixture.DisposeAsync();
         state.Fixture = await state.CreateFixtureAsync(state.Context, cancellationToken);
 
