@@ -136,7 +136,8 @@ graph TD
 
 ### Surface Split
 
-* Wrapper-local surface: `BlobContainer`, `Encryption`, `LocalDirectory`, `RestoreDirectory`, `LocalFileSystem`, `RestoreFileSystem`, handler factories, and scenario helpers such as `ArchiveAsync`, `RestoreAsync`, `ListAsync`, `PreserveLocalCacheAsync`, and `ResetLocalCacheAsync`.
+* `PipelineFixture` keeps wrapper-local access to `BlobContainer`, `Encryption`, `Mediator`, `LocalDirectory`, `RestoreDirectory`, `LocalFileSystem`, `RestoreFileSystem`, handler factories, and scenario helpers such as `ArchiveAsync`, `RestoreAsync`, and `ListAsync`.
+* `E2EFixture` keeps wrapper-local access to `BlobContainer`, `Encryption`, `LocalDirectory`, `RestoreDirectory`, `LocalFileSystem`, `RestoreFileSystem`, handler factories, `ArchiveAsync`, `RestoreAsync`, and explicit `ResetLocalCache(...)` coordination.
 * Repository-local surface behind `Repository`: `Index`, `ChunkStorage`, `FileTreeService`, `Snapshot`, `AccountName`, `ContainerName`, `ChunkIndexCacheDirectory`, `FileTreeCacheDirectory`, and `SnapshotCacheDirectory`.
 * `E2EFixture` does not carry separate stored copies of repository services.
 * Cache reset is explicit through `E2EFixture.ResetLocalCache(...)`; disposing a fixture only releases its active lease.
@@ -159,7 +160,7 @@ This decision is being followed when fixture code review and focused test verifi
 * `E2EFixture` no longer stores duplicated repository service state separately from `Repository`.
 * Cache reset is explicit through `E2EFixture.ResetLocalCache(...)`, and disposal only releases the active lease.
 * `dotnet test --project src/Arius.Integration.Tests/Arius.Integration.Tests.csproj` passes. Verified on 2026-05-24: 75 total, 0 failed, 71 succeeded, 4 skipped.
-* `dotnet test --project src/Arius.E2E.Tests/Arius.E2E.Tests.csproj` passes. Verified on 2026-05-24: 5 total, 0 failed, 5 succeeded, 0 skipped.
+* `dotnet test --project src/Arius.E2E.Tests/Arius.E2E.Tests.csproj` passes. Verified on 2026-05-28: 6 total, 0 failed, 6 succeeded, 0 skipped.
 
 ## Pros and Cons of the Options
 
