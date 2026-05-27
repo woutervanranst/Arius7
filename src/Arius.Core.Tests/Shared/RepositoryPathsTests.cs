@@ -11,7 +11,7 @@ public class RepositoryPathsTests
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var root = Path.Combine(home, ".arius", "account-container");
 
-        RepositoryPaths.GetRepositoryRoot("account", "container").ToString().ShouldBe(root);
+        RepositoryPaths.GetRepositoryLocalPersistentTempRoot("account", "container").ToString().ShouldBe(root);
         RepositoryPaths.GetRepositoryDirectoryName("account", "container").ShouldBe(PathSegment.Parse("account-container"));
         RepositoryPaths.GetChunkIndexCacheRoot("account", "container").ToString().ShouldBe(Path.Combine(root, "chunk-index"));
         RepositoryPaths.GetFileTreeCacheRoot("account", "container").ToString().ShouldBe(Path.Combine(root,   "filetrees"));
@@ -22,7 +22,7 @@ public class RepositoryPathsTests
     [Test]
     public void RepositoryCacheHelpers_ExposeTypedRootsAndRelativeSegments()
     {
-        RepositoryPaths.GetRepositoryRoot("account", "container").ToString()
+        RepositoryPaths.GetRepositoryLocalPersistentTempRoot("account", "container").ToString()
             .ShouldBe(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".arius", "account-container"));
         RepositoryPaths.GetRepositoryDirectoryName("account", "container")
             .ShouldBe(PathSegment.Parse("account-container"));
