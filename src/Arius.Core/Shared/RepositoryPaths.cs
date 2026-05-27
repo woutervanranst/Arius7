@@ -31,7 +31,7 @@ public static class RepositoryPaths
     internal static LocalDirectory GetRepositoryRoot(string accountName, string containerName)
     {
         var homeRoot = LocalDirectory.Parse(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / ".arius" / GetRepoDirectoryName(accountName, containerName)));
+        return LocalDirectory.Parse(homeRoot.Resolve(RelativePath.Root / PathSegment.Parse(".arius") / GetRepoDirectoryName(accountName, containerName)));
     }
 
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) 

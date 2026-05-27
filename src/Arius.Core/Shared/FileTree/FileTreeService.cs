@@ -224,7 +224,7 @@ public sealed class FileTreeService
 
     private async Task WriteCacheAtomicallyAsync(RelativePath diskPath, ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
     {
-        var tempPath = RelativePath.Root / $".{diskPath.Name}.{Guid.NewGuid():N}.tmp";
+        var tempPath = RelativePath.Root / PathSegment.Parse($".{diskPath.Name}.{Guid.NewGuid():N}.tmp");
 
         try
         {

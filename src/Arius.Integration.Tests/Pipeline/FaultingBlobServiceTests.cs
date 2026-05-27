@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
+using Arius.Tests.Shared;
 using NSubstitute;
 
 namespace Arius.Integration.Tests.Pipeline;

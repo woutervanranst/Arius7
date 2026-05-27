@@ -1,3 +1,5 @@
+using Arius.Tests.Shared;
+
 namespace Arius.Core.Tests.Shared.FileSystem;
 
 public class RelativePathTests
