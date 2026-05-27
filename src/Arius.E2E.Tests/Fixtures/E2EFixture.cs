@@ -110,8 +110,26 @@ internal sealed class E2EFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        lock (RepositoryCacheLeaseLock)
+        {
+            var cacheKey = GetRepositoryCacheKey(_account, _container);
+            if (RepositoryCacheLeases.TryGetValue(cacheKey, out var lease))
+            {
+                lease.LiveFixtureCount--;
+
+                if (lease.LiveFixtureCount <= 0)
+                    RepositoryCacheLeases.Remove(cacheKey);
+                else
+                    RepositoryCacheLeases[cacheKey] = lease;
+            }
+        }
+
         await Repository.DisposeAsync();
-        await Task.CompletedTask;
     }
 
     private static bool HasActiveLease(string accountName, string containerName)
