@@ -1,17 +1,13 @@
-using System.IO.Compression;
-using Arius.Core.Shared;
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
+using System.IO.Compression;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -87,6 +83,7 @@ public class FileTreeServiceTests
         // Pre-populate Azure (storage serialization).
         var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
         blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
+        // Clear seed bookkeeping.
         blobs.RequestedBlobNames.Clear();
 
         var result = await fixture.FileTreeService.ReadAsync(hash);
@@ -135,7 +132,8 @@ public class FileTreeServiceTests
         var diskPath = ResolveCachePath(fixture.FileTreeCacheDirectory, hash);
         File.Exists(diskPath).ShouldBeTrue();
         (await File.ReadAllBytesAsync(diskPath)).Length.ShouldBeGreaterThan(0);
-        // Concurrent reads should coalesce around the first download.
+        // Azure should have been called at most once; concurrent reads should coalesce
+        // around the first download, and a second download would indicate missing deduplication.
         blobs.RequestedBlobNames.Count(n => n == blobName).ShouldBeLessThanOrEqualTo(1, "At most one Azure download expected");
     }
 
@@ -399,6 +397,8 @@ public class FileTreeServiceTests
         await fixture.FileTreeService.ValidateAsync();
 
         // No filetrees listing should have been performed.
+        // (ListAsync is only called for filetrees/, not snapshots/.)
+        // We verify by checking no filetree blobs were requested.
         blobs.RequestedBlobNames.ShouldBeEmpty();
     }
 
