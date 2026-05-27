@@ -1,6 +1,5 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Snapshot;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 

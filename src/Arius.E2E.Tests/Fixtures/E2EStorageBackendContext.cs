@@ -1,5 +1,4 @@
 using Arius.AzureBlob;
-using Arius.Core.Shared.Storage;
 using Azure.Storage.Blobs;
 
 namespace Arius.E2E.Tests.Fixtures;

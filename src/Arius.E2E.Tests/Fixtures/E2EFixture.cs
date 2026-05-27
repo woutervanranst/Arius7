@@ -1,7 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.E2E.Tests.Fixtures;

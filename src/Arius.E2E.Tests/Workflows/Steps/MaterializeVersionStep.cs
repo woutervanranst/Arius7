@@ -1,4 +1,3 @@
-using Arius.E2E.Tests.Datasets;
 using Arius.Tests.Shared.IO;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
