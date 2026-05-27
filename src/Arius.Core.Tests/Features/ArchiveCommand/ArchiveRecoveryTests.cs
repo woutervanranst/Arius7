@@ -158,15 +158,10 @@ public class ArchiveRecoveryTests
             .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
             .Do(callInfo =>
             {
-                switch (callInfo.ArgAt<INotification>(0))
-                {
-                    case FileScannedEvent scanned:
-                        scannedEvents.Add(scanned);
-                        break;
-                    case FileHashingEvent hashing:
-                        hashingEvents.Add(hashing);
-                        break;
-                }
+                if (callInfo.ArgAt<INotification>(0) is FileScannedEvent scanned)
+                    scannedEvents.Add(scanned);
+                else if (callInfo.ArgAt<INotification>(0) is FileHashingEvent hashing) 
+                    hashingEvents.Add(hashing);
             });
 
         await WriteRandomFileAsync(fixture, RelativePath.Parse("photos/pic.jpg"), 32);
