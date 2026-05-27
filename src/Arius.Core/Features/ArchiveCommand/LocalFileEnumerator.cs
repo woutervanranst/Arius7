@@ -1,5 +1,3 @@
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.Hashes;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Features.ArchiveCommand;

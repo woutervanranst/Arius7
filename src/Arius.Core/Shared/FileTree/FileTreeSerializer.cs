@@ -1,7 +1,5 @@
 using System.Globalization;
 using System.Text;
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.FileTree;
 

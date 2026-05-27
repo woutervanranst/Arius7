@@ -1,6 +1,3 @@
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.Hashes;
-
 namespace Arius.Core.Shared.FileTree;
 
 internal sealed class FileTreeStagingWriter : IDisposable

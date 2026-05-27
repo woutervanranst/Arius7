@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
-using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.Encryption;
 
