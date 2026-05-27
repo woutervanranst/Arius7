@@ -157,7 +157,6 @@ public class UserTests
 - Using `[Arguments]` for objects or other non-constant values.
 - Returning the same mutable reference from a data source and accidentally coupling tests.
 - Using `InstanceMethodDataSource` with execution-time initialized state.
-- Using hooks when a simple constructor would be clearer and sufficient.
 - Using `[Skip]` for conditions that are only known after setup has started; use `Skip.Test(...)` instead.
 - Calling `Skip.Test(...)` for a static condition that should have been expressed once with `[Skip("reason")]`.
 - Mixing instance and static hook requirements, such as making `[Before(Class)]` non-static or `[Before(Test)]` static.
