@@ -12,6 +12,7 @@ using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using Arius.Core.Shared;
 
 namespace Arius.Integration.Tests.Pipeline;
 
@@ -105,7 +106,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.ChunksPendingRehydration.ShouldBe(1, "one chunk should be pending rehydration");
@@ -135,7 +136,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.ChunksPendingRehydration.ShouldBe(1, "chunk is still pending");
@@ -183,7 +184,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.FilesRestored.ShouldBe(1, "file should be restored from the rehydrated blob");
@@ -210,7 +211,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
             {
                 RootDirectory = fix.RestoreDirectory.ToString(),
                 Overwrite     = false,
-            }), default).AsTask();
+            }), CancellationToken.None).AsTask();
         firstResult.Success.ShouldBeTrue(firstResult.ErrorMessage);
         firstResult.FilesRestored.ShouldBe(1);
 
@@ -240,7 +241,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
                     cleanupCount   = count;
                     return Task.FromResult(true);
                 },
-            }), default).AsTask();
+            }), CancellationToken.None).AsTask();
 
         secondResult.Success.ShouldBeTrue(secondResult.ErrorMessage);
         secondResult.FilesRestored.ShouldBe(0, "all files are identical, nothing to restore");
@@ -315,7 +316,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         };
 
         var result = await MakeRestoreHandler(sim, fix)
-            .Handle(new RestoreCommand(restoreOpts), default).AsTask();
+            .Handle(new RestoreCommand(restoreOpts), CancellationToken.None).AsTask();
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         result.FilesRestored.ShouldBe(1);
