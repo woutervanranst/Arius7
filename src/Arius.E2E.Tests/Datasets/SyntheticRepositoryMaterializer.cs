@@ -19,7 +19,7 @@ internal static class SyntheticRepositoryMaterializer
 
         var fileSystem = new RelativeFileSystem(rootDirectory);
 
-        fileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        fileSystem.DeleteDirectoryIfExists(RelativePath.Root, recursive: true);
         fileSystem.CreateDirectory(RelativePath.Root);
 
         var files = new Dictionary<RelativePath, ContentHash>();
