@@ -2,7 +2,7 @@ using Arius.Core.Shared;
 
 namespace Arius.Tests.Shared;
 
-public class RepositoryPathsCleanup
+public class RepositoryLocalStatePathsCleanup
 {
     public const string UnitTestRepositoryPrefix = "unittest-";
 
