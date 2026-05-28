@@ -22,7 +22,7 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 3. Compare local latest vs remote latest: match = fast path, mismatch = slow path.
 4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present.
 
-`FileTreeService.ValidateAsync` SHALL NOT invalidate chunk-index cache state. Archive-level coordination SHALL decide when to invalidate mutable chunk-index caches.
+`FileTreeService.ValidateAsync` SHALL return a `FileTreeValidationResult` record containing a `SnapshotMismatch` boolean. `SnapshotMismatch` SHALL be true when the latest remote snapshot exists and does not match the latest local snapshot marker, or when no local marker exists for a non-empty remote repository. `FileTreeService.ValidateAsync` SHALL NOT invalidate chunk-index cache state. Archive-level coordination SHALL use the validation result to decide when to invalidate mutable chunk-index caches.
 
 #### Scenario: Snapshot match — fast path
 - **WHEN** the latest local marker is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`
@@ -32,6 +32,7 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 - **WHEN** the latest local marker is `2026-03-21T100000.000Z` but the latest remote snapshot is `2026-03-22T150000.000Z`
 - **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`
 - **AND** it SHALL create empty marker files on disk for each remote filetree blob that is not already cached
+- **AND** it SHALL return `FileTreeValidationResult` with `SnapshotMismatch` set
 
 #### Scenario: Slow path does not overwrite existing cache files
 - **WHEN** a snapshot mismatch triggers the slow path and `~/.arius/{repo}/filetrees/abc123` already exists with content
@@ -44,6 +45,11 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 #### Scenario: No remote snapshots — fast path
 - **WHEN** `ListAsync("snapshots/")` returns no results (brand new repository)
 - **THEN** `ValidateAsync` SHALL set fast-path mode (nothing to invalidate, no remote blobs to prefetch)
+- **AND** it SHALL return `FileTreeValidationResult` with `SnapshotMismatch` unset
+
+#### Scenario: Snapshot match returns no mismatch
+- **WHEN** the latest local marker matches the latest remote snapshot
+- **THEN** `ValidateAsync` SHALL return `FileTreeValidationResult` with `SnapshotMismatch` unset
 
 #### Scenario: Validate does not invalidate chunk index
 - **WHEN** a snapshot mismatch is detected by `FileTreeService.ValidateAsync`

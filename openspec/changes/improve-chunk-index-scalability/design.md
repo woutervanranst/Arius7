@@ -10,8 +10,8 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 
 **Goals:**
 
-- Reduce tiny-shard proliferation by replacing the hard-coded 4-hex prefix with one internal repo-wide prefix-length constant.
-- Parallelize chunk-index flush safely across touched shard prefixes.
+- Reduce tiny-shard proliferation by replacing the hard-coded 4-hex prefix with one internal repo-wide prefix-length constant on `ChunkIndexService`.
+- Parallelize chunk-index flush safely across touched shard prefixes with an internal worker-count constant.
 - Add configurable lookup repair behavior so corrupt shard state can be rebuilt from chunk blobs on demand, and restore can recover from missing shard blobs without making normal archive misses expensive.
 - Make restore run one full chunk-index repair and retry unresolved snapshot content hashes before failing.
 - Add an explicit full chunk-index repair API and command for maintenance and tests.
@@ -30,14 +30,14 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 
 ### Decision: Fixed Prefix-Length Constant
 
-Use one internal constant for chunk-index shard prefix length, for example `ChunkIndexLayout.ShardPrefixLength = 2`. `Shard.PrefixOf(ContentHash)` uses this constant instead of `ContentHash.Prefix4`.
+Use one internal constant on `ChunkIndexService` for chunk-index shard prefix length, for example `internal const int ShardPrefixLength = 2`. `Shard.PrefixOf(ContentHash)` uses this constant instead of `ContentHash.Prefix4`, slicing `contentHash.ToString()` rather than adding prefix-specific properties to `ContentHash`.
 
 Alternatives considered:
 - Keep 4 hex chars: preserves current layout but keeps tiny-shard behavior for small archives.
 - Use 3 hex chars: middle ground, but still creates up to 4096 shards and remains sparse for small archives.
 - Dynamic/adaptive prefix: solves both extremes, but introduces routing, migration, and partial-resize recoverability complexity.
 
-Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. The constant keeps the storage format simple and leaves room to change before release if testing shows a better fixed value.
+Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. Keeping the constant on `ChunkIndexService` is the smallest change and avoids adding a separate layout type before there is more layout state to own.
 
 ### Decision: Lookup Repair Modes
 
@@ -102,7 +102,9 @@ Rationale: Repair is expected to scan potentially many chunks. Azure can include
 
 ### Decision: Bounded Parallel Flush Per Prefix
 
-`ChunkIndexService.FlushAsync` processes each touched prefix independently through bounded `Parallel.ForEachAsync`. Each prefix is still handled by exactly one worker: load existing shard, merge entries, serialize, upload, save L2, and promote L1.
+`ChunkIndexService.FlushAsync` processes each touched prefix independently through bounded `Parallel.ForEachAsync` using an internal worker-count constant, for example `FlushWorkers = 8`. Each prefix is still handled by exactly one worker: load existing shard, merge entries, serialize, upload, save L2, and promote L1.
+
+If parallel flush fails after writing some shard prefixes, archive fails and SHALL NOT publish a snapshot. A later archive rerun or full repair can converge from committed chunks.
 
 Alternatives considered:
 - Keep sequential flush: simple but slow for many touched prefixes.
@@ -120,9 +122,10 @@ Rationale: The chunk index is a performance and metadata index, not the only dur
 
 ### Decision: ArchiveCommandHandler Coordinates Cache Epochs
 
-`FileTreeService.ValidateAsync` stops invalidating chunk-index caches. It only decides/materializes filetree remote-existence knowledge. `ArchiveCommandHandler` becomes the explicit coordinator: it validates repository cache state, asks `FileTreeService` to materialize filetree knowledge when needed, and asks `ChunkIndexService` to invalidate mutable shard caches when snapshot mismatch means another writer may have changed index shards.
+`FileTreeService.ValidateAsync` keeps the snapshot comparison because that comparison drives filetree cache fast/slow-path behavior. It stops invalidating chunk-index caches and instead returns a `FileTreeValidationResult` record containing `SnapshotMismatch`. `ArchiveCommandHandler` becomes the explicit coordinator: it calls `FileTreeService.ValidateAsync`, and when the result reports a snapshot mismatch, it asks `ChunkIndexService` to invalidate mutable shard caches before chunk-index flush or tree existence checks.
 
 Alternatives considered:
+- Move snapshot comparison out of `FileTreeService`: creates cleaner separation in theory, but the comparison already belongs to the filetree fast/slow-path decision and moving it now would be a larger change.
 - Introduce a repository cache coordinator service: architecturally clean, but not necessary while only archive coordinates these two cache owners.
 - Keep hidden invalidation in `FileTreeService`: current behavior, but it keeps issue #80 unresolved and obscures archive tail ordering.
 

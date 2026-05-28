@@ -121,6 +121,10 @@ After uploads complete and archive cache coordination has invalidated stale muta
 - **WHEN** the archive pipeline begins the end-of-pipeline phase
 - **THEN** filetree cache validation/materialization and chunk-index cache invalidation SHALL have been coordinated before any tree existence checks or chunk-index flush operations
 
+#### Scenario: Archive invalidates chunk index from filetree validation result
+- **WHEN** `FileTreeService.ValidateAsync` returns `FileTreeValidationResult` with `SnapshotMismatch` set
+- **THEN** `ArchiveCommandHandler` SHALL ask `ChunkIndexService` to invalidate chunk-index caches before chunk-index flush or tree existence checks
+
 #### Scenario: Flush and tree synchronization may run concurrently
 - **WHEN** chunk uploads have completed and archive cache coordination has completed
 - **THEN** the archive pipeline MAY run chunk-index flush and filetree synchronization concurrently

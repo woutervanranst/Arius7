@@ -4,13 +4,13 @@ The chunk index currently uses a fixed 4-hex shard prefix and flushes touched sh
 
 ## What Changes
 
-- Replace the hard-coded 4-hex shard prefix with one internal repository-wide prefix-length constant used by all shard prefix calculations.
-- Parallelize chunk-index shard flush per touched prefix with bounded `Parallel.ForEachAsync` while preserving one worker per prefix.
+- Replace the hard-coded 4-hex shard prefix with one internal repository-wide prefix-length constant on `ChunkIndexService`, used by all shard prefix calculations.
+- Parallelize chunk-index shard flush per touched prefix with bounded `Parallel.ForEachAsync` and an internal worker-count constant while preserving one worker per prefix.
 - Add configurable lookup repair behavior: corrupt shards can be rebuilt automatically, restore can probe for chunks when an expected shard is missing, and normal archive misses do not trigger expensive repair scans.
 - Make restore self-healing for incomplete chunk-index coverage: after normal lookup and missing-shard probing, unresolved snapshot content hashes trigger one full chunk-index repair and a retry before restore fails.
 - Add an explicit full chunk-index repair API and command for maintenance and test setup.
 - Extend blob listing so callers can request metadata with listed blob names, enabling repair to avoid per-blob metadata round-trips.
-- Move chunk-index cache invalidation out of `FileTreeService`; `ArchiveCommandHandler` will coordinate filetree validation/materialization and chunk-index invalidation explicitly.
+- Move chunk-index cache invalidation out of `FileTreeService`; `FileTreeService.ValidateAsync` will still perform snapshot comparison and return `FileTreeValidationResult`, and `ArchiveCommandHandler` will invalidate chunk-index caches when that result reports a snapshot mismatch.
 - Run chunk-index flush and filetree synchronization concurrently at the archive tail after cache validation and uploads complete, publishing a snapshot only after both succeed.
 - Add interruption/recoverability coverage for a chunk-index flush stopped halfway across multiple shard prefixes.
 
@@ -30,7 +30,7 @@ _(none)_
 
 ## Impact
 
-- `src/Arius.Core/Shared/ChunkIndex/`: prefix layout constant, lookup repair modes, parallel flush behavior, full repair API, and tests.
+- `src/Arius.Core/Shared/ChunkIndex/`: `ChunkIndexService` prefix-length and flush-worker constants, lookup repair modes, parallel flush behavior, full repair API, and tests.
 - `src/Arius.Core/Shared/Storage/IBlobContainerService.cs`: listing return shape and optional metadata flag.
 - `src/Arius.AzureBlob/AzureBlobContainerService.cs`: Azure listing implementation with `BlobTraits.Metadata` when requested.
 - `src/Arius.Core/Shared/FileTree/FileTreeService.cs`: remove chunk-index dependency and hidden invalidation.

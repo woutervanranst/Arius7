@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Fixed shard prefix layout
-The chunk index SHALL derive shard prefixes from one internal repository-wide prefix-length constant. All chunk-index lookup, flush, repair, local cache paths, and remote shard paths SHALL use that same prefix length. The prefix length SHALL NOT be configurable through the CLI in this change.
+The chunk index SHALL derive shard prefixes from one internal repository-wide prefix-length constant on `ChunkIndexService`. All chunk-index lookup, flush, repair, local cache paths, and remote shard paths SHALL use that same prefix length. The prefix length SHALL NOT be configurable through the CLI in this change. Prefix calculation SHALL slice the canonical content hash string and SHALL NOT add prefix-length-specific properties to `ContentHash`.
 
 #### Scenario: Prefix calculation uses layout constant
 - **WHEN** the chunk index calculates the shard prefix for a content hash
-- **THEN** it SHALL take the first `ChunkIndexLayout.ShardPrefixLength` hex characters from the content hash
+- **THEN** it SHALL take the first `ChunkIndexService.ShardPrefixLength` hex characters from the content hash string
 
 #### Scenario: Shard path uses calculated prefix
 - **WHEN** a shard prefix is calculated as `aa`
@@ -118,11 +118,20 @@ The system SHALL collect new chunk index entries during archive and flush update
 - **THEN** the service SHALL process those prefixes using bounded parallelism
 - **AND** no two workers SHALL write the same shard prefix concurrently
 
-### Requirement: Mutable shard cache invalidation
-Chunk index shards are mutable repository metadata. When archive cache coordination shows that another machine may have updated the repository, the system SHALL invalidate stale chunk index cache state by deleting all files in `~/.arius/{repo}/chunk-index/` and calling `ChunkIndexService.InvalidateL1()` before future lookups trust cached shard contents. Chunk-index invalidation SHALL be owned by `ChunkIndexService` and coordinated by the archive workflow, not by `FileTreeService`.
+#### Scenario: Flush uses internal worker constant
+- **WHEN** `ChunkIndexService.FlushAsync` processes touched shard prefixes
+- **THEN** it SHALL bound concurrency using an internal worker-count constant on `ChunkIndexService`
 
-#### Scenario: Snapshot mismatch invalidates chunk index cache
-- **WHEN** a snapshot mismatch is detected during archive cache coordination
+#### Scenario: Partial flush failure does not publish snapshot
+- **WHEN** parallel chunk-index flush fails after writing some shard prefixes
+- **THEN** the archive operation SHALL fail
+- **AND** no snapshot SHALL be published for that failed archive run
+
+### Requirement: Mutable shard cache invalidation
+Chunk index shards are mutable repository metadata. When `FileTreeService.ValidateAsync` returns `FileTreeValidationResult` with `SnapshotMismatch` set, the archive workflow SHALL invalidate stale chunk index cache state by deleting all files in `~/.arius/{repo}/chunk-index/` and calling `ChunkIndexService.InvalidateL1()` before future lookups trust cached shard contents. Chunk-index invalidation SHALL be owned by `ChunkIndexService` and coordinated by the archive workflow, not by `FileTreeService`.
+
+#### Scenario: Filetree validation mismatch invalidates chunk index cache
+- **WHEN** `FileTreeService.ValidateAsync` returns a result with `SnapshotMismatch` set
 - **THEN** all files in `~/.arius/{repo}/chunk-index/` SHALL be deleted
 - **AND** `ChunkIndexService.InvalidateL1()` SHALL be called
 
