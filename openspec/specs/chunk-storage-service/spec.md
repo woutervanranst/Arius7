@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Defines `ChunkStorageService`: a shared service that owns chunk blob upload, download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning, while keeping chunk metadata lookup and shard management in `ChunkIndexService`.
+Defines `ChunkStorageService`: a shared service that owns chunk blob upload, download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning.
 
 ## Requirements
 
-### Requirement: Separate chunk index from chunk storage responsibilities
-The system SHALL keep chunk metadata lookup and chunk blob protocol as separate shared services. `ChunkIndexService` SHALL own content-hash lookup, pending `ShardEntry` recording, shard flush, and in-memory shard-cache invalidation. `ChunkStorageService` SHALL own chunk blob upload, chunk blob download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning.
+### Requirement: Separate chunk storage from chunk index responsibilities
+The system SHALL keep chunk metadata lookup and chunk blob protocol as separate shared services. `ChunkStorageService` SHALL own chunk blob upload, chunk blob download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning. `ChunkIndexService` SHALL own content-hash lookup, shard recording, shard flush, and shard-cache invalidation as defined by the chunk-index-service capability.
 
 #### Scenario: Archive handler uses both chunk services
 - **WHEN** `ArchiveCommandHandler` archives a file
@@ -85,14 +85,3 @@ The cleanup plan SHALL allow restore to preview cleanup totals for user confirma
 #### Scenario: Cleanup plan executes deletion once confirmed
 - **WHEN** the user confirms cleanup of rehydrated blobs
 - **THEN** `ExecuteAsync` SHALL delete the planned rehydrated blobs and return the actual deleted count and freed bytes
-
-### Requirement: Repository-local path helpers live outside chunk index
-The system SHALL provide a repository-scoped path helper for local cache and log directories instead of exposing repository directory naming helpers from `ChunkIndexService`. Shared services, CLI code, and tests SHALL use the repository-scoped helper for repo root, chunk-index cache, filetree cache, snapshot cache, and logs directories.
-
-#### Scenario: Snapshot and filetree services share repository path helper
-- **WHEN** `SnapshotService` and `FileTreeService` derive their local cache directories
-- **THEN** they SHALL do so through the shared repository path helper rather than through static methods on `ChunkIndexService`
-
-#### Scenario: CLI logs path does not depend on chunk index service
-- **WHEN** CLI code derives the repository logs directory
-- **THEN** it SHALL use the shared repository path helper and SHALL NOT depend on `ChunkIndexService` for the repository directory name

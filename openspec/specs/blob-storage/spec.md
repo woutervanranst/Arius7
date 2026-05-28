@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the blob storage abstraction layer, container layout, tiered caching, and rehydration strategy for Arius. Arius.Core depends only on the `IBlobStorageService` interface; the Azure implementation lives in Arius.AzureBlob.
+Defines the blob storage abstraction layer, container layout, and rehydration strategy for Arius. Arius.Core depends only on the `IBlobStorageService` interface; the Azure implementation lives in Arius.AzureBlob.
 
 ## Requirements
 
@@ -131,27 +131,6 @@ The local cache SHALL be organized by repository using a human-readable director
 #### Scenario: Account with multiple containers
 - **WHEN** archiving to account `myacct` with containers `photos` and `documents`
 - **THEN** the cache directories SHALL be `~/.arius/myacct-photos/` and `~/.arius/myacct-documents/`
-
-### Requirement: Tiered chunk index cache
-The system SHALL implement a three-tier cache for chunk index shards: L1 in-memory LRU (configurable size via `--dedup-cache-mb`, default 512 MB), L2 local disk cache at `~/.arius/{accountName}-{containerName}/chunk-index/`, L3 remote Azure Blob. On miss at L1, the shard SHALL be loaded from L2. On miss at L2, the shard SHALL be downloaded from L3 and saved to L2. Shards promoted to L1 SHALL evict the least-recently-used shard when the memory budget is exceeded.
-
-Shard entries SHALL use a field-count convention: 3 space-separated fields for large files (`<content-hash> <original-size> <compressed-size>`), 4 space-separated fields for small files (`<content-hash> <chunk-hash> <original-size> <compressed-size>`). This format SHALL be consistent across L2 and L3 (before L3 compression/encryption).
-
-#### Scenario: L1 cache hit
-- **WHEN** a shard was recently accessed and is in the in-memory LRU
-- **THEN** the lookup SHALL return immediately without disk or network I/O
-
-#### Scenario: L2 cache hit
-- **WHEN** a shard is not in L1 but was previously downloaded to disk
-- **THEN** the shard SHALL be loaded from disk, promoted to L1, and returned
-
-#### Scenario: L3 cache miss
-- **WHEN** a shard has never been accessed (first archive on a new machine)
-- **THEN** the shard SHALL be downloaded from Azure, saved to L2, promoted to L1, and returned
-
-#### Scenario: New shard (404)
-- **WHEN** a shard does not exist in Azure (new prefix, first archive)
-- **THEN** an empty shard SHALL be created in L1
 
 ### Requirement: Tree blob caching
 Tree blobs SHALL be cached on local disk at `~/.arius/{accountName}-{containerName}/filetrees/` and valid indefinitely (content-addressed = immutable). The cache SHALL be used for `ls` and `restore` tree traversal.

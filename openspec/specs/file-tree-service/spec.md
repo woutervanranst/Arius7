@@ -67,7 +67,7 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 1. Enumerate `~/.arius/{repo}/snapshots/` to find timestamp-named marker files, sort lexicographically, and take the latest. If no markers exist, treat as mismatch.
 2. Call `ListAsync("snapshots/")` to enumerate remote snapshots and find the latest timestamp.
 3. Compare local latest vs remote latest: match = fast path, mismatch = slow path.
-4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also delete all files in `~/.arius/{repo}/chunk-index/` and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory.
+4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also invalidate chunk-index cache state as defined by the chunk-index-service capability because mutable shards may be stale.
 
 #### Scenario: Snapshot match — fast path
 - **WHEN** the latest local marker is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`
@@ -75,7 +75,7 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 
 #### Scenario: Snapshot mismatch — slow path
 - **WHEN** the latest local marker is `2026-03-21T100000.000Z` but the latest remote snapshot is `2026-03-22T150000.000Z`
-- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, delete all files in `~/.arius/{repo}/chunk-index/`, and call `ChunkIndexService.InvalidateL1()` to invalidate stale shard data both on disk and in memory
+- **THEN** `ValidateAsync` SHALL call `ListAsync("filetrees/")`, create empty marker files on disk for each remote blob, and invalidate chunk-index cache state
 
 #### Scenario: Slow path does not overwrite existing cache files
 - **WHEN** a snapshot mismatch triggers the slow path and `~/.arius/{repo}/filetrees/abc123` already exists with content
@@ -89,9 +89,9 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 - **WHEN** `ListAsync("snapshots/")` returns no results (brand new repository)
 - **THEN** `ValidateAsync` SHALL set fast-path mode (nothing to invalidate, no remote blobs to prefetch)
 
-#### Scenario: Chunk-index L2 invalidation on mismatch
+#### Scenario: Chunk-index cache invalidation on mismatch
 - **WHEN** a snapshot mismatch is detected
-- **THEN** all files in `~/.arius/{repo}/chunk-index/` SHALL be deleted to force `ChunkIndexService` to re-download from Azure on next access
+- **THEN** chunk-index cache state SHALL be invalidated so `ChunkIndexService` re-downloads shards from remote storage on next access
 
 ### Requirement: Snapshot disk cache update
 After the archive pipeline successfully creates a new snapshot, `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/` named by the snapshot timestamp (e.g., `2026-03-22T150000.000Z`), using the same `SnapshotService.TimestampFormat`. This is a write-through operation - the same content is uploaded to Azure and persisted locally. The directory `~/.arius/{repo}/snapshots/` SHALL be created if it does not exist.
