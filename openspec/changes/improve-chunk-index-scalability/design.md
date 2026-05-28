@@ -83,14 +83,24 @@ Rationale: Full repair is expensive, but restore only pays it after proving that
 
 ### Decision: Explicit Full Repair API and Command
 
-Add a full chunk-index repair path that enumerates all chunks, rebuilds all shard files for the configured prefix length, and overwrites live `chunk-index/<prefix>` shard blobs in place. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair reconstructs the same shard contents from committed chunks and converges.
+Add a full chunk-index repair path that rebuilds each shard prefix from committed chunk blobs and overwrites live `chunk-index/<prefix>` shard blobs in place. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair reconstructs the same shard contents from committed chunks and converges.
+
+Full repair processes the current shard layout prefix-by-prefix rather than staging the whole repository index in memory or on disk:
+
+1. Enumerate all valid shard prefixes for the current layout.
+2. For each prefix, rebuild that prefix by listing `chunks/<prefix>*`.
+3. If the rebuilt prefix has entries, overwrite `chunk-index/<prefix>` directly and remember that prefix as expected.
+4. If the rebuilt prefix has no entries, do not write an empty shard and do not remember that prefix as expected.
+5. After every prefix has been processed, list existing `chunk-index/` blobs.
+6. Delete existing chunk-index shard blobs that are not in the expected prefix set.
+7. Invalidate chunk-index L1/L2 cache state after repair completes.
 
 Alternatives considered:
 - Tests call internal prefix repair only: insufficient coverage for maintenance behavior.
 - Only expose CLI command: harder to test and reuse from future workflows.
 - Stage repair output under a temporary prefix before publishing: cleaner in theory, but Azure Blob Storage has no atomic folder move; publishing would still require per-shard writes unless the storage format gained a manifest indirection.
 
-Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, in-place overwrite is acceptable and rerunnable.
+Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, in-place overwrite is acceptable and rerunnable. Prefix-by-prefix direct overwrite keeps memory and disk usage bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
 
 ### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
 
