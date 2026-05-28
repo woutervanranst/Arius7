@@ -1,0 +1,115 @@
+## Context
+
+The chunk index is mutable repository metadata. It currently maps content hashes to chunk metadata through fixed 4-hex shard blobs under `chunk-index/`, with an L1 memory cache, L2 local disk cache, and L3 blob storage. This layout creates many tiny shards for small archives because random content hashes spread even modest file counts across many prefixes. At larger repository scales, any fixed prefix can still produce very large shard files.
+
+Flush currently groups pending entries by fixed prefix, then processes each touched shard sequentially: load existing shard, merge entries, serialize, upload with overwrite, save L2, and promote to L1. If an archive crashes halfway through flushing multiple touched shards, some chunk-index blobs may include the new entries while others do not. The published snapshot remains safe because snapshot creation happens later, but recovery is implicit and depends on rerunning the archive.
+
+`FileTreeService.ValidateAsync` currently compares local and remote snapshot state and, on mismatch, invalidates chunk-index caches as a hidden side effect. Issue #80 identifies this as a domain-boundary leak: `FileTreeService` owns immutable filetree cache behavior, while `ChunkIndexService` owns mutable chunk-index cache behavior.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- Reduce tiny-shard proliferation by replacing the hard-coded 4-hex prefix with one internal repo-wide prefix-length constant.
+- Parallelize chunk-index flush safely across touched shard prefixes.
+- Add prefix-scoped automatic chunk-index repair so missing, corrupt, or incomplete shard state can be rebuilt from chunk blobs on demand.
+- Add an explicit full chunk-index repair API and command for maintenance and tests.
+- Let repair list chunks with metadata in the same storage listing call where supported.
+- Make archive-tail cache coordination explicit in `ArchiveCommandHandler` and remove hidden chunk-index invalidation from `FileTreeService`.
+- Run chunk-index flush and filetree synchronization concurrently after uploads complete, while keeping snapshot publication after both complete.
+
+**Non-Goals:**
+
+- No adaptive shard resizing or split/merge algorithm in this change.
+- No CLI/config option for shard prefix length yet.
+- No backward-compatible reader for old 4-hex chunk-index shards; the repository is still in development and repair can rebuild missing new-layout shards from chunks.
+- No automatic full repository repair on restore/list startup.
+
+## Decisions
+
+### Decision: Fixed Prefix-Length Constant
+
+Use one internal constant for chunk-index shard prefix length, for example `ChunkIndexLayout.ShardPrefixLength = 2`. `Shard.PrefixOf(ContentHash)` uses this constant instead of `ContentHash.Prefix4`.
+
+Alternatives considered:
+- Keep 4 hex chars: preserves current layout but keeps tiny-shard behavior for small archives.
+- Use 3 hex chars: middle ground, but still creates up to 4096 shards and remains sparse for small archives.
+- Dynamic/adaptive prefix: solves both extremes, but introduces routing, migration, and partial-resize recoverability complexity.
+
+Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. The constant keeps the storage format simple and leaves room to change before release if testing shows a better fixed value.
+
+### Decision: Prefix-Scoped Automatic Repair On Demand
+
+`ChunkIndexService` rebuilds only the shard prefix needed for a lookup, and only after the normal lookup path cannot satisfy that lookup. Repair is triggered when the relevant shard is corrupt, missing/empty and the requested hash is not found, or present but missing a requested entry.
+
+The repair scans `chunks/<prefix>*` and reconstructs entries from chunk blobs:
+- Large chunk: blob name is the content hash and chunk hash; metadata supplies original and compressed sizes.
+- Thin chunk: blob name is the content hash; metadata supplies original and compressed sizes; blob body supplies the tar chunk hash.
+- Tar chunk: ignored directly for index reconstruction because thin chunks are the per-file mapping source.
+
+Alternatives considered:
+- Explicit repair only: simple but less resilient; restore/list would fail even when a cheap prefix repair could heal the repository.
+- Automatic full repair: resilient but too surprising and expensive for read paths.
+- Rebuild every missing shard immediately: wasteful because missing shards are normal for prefixes with no chunks.
+
+Rationale: Prefix-scoped repair gives graceful gradual healing without a full repository scan. It keeps the cost proportional to the prefix being accessed.
+
+### Decision: Explicit Full Repair API and Command
+
+Add a full chunk-index repair path that enumerates all chunks, rebuilds all shard files for the configured prefix length, and writes the complete chunk index. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command.
+
+Alternatives considered:
+- Tests call internal prefix repair only: insufficient coverage for maintenance behavior.
+- Only expose CLI command: harder to test and reuse from future workflows.
+
+Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool.
+
+### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
+
+Change `IBlobContainerService.ListAsync` to return blob list items and accept `bool includeMetadata = false`. Existing callers use item names only. Repair calls `ListAsync(prefix, includeMetadata: true, ...)` to receive metadata and content length from Azure listings using `BlobTraits.Metadata` where supported.
+
+Alternatives considered:
+- Add `ListWithMetadataAsync`: clearer separation but duplicates listing concepts in the storage boundary.
+- Keep current name-only listing and call `GetMetadataAsync` per blob: simplest API, but repair becomes one remote round-trip per chunk.
+
+Rationale: Repair is expected to scan potentially many chunks. Azure can include metadata in listing results, so the storage abstraction should expose that capability directly.
+
+### Decision: Bounded Parallel Flush Per Prefix
+
+`ChunkIndexService.FlushAsync` processes each touched prefix independently through bounded `Parallel.ForEachAsync`. Each prefix is still handled by exactly one worker: load existing shard, merge entries, serialize, upload, save L2, and promote L1.
+
+Alternatives considered:
+- Keep sequential flush: simple but slow for many touched prefixes.
+- Channel pipeline with separate load/serialize/upload stages: more flexible but unnecessary until profiling proves serialization/upload imbalance.
+
+Rationale: Per-prefix work is naturally independent. Bounded `Parallel.ForEachAsync` is the smallest correct concurrency change.
+
+### Decision: ArchiveCommandHandler Coordinates Cache Epochs
+
+`FileTreeService.ValidateAsync` stops invalidating chunk-index caches. It only decides/materializes filetree remote-existence knowledge. `ArchiveCommandHandler` becomes the explicit coordinator: it validates repository cache state, asks `FileTreeService` to materialize filetree knowledge when needed, and asks `ChunkIndexService` to invalidate mutable shard caches when snapshot mismatch means another writer may have changed index shards.
+
+Alternatives considered:
+- Introduce a repository cache coordinator service: architecturally clean, but not necessary while only archive coordinates these two cache owners.
+- Keep hidden invalidation in `FileTreeService`: current behavior, but it keeps issue #80 unresolved and obscures archive tail ordering.
+
+Rationale: Archive already orchestrates the end-to-end workflow. Making it coordinate both cache owners is explicit and minimal.
+
+### Decision: Concurrent Archive Tail
+
+After cache validation and chunk uploads complete, archive runs chunk-index flush and filetree synchronization concurrently. Snapshot creation waits for both tasks to complete and uses the filetree root hash from synchronization.
+
+Rationale: Chunk-index shard writes and filetree blob writes target different repository metadata prefixes. Both are prerequisites for publishing a snapshot, but neither depends on the other after cache validation has completed.
+
+## Risks / Trade-offs
+
+- **[Risk] Prefix-scoped repair on restore/list can still be slow** -> Repair is limited to the accessed prefix and should log/report when it occurs. Full repair remains explicit for planned maintenance.
+- **[Risk] Changing `ListAsync` return type touches many callers** -> Keep the method name and add a simple `BlobListItem.Name` property; update callers mechanically.
+- **[Risk] 2-hex prefix may create large shards for very large repositories** -> The prefix length is centralized as a const so it can be adjusted before release. Adaptive resizing remains intentionally out of scope.
+- **[Risk] Parallel flush increases remote write pressure** -> Use a conservative bounded degree of parallelism and keep one worker per prefix.
+- **[Risk] Automatic repair can mask underlying corruption** -> Log repair triggers and expose explicit full repair for diagnosis.
+
+## Migration Plan
+
+No backward-compatible migration is required. Existing repositories are development data. After the prefix length changes, old chunk-index shards at the previous layout are ignored; prefix-scoped repair and full repair rebuild the new layout from chunk blobs.
+
+Rollback during development is also repair-based: if the prefix length is changed again, delete/rebuild chunk-index shards from chunks.

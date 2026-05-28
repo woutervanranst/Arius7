@@ -1,0 +1,37 @@
+## Why
+
+The chunk index currently uses a fixed 4-hex shard prefix and flushes touched shards sequentially, which creates many tiny shard blobs for small archives while still allowing very large shards at high repository scale. Chunk-index cache invalidation is also hidden inside `FileTreeService.ValidateAsync`, and interrupted shard flushes rely on rerun behavior rather than an explicit repair path.
+
+## What Changes
+
+- Replace the hard-coded 4-hex shard prefix with one internal repository-wide prefix-length constant used by all shard prefix calculations.
+- Parallelize chunk-index shard flush per touched prefix with bounded `Parallel.ForEachAsync` while preserving one worker per prefix.
+- Add prefix-scoped automatic chunk-index repair: when a lookup needs an entry and the relevant shard is missing, empty, corrupt, or does not contain the requested hash, rebuild that prefix from `chunks/<prefix>*`, rewrite the shard, and retry the lookup.
+- Add an explicit full chunk-index repair API and command for maintenance and test setup.
+- Extend blob listing so callers can request metadata with listed blob names, enabling repair to avoid per-blob metadata round-trips.
+- Move chunk-index cache invalidation out of `FileTreeService`; `ArchiveCommandHandler` will coordinate filetree validation/materialization and chunk-index invalidation explicitly.
+- Run chunk-index flush and filetree synchronization concurrently at the archive tail after cache validation and uploads complete, publishing a snapshot only after both succeed.
+- Add interruption/recoverability coverage for a chunk-index flush stopped halfway across multiple shard prefixes.
+
+## Capabilities
+
+### New Capabilities
+
+_(none)_
+
+### Modified Capabilities
+
+- `chunk-index-service`: Fixed prefix-length layout, bounded parallel flush, prefix-scoped repair, explicit full repair, and cache invalidation ownership.
+- `archive-pipeline`: Explicit archive-tail coordination, concurrent index flush/filetree synchronization, and recovery behavior for partial chunk-index flushes.
+- `file-tree-service`: Filetree validation no longer invalidates chunk-index caches as a hidden side effect.
+- `blob-storage`: Blob listing can optionally include metadata and content information for repair workflows.
+
+## Impact
+
+- `src/Arius.Core/Shared/ChunkIndex/`: prefix layout constant, lookup/flush repair behavior, full repair API, and tests.
+- `src/Arius.Core/Shared/Storage/IBlobContainerService.cs`: listing return shape and optional metadata flag.
+- `src/Arius.AzureBlob/AzureBlobContainerService.cs`: Azure listing implementation with `BlobTraits.Metadata` when requested.
+- `src/Arius.Core/Shared/FileTree/FileTreeService.cs`: remove chunk-index dependency and hidden invalidation.
+- `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs`: explicit cache coordination and parallel archive-tail finalization.
+- CLI command surface for explicit chunk-index repair.
+- Integration/E2E tests for prefix-scoped repair, full repair, partial flush interruption, and archive-tail ordering.
