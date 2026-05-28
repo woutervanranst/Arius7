@@ -39,11 +39,10 @@ If the inferred scope is ambiguous or too broad, stop and ask the user to clarif
 5. Pick the next highest-value mutant cluster.
 6. Write or strengthen tests first when they express intended behavior.
 7. If a mutant reveals a real bug or weak invariant, make the smallest production fix needed.
-8. Run `slopwatch analyze` after edits.
-9. Run `dotnet test --project src/Arius.Core.Tests/Arius.Core.Tests.csproj`.
-10. Re-run Stryker and repeat.
-11. Commit each logical hardening change separately.
-12. Stop when only equivalent or low-value mutants remain in the inferred scope.
+8. Run `dotnet test --project src/Arius.Core.Tests/Arius.Core.Tests.csproj`.
+9. Re-run Stryker and repeat.
+10. Commit each logical hardening change separately.
+11. Stop when only equivalent or low-value mutants remain in the inferred scope.
 
 ## High-Value Filter
 
@@ -59,7 +58,6 @@ Avoid trivial hardening such as:
 
 Use fresh evidence before claiming progress:
 
-- `slopwatch analyze`
 - `dotnet test --project src/Arius.Core.Tests/Arius.Core.Tests.csproj`
 - `dotnet stryker --config-file stryker-config.json`
 

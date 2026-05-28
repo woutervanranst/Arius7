@@ -75,7 +75,6 @@ Routing (invoke by name)
 - Testing: testcontainers-integration-tests, playwright-blazor-testing, snapshot-testing
 
 Quality gates (use when applicable)
-- dotnet-slopwatch: after substantial new/refactor/LLM-authored code
 - crap-analysis: after tests added/changed in complex code
 
 Specialist agents
