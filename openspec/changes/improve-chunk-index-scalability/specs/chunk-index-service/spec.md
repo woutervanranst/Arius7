@@ -3,6 +3,8 @@
 ### Requirement: Fixed shard prefix layout
 The chunk index SHALL derive shard prefixes from one internal repository-wide prefix-length constant on `ChunkIndexService`. All chunk-index lookup, flush, repair, local cache paths, and remote shard paths SHALL use that same prefix length. The prefix length SHALL NOT be configurable through the CLI in this change. `ContentHash` SHALL expose a general `Prefix(int length)` method for prefix extraction, and prefix calculation SHALL NOT add prefix-length-specific properties such as `Prefix2` or `Prefix3`.
 
+This fixed prefix-length layout SHALL be treated as an interim internal routing decision. Feature callers SHALL NOT accept, compute, or persist chunk-index prefix lengths; they SHALL use chunk-index service APIs so a future dynamic-sharding layout can replace prefix routing behind that boundary.
+
 #### Scenario: Prefix calculation uses layout constant
 - **WHEN** the chunk index calculates the shard prefix for a content hash
 - **THEN** it SHALL use `ContentHash.Prefix(ChunkIndexService.ShardPrefixLength)`

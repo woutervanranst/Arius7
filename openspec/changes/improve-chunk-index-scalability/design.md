@@ -39,6 +39,8 @@ Alternatives considered:
 
 Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. Keeping the constant on `ChunkIndexService` is the smallest change and avoids adding a separate layout type before there is more layout state to own. A general `Prefix(int length)` method avoids stringify/slice logic at call sites while also avoiding prefix-length-specific properties such as `Prefix2` or `Prefix3`.
 
+This fixed constant is an interim layout decision. Future dynamic sharding should replace `Shard.PrefixOf` routing and repository layout state behind the chunk-index service boundary without requiring feature callers to understand or pass prefix lengths.
+
 ### Decision: Lookup Repair Modes
 
 `ChunkIndexService` exposes configurable lookup repair behavior through a repair mode. The planned modes are:
