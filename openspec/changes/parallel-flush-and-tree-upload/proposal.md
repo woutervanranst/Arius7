@@ -24,6 +24,7 @@ This change must remain grounded in Arius's operating constraints. Arius is a ba
 
 ### Modified Capabilities
 - `archive-pipeline`: End-of-pipeline changes from serialized validate -> flush -> sort -> build -> snapshot to an overlapped finalization flow with one validation owner and parallel progress reporting.
+- `chunk-index`: Chunk-index flush changes from one-prefix-at-a-time to bounded parallel shard flushing without changing shard format or repository layout.
 
 ## Impact
 

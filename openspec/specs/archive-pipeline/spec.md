@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the archive pipeline for Arius: file enumeration, hashing, deduplication, size-based routing, large file upload, tar bundling, thin chunk creation, index shard management, Merkle tree construction, snapshot creation, pointer files, and crash recovery.
+Defines the archive pipeline for Arius: file enumeration, hashing, deduplication, size-based routing, large file upload, tar bundling, thin chunk creation, Merkle tree construction, snapshot creation, pointer files, and crash recovery.
 
 ## Requirements
 
@@ -67,7 +67,7 @@ The system SHALL compute content hashes by streaming file data through the hash 
 - **THEN** the system SHALL publish `FileHashingEvent` with `RelativePath` and `FileSize`
 
 ### Requirement: Dedup check against chunk index
-The system SHALL check each content hash against the chunk index before uploading. Each hashed file SHALL be looked up immediately via `_index.LookupAsync([hash])` without batching. The L1 LRU cache SHALL amortize repeated shard loads for the same prefix. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
+The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up immediately via `_index.LookupAsync([hash])` without batching. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
 
 #### Scenario: Content hash already in index
 - **WHEN** a file's content hash already exists in the chunk index
@@ -268,54 +268,16 @@ The system SHALL create a thin chunk blob for each small file after its tar is s
 - **WHEN** archive crashes after tar upload but before index update, and the archive is re-run
 - **THEN** the system SHALL discover existing thin chunks via HEAD, read the tar-hash from the body, and recover the index mapping without re-uploading
 
-### Requirement: Index shard merge and upload
-The system SHALL collect all new index entries (content-hash → chunk-hash, original-size, compressed-size) and upload updated chunk index shards once at the end of the archive run. For each modified shard prefix, the system SHALL download the existing shard (if cached or from Azure), merge new entries, and upload.
+### Requirement: Chunk index flush before snapshot
+The archive pipeline SHALL record new chunk metadata in `ChunkIndexService` as chunks are durably uploaded. Before creating the snapshot, the pipeline SHALL flush pending chunk index entries so the published snapshot never references content that cannot be resolved through the chunk index.
 
-The L3 wire format (Azure blobs) SHALL be: plaintext lines → gzip compressed → optionally AES-256-CBC encrypted. Content type SHALL be `application/aes256cbc+gzip` (encrypted) or `application/gzip` (plaintext).
+#### Scenario: New chunk metadata recorded
+- **WHEN** a large, tar, or thin chunk operation completes successfully
+- **THEN** the archive pipeline SHALL record the content-hash to chunk-hash mapping with original and compressed sizes through `ChunkIndexService`
 
-The L2 local disk cache SHALL store shards as **plaintext lines only** — no gzip compression, no encryption. This makes the local cache human-readable and avoids unnecessary CPU overhead on every cache read/write. The L2 format SHALL NOT change based on whether a passphrase is provided.
-
-The shard entry format SHALL use a field-count convention to distinguish large and small files:
-- **Large file entries** (content-hash equals chunk-hash) SHALL be serialized as 3 space-separated fields: `<content-hash> <original-size> <compressed-size>\n`.
-- **Small file entries** (content-hash differs from chunk-hash) SHALL be serialized as 4 space-separated fields: `<content-hash> <chunk-hash> <original-size> <compressed-size>\n`.
-
-On parsing, the system SHALL reconstruct the in-memory entry for 3-field lines by setting the chunk-hash equal to the content-hash. The in-memory data model SHALL remain unchanged (4 properties: content-hash, chunk-hash, original-size, compressed-size).
-
-#### Scenario: Large file entry serialized as 3 fields
-- **WHEN** a shard entry has content-hash equal to chunk-hash (large file)
-- **THEN** the entry SHALL be serialized as `<content-hash> <original-size> <compressed-size>` (3 space-separated fields)
-
-#### Scenario: Small file entry serialized as 4 fields
-- **WHEN** a shard entry has content-hash different from chunk-hash (tar-bundled file)
-- **THEN** the entry SHALL be serialized as `<content-hash> <chunk-hash> <original-size> <compressed-size>` (4 space-separated fields)
-
-#### Scenario: Parsing a 3-field entry
-- **WHEN** a shard line contains exactly 3 space-separated fields
-- **THEN** the system SHALL parse it as a large file entry and set chunk-hash equal to content-hash in the in-memory model
-
-#### Scenario: Parsing a 4-field entry
-- **WHEN** a shard line contains exactly 4 space-separated fields
-- **THEN** the system SHALL parse it as a small file entry with an explicit chunk-hash
-
-#### Scenario: New entries merged into existing shard
-- **WHEN** 50 new files have content hashes with prefix `a1`
-- **THEN** the system SHALL download/load the `a1` shard, append 50 entries, and upload the merged shard to Azure in gzip+encrypt format
-
-#### Scenario: First archive (no existing shards)
-- **WHEN** archiving to an empty repository
-- **THEN** the system SHALL create new shards for each prefix that has entries
-
-#### Scenario: L2 cache stores plaintext
-- **WHEN** a shard is saved to the local L2 disk cache
-- **THEN** the file SHALL contain raw plaintext lines with no compression or encryption, regardless of whether a passphrase is configured
-
-#### Scenario: L3 upload uses wire format
-- **WHEN** a shard is uploaded to Azure
-- **THEN** the blob SHALL be gzip-compressed and AES-256-CBC encrypted if a passphrase is provided, or gzip-compressed only if no passphrase is provided
-
-#### Scenario: Stale L2 file is self-healing
-- **WHEN** an L2 cache file cannot be parsed as plaintext lines (e.g., it contains old encrypted bytes from a prior version)
-- **THEN** the system SHALL treat it as a cache miss, fall through to L3, and re-cache the shard in plaintext format
+#### Scenario: Chunk index flushed before snapshot
+- **WHEN** archive finalization begins after uploads complete
+- **THEN** pending chunk index entries SHALL be flushed before snapshot creation
 
 ### Requirement: Merkle tree construction
 The system SHALL build a content-addressed merkle tree of directories after all uploads complete. Tree construction SHALL use a two-phase approach: (1) write completed file entries to an unsorted manifest temp file during the pipeline, (2) external sort by path, then stream through building tree blobs bottom-up one directory at a time.

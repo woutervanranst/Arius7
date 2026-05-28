@@ -75,7 +75,7 @@ Every disposition SHALL publish a `FileDispositionEvent(RelativePath, Dispositio
 - **THEN** the system SHALL proceed with restore, log `[disposition] photos/vacation.jpg -> new`, and publish `FileDispositionEvent` with `Disposition = New`
 
 ### Requirement: Chunk resolution from index
-The system SHALL look up each content hash in the chunk index to determine the chunk hash and chunk type. For large files, the content-hash equals the chunk-hash (reconstructed on parse from 3-field entries). For tar-bundled files, the content-hash maps to a different chunk-hash (the tar, from 4-field entries). The system SHALL group all file entries by chunk hash to minimize downloads (multiple files from the same tar → one download).
+The restore pipeline SHALL look up each content hash through `ChunkIndexService` to determine the chunk hash and chunk type from the resolved chunk metadata. For large files, the content hash equals the chunk hash. For tar-bundled files, the content hash maps to a different chunk hash for the parent tar. The system SHALL group all file entries by chunk hash to minimize downloads (multiple files from the same tar → one download).
 
 #### Scenario: Large file chunk resolution
 - **WHEN** content hash `abc123` is looked up and the in-memory entry has content-hash equal to chunk-hash
