@@ -65,7 +65,7 @@ Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose nam
 - **THEN** it SHALL NOT add a shard entry for the tar blob itself
 
 ### Requirement: Explicit full chunk-index repair
-The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL enumerate all chunk blobs, reconstruct large and thin entries, group them by shard prefix, and write complete shard blobs under `chunk-index/`.
+The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL enumerate all committed chunk blobs under `chunks/`, reconstruct large and thin entries, group them by shard prefix, and write complete shard blobs under `chunk-index/`. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
 
 #### Scenario: Full repair rebuilds all touched prefixes
 - **WHEN** full chunk-index repair runs on a repository with large and thin chunk blobs
@@ -75,6 +75,11 @@ The system SHALL provide an explicit full chunk-index repair API and command tha
 #### Scenario: Full repair available for maintenance
 - **WHEN** an operator invokes the full chunk-index repair command
 - **THEN** the command SHALL rebuild the remote chunk index from chunk blobs without requiring archive reruns
+
+#### Scenario: Committed chunks are repair source of truth
+- **WHEN** full chunk-index repair runs
+- **THEN** it SHALL derive chunk-index entries from committed large and thin chunk blobs
+- **AND** it SHALL NOT require existing chunk-index shard contents to reconstruct those entries
 
 ## MODIFIED Requirements
 

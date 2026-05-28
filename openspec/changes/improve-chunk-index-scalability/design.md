@@ -13,6 +13,7 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 - Reduce tiny-shard proliferation by replacing the hard-coded 4-hex prefix with one internal repo-wide prefix-length constant.
 - Parallelize chunk-index flush safely across touched shard prefixes.
 - Add configurable lookup repair behavior so corrupt shard state can be rebuilt from chunk blobs on demand, and restore can recover from missing shard blobs without making normal archive misses expensive.
+- Make restore run one full chunk-index repair and retry unresolved snapshot content hashes before failing.
 - Add an explicit full chunk-index repair API and command for maintenance and tests.
 - Let repair list chunks with metadata in the same storage listing call where supported.
 - Make archive-tail cache coordination explicit in `ArchiveCommandHandler` and remove hidden chunk-index invalidation from `FileTreeService`.
@@ -23,7 +24,7 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 - No adaptive shard resizing or split/merge algorithm in this change.
 - No CLI/config option for shard prefix length yet.
 - No backward-compatible reader for old 4-hex chunk-index shards; the repository is still in development and repair can rebuild missing new-layout shards from chunks.
-- No automatic full repository repair on restore/list startup.
+- No automatic full repository repair on restore/list startup; restore only runs full repair after unresolved snapshot content hashes prove the chunk index cannot satisfy the requested restore.
 
 ## Decisions
 
@@ -66,6 +67,17 @@ Alternatives considered:
 - Rebuild every missing shard immediately: wasteful because missing shards are normal for prefixes with no chunks.
 
 Rationale: Corrupt shard repair is unambiguously correct. Missing-shard probing covers the practical "shard blob was deleted" case for restore without making archive treat every new content hash as a repair trigger.
+
+### Decision: Restore Full Repair Fallback
+
+Restore first resolves all snapshot-referenced content hashes through `ChunkIndexService` using `OnMissingShardProbe`. If any content hashes remain unresolved after normal lookup and missing-shard probing, restore runs full chunk-index repair once, then retries lookup for the unresolved hashes. Restore fails only if entries remain unresolved after that retry.
+
+Alternatives considered:
+- Fail immediately and ask the user to run repair: explicit but unnecessary friction, because restore already knows repair is the likely next step.
+- Repair valid-but-missing entries prefix-by-prefix during lookup: risks repeated prefix scans and conflates normal misses with incomplete index state.
+- Run full repair at restore startup: robust but expensive even when the index is healthy.
+
+Rationale: Full repair is expensive, but restore only pays it after proving that snapshot content cannot be resolved. Running it once avoids repeated prefix scans and makes restore self-healing for valid-but-incomplete chunk-index shards.
 
 ### Decision: Explicit Full Repair API and Command
 
@@ -123,11 +135,11 @@ Rationale: Chunk-index shard writes and filetree blob writes target different re
 
 ## Risks / Trade-offs
 
-- **[Risk] Restore missing-shard probing can still be slow** -> Probe only when the shard blob is absent, stop the probe after the first matching chunk, and log/report repair work. Full repair remains explicit for planned maintenance.
+- **[Risk] Restore repair fallback can be slow** -> Probe only when the shard blob is absent, stop the probe after the first matching chunk, and run full repair at most once per restore after unresolved snapshot content remains. Log/report repair work.
 - **[Risk] Changing `ListAsync` return type touches many callers** -> Keep the method name and add a simple `BlobListItem.Name` property; update callers mechanically.
 - **[Risk] 2-hex prefix may create large shards for very large repositories** -> The prefix length is centralized as a const so it can be adjusted before release. Adaptive resizing remains intentionally out of scope.
 - **[Risk] Parallel flush increases remote write pressure** -> Use a conservative bounded degree of parallelism and keep one worker per prefix.
-- **[Risk] Valid-but-incomplete shards are not auto-repaired** -> Archive reruns can recover large chunk collisions, restore surfaces a clear missing-index entry error, and explicit full repair handles maintenance recovery.
+- **[Risk] Valid-but-incomplete shards are not repaired during lookup** -> Restore handles this at feature level by running full repair once after unresolved snapshot content remains, then retrying unresolved lookups.
 
 ## Migration Plan
 
