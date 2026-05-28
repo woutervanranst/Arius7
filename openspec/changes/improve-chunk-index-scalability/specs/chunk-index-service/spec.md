@@ -1,11 +1,23 @@
 ## ADDED Requirements
 
 ### Requirement: Fixed shard prefix layout
-The chunk index SHALL derive shard prefixes from one internal repository-wide prefix-length constant on `ChunkIndexService`. All chunk-index lookup, flush, repair, local cache paths, and remote shard paths SHALL use that same prefix length. The prefix length SHALL NOT be configurable through the CLI in this change. Prefix calculation SHALL slice the canonical content hash string and SHALL NOT add prefix-length-specific properties to `ContentHash`.
+The chunk index SHALL derive shard prefixes from one internal repository-wide prefix-length constant on `ChunkIndexService`. All chunk-index lookup, flush, repair, local cache paths, and remote shard paths SHALL use that same prefix length. The prefix length SHALL NOT be configurable through the CLI in this change. `ContentHash` SHALL expose a general `Prefix(int length)` method for prefix extraction, and prefix calculation SHALL NOT add prefix-length-specific properties such as `Prefix2` or `Prefix3`.
 
 #### Scenario: Prefix calculation uses layout constant
 - **WHEN** the chunk index calculates the shard prefix for a content hash
-- **THEN** it SHALL take the first `ChunkIndexService.ShardPrefixLength` hex characters from the content hash string
+- **THEN** it SHALL use `ContentHash.Prefix(ChunkIndexService.ShardPrefixLength)`
+
+#### Scenario: ContentHash exposes general prefix extraction
+- **WHEN** code needs a variable-length content hash prefix
+- **THEN** it SHALL use `ContentHash.Prefix(int length)`
+- **AND** it SHALL NOT add a new prefix-length-specific property for that length
+
+### Requirement: Chunk index test coverage
+Automated tests SHALL cover at least 90% of code under `src/Arius.Core/Shared/ChunkIndex/` after this change.
+
+#### Scenario: Shared chunk index coverage threshold
+- **WHEN** coverage is measured for `src/Arius.Core/Shared/ChunkIndex/`
+- **THEN** line coverage SHALL be at least 90%
 
 #### Scenario: Shard path uses calculated prefix
 - **WHEN** a shard prefix is calculated as `aa`

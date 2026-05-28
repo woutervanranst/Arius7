@@ -30,14 +30,14 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 
 ### Decision: Fixed Prefix-Length Constant
 
-Use one internal constant on `ChunkIndexService` for chunk-index shard prefix length, for example `internal const int ShardPrefixLength = 2`. `Shard.PrefixOf(ContentHash)` uses this constant instead of `ContentHash.Prefix4`, slicing `contentHash.ToString()` rather than adding prefix-specific properties to `ContentHash`.
+Use one internal constant on `ChunkIndexService` for chunk-index shard prefix length, for example `internal const int ShardPrefixLength = 2`. `ContentHash` exposes a general `Prefix(int length)` method, and `Shard.PrefixOf(ContentHash)` uses `contentHash.Prefix(ChunkIndexService.ShardPrefixLength)` instead of the current fixed `Prefix4` property.
 
 Alternatives considered:
 - Keep 4 hex chars: preserves current layout but keeps tiny-shard behavior for small archives.
 - Use 3 hex chars: middle ground, but still creates up to 4096 shards and remains sparse for small archives.
 - Dynamic/adaptive prefix: solves both extremes, but introduces routing, migration, and partial-resize recoverability complexity.
 
-Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. Keeping the constant on `ChunkIndexService` is the smallest change and avoids adding a separate layout type before there is more layout state to own.
+Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distribution for current scale targets. Keeping the constant on `ChunkIndexService` is the smallest change and avoids adding a separate layout type before there is more layout state to own. A general `Prefix(int length)` method avoids stringify/slice logic at call sites while also avoiding prefix-length-specific properties such as `Prefix2` or `Prefix3`.
 
 ### Decision: Lookup Repair Modes
 
@@ -144,6 +144,10 @@ Rationale: Chunk-index shard writes and filetree blob writes target different re
 - **[Risk] 2-hex prefix may create large shards for very large repositories** -> The prefix length is centralized as a const so it can be adjusted before release. Adaptive resizing remains intentionally out of scope.
 - **[Risk] Parallel flush increases remote write pressure** -> Use a conservative bounded degree of parallelism and keep one worker per prefix.
 - **[Risk] Valid-but-incomplete shards are not repaired during lookup** -> Restore handles this at feature level by running full repair once after unresolved snapshot content remains, then retrying unresolved lookups.
+
+## Acceptance Criteria
+
+- Test coverage for `src/Arius.Core/Shared/ChunkIndex/` SHALL be at least 90% after this change.
 
 ## Migration Plan
 
