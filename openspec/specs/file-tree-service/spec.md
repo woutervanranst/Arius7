@@ -67,7 +67,7 @@ The system SHALL provide a `FileTreeService` in `Arius.Core/Shared/FileTree/` th
 1. Enumerate `~/.arius/{repo}/snapshots/` to find timestamp-named marker files, sort lexicographically, and take the latest. If no markers exist, treat as mismatch.
 2. Call `ListAsync("snapshots/")` to enumerate remote snapshots and find the latest timestamp.
 3. Compare local latest vs remote latest: match = fast path, mismatch = slow path.
-4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also invalidate chunk-index cache state as defined by the chunk-index capability because mutable shards may be stale.
+4. On slow path: call `ListAsync("filetrees/")` and for each remote blob name, create an empty file at `~/.arius/{repo}/filetrees/{hash}` if not already present. Also invalidate chunk-index cache state as defined by the chunk-index-service capability because mutable shards may be stale.
 
 #### Scenario: Snapshot match — fast path
 - **WHEN** the latest local marker is `2026-03-22T150000.000Z` and the latest remote snapshot is also `2026-03-22T150000.000Z`

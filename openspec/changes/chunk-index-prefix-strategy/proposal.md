@@ -24,7 +24,7 @@ Chunk-index writes are not transactional across blobs. A run can upload some sha
 - `chunk-index-prefix-strategy`: Explicit repository rules for chunk-index shard partitioning, including future support for fixed or dynamic prefix length strategies.
 
 ### Modified Capabilities
-- `chunk-index`: Shard layout becomes a governed repository concern rather than an unexamined hardcoded constant.
+- `chunk-index-service`: Shard layout becomes a governed repository concern rather than an unexamined hardcoded constant.
 - `archive-pipeline`: Future flush and lookup behavior may depend on the repository's declared chunk-index prefix strategy.
 
 ## Impact

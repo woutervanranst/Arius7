@@ -7,7 +7,7 @@ Defines `ChunkStorageService`: a shared service that owns chunk blob upload, dow
 ## Requirements
 
 ### Requirement: Separate chunk storage from chunk index responsibilities
-The system SHALL keep chunk metadata lookup and chunk blob protocol as separate shared services. `ChunkStorageService` SHALL own chunk blob upload, chunk blob download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning. `ChunkIndexService` SHALL own content-hash lookup, shard recording, shard flush, and shard-cache invalidation as defined by the chunk-index capability.
+The system SHALL keep chunk metadata lookup and chunk blob protocol as separate shared services. `ChunkStorageService` SHALL own chunk blob upload, chunk blob download, hydration status resolution, rehydration initiation, and rehydrated cleanup planning. `ChunkIndexService` SHALL own content-hash lookup, shard recording, shard flush, and shard-cache invalidation as defined by the chunk-index-service capability.
 
 #### Scenario: Archive handler uses both chunk services
 - **WHEN** `ArchiveCommandHandler` archives a file

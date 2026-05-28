@@ -1,4 +1,4 @@
-# Chunk Index Spec
+# Chunk Index Service Spec
 
 ## Purpose
 
