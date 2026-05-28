@@ -47,7 +47,7 @@ Valid shards SHALL be trusted. If a shard exists and parses but does not contain
 - **AND** it SHALL NOT rebuild prefix `aa` automatically
 
 ### Requirement: Prefix repair reconstructs index entries from chunks
-Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose names start with `chunks/<prefix>`. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the tar chunk hash stored in the thin chunk body. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source.
+Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose names start with `chunks/<prefix>`. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the tar chunk hash stored in the thin chunk body. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius-type` metadata SHALL be ignored because `arius-type` is the completion sentinel.
 
 #### Scenario: Large chunk reconstructed
 - **WHEN** prefix repair sees `chunks/aa123...` with metadata `arius-type: large`
@@ -64,13 +64,19 @@ Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose nam
 - **WHEN** prefix repair sees a chunk blob with metadata `arius-type: tar`
 - **THEN** it SHALL NOT add a shard entry for the tar blob itself
 
+#### Scenario: Partial or unknown chunk ignored
+- **WHEN** prefix repair sees a chunk blob without `arius-type` metadata or with an unrecognized `arius-type` value
+- **THEN** it SHALL NOT add a shard entry for that blob
+
 ### Requirement: Explicit full chunk-index repair
-The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL enumerate all committed chunk blobs under `chunks/`, reconstruct large and thin entries, group them by shard prefix, and write complete shard blobs under `chunk-index/`. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
+The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL enumerate all committed chunk blobs under `chunks/`, reconstruct large and thin entries, group them by shard prefix, and overwrite complete live shard blobs under `chunk-index/` in place. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
+
+Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted after writing some shard prefixes but before writing others, a later full repair SHALL converge by reconstructing all shard contents again from committed chunk blobs. Full repair SHALL NOT publish snapshots.
 
 #### Scenario: Full repair rebuilds all touched prefixes
 - **WHEN** full chunk-index repair runs on a repository with large and thin chunk blobs
 - **THEN** it SHALL reconstruct shard entries for all large and thin chunks
-- **AND** it SHALL upload chunk-index shards for every prefix that has reconstructed entries
+- **AND** it SHALL overwrite chunk-index shards for every prefix that has reconstructed entries
 
 #### Scenario: Full repair available for maintenance
 - **WHEN** an operator invokes the full chunk-index repair command
@@ -80,6 +86,15 @@ The system SHALL provide an explicit full chunk-index repair API and command tha
 - **WHEN** full chunk-index repair runs
 - **THEN** it SHALL derive chunk-index entries from committed large and thin chunk blobs
 - **AND** it SHALL NOT require existing chunk-index shard contents to reconstruct those entries
+
+#### Scenario: Full repair can be rerun after interruption
+- **WHEN** full chunk-index repair is interrupted after writing only some shard prefixes
+- **THEN** rerunning full repair SHALL reconstruct shard contents from committed chunks again
+- **AND** it SHALL be able to complete the missing shard prefixes without relying on the partial repair output
+
+#### Scenario: Full repair does not publish snapshot
+- **WHEN** full chunk-index repair writes repaired shard blobs
+- **THEN** it SHALL NOT create or update any snapshot manifest
 
 ## MODIFIED Requirements
 

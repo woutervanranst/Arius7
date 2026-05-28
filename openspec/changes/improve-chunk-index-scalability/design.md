@@ -81,13 +81,14 @@ Rationale: Full repair is expensive, but restore only pays it after proving that
 
 ### Decision: Explicit Full Repair API and Command
 
-Add a full chunk-index repair path that enumerates all chunks, rebuilds all shard files for the configured prefix length, and writes the complete chunk index. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command.
+Add a full chunk-index repair path that enumerates all chunks, rebuilds all shard files for the configured prefix length, and overwrites live `chunk-index/<prefix>` shard blobs in place. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair reconstructs the same shard contents from committed chunks and converges.
 
 Alternatives considered:
 - Tests call internal prefix repair only: insufficient coverage for maintenance behavior.
 - Only expose CLI command: harder to test and reuse from future workflows.
+- Stage repair output under a temporary prefix before publishing: cleaner in theory, but Azure Blob Storage has no atomic folder move; publishing would still require per-shard writes unless the storage format gained a manifest indirection.
 
-Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool.
+Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, in-place overwrite is acceptable and rerunnable.
 
 ### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
 
