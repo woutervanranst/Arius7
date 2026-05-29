@@ -65,14 +65,15 @@ Full repair uses the existing local chunk-index cache as bounded disk-backed reb
 
 The local repair sentinel path is owned by `ChunkIndexService` as an internal constant and SHALL live outside the purgeable shard-cache directory, for example `~/.arius/{repo}/chunk-index.repair-in-progress`. Cache invalidation may delete files under `~/.arius/{repo}/chunk-index/`, but it SHALL NOT delete or ignore the repair sentinel.
 
-1. Invalidate L1 and purge the local L2 chunk-index cache before rebuilding.
-2. Mark local chunk-index repair as in progress so normal operations fail clearly instead of trusting partially rebuilt L2 files after an interrupted repair.
-3. Run one metadata-aware `ListAsync("chunks/", includeMetadata: true, ...)` scan.
-4. For each committed large or thin chunk, reconstruct its shard entry and merge it into the corresponding local L2 shard file using the configured shard prefix length.
-5. Track the shard prefixes that received entries during the scan.
-6. Upload each rebuilt non-empty local shard to `chunk-index/<prefix>` using the normal remote shard serialization.
-7. List existing `chunk-index/` blobs and delete shard blobs whose names are not in the rebuilt prefix set.
-8. Clear the in-progress marker and keep the rebuilt L2 cache as the current local chunk-index cache.
+1. Invalidate L1 before rebuilding.
+2. Mark local chunk-index repair as in progress before purging or rewriting local shard-cache files, so normal operations fail clearly as soon as repair owns local chunk-index state.
+3. Purge the local L2 chunk-index cache before rebuilding.
+4. Run one metadata-aware `ListAsync("chunks/", includeMetadata: true, ...)` scan.
+5. For each committed large or thin chunk, reconstruct its shard entry and merge it into the corresponding local L2 shard file using the configured shard prefix length.
+6. Track the shard prefixes that received entries during the scan.
+7. Upload each rebuilt non-empty local shard to `chunk-index/<prefix>` using the normal remote shard serialization.
+8. List existing `chunk-index/` blobs and delete shard blobs whose names are not in the rebuilt prefix set.
+9. Clear the in-progress marker and keep the rebuilt L2 cache as the current local chunk-index cache.
 
 Alternatives considered:
 - Tests call internal prefix repair only: insufficient coverage for maintenance behavior.

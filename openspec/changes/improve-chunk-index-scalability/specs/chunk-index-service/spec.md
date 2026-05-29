@@ -84,7 +84,7 @@ The system SHALL provide an explicit full chunk-index repair API and command tha
 
 Full repair assumes no concurrent archive or repair operation is mutating the same remote archive. Distributed locking or remote repair leases are out of scope for this change.
 
-Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SHALL mark the local L2 rebuild as in progress before writing rebuilt shard files. Normal chunk-index lookups SHALL fail clearly if a previous full repair was interrupted before completing. Full repair SHALL be allowed to run when this marker already exists, and it SHALL purge the partial local rebuild before reconstructing shard contents again. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
+Full repair SHALL invalidate chunk-index L1 cache state and mark the local L2 rebuild as in progress before purging or writing local shard-cache files. Normal chunk-index lookups SHALL fail clearly if a previous full repair was interrupted before completing. Full repair SHALL be allowed to run when this marker already exists, and it SHALL purge the partial local rebuild before reconstructing shard contents again. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
 
 The repair in-progress marker SHALL be addressed through an internal `ChunkIndexService` constant and SHALL live outside the purgeable local shard-cache directory, for example `~/.arius/{repo}/chunk-index.repair-in-progress`. Chunk-index cache invalidation SHALL NOT delete the repair in-progress marker.
 
@@ -114,8 +114,9 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 #### Scenario: Full repair rebuilds local cache safely
 - **WHEN** full chunk-index repair starts
 - **THEN** it SHALL invalidate chunk-index L1 cache state
+- **AND** it SHALL mark the L2 rebuild as in progress before purging existing L2 chunk-index cache files
 - **AND** it SHALL purge existing L2 chunk-index cache files before writing rebuilt local shard files
-- **AND** it SHALL mark the L2 rebuild as in progress until remote upload and stale-shard deletion complete
+- **AND** it SHALL keep the in-progress marker until remote upload and stale-shard deletion complete
 
 #### Scenario: Repair marker survives cache invalidation
 - **WHEN** chunk-index cache invalidation deletes local shard-cache files
