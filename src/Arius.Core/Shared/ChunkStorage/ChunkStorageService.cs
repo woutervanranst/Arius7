@@ -124,6 +124,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         var metadata = new Dictionary<string, string>
         {
             [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+            [BlobMetadataKeys.ParentChunkHash] = parentChunkHash.ToString(),
             [BlobMetadataKeys.OriginalSize] = originalSize.ToString(),
             [BlobMetadataKeys.CompressedSize] = compressedSize.ToString(),
         };
@@ -133,14 +134,13 @@ public sealed class ChunkStorageService : IChunkStorageService
         {
             await _blobs.UploadAsync(
                 blobName: blobName,
-                content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parentChunkHash.ToString())),
-                metadata: new Dictionary<string, string>(),
+                content: new MemoryStream(Array.Empty<byte>(), writable: false),
+                metadata: metadata,
                 tier: BlobTier.Cool,
                 contentType: ContentTypes.Thin,
                 overwrite: false,
                 cancellationToken: cancellationToken);
 
-            await _blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
             return true;
         }
         catch (BlobAlreadyExistsException)

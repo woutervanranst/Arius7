@@ -197,13 +197,13 @@ public class ChunkStorageServiceUploadTests
         var blobName = BlobPaths.ThinChunkPath(ThinContentHash);
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(ThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+        metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(ThinParentChunkHash.ToString());
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
         metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
         metadata.Tier.ShouldBe(BlobTier.Cool);
 
         await using var payload = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
-        using var reader = new StreamReader(payload);
-        (await reader.ReadToEndAsync()).ShouldBe(ThinParentChunkHash.ToString());
+        payload.Length.ShouldBe(0);
     }
 
     [Test]
@@ -215,13 +215,11 @@ public class ChunkStorageServiceUploadTests
 
         blobs.SeedBlob(
             blobName,
-            System.Text.Encoding.UTF8.GetBytes(ExistingThinParentChunkHash.ToString()),
+            Array.Empty<byte>(),
             BlobTier.Cool,
             new Dictionary<string, string>
             {
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
-                [BlobMetadataKeys.OriginalSize] = "123",
-                [BlobMetadataKeys.CompressedSize] = "45",
             },
             ContentTypes.Thin);
 
@@ -243,7 +241,7 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
         var blobName = BlobPaths.ThinChunkPath(RetryThinContentHash);
 
-        blobs.SeedBlob(blobName, System.Text.Encoding.UTF8.GetBytes(RetryThinParentChunkHash.ToString()), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
+        blobs.SeedBlob(blobName, Array.Empty<byte>(), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
 
         var created = await service.UploadThinAsync(
             contentHash: RetryThinContentHash,
@@ -257,6 +255,7 @@ public class ChunkStorageServiceUploadTests
 
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(RetryThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+        metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(RetryThinParentChunkHash.ToString());
     }
 
 }

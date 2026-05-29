@@ -18,6 +18,9 @@ public static class BlobMetadataKeys
     /// <summary>Proportional compressed size estimate for this file within a tar bundle (for thin chunks).</summary>
     public const string CompressedSize    = "compressed_size";
 
+    /// <summary>Parent tar chunk hash for a thin chunk.</summary>
+    public const string ParentChunkHash   = "parent_chunk_hash";
+
     // ── Chunk type values ──────────────────────────────────────────────────────
 
     public const string TypeLarge = "large";
