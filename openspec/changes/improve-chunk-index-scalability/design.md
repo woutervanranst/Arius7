@@ -41,6 +41,8 @@ Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distrib
 
 This fixed constant is an interim layout decision. Future dynamic sharding should replace `Shard.PrefixOf` routing and repository layout state behind the chunk-index service boundary without requiring feature callers to understand or pass prefix lengths.
 
+Design constraint: any future dynamic shard layout metadata SHALL be owned and interpreted by `ChunkIndexService`. Feature handlers, filetree code, snapshot code, repair callers, and storage callers SHALL NOT persist, compute, expose, or branch on chunk-index prefix lengths or shard-routing state.
+
 ### Decision: Lookup Failure Behavior
 
 `ChunkIndexService` lookup does not repair chunk-index state in normal archive, restore, or list operations. Missing entries in a valid shard remain normal misses. Missing shard blobs are treated as empty shards. If a shard blob exists but cannot be deserialized, or if local repair state indicates an interrupted full repair, lookup fails with a clear chunk-index corruption or repair-incomplete error that instructs the user to run the explicit chunk-index repair command.

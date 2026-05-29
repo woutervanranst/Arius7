@@ -5,6 +5,8 @@ The chunk index SHALL derive shard prefixes from one internal repository-wide pr
 
 This fixed prefix-length layout SHALL be treated as an interim internal routing decision. Feature callers SHALL NOT accept, compute, or persist chunk-index prefix lengths; they SHALL use chunk-index service APIs so a future dynamic-sharding layout can replace prefix routing behind that boundary.
 
+Future chunk-index shard-routing or layout metadata SHALL remain internal to `ChunkIndexService`. Feature handlers, filetree code, snapshot code, repair callers, and storage callers SHALL NOT persist, compute, expose, or branch on chunk-index prefix lengths or shard-routing state.
+
 #### Scenario: Prefix calculation uses layout constant
 - **WHEN** the chunk index calculates the shard prefix for a content hash
 - **THEN** it SHALL use `ContentHash.Prefix(ChunkIndexService.ShardPrefixLength)`
