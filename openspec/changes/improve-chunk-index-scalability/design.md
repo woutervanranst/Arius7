@@ -12,8 +12,8 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 
 - Reduce tiny-shard proliferation by replacing the hard-coded 4-hex prefix with one internal repo-wide prefix-length constant on `ChunkIndexService`.
 - Parallelize chunk-index flush safely across touched shard prefixes with an internal worker-count constant.
-- Add configurable lookup repair behavior so corrupt shard state can be rebuilt from chunk blobs on demand, and restore can recover from missing shard blobs without making normal archive misses expensive.
-- Make restore run one full chunk-index repair and retry unresolved snapshot content hashes before failing.
+- Make corrupt chunk-index shards and interrupted repair state fail clearly from normal archive, restore, and list operations instead of triggering automatic repair.
+- Make restore report unresolved snapshot content hashes with an actionable repair instruction instead of running full repair automatically.
 - Add an explicit full chunk-index repair API and command for maintenance and tests.
 - Let repair list chunks with metadata in the same storage listing call where supported.
 - Make archive-tail cache coordination explicit in `ArchiveCommandHandler` and remove hidden chunk-index invalidation from `FileTreeService`.
@@ -24,7 +24,7 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 - No adaptive shard resizing or split/merge algorithm in this change.
 - No CLI/config option for shard prefix length yet.
 - No backward-compatible reader for old 4-hex chunk-index shards; the repository is still in development and repair can rebuild missing new-layout shards from chunks.
-- No automatic full repository repair on restore/list startup; restore only runs full repair after unresolved snapshot content hashes prove the chunk index cannot satisfy the requested restore.
+- No automatic chunk-index repair from archive, restore, or list operations; users run the explicit repair command when normal operations detect corrupt, incomplete, or unresolved chunk-index state.
 
 ## Decisions
 
@@ -41,54 +41,25 @@ Rationale: A 2-hex prefix bounds shard count at 256 and gives acceptable distrib
 
 This fixed constant is an interim layout decision. Future dynamic sharding should replace `Shard.PrefixOf` routing and repository layout state behind the chunk-index service boundary without requiring feature callers to understand or pass prefix lengths.
 
-### Decision: Lookup Repair Modes
+### Decision: Lookup Failure Behavior
 
-`ChunkIndexService` exposes configurable lookup repair behavior through a repair mode. The planned modes are:
-
-- `None`: lookup never repairs.
-- `OnCorruptShard`: if a shard blob exists but cannot be deserialized, rebuild that prefix from chunks and retry.
-- `OnMissingShardProbe`: includes corrupt-shard repair and, when a requested shard blob is missing, probes `chunks/<prefix>*` for at most one matching chunk. If a chunk exists for that prefix, rebuild the prefix and retry; if no chunk exists, treat the shard as empty.
-
-Recommended callers:
-
-- Archive: `OnCorruptShard`, because missing entries are normal for new content and must not trigger repair scans.
-- Restore: `OnMissingShardProbe`, because a snapshot referencing a content hash whose shard is absent is suspicious and worth prefix-scoped repair.
-- List: `OnCorruptShard` or `None`, because listing should avoid unexpected remote scans unless the caller explicitly accepts repair work.
-- Explicit repair command: full rebuild, not lookup repair.
-
-Valid shards are trusted. If a shard exists and parses but does not contain a requested entry, lookup returns a miss. That avoids treating every normal archive miss as possible corruption.
-
-The repair scans `chunks/<prefix>*` and reconstructs entries from chunk blobs:
-- Large chunk: blob name is the content hash and chunk hash; metadata supplies original and compressed sizes.
-- Thin chunk: blob name is the content hash; metadata supplies original and compressed sizes; blob body supplies the tar chunk hash.
-- Tar chunk: ignored directly for index reconstruction because thin chunks are the per-file mapping source.
+`ChunkIndexService` lookup does not repair chunk-index state in normal archive, restore, or list operations. Missing entries in a valid shard remain normal misses. Missing shard blobs are treated as empty shards. If a shard blob exists but cannot be deserialized, or if local repair state indicates an interrupted full repair, lookup fails with a clear chunk-index corruption or repair-incomplete error that instructs the user to run the explicit chunk-index repair command.
 
 Alternatives considered:
-- Repair valid-but-missing entries: can heal partial indexes, but it makes ordinary archive misses expensive and ambiguous.
-- Automatic full repair: resilient but too surprising and expensive for read paths.
-- Rebuild every missing shard immediately: wasteful because missing shards are normal for prefixes with no chunks.
+- Repair corrupt shards during lookup: convenient but introduces surprising remote scans on normal operations and complicates interruption semantics.
+- Probe missing shard blobs by listing `chunks/<prefix>*`: helps restore recover from deleted shards, but makes lookup behavior dependent on expensive side effects.
+- Run full repair automatically from restore: resilient, but too expensive and surprising for a user-facing restore path.
 
-Rationale: Corrupt shard repair is unambiguously correct. Missing-shard probing covers the practical "shard blob was deleted" case for restore without making archive treat every new content hash as a repair trigger.
-
-### Decision: Restore Full Repair Fallback
-
-Restore first resolves all snapshot-referenced content hashes through `ChunkIndexService` using `OnMissingShardProbe`. If any content hashes remain unresolved after normal lookup and missing-shard probing, restore runs full chunk-index repair once, then retries lookup for the unresolved hashes. Restore fails only if entries remain unresolved after that retry.
-
-Alternatives considered:
-- Fail immediately and ask the user to run repair: explicit but unnecessary friction, because restore already knows repair is the likely next step.
-- Repair valid-but-missing entries prefix-by-prefix during lookup: risks repeated prefix scans and conflates normal misses with incomplete index state.
-- Run full repair at restore startup: robust but expensive even when the index is healthy.
-
-Rationale: Full repair is expensive, but restore only pays it after proving that snapshot content cannot be resolved. Running it once avoids repeated prefix scans and makes restore self-healing for valid-but-incomplete chunk-index shards.
+Rationale: Full repair can be expensive and mutates repository metadata. Keeping repair explicit makes operation costs predictable and keeps archive, restore, and list behavior simple. Restore remains durability-focused by failing with a clear actionable error when snapshot content cannot be resolved through the chunk index.
 
 ### Decision: Explicit Full Repair API and Command
 
 Add a full chunk-index repair path that scans committed chunk blobs once, rebuilds local chunk-index shard files on disk, uploads the rebuilt shards, and removes stale remote shard blobs that were not rebuilt. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair starts by purging local chunk-index repair output, reconstructs shard contents again from committed chunks, and converges.
 
-Full repair uses the existing local chunk-index cache as bounded disk-backed rebuild state rather than staging the whole repository index in memory:
+Full repair uses the existing local chunk-index cache as bounded disk-backed rebuild state rather than staging the whole repository index in memory. L2 can normally be incomplete because it is a cache of shards this machine has needed; the repair sentinel does not mean "L2 is incomplete". It means an explicit full repair was interrupted after replacing normal cache contents with rebuild output, so normal operations must fail until the user reruns repair.
 
 1. Invalidate L1 and purge the local L2 chunk-index cache before rebuilding.
-2. Mark local chunk-index repair as in progress so normal lookups do not trust partially rebuilt L2 files after an interrupted repair.
+2. Mark local chunk-index repair as in progress so normal operations fail clearly instead of trusting partially rebuilt L2 files after an interrupted repair.
 3. Run one metadata-aware `ListAsync("chunks/", includeMetadata: true, ...)` scan.
 4. For each committed large or thin chunk, reconstruct its shard entry and merge it into the corresponding local L2 shard file using the configured shard prefix length.
 5. Track the shard prefixes that received entries during the scan.
@@ -102,7 +73,7 @@ Alternatives considered:
 - Stage repair output under a temporary prefix before publishing: cleaner in theory, but Azure Blob Storage has no atomic folder move; publishing would still require per-shard writes unless the storage format gained a manifest indirection.
 - Rebuild every prefix by separately listing `chunks/<prefix>*`: keeps per-prefix memory bounded, but turns full repair into many remote list calls and makes the future dynamic-sharding transition harder to reason about.
 
-Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, direct overwrite is acceptable and rerunnable. A single chunk listing minimizes remote listing work, and disk-backed local rebuild keeps memory bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
+Rationale: Full repair is the operator/test maintenance tool and the explicit recovery path for corrupt, incomplete, or unresolved chunk-index state. Since repair starts from committed chunks and does not publish snapshots, direct overwrite is acceptable and rerunnable. A single chunk listing minimizes remote listing work, and disk-backed local rebuild keeps memory bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
 
 ### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
 
@@ -130,7 +101,7 @@ Rationale: Per-prefix work is naturally independent. Bounded `Parallel.ForEachAs
 
 Archive uses the chunk index as the fast path for deduplication. If the chunk index misses, archive attempts the chunk upload using create-if-not-exists storage semantics. If the target chunk blob already exists and has complete `arius-type` metadata, `ChunkStorageService` recovers the stored metadata and archive records the missing chunk-index entry instead of treating the condition as failure.
 
-For large chunks this naturally recovers from an index miss because the upload target is `chunks/<content-hash>`. For small files, archive does not add a pre-bundling remote thin-chunk check in this change, because that would add per-small-file remote I/O to the hot path. Thin chunk/index gaps are repaired by explicit full repair or by restore missing-shard probing when the shard itself is absent.
+For large chunks this naturally recovers from an index miss because the upload target is `chunks/<content-hash>`. For small files, archive does not add a pre-bundling remote thin-chunk check in this change, because that would add per-small-file remote I/O to the hot path. Thin chunk/index gaps are repaired by explicit full repair.
 
 Rationale: The chunk index is a performance and metadata index, not the only durable source of truth. Chunk blobs and their metadata remain the recoverable storage record.
 
@@ -153,11 +124,11 @@ Rationale: Chunk-index shard writes and filetree blob writes target different re
 
 ## Risks / Trade-offs
 
-- **[Risk] Restore repair fallback can be slow** -> Probe only when the shard blob is absent, stop the probe after the first matching chunk, and run full repair at most once per restore after unresolved snapshot content remains. Log/report repair work.
+- **[Risk] Explicit repair adds user friction** -> Fail with clear, actionable messages that identify corrupt, incomplete, or unresolved chunk-index state and point to the repair command.
 - **[Risk] Changing `ListAsync` return type touches many callers** -> Keep the method name and add a simple `BlobListItem.Name` property; update callers mechanically.
 - **[Risk] 2-hex prefix may create large shards for very large repositories** -> The prefix length is centralized as a const so it can be adjusted before release. Adaptive resizing remains intentionally out of scope.
 - **[Risk] Parallel flush increases remote write pressure** -> Use a conservative bounded degree of parallelism and keep one worker per prefix.
-- **[Risk] Valid-but-incomplete shards are not repaired during lookup** -> Restore handles this at feature level by running full repair once after unresolved snapshot content remains, then retrying unresolved lookups.
+- **[Risk] Valid-but-incomplete shards are not repaired during lookup** -> Restore fails with a clear unresolved-entry error and instructs the user to run explicit repair.
 
 ## Acceptance Criteria
 
@@ -165,6 +136,6 @@ Rationale: Chunk-index shard writes and filetree blob writes target different re
 
 ## Migration Plan
 
-No backward-compatible migration is required. Existing repositories are development data. After the prefix length changes, old chunk-index shards at the previous layout are ignored; prefix-scoped repair and full repair rebuild the new layout from chunk blobs.
+No backward-compatible migration is required. Existing repositories are development data. After the prefix length changes, old chunk-index shards at the previous layout are ignored; full repair rebuilds the new layout from chunk blobs.
 
 Rollback during development is also repair-based: if the prefix length is changed again, delete/rebuild chunk-index shards from chunks.

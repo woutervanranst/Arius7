@@ -26,33 +26,26 @@ Automated tests SHALL cover at least 90% of code under `src/Arius.Core/Shared/Ch
 - **THEN** the remote shard blob SHALL be addressed as `chunk-index/aa`
 - **AND** the local L2 shard file SHALL be addressed under the chunk-index cache using the same prefix
 
-### Requirement: Lookup repair modes
-The chunk index lookup API SHALL support configurable repair behavior. `LookupRepairMode.None` SHALL perform lookup without repair. `LookupRepairMode.OnCorruptShard` SHALL rebuild a prefix from chunk blobs when the shard blob exists but cannot be deserialized. `LookupRepairMode.OnMissingShardProbe` SHALL include corrupt-shard repair and SHALL probe `chunks/<prefix>*` when a requested shard blob is missing; if at least one chunk exists for that prefix, the service SHALL rebuild the prefix and retry lookup, otherwise it SHALL treat the prefix as empty.
+### Requirement: Lookup failure behavior
+The chunk index lookup API SHALL NOT repair chunk-index state during normal archive, restore, or list operations. If a requested shard blob is missing from remote storage, lookup SHALL treat that shard as empty and return misses for hashes in that prefix. If a local L2 shard file is corrupt, lookup MAY delete that local cache file and reload the shard from remote storage. If a remote shard blob exists but cannot be deserialized, lookup SHALL fail with a clear chunk-index corruption error that instructs the user to run the explicit chunk-index repair command. If local repair state indicates that an explicit full repair was interrupted before completing, lookup SHALL fail with a clear repair-incomplete error that instructs the user to rerun the explicit chunk-index repair command.
 
-Valid shards SHALL be trusted. If a shard exists and parses but does not contain a requested content hash, lookup SHALL return a miss and SHALL NOT automatically repair that prefix.
+Valid shards SHALL be trusted. If a shard exists and parses but does not contain a requested content hash, lookup SHALL return a miss and SHALL NOT automatically repair that prefix or run full repair.
 
-#### Scenario: No repair mode returns miss
-- **WHEN** lookup is called with `LookupRepairMode.None` and the requested shard is missing
+#### Scenario: Missing shard returns miss
+- **WHEN** lookup is called and the requested shard is missing from remote storage
 - **THEN** lookup SHALL treat the shard as empty and return no entry for hashes in that prefix
 - **AND** it SHALL NOT list `chunks/` or rewrite the chunk-index shard
 
-#### Scenario: Corrupt shard is repaired
-- **WHEN** lookup is called with `LookupRepairMode.OnCorruptShard` and the shard blob exists but cannot be deserialized
-- **THEN** the service SHALL rebuild that shard prefix from `chunks/<prefix>*`
-- **AND** it SHALL rewrite `chunk-index/<prefix>`
-- **AND** it SHALL retry the lookup using the rebuilt shard
+#### Scenario: Corrupt remote shard fails clearly
+- **WHEN** lookup loads a remote shard blob that cannot be deserialized
+- **THEN** lookup SHALL fail with a clear chunk-index corruption error
+- **AND** the error SHALL instruct the user to run the explicit chunk-index repair command
+- **AND** lookup SHALL NOT rebuild or rewrite the shard automatically
 
-#### Scenario: Missing shard probe finds chunks
-- **WHEN** lookup is called with `LookupRepairMode.OnMissingShardProbe` and `chunk-index/aa` is missing
-- **AND** probing `chunks/aa*` finds at least one chunk blob
-- **THEN** the service SHALL rebuild prefix `aa` from `chunks/aa*`
-- **AND** it SHALL retry the lookup using the rebuilt shard
-
-#### Scenario: Missing shard probe finds no chunks
-- **WHEN** lookup is called with `LookupRepairMode.OnMissingShardProbe` and `chunk-index/aa` is missing
-- **AND** probing `chunks/aa*` finds no chunk blob
-- **THEN** the service SHALL treat prefix `aa` as empty
-- **AND** it SHALL NOT write a new chunk-index shard for that empty prefix
+#### Scenario: Interrupted repair fails clearly
+- **WHEN** lookup starts and local chunk-index repair state indicates an interrupted full repair
+- **THEN** lookup SHALL fail with a clear repair-incomplete error
+- **AND** the error SHALL instruct the user to rerun the explicit chunk-index repair command
 
 #### Scenario: Valid shard missing entry is trusted
 - **WHEN** lookup loads a valid shard for prefix `aa`
@@ -60,32 +53,32 @@ Valid shards SHALL be trusted. If a shard exists and parses but does not contain
 - **THEN** lookup SHALL return a miss for that content hash
 - **AND** it SHALL NOT rebuild prefix `aa` automatically
 
-### Requirement: Prefix repair reconstructs index entries from chunks
-Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose names start with `chunks/<prefix>`. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the tar chunk hash stored in the thin chunk body. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius-type` metadata SHALL be ignored because `arius-type` is the completion sentinel.
+### Requirement: Repair reconstructs index entries from chunks
+Full repair SHALL rebuild chunk-index shards from committed chunk blobs. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the tar chunk hash stored in the thin chunk body. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius-type` metadata SHALL be ignored because `arius-type` is the completion sentinel.
 
 #### Scenario: Large chunk reconstructed
-- **WHEN** prefix repair sees `chunks/aa123...` with metadata `arius-type: large`
+- **WHEN** full repair sees `chunks/aa123...` with metadata `arius-type: large`
 - **THEN** it SHALL add a shard entry with content hash `aa123...` and chunk hash `aa123...`
 - **AND** it SHALL use the blob metadata for original and compressed sizes
 
 #### Scenario: Thin chunk reconstructed
-- **WHEN** prefix repair sees `chunks/aa456...` with metadata `arius-type: thin`
+- **WHEN** full repair sees `chunks/aa456...` with metadata `arius-type: thin`
 - **THEN** it SHALL read the thin chunk body to obtain the parent tar chunk hash
 - **AND** it SHALL add a shard entry mapping content hash `aa456...` to that parent tar chunk hash
 - **AND** it SHALL use the thin chunk metadata for original and compressed sizes
 
 #### Scenario: Tar chunk ignored directly
-- **WHEN** prefix repair sees a chunk blob with metadata `arius-type: tar`
+- **WHEN** full repair sees a chunk blob with metadata `arius-type: tar`
 - **THEN** it SHALL NOT add a shard entry for the tar blob itself
 
 #### Scenario: Partial or unknown chunk ignored
-- **WHEN** prefix repair sees a chunk blob without `arius-type` metadata or with an unrecognized `arius-type` value
+- **WHEN** full repair sees a chunk blob without `arius-type` metadata or with an unrecognized `arius-type` value
 - **THEN** it SHALL NOT add a shard entry for that blob
 
 ### Requirement: Explicit full chunk-index repair
 The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL purge the local L2 chunk-index cache, scan committed chunk blobs once with `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin entries, merge those entries into rebuilt local L2 shard files by shard prefix, upload every rebuilt non-empty shard to `chunk-index/<prefix>`, and retain the rebuilt L2 files as the current local chunk-index cache. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
 
-Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SHALL mark the local L2 rebuild as in progress before writing rebuilt shard files. Normal chunk-index lookups SHALL NOT trust partially rebuilt local L2 files if a previous full repair was interrupted before completing. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
+Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SHALL mark the local L2 rebuild as in progress before writing rebuilt shard files. Normal chunk-index lookups SHALL fail clearly if a previous full repair was interrupted before completing. Full repair SHALL be allowed to run when this marker already exists, and it SHALL purge the partial local rebuild before reconstructing shard contents again. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
 
 Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
 
@@ -116,7 +109,13 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 
 #### Scenario: Interrupted local rebuild is not trusted
 - **WHEN** full chunk-index repair was interrupted before clearing its in-progress marker
-- **THEN** later chunk-index lookups SHALL NOT trust the partially rebuilt L2 shard files as complete cache state
+- **THEN** later chunk-index lookups SHALL fail with a clear repair-incomplete error
+- **AND** the error SHALL instruct the user to rerun the explicit chunk-index repair command
+
+#### Scenario: Repair rerun after interrupted local rebuild
+- **WHEN** full chunk-index repair starts and the in-progress marker already exists
+- **THEN** full repair SHALL purge the partial local rebuild
+- **AND** it SHALL reconstruct shard contents again from committed chunks
 
 #### Scenario: Full repair available for maintenance
 - **WHEN** an operator invokes the full chunk-index repair command

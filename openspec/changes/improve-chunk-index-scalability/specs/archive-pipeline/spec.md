@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Dedup check against chunk index
-The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up through the chunk index using repair behavior appropriate for archive, which SHALL repair corrupt shard blobs but SHALL NOT repair valid shards that simply do not contain the requested content hash. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
+The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up through the chunk index without automatic repair. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, archive SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
 
 The chunk index SHALL be the archive pipeline's fast dedup source, not the only durable source of truth. When the chunk index misses for a binary file, archive SHALL attempt upload using create-if-not-exists storage semantics. If storage reports that a complete chunk blob already exists, archive SHALL recover the chunk metadata from storage, record the missing chunk-index entry, and continue.
 
@@ -21,9 +21,10 @@ The chunk index SHALL be the archive pipeline's fast dedup source, not the only 
 - **WHEN** a pointer-only file references a content hash that is not in the chunk index
 - **THEN** the system SHALL log a warning and exclude the file from the snapshot
 
-#### Scenario: Archive lookup repairs corrupt shard only
+#### Scenario: Archive lookup fails on corrupt shard
 - **WHEN** archive dedup looks up a content hash and the relevant chunk-index shard is corrupt
-- **THEN** the chunk index SHALL rebuild that prefix and retry the lookup
+- **THEN** archive SHALL fail with a clear chunk-index corruption error
+- **AND** the error SHALL instruct the user to run the explicit chunk-index repair command
 
 #### Scenario: Archive lookup miss does not trigger prefix repair
 - **WHEN** archive dedup looks up a content hash in a valid shard and the content hash is absent

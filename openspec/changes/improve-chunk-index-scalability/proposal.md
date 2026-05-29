@@ -6,8 +6,8 @@ The chunk index currently uses a fixed 4-hex shard prefix and flushes touched sh
 
 - Replace the hard-coded 4-hex shard prefix with one internal repository-wide prefix-length constant on `ChunkIndexService`, used by all shard prefix calculations.
 - Parallelize chunk-index shard flush per touched prefix with bounded `Parallel.ForEachAsync` and an internal worker-count constant while preserving one worker per prefix.
-- Add configurable lookup repair behavior: corrupt shards can be rebuilt automatically, restore can probe for chunks when an expected shard is missing, and normal archive misses do not trigger expensive repair scans.
-- Make restore self-healing for incomplete chunk-index coverage: after normal lookup and missing-shard probing, unresolved snapshot content hashes trigger one full chunk-index repair and a retry before restore fails.
+- Make chunk-index corruption and interrupted repair state fail clearly instead of triggering automatic repair from archive, restore, or list operations.
+- Make restore report unresolved snapshot content hashes with an actionable repair instruction instead of running full repair automatically.
 - Add an explicit full chunk-index repair API and command for maintenance and test setup, using one metadata-aware chunk listing and disk-backed shard rebuild before uploading repaired shards.
 - Extend blob listing so callers can request metadata with listed blob names, enabling repair to avoid per-blob metadata round-trips.
 - Move chunk-index cache invalidation out of `FileTreeService`; `FileTreeService.ValidateAsync` will still perform snapshot comparison and return `FileTreeValidationResult`, and `ArchiveCommandHandler` will invalidate chunk-index caches when that result reports a snapshot mismatch.
@@ -22,19 +22,19 @@ _(none)_
 
 ### Modified Capabilities
 
-- `chunk-index-service`: Fixed prefix-length layout, bounded parallel flush, lookup repair modes, explicit full repair, and cache invalidation ownership.
+- `chunk-index-service`: Fixed prefix-length layout, bounded parallel flush, explicit lookup failure behavior, explicit full repair, and cache invalidation ownership.
 - `archive-pipeline`: Explicit archive-tail coordination, concurrent index flush/filetree synchronization, storage-collision recovery after chunk-index misses, and recovery behavior for partial chunk-index flushes.
-- `restore-pipeline`: Restore retries unresolved snapshot content after one full chunk-index repair before failing.
+- `restore-pipeline`: Restore fails clearly on unresolved chunk-index entries and points users to explicit repair.
 - `file-tree-service`: Filetree validation no longer invalidates chunk-index caches as a hidden side effect.
 - `blob-storage`: Blob listing can optionally include metadata and content information for repair workflows.
 
 ## Impact
 
-- `src/Arius.Core/Shared/ChunkIndex/`: `ChunkIndexService` prefix-length and flush-worker constants, lookup repair modes, parallel flush behavior, full repair API, and tests.
+- `src/Arius.Core/Shared/ChunkIndex/`: `ChunkIndexService` prefix-length and flush-worker constants, lookup failure behavior, parallel flush behavior, full repair API, and tests.
 - `src/Arius.Core/Shared/Storage/IBlobContainerService.cs`: listing return shape and optional metadata flag.
 - `src/Arius.AzureBlob/AzureBlobContainerService.cs`: Azure listing implementation with `BlobTraits.Metadata` when requested.
 - `src/Arius.Core/Shared/FileTree/FileTreeService.cs`: remove chunk-index dependency and hidden invalidation.
 - `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs`: explicit cache coordination and parallel archive-tail finalization.
-- `src/Arius.Core/Features/RestoreCommand/RestoreCommandHandler.cs`: missing-shard probe lookup mode, full repair fallback, retry unresolved lookups, and clear unresolved-entry errors.
+- `src/Arius.Core/Features/RestoreCommand/RestoreCommandHandler.cs`: clear unresolved-entry and corrupt-index errors that instruct users to run explicit repair.
 - CLI command surface for explicit chunk-index repair.
-- Integration/E2E tests for prefix-scoped repair, full repair, partial flush interruption, and archive-tail ordering.
+- Integration/E2E tests for full repair, corrupt-index failure, partial flush interruption, and archive-tail ordering.
