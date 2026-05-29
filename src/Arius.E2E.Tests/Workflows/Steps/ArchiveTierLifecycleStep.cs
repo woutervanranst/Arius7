@@ -37,7 +37,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         if (sourceVersion == SyntheticRepositoryVersion.V2 && !versionedSourceFileSystem.DirectoryExists(sourceState.RootDirectory))
         {
             var v1State = await MaterializeVersionStep.RematerializeV1Async(state, cancellationToken);
-            var versionRootPath = LocalDirectory.Parse(state.VersionedSourceDirectory.Resolve(RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2))));
+            var versionRootPath = state.VersionedSourceDirectory / RelativePath.Parse(nameof(SyntheticRepositoryVersion.V2));
             sourceState = await SyntheticRepositoryMaterializer.MaterializeV2FromExistingAsync(state.Definition, state.Seed, v1State.RootDirectory, versionRootPath, state.Fixture.Encryption);
             state.VersionedSourceStates[SyntheticRepositoryVersion.V2] = sourceState;
         }

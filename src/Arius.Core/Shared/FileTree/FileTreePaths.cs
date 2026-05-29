@@ -47,7 +47,7 @@ internal static class FileTreePaths
     /// Example: <c>~/.arius/<container>/filetrees/.staging/</c>
     /// </summary>
     public static LocalDirectory GetStagingRootDirectory(LocalDirectory fileTreeCacheDirectory)
-        => LocalDirectory.Parse(fileTreeCacheDirectory.Resolve(StagingRootRelativePath));
+        => fileTreeCacheDirectory / StagingRootRelativePath;
 
     /// <summary>
     /// Returns the process lock file path that guards a single active filetree staging session.
