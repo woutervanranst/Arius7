@@ -85,7 +85,7 @@ Rationale: Full repair is the operator/test maintenance tool and the explicit re
 
 ### Decision: Thin Chunk Parent Hash Metadata
 
-Thin chunks store their parent tar chunk hash in blob metadata key `parent_chunk_hash`, alongside `arius_type=thin`, `original_size`, and `compressed_size`. Thin chunk bodies are empty; they exist as durable per-content-hash marker blobs and metadata carriers, not as meaningful payloads. Because thin chunks have empty bodies, archive writes the body and metadata together with the non-streaming upload API; `arius_type` remains the committed-blob sentinel.
+Thin chunks store their parent tar chunk hash in blob metadata key `parent_chunk_hash`, alongside `arius_type=thin`, `original_size`, and `compressed_size`. Thin chunk bodies are empty; they exist as durable per-content-hash marker blobs and metadata carriers, not as meaningful payloads. Archive writes thin chunks with a single `UploadAsync` call that provides empty content and all thin metadata together; `arius_type` remains the committed-blob sentinel.
 
 Full repair reconstructs thin chunk-index entries from the metadata returned by the metadata-aware chunk listing. It does not download thin chunk bodies to discover parent tar chunk hashes. A thin chunk with `arius_type=thin` but missing or invalid `parent_chunk_hash`, `original_size`, or `compressed_size` metadata is treated as corrupt repair input and causes full repair to fail clearly rather than silently dropping the mapping.
 

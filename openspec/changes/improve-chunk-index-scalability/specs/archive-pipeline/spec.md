@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Thin chunk creation
-The system SHALL create a thin chunk blob for each small file after its tar is successfully uploaded. The thin chunk SHALL be stored at `chunks/<content-hash>` with an empty body. Blob metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size` (proportional estimate based on the tar's compression ratio), written as metadata on the empty-body upload. The parent tar chunk hash SHALL be stored in `parent_chunk_hash`, not in the thin chunk body.
+The system SHALL create a thin chunk blob for each small file after its tar is successfully uploaded. The thin chunk SHALL be stored at `chunks/<content-hash>` with an empty body. Blob metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size` (proportional estimate based on the tar's compression ratio), supplied with the same `UploadAsync` call as the empty content. The parent tar chunk hash SHALL be stored in `parent_chunk_hash`, not in the thin chunk body.
 
 #### Scenario: Thin chunk for tar-bundled file
 - **WHEN** file with content-hash `abc123` is bundled in tar with hash `def456`
@@ -160,7 +160,7 @@ On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD chec
 - `arius_type` present → blob is fully committed (body + metadata); recover ContentLength or metadata as compressedSize and continue without re-uploading
 - `arius_type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
 
-This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Thin chunk creation SHALL upload an empty blob body and all required thin chunk metadata, including `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`, in one non-streaming upload request. Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
+This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Thin chunk creation SHALL use a single `UploadAsync` call with empty content and all required thin chunk metadata, including `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`. Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
 
 #### Scenario: Re-run after crash - fully committed blob
 - **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + `arius_type` present)
