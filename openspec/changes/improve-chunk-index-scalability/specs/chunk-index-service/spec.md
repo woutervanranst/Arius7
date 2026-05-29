@@ -83,27 +83,40 @@ Prefix repair SHALL rebuild a chunk-index shard by listing chunk blobs whose nam
 - **THEN** it SHALL NOT add a shard entry for that blob
 
 ### Requirement: Explicit full chunk-index repair
-The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL enumerate the valid shard prefixes for the current layout, rebuild each prefix by listing committed chunk blobs under `chunks/<prefix>*`, reconstruct large and thin entries for that prefix, and overwrite the complete live shard blob under `chunk-index/<prefix>` in place when the rebuilt prefix contains entries. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
+The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL purge the local L2 chunk-index cache, scan committed chunk blobs once with `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin entries, merge those entries into rebuilt local L2 shard files by shard prefix, upload every rebuilt non-empty shard to `chunk-index/<prefix>`, and retain the rebuilt L2 files as the current local chunk-index cache. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
 
-Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After all prefixes have been processed, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that expected prefix set. Full repair SHALL invalidate chunk-index L1 and L2 cache state after repair completes.
+Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SHALL mark the local L2 rebuild as in progress before writing rebuilt shard files. Normal chunk-index lookups SHALL NOT trust partially rebuilt local L2 files if a previous full repair was interrupted before completing. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
 
-Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted after writing some shard prefixes but before writing others, or after writing prefixes but before deleting stale shard blobs, a later full repair SHALL converge by reconstructing all shard contents again from committed chunk blobs. Full repair SHALL NOT publish snapshots.
+Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
+
+Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted while rebuilding local L2 shard files, while uploading rebuilt shards, or after uploading rebuilt shards but before deleting stale remote shard blobs, a later full repair SHALL purge the partial local rebuild and reconstruct shard contents from committed chunks again. Full repair SHALL NOT publish snapshots.
 
 #### Scenario: Full repair rebuilds all touched prefixes
 - **WHEN** full chunk-index repair runs on a repository with large and thin chunk blobs
 - **THEN** it SHALL reconstruct shard entries for all large and thin chunks
-- **AND** it SHALL overwrite chunk-index shards for every prefix that has reconstructed entries
+- **AND** it SHALL build local L2 shard files for every prefix that has reconstructed entries
+- **AND** it SHALL upload chunk-index shards for every prefix that has reconstructed entries
 - **AND** it SHALL NOT write empty chunk-index shards
 
+#### Scenario: Full repair scans chunks once
+- **WHEN** full chunk-index repair runs
+- **THEN** it SHALL perform one metadata-aware listing for `chunks/`
+- **AND** it SHALL NOT rebuild by issuing one chunk listing per possible shard prefix
+
 #### Scenario: Full repair deletes stale shards
-- **WHEN** full chunk-index repair completes prefix reconstruction
+- **WHEN** full chunk-index repair completes local shard reconstruction and uploads rebuilt shards
 - **AND** an existing `chunk-index/` shard blob is not in the expected rebuilt prefix set
 - **THEN** full repair SHALL delete that stale shard blob
 
-#### Scenario: Full repair invalidates local caches
-- **WHEN** full chunk-index repair completes
+#### Scenario: Full repair rebuilds local cache safely
+- **WHEN** full chunk-index repair starts
 - **THEN** it SHALL invalidate chunk-index L1 cache state
-- **AND** it SHALL delete stale L2 chunk-index cache files before future lookups trust cached shard contents
+- **AND** it SHALL purge existing L2 chunk-index cache files before writing rebuilt local shard files
+- **AND** it SHALL mark the L2 rebuild as in progress until remote upload and stale-shard deletion complete
+
+#### Scenario: Interrupted local rebuild is not trusted
+- **WHEN** full chunk-index repair was interrupted before clearing its in-progress marker
+- **THEN** later chunk-index lookups SHALL NOT trust the partially rebuilt L2 shard files as complete cache state
 
 #### Scenario: Full repair available for maintenance
 - **WHEN** an operator invokes the full chunk-index repair command
@@ -115,9 +128,9 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 - **AND** it SHALL NOT require existing chunk-index shard contents to reconstruct those entries
 
 #### Scenario: Full repair can be rerun after interruption
-- **WHEN** full chunk-index repair is interrupted after writing only some shard prefixes
+- **WHEN** full chunk-index repair is interrupted after writing only some local or remote shard prefixes
 - **THEN** rerunning full repair SHALL reconstruct shard contents from committed chunks again
-- **AND** it SHALL be able to complete the missing shard prefixes without relying on the partial repair output
+- **AND** it SHALL be able to complete without relying on the partial repair output
 
 #### Scenario: Full repair does not publish snapshot
 - **WHEN** full chunk-index repair writes repaired shard blobs

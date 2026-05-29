@@ -8,7 +8,7 @@ The chunk index currently uses a fixed 4-hex shard prefix and flushes touched sh
 - Parallelize chunk-index shard flush per touched prefix with bounded `Parallel.ForEachAsync` and an internal worker-count constant while preserving one worker per prefix.
 - Add configurable lookup repair behavior: corrupt shards can be rebuilt automatically, restore can probe for chunks when an expected shard is missing, and normal archive misses do not trigger expensive repair scans.
 - Make restore self-healing for incomplete chunk-index coverage: after normal lookup and missing-shard probing, unresolved snapshot content hashes trigger one full chunk-index repair and a retry before restore fails.
-- Add an explicit full chunk-index repair API and command for maintenance and test setup.
+- Add an explicit full chunk-index repair API and command for maintenance and test setup, using one metadata-aware chunk listing and disk-backed shard rebuild before uploading repaired shards.
 - Extend blob listing so callers can request metadata with listed blob names, enabling repair to avoid per-blob metadata round-trips.
 - Move chunk-index cache invalidation out of `FileTreeService`; `FileTreeService.ValidateAsync` will still perform snapshot comparison and return `FileTreeValidationResult`, and `ArchiveCommandHandler` will invalidate chunk-index caches when that result reports a snapshot mismatch.
 - Run chunk-index flush and filetree synchronization concurrently at the archive tail after cache validation and uploads complete, publishing a snapshot only after both succeed.

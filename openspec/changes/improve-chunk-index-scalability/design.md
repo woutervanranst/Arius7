@@ -83,24 +83,26 @@ Rationale: Full repair is expensive, but restore only pays it after proving that
 
 ### Decision: Explicit Full Repair API and Command
 
-Add a full chunk-index repair path that rebuilds each shard prefix from committed chunk blobs and overwrites live `chunk-index/<prefix>` shard blobs in place. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair reconstructs the same shard contents from committed chunks and converges.
+Add a full chunk-index repair path that scans committed chunk blobs once, rebuilds local chunk-index shard files on disk, uploads the rebuilt shards, and removes stale remote shard blobs that were not rebuilt. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair starts by purging local chunk-index repair output, reconstructs shard contents again from committed chunks, and converges.
 
-Full repair processes the current shard layout prefix-by-prefix rather than staging the whole repository index in memory or on disk:
+Full repair uses the existing local chunk-index cache as bounded disk-backed rebuild state rather than staging the whole repository index in memory:
 
-1. Enumerate all valid shard prefixes for the current layout.
-2. For each prefix, rebuild that prefix by listing `chunks/<prefix>*`.
-3. If the rebuilt prefix has entries, overwrite `chunk-index/<prefix>` directly and remember that prefix as expected.
-4. If the rebuilt prefix has no entries, do not write an empty shard and do not remember that prefix as expected.
-5. After every prefix has been processed, list existing `chunk-index/` blobs.
-6. Delete existing chunk-index shard blobs that are not in the expected prefix set.
-7. Invalidate chunk-index L1/L2 cache state after repair completes.
+1. Invalidate L1 and purge the local L2 chunk-index cache before rebuilding.
+2. Mark local chunk-index repair as in progress so normal lookups do not trust partially rebuilt L2 files after an interrupted repair.
+3. Run one metadata-aware `ListAsync("chunks/", includeMetadata: true, ...)` scan.
+4. For each committed large or thin chunk, reconstruct its shard entry and merge it into the corresponding local L2 shard file using the configured shard prefix length.
+5. Track the shard prefixes that received entries during the scan.
+6. Upload each rebuilt non-empty local shard to `chunk-index/<prefix>` using the normal remote shard serialization.
+7. List existing `chunk-index/` blobs and delete shard blobs whose names are not in the rebuilt prefix set.
+8. Clear the in-progress marker and keep the rebuilt L2 cache as the current local chunk-index cache.
 
 Alternatives considered:
 - Tests call internal prefix repair only: insufficient coverage for maintenance behavior.
 - Only expose CLI command: harder to test and reuse from future workflows.
 - Stage repair output under a temporary prefix before publishing: cleaner in theory, but Azure Blob Storage has no atomic folder move; publishing would still require per-shard writes unless the storage format gained a manifest indirection.
+- Rebuild every prefix by separately listing `chunks/<prefix>*`: keeps per-prefix memory bounded, but turns full repair into many remote list calls and makes the future dynamic-sharding transition harder to reason about.
 
-Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, in-place overwrite is acceptable and rerunnable. Prefix-by-prefix direct overwrite keeps memory and disk usage bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
+Rationale: Prefix repair is the day-to-day safety net; full repair is the operator/test maintenance tool. Since repair starts from committed chunks and does not publish snapshots, direct overwrite is acceptable and rerunnable. A single chunk listing minimizes remote listing work, and disk-backed local rebuild keeps memory bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
 
 ### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
 
