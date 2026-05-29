@@ -84,6 +84,8 @@ Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SH
 
 The repair in-progress marker SHALL be addressed through an internal `ChunkIndexService` constant and SHALL live outside the purgeable local shard-cache directory, for example `~/.arius/{repo}/chunk-index.repair-in-progress`. Chunk-index cache invalidation SHALL NOT delete the repair in-progress marker.
 
+Normal chunk-index operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check for the repair in-progress marker at operation start and fail with a clear repair-incomplete error when the marker exists. The `ChunkIndexService` constructor SHALL NOT fail solely because the repair in-progress marker exists, so the explicit repair command can construct the service and rerun repair. The explicit full repair API SHALL be allowed to run when the repair in-progress marker already exists. Cache invalidation that only clears local cache state MAY run while the marker exists, but SHALL NOT delete the marker.
+
 Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
 
 Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted while rebuilding local L2 shard files, while uploading rebuilt shards, or after uploading rebuilt shards but before deleting stale remote shard blobs, a later full repair SHALL purge the partial local rebuild and reconstruct shard contents from committed chunks again. Full repair SHALL NOT publish snapshots.
@@ -119,6 +121,16 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 #### Scenario: Interrupted local rebuild is not trusted
 - **WHEN** full chunk-index repair was interrupted before clearing its in-progress marker
 - **THEN** later chunk-index lookups SHALL fail with a clear repair-incomplete error
+- **AND** the error SHALL instruct the user to rerun the explicit chunk-index repair command
+
+#### Scenario: Constructor allows repair command after interruption
+- **WHEN** `ChunkIndexService` is constructed and the repair in-progress marker exists
+- **THEN** construction SHALL succeed
+- **AND** the explicit full repair API SHALL be callable so repair can be rerun
+
+#### Scenario: Normal operations check repair marker
+- **WHEN** the repair in-progress marker exists
+- **THEN** normal chunk-index lookup, entry recording, and flush operations SHALL fail with a clear repair-incomplete error
 - **AND** the error SHALL instruct the user to rerun the explicit chunk-index repair command
 
 #### Scenario: Repair rerun after interrupted local rebuild
