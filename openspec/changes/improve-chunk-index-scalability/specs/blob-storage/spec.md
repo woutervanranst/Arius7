@@ -5,6 +5,8 @@ The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata a
 
 `ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations MAY omit metadata and content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
 
+Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar chunk hash for that content hash. Metadata-aware listing SHALL expose this metadata when the backend provides blob metadata in listing results.
+
 #### Scenario: Upload large chunk
 - **WHEN** uploading a gzip+encrypted stream to `chunks/<hash>`
 - **THEN** the service SHALL upload the stream with specified metadata and tier
@@ -25,7 +27,11 @@ The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata a
 #### Scenario: List with metadata
 - **WHEN** `ListAsync(prefix, includeMetadata: true)` is called
 - **THEN** each returned item SHALL include the blob name and available metadata from the listing operation
-- **AND** repair workflows SHALL be able to inspect `arius-type` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
+- **AND** repair workflows SHALL be able to inspect `arius-type` and thin chunk `parent_chunk_hash` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
+
+#### Scenario: Thin chunk parent metadata listed
+- **WHEN** `ListAsync(ChunkPrefix, includeMetadata: true)` returns a thin chunk blob
+- **THEN** the listed blob item SHALL expose `parent_chunk_hash` metadata when the backend listing provides metadata
 
 #### Scenario: OpenWriteAsync returns writable stream
 - **WHEN** `OpenWriteAsync("chunks/<hash>", contentType, tier)` is called

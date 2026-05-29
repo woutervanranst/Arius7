@@ -83,9 +83,21 @@ Alternatives considered:
 
 Rationale: Full repair is the operator/test maintenance tool and the explicit recovery path for corrupt, incomplete, or unresolved chunk-index state. Since repair starts from committed chunks and does not publish snapshots, direct overwrite is acceptable and rerunnable. A single chunk listing minimizes remote listing work, and disk-backed local rebuild keeps memory bounded while still converging remote chunk-index blobs to the rebuilt non-empty shard set.
 
+### Decision: Thin Chunk Parent Hash Metadata
+
+Thin chunks store their parent tar chunk hash in blob metadata key `parent_chunk_hash`, alongside `arius_type=thin`, `original_size`, and `compressed_size`. Thin chunk bodies are empty; they exist as durable per-content-hash marker blobs and metadata carriers, not as meaningful payloads.
+
+Full repair reconstructs thin chunk-index entries from the metadata returned by the metadata-aware chunk listing. It does not download thin chunk bodies to discover parent tar chunk hashes. A committed thin chunk (`arius_type=thin`) with missing or invalid `parent_chunk_hash`, `original_size`, or `compressed_size` metadata is treated as corrupt repair input and causes full repair to fail clearly rather than silently dropping the mapping.
+
+Alternatives considered:
+- Keep parent tar chunk hash in the thin chunk body: preserves the current representation but makes full repair perform one download per thin chunk.
+- Store parent tar chunk hash in both metadata and body: provides redundancy but duplicates state with no compatibility need in this development-phase change.
+
+Rationale: Thin chunks are metadata records for tar-bundled files. Storing the parent mapping in metadata lets the explicit repair command rebuild the complete chunk index from one metadata-aware listing plus local disk-backed shard writes, avoiding per-thin-chunk downloads at repository scale.
+
 ### Decision: Metadata-Aware Listing Uses Existing ListAsync Name
 
-Change `IBlobContainerService.ListAsync` to return blob list items and accept `bool includeMetadata = false`. Existing callers use item names only. Repair calls `ListAsync(prefix, includeMetadata: true, ...)` to receive metadata and content length from Azure listings using `BlobTraits.Metadata` where supported.
+Change `IBlobContainerService.ListAsync` to return blob list items and accept `bool includeMetadata = false`. Existing callers use item names only. Repair calls `ListAsync(prefix, includeMetadata: true, ...)` to receive metadata and content length from Azure listings using `BlobTraits.Metadata` where supported, including thin chunk parent tar chunk hash metadata.
 
 Alternatives considered:
 - Add `ListWithMetadataAsync`: clearer separation but duplicates listing concepts in the storage boundary.

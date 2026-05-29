@@ -49,6 +49,13 @@ The archive pipeline SHALL record new chunk metadata in `ChunkIndexService` as c
 - **WHEN** a large chunk upload encounters a complete existing chunk blob after a chunk-index miss
 - **THEN** the archive pipeline SHALL record the recovered content-hash to chunk-hash mapping with original and compressed sizes through `ChunkIndexService`
 
+#### Scenario: Thin chunk metadata records parent tar chunk
+- **WHEN** the archive pipeline creates a thin chunk for a tar-bundled file
+- **THEN** the thin chunk blob SHALL be uploaded with an empty body
+- **AND** its metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`
+- **AND** `parent_chunk_hash` SHALL contain the parent tar chunk hash
+- **AND** the archive pipeline SHALL record the same content-hash to parent tar chunk-hash mapping through `ChunkIndexService`
+
 #### Scenario: Chunk index flushed before snapshot
 - **WHEN** archive finalization begins after uploads complete
 - **THEN** pending chunk index entries SHALL be flushed before snapshot creation
@@ -140,7 +147,7 @@ On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD chec
 - `arius-type` present → blob is fully committed (body + metadata); recover ContentLength or metadata as compressedSize and continue without re-uploading
 - `arius-type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
 
-This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
+This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Thin chunk creation SHALL upload an empty blob body and then set all required thin chunk metadata, including `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`, in one metadata update. Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
 
 #### Scenario: Re-run after crash - fully committed blob
 - **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + arius-type present)
@@ -152,6 +159,7 @@ This pattern applies to all three upload sub-stages: large file upload (Stage 4a
 
 #### Scenario: Thin chunk already complete
 - **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is present
+- **AND** required thin chunk metadata is present and valid
 - **THEN** the pipeline SHALL skip silently (fully complete)
 
 #### Scenario: Thin chunk partially committed

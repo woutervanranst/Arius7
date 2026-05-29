@@ -58,7 +58,9 @@ Valid shards SHALL be trusted. If a shard exists and parses but does not contain
 - **AND** it SHALL NOT rebuild prefix `aa` automatically
 
 ### Requirement: Repair reconstructs index entries from chunks
-Full repair SHALL rebuild chunk-index shards from committed chunk blobs. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the tar chunk hash stored in the thin chunk body. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius-type` metadata SHALL be ignored because `arius-type` is the completion sentinel.
+Full repair SHALL rebuild chunk-index shards from committed chunk blobs. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the parent tar chunk hash stored in thin chunk metadata key `parent_chunk_hash`. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius-type` metadata SHALL be ignored because `arius-type` is the completion sentinel.
+
+Committed thin chunks SHALL include `parent_chunk_hash`, `original_size`, and `compressed_size` metadata. A committed thin chunk with missing or invalid required metadata SHALL cause full repair to fail with a clear chunk-index repair error instead of silently omitting the mapping.
 
 #### Scenario: Large chunk reconstructed
 - **WHEN** full repair sees `chunks/aa123...` with metadata `arius-type: large`
@@ -67,9 +69,16 @@ Full repair SHALL rebuild chunk-index shards from committed chunk blobs. Large c
 
 #### Scenario: Thin chunk reconstructed
 - **WHEN** full repair sees `chunks/aa456...` with metadata `arius-type: thin`
-- **THEN** it SHALL read the thin chunk body to obtain the parent tar chunk hash
-- **AND** it SHALL add a shard entry mapping content hash `aa456...` to that parent tar chunk hash
+- **AND** metadata includes valid `parent_chunk_hash`, `original_size`, and `compressed_size` values
+- **THEN** it SHALL add a shard entry mapping content hash `aa456...` to the parent tar chunk hash from metadata
 - **AND** it SHALL use the thin chunk metadata for original and compressed sizes
+- **AND** it SHALL NOT download the thin chunk body to reconstruct the entry
+
+#### Scenario: Committed thin chunk with invalid metadata fails repair
+- **WHEN** full repair sees `chunks/aa456...` with metadata `arius-type: thin`
+- **AND** required thin chunk metadata is missing or invalid
+- **THEN** full repair SHALL fail with a clear chunk-index repair error
+- **AND** it SHALL NOT silently omit the thin chunk mapping from rebuilt shards
 
 #### Scenario: Tar chunk ignored directly
 - **WHEN** full repair sees a chunk blob with metadata `arius-type: tar`
