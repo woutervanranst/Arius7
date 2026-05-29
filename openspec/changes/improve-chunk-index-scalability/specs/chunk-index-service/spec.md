@@ -82,6 +82,8 @@ The system SHALL provide an explicit full chunk-index repair API and command tha
 
 Full repair SHALL invalidate chunk-index L1 cache state before rebuilding and SHALL mark the local L2 rebuild as in progress before writing rebuilt shard files. Normal chunk-index lookups SHALL fail clearly if a previous full repair was interrupted before completing. Full repair SHALL be allowed to run when this marker already exists, and it SHALL purge the partial local rebuild before reconstructing shard contents again. Full repair SHALL clear the in-progress marker only after rebuilt shards have been uploaded and stale remote shards have been deleted.
 
+The repair in-progress marker SHALL be addressed through an internal `ChunkIndexService` constant and SHALL live outside the purgeable local shard-cache directory, for example `~/.arius/{repo}/chunk-index.repair-in-progress`. Chunk-index cache invalidation SHALL NOT delete the repair in-progress marker.
+
 Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
 
 Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted while rebuilding local L2 shard files, while uploading rebuilt shards, or after uploading rebuilt shards but before deleting stale remote shard blobs, a later full repair SHALL purge the partial local rebuild and reconstruct shard contents from committed chunks again. Full repair SHALL NOT publish snapshots.
@@ -108,6 +110,11 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 - **THEN** it SHALL invalidate chunk-index L1 cache state
 - **AND** it SHALL purge existing L2 chunk-index cache files before writing rebuilt local shard files
 - **AND** it SHALL mark the L2 rebuild as in progress until remote upload and stale-shard deletion complete
+
+#### Scenario: Repair marker survives cache invalidation
+- **WHEN** chunk-index cache invalidation deletes local shard-cache files
+- **THEN** it SHALL NOT delete the repair in-progress marker
+- **AND** later normal chunk-index lookups SHALL still fail with a repair-incomplete error while the marker exists
 
 #### Scenario: Interrupted local rebuild is not trusted
 - **WHEN** full chunk-index repair was interrupted before clearing its in-progress marker

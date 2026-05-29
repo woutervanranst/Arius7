@@ -60,6 +60,8 @@ Add a full chunk-index repair path that scans committed chunk blobs once, rebuil
 
 Full repair uses the existing local chunk-index cache as bounded disk-backed rebuild state rather than staging the whole repository index in memory. L2 can normally be incomplete because it is a cache of shards this machine has needed; the repair sentinel does not mean "L2 is incomplete". It means an explicit full repair was interrupted after replacing normal cache contents with rebuild output, so normal operations must fail until the user reruns repair.
 
+The local repair sentinel path is owned by `ChunkIndexService` as an internal constant and SHALL live outside the purgeable shard-cache directory, for example `~/.arius/{repo}/chunk-index.repair-in-progress`. Cache invalidation may delete files under `~/.arius/{repo}/chunk-index/`, but it SHALL NOT delete or ignore the repair sentinel.
+
 1. Invalidate L1 and purge the local L2 chunk-index cache before rebuilding.
 2. Mark local chunk-index repair as in progress so normal operations fail clearly instead of trusting partially rebuilt L2 files after an interrupted repair.
 3. Run one metadata-aware `ListAsync("chunks/", includeMetadata: true, ...)` scan.
