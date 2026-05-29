@@ -27,19 +27,19 @@ public sealed class ChunkIndexService : IDisposable
     // ── Dependencies ──────────────────────────────────────────────────────────
 
     private readonly IBlobContainerService _blobs;
-    private readonly IEncryptionService  _encryption;
-    private readonly RelativeFileSystem  _repositoryFileSystem;
-    private readonly RelativeFileSystem  _l2FileSystem;
+    private readonly IEncryptionService    _encryption;
+    private readonly RelativeFileSystem    _repositoryFileSystem;
+    private readonly RelativeFileSystem    _l2FileSystem;
 
     // ── L1 LRU cache ──────────────────────────────────────────────────────────
 
     private sealed record L1Entry(PathSegment Prefix, Shard Shard, long Size);
 
-    private readonly long                                        _l1BudgetBytes;
-    private readonly LinkedList<L1Entry>                         _l1Lru = [];
+    private readonly long                                             _l1BudgetBytes;
+    private readonly LinkedList<L1Entry>                              _l1Lru = [];
     private readonly Dictionary<PathSegment, LinkedListNode<L1Entry>> _l1Map = [];
-    private          long                                        _l1UsedBytes;
-    private readonly Lock                                        _l1Lock = new();
+    private          long                                             _l1UsedBytes;
+    private readonly Lock                                             _l1Lock = new();
 
     // ── In-flight set (task 4.8) ──────────────────────────────────────────────
 
