@@ -191,14 +191,14 @@ public class RoundtripTests(AzuriteFixture azurite)
         restoreResult1.Success.ShouldBeTrue(restoreResult1.ErrorMessage);
         restoreResult1.FilesRestored.ShouldBe(1);
 
-        var v1Directory = LocalDirectory.Parse(fix.RestoreDirectory.Resolve(RelativePath.Parse("v1")));
+        var v1Directory = fix.RestoreDirectory / RelativePath.Parse("v1");
         var v1FileSystem = new RelativeFileSystem(v1Directory);
         v1FileSystem.FileExists(RelativePath.Parse("file-a.bin")).ShouldBeTrue();
         v1FileSystem.FileExists(RelativePath.Parse("file-b.bin")).ShouldBeFalse();
         v1FileSystem.ReadAllBytes(RelativePath.Parse("file-a.bin")).ShouldBe(contentA);
 
         // ── Restore latest snapshot → both files ──────────────────────────────
-        var v2Directory = LocalDirectory.Parse(fix.RestoreDirectory.Resolve(RelativePath.Parse("v2")));
+        var v2Directory = fix.RestoreDirectory / RelativePath.Parse("v2");
         var v2FileSystem = new RelativeFileSystem(v2Directory);
         var restoreResult2 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions
@@ -421,7 +421,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         r2.Success.ShouldBeTrue();
 
         // Restore latest: keep.bin only
-        var latestDirectory = LocalDirectory.Parse(fix.RestoreDirectory.Resolve(RelativePath.Parse("latest")));
+        var latestDirectory = fix.RestoreDirectory / RelativePath.Parse("latest");
         var latestFileSystem = new RelativeFileSystem(latestDirectory);
         var rl = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions { RootDirectory = latestDirectory.ToString(), Overwrite = true }), default);
@@ -431,7 +431,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         latestFileSystem.FileExists(RelativePath.Parse("delete.bin")).ShouldBeFalse();
 
         // Restore snapshot 1: both files
-        var v1Directory = LocalDirectory.Parse(fix.RestoreDirectory.Resolve(RelativePath.Parse("v1")));
+        var v1Directory = fix.RestoreDirectory / RelativePath.Parse("v1");
         var v1FileSystem = new RelativeFileSystem(v1Directory);
         var rv1 = await fix.CreateRestoreHandler().Handle(
             new RestoreCommand(new RestoreOptions { RootDirectory = v1Directory.ToString(), Version = snapshot1, Overwrite = true }), default);

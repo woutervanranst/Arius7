@@ -13,7 +13,7 @@ internal static class RepresentativeWorkflowRunner
 {
     internal static async Task<E2EFixture> CreateFixtureAsync(E2EStorageBackendContext context, LocalDirectory workflowRoot, CancellationToken cancellationToken)
     {
-        var fixtureRoot = LocalDirectory.Parse(workflowRoot.Resolve(RelativePath.Parse("fixture")));
+        var fixtureRoot = workflowRoot / RelativePath.Parse("fixture");
 
         return await E2EFixture.CreateAsync(
             context.BlobContainer,
