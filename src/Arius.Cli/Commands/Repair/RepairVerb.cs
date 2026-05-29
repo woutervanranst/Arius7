@@ -1,4 +1,4 @@
-using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,20 +43,24 @@ internal static class RepairVerb
 
             try
             {
-                Log.Information("[repair] Start: account={Account} container={Container}", resolvedAccount, container);
                 var services = await serviceProviderFactory(resolvedAccount, resolvedKey, passphrase, container, PreflightMode.ReadWrite).ConfigureAwait(false);
-                var index = services.GetRequiredService<ChunkIndexService>();
+                var mediator = services.GetRequiredService<IMediator>();
 
                 AnsiConsole.MarkupLine("Repairing chunk index from committed chunks...");
-                Log.Information("[phase] repair-index");
-                var result = await index.RepairAsync(ct);
-                Log.Information("[repair] Done: listed={ListedChunks} rebuiltEntries={RebuiltEntries} rebuiltShards={RebuiltShards} uploadedShards={UploadedShards} deletedStaleShards={DeletedStaleShards}", result.ListedChunkCount, result.RebuiltEntryCount, result.RebuiltShardCount, result.UploadedShardCount, result.DeletedStaleShardCount);
-                AnsiConsole.MarkupLine($"[green]Repair complete.[/] Listed {result.ListedChunkCount} chunk(s), rebuilt {result.RebuiltEntryCount} entries across {result.RebuiltShardCount} shard(s), uploaded {result.UploadedShardCount}, deleted {result.DeletedStaleShardCount} stale shard(s).");
+                var result = await mediator.Send(new RepairChunkIndexCommand(), ct);
+                if (!result.Success)
+                {
+                    AnsiConsole.MarkupLine($"[red]Repair failed:[/] {Markup.Escape(result.ErrorMessage ?? "Unknown repair failure.")}");
+                    AnsiConsole.MarkupLine("Rerun the repair command after fixing the reported problem.");
+                    return 1;
+                }
+
+                var repair = result.Repair ?? throw new InvalidOperationException("Repair command completed without repair details.");
+                AnsiConsole.MarkupLine($"[green]Repair complete.[/] Listed {repair.ListedChunkCount} chunk(s), rebuilt {repair.RebuiltEntryCount} entries across {repair.RebuiltShardCount} shard(s), uploaded {repair.UploadedShardCount}, deleted {repair.DeletedStaleShardCount} stale shard(s).");
                 return 0;
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "[repair] Failure");
                 AnsiConsole.MarkupLine($"[red]Repair failed:[/] {Markup.Escape(ex.Message)}");
                 AnsiConsole.MarkupLine("Rerun the repair command after fixing the reported problem.");
                 return 1;
