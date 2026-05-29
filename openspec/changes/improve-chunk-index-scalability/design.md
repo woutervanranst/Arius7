@@ -25,6 +25,7 @@ Flush currently groups pending entries by fixed prefix, then processes each touc
 - No CLI/config option for shard prefix length yet.
 - No backward-compatible reader for old 4-hex chunk-index shards; the repository is still in development and repair can rebuild missing new-layout shards from chunks.
 - No automatic chunk-index repair from archive, restore, or list operations; users run the explicit repair command when normal operations detect corrupt, incomplete, or unresolved chunk-index state.
+- No distributed repair/archive lock in this change. This design assumes only one machine or process is actively mutating a given remote archive at a time.
 
 ## Decisions
 
@@ -57,6 +58,8 @@ Rationale: Full repair can be expensive and mutates repository metadata. Keeping
 ### Decision: Explicit Full Repair API and Command
 
 Add a full chunk-index repair path that scans committed chunk blobs once, rebuilds local chunk-index shard files on disk, uploads the rebuilt shards, and removes stale remote shard blobs that were not rebuilt. This is exposed as an API on the shared chunk-index service and as a CLI maintenance command. Full repair is idempotent: if interrupted, rerunning repair starts by purging local chunk-index repair output, reconstructs shard contents again from committed chunks, and converges.
+
+This repair path assumes no concurrent archive or repair operation is mutating the same remote archive. Concurrent archive/repair mutation from another machine or process is out of scope for this change because chunk-index shard uploads overwrite whole shard blobs and no remote lease or distributed lock is introduced here.
 
 Full repair uses the existing local chunk-index cache as bounded disk-backed rebuild state rather than staging the whole repository index in memory. L2 can normally be incomplete because it is a cache of shards this machine has needed; the repair sentinel does not mean "L2 is incomplete". It means an explicit full repair was interrupted after replacing normal cache contents with rebuild output, so normal operations must fail until the user reruns repair.
 
