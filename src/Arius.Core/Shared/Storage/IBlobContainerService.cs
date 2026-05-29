@@ -50,6 +50,19 @@ public sealed class BlobMetadata
 }
 
 /// <summary>
+/// Blob information returned by prefix listings.
+/// </summary>
+public sealed record BlobListItem
+{
+    public required RelativePath Name { get; init; }
+
+    public IReadOnlyDictionary<string, string> Metadata { get; init; }
+        = new Dictionary<string, string>();
+
+    public long? ContentLength { get; init; }
+}
+
+/// <summary>
 /// Abstracts all blob storage I/O. Arius.Core depends on this interface only —
 /// no Azure-specific types cross this boundary.
 /// </summary>
@@ -121,10 +134,11 @@ public interface IBlobContainerService
     // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Lists all blob names that start with <paramref name="prefix"/>.
+    /// Lists all blobs that start with <paramref name="prefix"/>.
     /// </summary>
-    IAsyncEnumerable<RelativePath> ListAsync(
+    IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath      prefix,
+        bool              includeMetadata   = false,
         CancellationToken cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────

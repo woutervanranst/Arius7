@@ -35,14 +35,14 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
         return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
     }
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _remoteBlobs
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return blobName;
+            yield return new BlobListItem { Name = blobName };
             await Task.Yield();
         }
     }

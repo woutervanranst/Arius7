@@ -61,6 +61,7 @@ sudo mv arius /usr/local/bin/
 arius archive <path> -a <name> -k <key> -c <container> [options]
 arius restore <path> -a <name> -k <key> -c <container> [options]
 arius ls          -a <name> -k <key> -c <container> [options]
+arius repair-index -a <name> -k <key> -c <container>
 arius update
 ```
 
@@ -91,6 +92,18 @@ arius ls \
   -a mystorageaccount \
   -c photos-backup
 ```
+
+### Repair chunk index
+
+Run this when archive, restore, or list reports that the chunk index is corrupt, incomplete, or missing entries:
+
+```bash
+arius repair-index \
+  -a mystorageaccount \
+  -c photos-backup
+```
+
+The repair command rebuilds the chunk index from committed chunks and can be rerun safely if it is interrupted.
 
 ### Updating
 
@@ -213,11 +226,11 @@ flowchart TD
     subgraph chunks/
         L["chunks/&lt;content-hash&gt;<br/><b>large</b> — gzip + optional encrypt"]
         TAR["chunks/&lt;tar-hash&gt;<br/><b>tar</b> — tar + gzip + optional encrypt"]
-        TH["chunks/&lt;content-hash&gt;<br/><b>thin</b> — UTF-8 pointer to tar-hash"]
+        TH["chunks/&lt;content-hash&gt;<br/><b>thin</b> — metadata pointer to tar-hash"]
     end
 
     subgraph chunk-index/
-        CI["chunk-index/&lt;4-hex-prefix&gt;<br/><i>gzip + optional encrypt</i>"]
+        CI["chunk-index/&lt;prefix&gt;<br/><i>gzip + optional encrypt</i>"]
     end
 
     S -- "rootHash" --> RT
@@ -275,15 +288,14 @@ distinguishable by their HTTP `Content-Type` header and `arius_type` metadata:
 |------|-----------|-------------|------|------|
 | **large** | `chunks/<content-hash>` | `application/aes256cbc+gzip` or `application/gzip` | Single file: gzip + optional encrypt | Configurable (`-t`) |
 | **tar** | `chunks/<tar-hash>` | `application/aes256cbc+tar+gzip` or `application/tar+gzip` | Bundle of small files: tar + gzip + optional encrypt | Configurable (`-t`) |
-| **thin** | `chunks/<content-hash>` | `text/plain; charset=utf-8` | UTF-8 string of the tar-hash (pointer, ~64 bytes) | Always Cool |
+| **thin** | `chunks/<content-hash>` | `text/plain; charset=utf-8` | Empty body; parent tar-hash in metadata | Always Cool |
 
 **Routing rule:** files >= 1 MB are uploaded individually as **large** chunks. Files
 < 1 MB are accumulated into **tar** bundles (target size 64 MB). For each file in a tar
 bundle, a **thin** pointer blob is created so that every content-hash has a
 corresponding blob in `chunks/`.
 
-Thin pointers are kept on Cool tier (cheap to read) so that restore can resolve
-tar-hash references without rehydrating archive-tier blobs.
+Thin chunks are kept on Cool tier and include their parent tar-hash in metadata so repair can rebuild mappings without downloading each thin chunk.
 
 ### chunks-rehydrated/
 
@@ -293,8 +305,7 @@ tier. Once rehydration completes and files are restored, these blobs are cleaned
 
 ### chunk-index/
 
-Deduplication index split into 65,536 shards (keyed by the first 4 hex chars of the
-content-hash). Each shard is a text file (gzip-compressed, optionally encrypted) where
+Deduplication index split into prefix-keyed shards. Each shard is a text file (gzip-compressed, optionally encrypted) where
 each line maps a content-hash to its chunk-hash:
 
 ```

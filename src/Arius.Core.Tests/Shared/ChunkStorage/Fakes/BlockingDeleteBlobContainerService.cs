@@ -12,7 +12,7 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
         => AsyncEnumerable();
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
@@ -49,10 +49,10 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 
     public void ReleaseDeletes() => _releaseDeletes.TrySetResult();
 
-    private async IAsyncEnumerable<RelativePath> AsyncEnumerable()
+    private async IAsyncEnumerable<BlobListItem> AsyncEnumerable()
     {
-        yield return BlobPaths.ChunkRehydratedPath(FakeChunkHash('a'));
-        yield return BlobPaths.ChunkRehydratedPath(FakeChunkHash('b'));
+        yield return new BlobListItem { Name = BlobPaths.ChunkRehydratedPath(FakeChunkHash('a')) };
+        yield return new BlobListItem { Name = BlobPaths.ChunkRehydratedPath(FakeChunkHash('b')) };
         await Task.CompletedTask;
     }
 }

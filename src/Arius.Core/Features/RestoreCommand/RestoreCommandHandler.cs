@@ -191,7 +191,6 @@ public sealed class RestoreCommandHandler
                 {
                     if (!indexEntries.TryGetValue(file.ContentHash, out var entry))
                     {
-                        _logger.LogWarning("Content hash not found in index, skipping: {Hash} ({Path})", file.ContentHash, file.RelativePath);
                         unresolved.Add(file);
                         continue;
                     }
@@ -199,6 +198,12 @@ public sealed class RestoreCommandHandler
                     if (!filesByChunkHash.TryGetValue(entry.ChunkHash, out var list))
                         filesByChunkHash[entry.ChunkHash] = list = new List<FileToRestore>();
                     list.Add(file);
+                }
+
+                if (unresolved.Count > 0)
+                {
+                    var sample = string.Join(", ", unresolved.Take(5).Select(file => $"{file.RelativePath} ({file.ContentHash.Short8})"));
+                    throw new InvalidOperationException($"Snapshot references {unresolved.Count} content hash(es) that are missing from the chunk index: {sample}. Run the explicit chunk-index repair command and retry restore.");
                 }
 
                 var largeChunks = filesByChunkHash.Keys.Count(k => indexEntries.TryGetValue(filesByChunkHash[k][0].ContentHash, out var entry) && entry.IsLargeChunk);

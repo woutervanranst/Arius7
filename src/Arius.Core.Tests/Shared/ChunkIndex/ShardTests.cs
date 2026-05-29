@@ -171,10 +171,10 @@ public class ShardTests
     }
 
     [Test]
-    public void Shard_PrefixOf_Returns4Characters()
+    public void Shard_PrefixOf_UsesChunkIndexShardPrefixLength()
     {
         Shard.PrefixOf(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
-            .ShouldBe(PathSegment.Parse("aabb"));
+            .ShouldBe(PathSegment.Parse("aa"));
     }
 
     [Test]

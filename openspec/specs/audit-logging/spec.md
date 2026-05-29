@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the per-invocation file-based audit logging system for Arius CLI. Each archive, restore, and ls operation produces a structured log file capturing the full pipeline trace, console output, and operation summary.
+Defines the per-invocation file-based audit logging system for Arius CLI. Each archive, restore, ls, and explicit chunk-index repair operation produces a structured log file capturing the full pipeline trace, console output, and operation summary.
 
 ## Requirements
 
@@ -41,59 +41,47 @@ The system SHALL configure Serilog with two sinks: a console sink at `LogLevel.W
 - **THEN** the output SHALL be identical (no new messages, no format changes)
 
 ### Requirement: Per-file audit trail in archive pipeline
-The system SHALL log every file at every stage of the archive pipeline using `LogInformation`. Each log message SHALL include the file's relative path (as the trace key), a stage tag, and relevant context. The stages and their log content SHALL be:
+The system SHALL log archive pipeline activity using `LogInformation` for benchmark-relevant phase entry markers and category-specific details. Logs SHALL follow ADR-0007: top-level `[archive]` lifecycle messages for start/done/failure, `[phase] <name>` markers for coarse phase entry, and category-specific detail tags only when the detail adds information beyond the phase marker.
 
-- **[scan]**: Enumeration summary (total file count)
-- **[hash]**: File path, computed content hash (8-char truncated), file size (humanized)
-- **[dedup]**: File path, content hash, dedup result (hit or miss), routing decision (large/small) for misses
-- **[upload]**: Content hash, size (original and compressed, humanized) — for large file uploads
-- **[tar]**: Tar seal summary (tar hash, file count, total size); individual file listing per tar; upload result (compressed size)
-- **[index]**: Flush summary (new entry count)
-- **[tree]**: Build summary (root hash, level count)
-- **[snapshot]**: Creation timestamp
-- **[pointer]**: Warnings only (failures to write pointer files)
+Chunk-index scalability work SHALL NOT introduce redundant completion logs that merely restate a phase marker without additional payload. For overlapping archive-tail work, the handler SHALL log the phase where concurrent tail work becomes active rather than pretending chunk-index flush and filetree synchronization have simple sequential end boundaries.
 
-#### Scenario: Trace a file through archive
-- **WHEN** file `photos/2024/sunset.jpg` (4.2 MB) is archived as a new large file with content hash `a1b2c3d4e5f6a7b8...`
-- **THEN** the log file SHALL contain lines with `photos/2024/sunset.jpg` at the `[hash]`, `[dedup]`, and `[upload]` stages, each showing the truncated hash `a1b2c3d4`
+The archive pipeline SHALL continue to use category-specific detail tags for meaningful events, including `[dedup]` lookup outcomes, `[tar]` tar-bundle and thin-chunk details, `[tree]` tree build details, and `[snapshot]` snapshot creation details. Chunk-index flush detail logs SHALL include useful payload such as touched shard count, flushed shard count, or failure details; they SHALL NOT duplicate `[phase]` messages with empty "complete" logs.
 
-#### Scenario: Dedup hit logged
-- **WHEN** file `photos/2024/beach.jpg` has a content hash already in the chunk index
-- **THEN** the log file SHALL contain a `[dedup]` line indicating a dedup hit for that file
+#### Scenario: Archive tail phase logging follows ADR-0007
+- **WHEN** archive enters end-of-pipeline work after uploads complete
+- **THEN** it SHALL emit a `[phase]` marker for archive-tail/cache-coordination work
+- **AND** when chunk-index flush and filetree synchronization run concurrently, logs SHALL identify the concurrent phase activation without emitting misleading sequential end markers
 
-#### Scenario: Small file tar bundling logged
-- **WHEN** file `photos/2024/icon.png` (12 KB) is bundled into a tar with hash `b3c4d5e6...`
-- **THEN** the log file SHALL contain a `[dedup]` line routing it to small, and a `[tar]` line listing it as part of tar `b3c4d5e6`
+#### Scenario: Chunk-index flush detail adds payload
+- **WHEN** archive flushes pending chunk-index entries
+- **THEN** any `[index]` detail log SHALL include useful payload such as touched shard count, flushed shard count, repaired/missing state, or failure details
+- **AND** it SHALL NOT merely restate that the flush phase completed
 
-#### Scenario: Batch dedup summary logged
-- **WHEN** a dedup batch of 512 hashes is checked
-- **THEN** the log file SHALL contain a `[dedup]` summary line with the batch size, hit count, and miss count
+#### Scenario: Thin chunk metadata detail logged under tar category
+- **WHEN** archive creates thin chunks for a sealed tar bundle
+- **THEN** any detail log for thin chunk creation SHALL use the `[tar]` category
+- **AND** it SHALL include useful payload such as thin chunk count, parent tar hash, or proportional compressed size summary
+- **AND** it SHALL NOT log full hashes
 
 ### Requirement: Per-file audit trail in restore pipeline
-The system SHALL log every file at every stage of the restore pipeline using `LogInformation`. The stages and their log content SHALL be:
+The system SHALL log restore pipeline activity using ADR-0007 phase/detail taxonomy. Restore SHALL report chunk-index corruption, interrupted repair state, and unresolved snapshot content hashes with category-specific detail logs that add actionable context while preserving the user-facing repair instruction.
 
-- **[snapshot]**: Resolved snapshot timestamp and root hash
-- **[tree]**: Tree traversal progress (directories traversed, files collected)
-- **[conflict]**: Files skipped (hash match), files to overwrite, files new
-- **[chunk]**: Chunk resolution summary (large vs tar-bundled, grouped by chunk hash)
-- **[rehydration]**: Status check results (available, rehydrated, needs rehydration, pending)
-- **[download]**: Per-chunk download progress (hash, compressed size, file count)
-- **[pointer]**: Warnings only (failures to write pointer files)
-
-#### Scenario: Trace a file through restore
-- **WHEN** file `photos/2024/sunset.jpg` is restored from a snapshot
-- **THEN** the log file SHALL contain lines tracing its resolution through `[tree]`, `[chunk]`, and `[download]` stages
-
-#### Scenario: Skipped file logged
-- **WHEN** a local file matches the snapshot hash during restore
-- **THEN** the log file SHALL contain a `[conflict]` line indicating the file was skipped
+#### Scenario: Restore logs chunk-index resolution failure
+- **WHEN** restore fails because chunk-index lookup detects corruption, interrupted repair state, or unresolved snapshot content hashes
+- **THEN** the log file SHALL contain a `[chunk]` or `[restore]` detail log identifying the failure category and repair instruction
+- **AND** it SHALL NOT add redundant completion logs for phases that did not complete
 
 ### Requirement: Audit trail in ls command
-The system SHALL log the ls operation using `LogInformation`: snapshot resolved, tree traversal scope, files matched, and any lookup failures.
+The system SHALL log ls pipeline activity using ADR-0007 phase/detail taxonomy. Chunk-index lookup failures during size resolution SHALL be logged with actionable repair context.
 
 #### Scenario: Ls operation logged
 - **WHEN** `arius ls --prefix photos/ -f .jpg` is run
 - **THEN** the log file SHALL contain the resolved snapshot, prefix/filter used, and count of files matched
+
+#### Scenario: Ls logs chunk-index lookup failure
+- **WHEN** `ls` fails because chunk-index lookup detects corruption or interrupted repair state
+- **THEN** the log file SHALL contain a detail log identifying the chunk-index failure and repair instruction
+- **AND** it SHALL preserve the existing console behavior for user-facing output
 
 ### Requirement: Hash truncation in log messages
 All hashes in log messages SHALL be truncated to the first 8 hexadecimal characters. Full hashes SHALL remain in the underlying data structures and storage — truncation is a log formatting concern only.
@@ -147,7 +135,7 @@ The system SHALL capture all Spectre.Console output using `Recorder(AnsiConsole.
 - **THEN** the log file SHALL contain the table in the console output section
 
 ### Requirement: Operation start and end markers
-Each log file SHALL begin with an operation start marker including the command, source/target paths, account, container, and relevant options. Each log file SHALL end with an operation end marker including summary statistics and duration.
+Each archive, restore, ls, and explicit chunk-index repair invocation SHALL use top-level operation lifecycle logs for start, done, and failure. Explicit chunk-index repair SHALL use `[repair]` lifecycle/detail logs and `[phase]` phase-entry markers for major repair stages such as marker setup, chunk scan, local shard rebuild, remote shard upload, stale shard deletion, and marker cleanup.
 
 #### Scenario: Archive start marker
 - **WHEN** an archive operation begins
@@ -156,3 +144,9 @@ Each log file SHALL begin with an operation start marker including the command, 
 #### Scenario: Archive end marker
 - **WHEN** an archive operation completes
 - **THEN** the log file SHALL contain a summary with files scanned, uploaded, deduped, data transferred, and wall-clock duration
+
+#### Scenario: Chunk-index repair lifecycle logged
+- **WHEN** the explicit chunk-index repair command runs
+- **THEN** the log file SHALL include `[repair]` start and done or failure lifecycle messages
+- **AND** it SHALL include `[phase]` markers for major repair stages
+- **AND** repair detail logs SHALL include useful payload such as listed chunk count, rebuilt shard count, uploaded shard count, and stale shard deletion count

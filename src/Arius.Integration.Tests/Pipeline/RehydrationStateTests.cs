@@ -52,8 +52,9 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Find the tar blob (which is what the restore pipeline downloads / rehydrates).
         // Small files are bundled into tar chunks; the thin chunk is just a pointer to the tar.
         RelativePath? chunkBlobName = null;
-        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
         {
+            var name = item.Name;
             var meta = await fix.BlobContainer.GetMetadataAsync(name);
             if (meta.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var t) && t == BlobMetadataKeys.TypeTar)
             {
@@ -75,7 +76,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         return new(fix.Encryption,
             index,
             new ChunkStorageService(sim, fix.Encryption),
-            new FileTreeService(sim, fix.Encryption, index, Account, fix.Container.Name),
+            new FileTreeService(sim, fix.Encryption, Account, fix.Container.Name),
             new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
             Substitute.For<IMediator>(),
             logger,
@@ -249,8 +250,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // After cleanup, no rehydrated blobs should remain
         var rehydratedAfter = new List<RelativePath>();
-        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
-            rehydratedAfter.Add(name);
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+            rehydratedAfter.Add(item.Name);
         rehydratedAfter.ShouldBeEmpty("rehydrated blob should be deleted after cleanup");
     }
 
@@ -287,8 +288,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // Verify both blobs exist in chunks-rehydrated/
         var rehydratedBefore = new List<RelativePath>();
-        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
-            rehydratedBefore.Add(name);
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+            rehydratedBefore.Add(item.Name);
         rehydratedBefore.Count.ShouldBe(2, "both rehydrated blobs should exist before restore");
 
         // Mark the original chunk as Archive tier so restore uses the rehydrated copy
@@ -325,8 +326,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // After cleanup, no rehydrated blobs should remain
         var rehydratedAfter = new List<RelativePath>();
-        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
-            rehydratedAfter.Add(name);
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+            rehydratedAfter.Add(item.Name);
         rehydratedAfter.ShouldBeEmpty("all rehydrated blobs should be deleted after cleanup");
     }
 }

@@ -67,7 +67,7 @@ internal static class Helpers
         };
 
     public static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, RelativePath prefix, CancellationToken cancellationToken)
-        => await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
+        => await blobContainer.ListAsync(prefix, cancellationToken: cancellationToken).CountAsync(cancellationToken: cancellationToken);
 
     public static Task<SnapshotManifest?> ResolveLatestSnapshotAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
         => state.Fixture.Repository.Snapshot.ResolveAsync(cancellationToken: cancellationToken);

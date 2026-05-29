@@ -25,7 +25,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         out FileTreeService fileTreeService)
     {
         var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
-        fileTreeService = new FileTreeService(blobs, s_enc, index, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, s_enc, Account, containerName);
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
 
@@ -104,8 +104,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Count blobs in filetrees/ after first run
             var blobsAfterRun1 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
-                blobsAfterRun1.Add(b.ToString());
+            await foreach (var item in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                blobsAfterRun1.Add(item.Name.ToString());
 
             // Second run with same manifest
             var builder2 = CreateBuilder(blobs, container.Name, out var fileTreeService2);
@@ -116,8 +116,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Blob count should be the same (no new blobs)
             var blobsAfterRun2 = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
-                blobsAfterRun2.Add(b.ToString());
+            await foreach (var item in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                blobsAfterRun2.Add(item.Name.ToString());
 
             blobsAfterRun2.Count.ShouldBe(blobsAfterRun1.Count);
         }
@@ -152,8 +152,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 
             // Multiple tree blobs should have been uploaded (one per directory + root)
             var treeBlobNames = new List<string>();
-            await foreach (var b in blobs.ListAsync(BlobPaths.FileTreesPrefix))
-                treeBlobNames.Add(b.ToString());
+            await foreach (var item in blobs.ListAsync(BlobPaths.FileTreesPrefix))
+                treeBlobNames.Add(item.Name.ToString());
 
             // Expected: filetrees/ for june, 2024, photos, docs, root = at least 4
             treeBlobNames.Count.ShouldBeGreaterThanOrEqualTo(4);

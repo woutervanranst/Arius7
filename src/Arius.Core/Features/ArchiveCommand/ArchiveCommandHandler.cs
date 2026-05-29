@@ -346,9 +346,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     await using var s              = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
                     var             p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
                     var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
+                    var             originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
                     var             compressedSize = uploadResult.StoredSize;
 
-                    var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, upload.FileSize, compressedSize);
+                    var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize);
                     _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
                     await indexEntryChannel.Writer.WriteAsync(entry, ct);
 
@@ -514,16 +515,18 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             // ── End-of-pipeline ───────────────────────────────────────────────
 
             _logger.LogInformation("[phase] validate-filetrees");
-            await _fileTreeService.ValidateAsync(cancellationToken);
+            var fileTreeValidation = await _fileTreeService.ValidateAsync(cancellationToken);
+            if (fileTreeValidation.SnapshotMismatch)
+                _chunkIndex.InvalidateCaches();
 
-            // Task 8.10: Index flush
-            _logger.LogInformation("[phase] flush-index");
-            await _chunkIndex.FlushAsync(cancellationToken);
-
-            // Task 8.11: Build tree from staged entries → create snapshot
-            _logger.LogInformation("[phase] build-filetree");
+            _logger.LogInformation("[phase] archive-tail");
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
-            var rootHash    = await treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
+            var flushTask = _chunkIndex.FlushAsync(cancellationToken);
+            var treeTask = treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
+
+            await Task.WhenAll(flushTask, treeTask);
+
+            var rootHash = await treeTask;
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
             _logger.LogInformation("[phase] snapshot");

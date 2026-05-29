@@ -91,9 +91,9 @@ public class RepositorySessionTests
 
         var metadata = await blobContainerService.GetMetadataAsync(RelativePath.Parse("missing"));
         var blobs = new List<RelativePath>();
-        await foreach (var blob in blobContainerService.ListAsync(RelativePath.Parse("chunks")))
+        await foreach (var item in blobContainerService.ListAsync(RelativePath.Parse("chunks")))
         {
-            blobs.Add(blob);
+            blobs.Add(item.Name);
         }
 
         metadata.Exists.ShouldBeFalse();

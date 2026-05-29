@@ -38,8 +38,8 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default)
-        => inner.ListAsync(prefix, cancellationToken);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
+        => inner.ListAsync(prefix, includeMetadata, cancellationToken);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken cancellationToken = default)

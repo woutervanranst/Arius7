@@ -83,14 +83,23 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         });
     }
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath prefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return blobName;
+            var blob = _blobs[blobName];
+            yield return new BlobListItem
+            {
+                Name = blobName,
+                Metadata = includeMetadata ? new Dictionary<string, string>(blob.Metadata) : new Dictionary<string, string>(),
+                ContentLength = includeMetadata ? blob.Content.LongLength : null,
+            };
             await Task.Yield();
         }
     }

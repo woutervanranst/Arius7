@@ -31,14 +31,14 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName) });
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var name in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return name;
+            yield return new BlobListItem { Name = name };
             await Task.Yield();
         }
     }

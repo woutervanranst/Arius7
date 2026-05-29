@@ -71,6 +71,24 @@ public class HashValueObjectTests
     }
 
     [Test]
+    public void ContentHash_Prefix_ReturnsRequestedHexCharacters()
+    {
+        const string value = "0011ccddeeff00112233445566778899aabbccddeeff00112233445566778899";
+
+        ContentHash.Parse(value).Prefix(2).ShouldBe("00");
+    }
+
+    [Test]
+    [Arguments(-1)]
+    [Arguments(65)]
+    public void ContentHash_Prefix_RejectsInvalidLength(int length)
+    {
+        var hash = ContentHash.Parse("0011ccddeeff00112233445566778899aabbccddeeff00112233445566778899");
+
+        Should.Throw<ArgumentOutOfRangeException>(() => hash.Prefix(length));
+    }
+
+    [Test]
     [MatrixDataSource]
     public void Short8_ReturnsFirstEightHexCharacters([Matrix(HashKind.Content, HashKind.Chunk, HashKind.FileTree)] HashKind kind)
     {

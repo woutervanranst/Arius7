@@ -21,8 +21,8 @@ internal sealed class ThrowingDownloadBlobContainerService(Exception exception) 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default) =>
-        AsyncEnumerable.Empty<RelativePath>();
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
+        AsyncEnumerable.Empty<BlobListItem>();
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();

@@ -68,7 +68,6 @@ public static class ServiceCollectionExtensions
             new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
-                sp.GetRequiredService<ChunkIndexService>(),
                 accountName,
                 containerName));
 

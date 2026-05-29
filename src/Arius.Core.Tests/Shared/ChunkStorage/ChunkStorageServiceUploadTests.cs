@@ -37,6 +37,7 @@ public class ChunkStorageServiceUploadTests
         result.ChunkHash.ShouldBe(LargeChunkHash);
         result.StoredSize.ShouldBeGreaterThan(0L);
         result.AlreadyExisted.ShouldBeFalse();
+        result.OriginalSize.ShouldBe(content.Length);
 
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(LargeChunkHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
@@ -67,6 +68,7 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeTrue();
         result.StoredSize.ShouldBeGreaterThan(0L);
+        result.OriginalSize.ShouldBeNull();
         blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.ChunkPath(TarChunkHash));
     }
 
@@ -133,6 +135,30 @@ public class ChunkStorageServiceUploadTests
 
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(RetryChunkHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_ReturnsOriginalSizeFromExistingCommittedBlob()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+        var blobName = BlobPaths.ChunkPath(RetryChunkHash);
+
+        await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
+        blobs.ThrowAlreadyExistsOnOpenWrite(blobName);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: RetryChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: 999,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeTrue();
+        result.OriginalSize.ShouldBe(content.Length);
     }
 
     [Test]

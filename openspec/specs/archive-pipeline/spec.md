@@ -67,7 +67,9 @@ The system SHALL compute content hashes by streaming file data through the hash 
 - **THEN** the system SHALL publish `FileHashingEvent` with `RelativePath` and `FileSize`
 
 ### Requirement: Dedup check against chunk index
-The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up immediately via `_index.LookupAsync([hash])` without batching. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
+The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up through the chunk index without automatic repair. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, archive SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
+
+The chunk index SHALL be the archive pipeline's fast dedup source, not the only durable source of truth. When the chunk index misses for a binary file, archive SHALL attempt upload using create-if-not-exists storage semantics. If storage reports that a complete chunk blob already exists, archive SHALL recover the chunk metadata from storage, record the missing chunk-index entry, and continue.
 
 #### Scenario: Content hash already in index
 - **WHEN** a file's content hash already exists in the chunk index
@@ -85,9 +87,22 @@ The archive pipeline SHALL check each content hash against `ChunkIndexService` b
 - **WHEN** a pointer-only file references a content hash that is not in the chunk index
 - **THEN** the system SHALL log a warning and exclude the file from the snapshot
 
-#### Scenario: Immediate lookup without batching
-- **WHEN** a file is hashed and enters the dedup stage
-- **THEN** the system SHALL look it up immediately without waiting for a batch to accumulate
+#### Scenario: Archive lookup fails on corrupt shard
+- **WHEN** archive dedup looks up a content hash and the relevant chunk-index shard is corrupt
+- **THEN** archive SHALL fail with a clear chunk-index corruption error
+- **AND** the error SHALL instruct the user to run the explicit chunk-index repair command
+
+#### Scenario: Archive lookup miss does not trigger prefix repair
+- **WHEN** archive dedup looks up a content hash in a valid shard and the content hash is absent
+- **THEN** archive SHALL treat the content as not indexed
+- **AND** it SHALL NOT trigger prefix-scoped chunk-index repair for that miss
+
+#### Scenario: Existing large chunk recovered after index miss
+- **WHEN** archive dedup misses for a large file
+- **AND** uploading `chunks/<content-hash>` encounters an existing complete large chunk blob
+- **THEN** archive SHALL recover original and compressed size metadata from storage
+- **AND** it SHALL record the chunk-index entry for that content hash
+- **AND** it SHALL continue without failing the archive
 
 ### Requirement: Size-based routing
 The system SHALL route files to the large file pipeline if their size is >= `--small-file-threshold` (default 1 MB) and to the tar builder if their size is < the threshold.
@@ -101,7 +116,7 @@ The system SHALL route files to the large file pipeline if their size is >= `--s
 - **THEN** the system SHALL route it to the tar builder
 
 ### Requirement: Large file upload
-The system SHALL upload large files individually as chunks using streaming upload. The upload pipeline SHALL use the streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync` to stream data to `chunks/<content-hash>`. The blob metadata SHALL include `arius-type: large`, `original-size`, and `chunk-size` (from `CountingStream.BytesWritten`), written via `SetMetadataAsync` after the upload stream closes. Content type SHALL be set to `application/aes256cbc+gzip` (encrypted) or `application/gzip` (plaintext). Multiple large files SHALL upload concurrently using `Parallel.ForEachAsync`.
+The system SHALL upload large files individually as chunks using streaming upload. The upload pipeline SHALL use the streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync` to stream data to `chunks/<content-hash>`. The blob metadata SHALL include `arius_type: large`, `original_size`, and `chunk_size` (from `CountingStream.BytesWritten`), written via `SetMetadataAsync` after the upload stream closes. Content type SHALL be set to `application/aes256cbc+gzip` (encrypted) or `application/gzip` (plaintext). Multiple large files SHALL upload concurrently using `Parallel.ForEachAsync`.
 
 #### Scenario: Large file upload with encryption
 - **WHEN** a 50 MB file is uploaded with a passphrase
@@ -113,7 +128,7 @@ The system SHALL upload large files individually as chunks using streaming uploa
 
 #### Scenario: Metadata written after upload
 - **WHEN** a chunk upload finishes
-- **THEN** the blob metadata SHALL have `arius-type: large`, `original-size`, and `chunk-size` set via `SetMetadataAsync`
+- **THEN** the blob metadata SHALL have `arius_type: large`, `original_size`, and `chunk_size` set via `SetMetadataAsync`
 
 #### Scenario: Concurrent uploads
 - **WHEN** 10 large files need uploading with 4 upload workers
@@ -138,7 +153,7 @@ The tar builder SHALL publish `TarBundleStartedEvent()` when initializing a new 
 
 #### Scenario: Tar upload format
 - **WHEN** a sealed tar is uploaded
-- **THEN** the blob SHALL be stored at `chunks/<tar-hash>` with `arius-type: tar` and content type `application/aes256cbc+tar+gzip` (or `application/tar+gzip` without passphrase)
+- **THEN** the blob SHALL be stored at `chunks/<tar-hash>` with `arius_type: tar` and content type `application/aes256cbc+tar+gzip` (or `application/tar+gzip` without passphrase)
 
 #### Scenario: Tar hash uses passphrase-seeded hash
 - **WHEN** a tar is sealed with a passphrase configured
@@ -258,22 +273,35 @@ The archive pipeline SHALL wrap the file `FileStream` in a `ProgressStream` duri
 - **THEN** the pipeline SHALL hash the raw `FileStream` directly (no ProgressStream overhead)
 
 ### Requirement: Thin chunk creation
-The system SHALL create a thin chunk blob for each small file after its tar is successfully uploaded. The thin chunk SHALL be stored at `chunks/<content-hash>` with body containing the tar-hash (plain text). Blob metadata SHALL include `arius-type: thin`, `original-size`, and `compressed-size` (proportional estimate based on the tar's compression ratio), written via `SetMetadataAsync` after upload.
+The system SHALL create a thin chunk blob for each small file after its tar is successfully uploaded. The thin chunk SHALL be stored at `chunks/<content-hash>` with an empty body. Blob metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size` (proportional estimate based on the tar's compression ratio), supplied with the same `UploadAsync` call as the empty content. The parent tar chunk hash SHALL be stored in `parent_chunk_hash`, not in the thin chunk body.
 
 #### Scenario: Thin chunk for tar-bundled file
 - **WHEN** file with content-hash `abc123` is bundled in tar with hash `def456`
-- **THEN** a blob SHALL be created at `chunks/abc123` with body `def456`, `arius-type: thin`
+- **THEN** a blob SHALL be created at `chunks/abc123` with an empty body
+- **AND** metadata SHALL include `arius_type: thin`, `parent_chunk_hash: def456`, `original_size`, and `compressed_size`
 
-#### Scenario: Thin chunk enables crash recovery
-- **WHEN** archive crashes after tar upload but before index update, and the archive is re-run
-- **THEN** the system SHALL discover existing thin chunks via HEAD, read the tar-hash from the body, and recover the index mapping without re-uploading
+#### Scenario: Thin chunk enables repair without body download
+- **WHEN** archive crashes after tar upload and thin chunk creation but before index update, and explicit full chunk-index repair is run
+- **THEN** repair SHALL reconstruct the index mapping from thin chunk metadata
+- **AND** repair SHALL NOT download the thin chunk body to read the parent tar chunk hash
 
 ### Requirement: Chunk index flush before snapshot
-The archive pipeline SHALL record new chunk metadata in `ChunkIndexService` as chunks are durably uploaded. Before creating the snapshot, the pipeline SHALL flush pending chunk index entries so the published snapshot never references content that cannot be resolved through the chunk index.
+The archive pipeline SHALL record new chunk metadata in `ChunkIndexService` as chunks are durably uploaded or recovered from complete existing chunk blobs. Before creating the snapshot, the pipeline SHALL flush pending chunk index entries so the published snapshot never references content that cannot be resolved through the chunk index.
 
 #### Scenario: New chunk metadata recorded
 - **WHEN** a large, tar, or thin chunk operation completes successfully
 - **THEN** the archive pipeline SHALL record the content-hash to chunk-hash mapping with original and compressed sizes through `ChunkIndexService`
+
+#### Scenario: Existing large chunk metadata recorded after collision recovery
+- **WHEN** a large chunk upload encounters a complete existing chunk blob after a chunk-index miss
+- **THEN** the archive pipeline SHALL record the recovered content-hash to chunk-hash mapping with original and compressed sizes through `ChunkIndexService`
+
+#### Scenario: Thin chunk metadata records parent tar chunk
+- **WHEN** the archive pipeline creates a thin chunk for a tar-bundled file
+- **THEN** the thin chunk blob SHALL be uploaded with an empty body
+- **AND** its metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`
+- **AND** `parent_chunk_hash` SHALL contain the parent tar chunk hash
+- **AND** the archive pipeline SHALL record the same content-hash to parent tar chunk-hash mapping through `ChunkIndexService`
 
 #### Scenario: Chunk index flushed before snapshot
 - **WHEN** archive finalization begins after uploads complete
@@ -289,7 +317,7 @@ File size SHALL NOT be stored in tree blobs (it is in the chunk index). Empty di
 Tree blob uploads and existence checks SHALL use `FileTreeService` instead of ad-hoc disk caching. Specifically:
 - `FileTreeBuilder.EnsureUploadedAsync` SHALL use `FileTreeService.ExistsInRemote(hash)` to check whether a tree blob already exists in remote storage, replacing the current `File.Exists` + `GetMetadataAsync` (HEAD) pattern.
 - When a new tree blob needs uploading, `FileTreeBuilder` SHALL use `FileTreeService.WriteAsync(hash, treeBlob)` for write-through to both Azure and the disk cache, replacing the current inline `_blobs.UploadAsync` + `File.WriteAllBytes` pattern.
-- `FileTreeService.ValidateAsync` SHALL be called at the start of the archive pipeline (before flush or tree build) to determine the fast/slow path for existence checks.
+- Filetree cache validation/materialization SHALL be coordinated by `ArchiveCommandHandler` before tree existence checks.
 
 #### Scenario: Directory with files produces tree blob
 - **WHEN** directory `photos/2024/june/` contains files `a.jpg` and `b.jpg`
@@ -328,7 +356,9 @@ Tree blob uploads and existence checks SHALL use `FileTreeService` instead of ad
 - **THEN** the tree hash SHALL be SHA256 of the UTF-8 encoded text bytes, optionally passphrase-seeded via `IEncryptionService.ComputeHash`
 
 ### Requirement: Snapshot creation
-The system SHALL create a snapshot manifest after tree construction completes. The snapshot SHALL be stored at `snapshots/<UTC-timestamp>` (e.g., `2026-03-22T150000.000Z`) and SHALL contain the root tree hash, timestamp, file count, total size, and Arius version. Snapshots SHALL NEVER be deleted. `SnapshotService.CreateAsync` is responsible for both uploading the snapshot manifest to Azure and writing the full JSON manifest to `~/.arius/{repo}/snapshots/<timestamp>` on disk (write-through), enabling fast-path cache validation on subsequent runs.
+The system SHALL create a snapshot manifest after both chunk-index flush and tree construction complete. The snapshot SHALL be stored at `snapshots/<UTC-timestamp>` (e.g., `2026-03-22T150000.000Z`) and SHALL contain the root tree hash, timestamp, file count, total size, and Arius version. Snapshots SHALL NEVER be deleted. `SnapshotService.CreateAsync` is responsible for both uploading the snapshot manifest to Azure and writing the full JSON manifest to `~/.arius/{repo}/snapshots/<timestamp>` on disk (write-through), enabling fast-path cache validation on subsequent runs.
+
+After uploads complete and archive cache coordination has invalidated stale mutable chunk-index cache state when needed, the archive pipeline MAY run `ChunkIndexService.FlushAsync` and `FileTreeBuilder.SynchronizeAsync` concurrently. Snapshot creation SHALL wait for both operations to complete successfully.
 
 #### Scenario: Successful snapshot creation
 - **WHEN** the archive pipeline completes successfully
@@ -342,9 +372,18 @@ The system SHALL create a snapshot manifest after tree construction completes. T
 - **WHEN** the archive pipeline creates snapshot `2026-03-22T150000.000Z`
 - **THEN** `SnapshotService.CreateAsync` SHALL write the full JSON manifest to `~/.arius/{repo}/snapshots/2026-03-22T150000.000Z`
 
-#### Scenario: Cache validation runs before end-of-pipeline
+#### Scenario: Cache coordination runs before end-of-pipeline work
 - **WHEN** the archive pipeline begins the end-of-pipeline phase
-- **THEN** `FileTreeService.ValidateAsync` SHALL have been called before any tree existence checks or chunk-index flush operations
+- **THEN** filetree cache validation/materialization and chunk-index cache invalidation SHALL have been coordinated before any tree existence checks or chunk-index flush operations
+
+#### Scenario: Archive invalidates chunk index from filetree validation result
+- **WHEN** `FileTreeService.ValidateAsync` returns `FileTreeValidationResult` with `SnapshotMismatch` set
+- **THEN** `ArchiveCommandHandler` SHALL ask `ChunkIndexService` to invalidate chunk-index caches before chunk-index flush or tree existence checks
+
+#### Scenario: Flush and tree synchronization may run concurrently
+- **WHEN** chunk uploads have completed and archive cache coordination has completed
+- **THEN** the archive pipeline MAY run chunk-index flush and filetree synchronization concurrently
+- **AND** it SHALL NOT publish a snapshot until both have completed successfully
 
 ### Requirement: Pointer file writing
 The system SHALL create or update `.pointer.arius` files alongside binary files (unless `--no-pointers` is set). The pointer file SHALL contain the hex content hash of the binary. If a pointer exists but is stale (hash mismatch), it SHALL be overwritten. Pointer writing SHALL run in parallel.
@@ -377,31 +416,37 @@ The archive pipeline SHALL use optimistic concurrency for all chunk uploads: upl
 
 `OpenWriteAsync` and `UploadAsync(overwrite:false)` use create-if-not-exists semantics (IfNoneMatch=*). If the blob already exists, `BlobAlreadyExistsException` is raised.
 
-On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD check (GetMetadataAsync) to determine blob completeness using the `arius-type` metadata sentinel:
-- `arius-type` present → blob is fully committed (body + metadata); recover ContentLength as compressedSize and continue without re-uploading
-- `arius-type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
+On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD check (GetMetadataAsync) to determine blob completeness using the `arius_type` metadata sentinel:
+- `arius_type` present → blob is fully committed (body + metadata); recover ContentLength or metadata as compressedSize and continue without re-uploading
+- `arius_type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
 
-This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin).
+This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Thin chunk creation SHALL use a single `UploadAsync` call with empty content and all required thin chunk metadata, including `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`. Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
 
 #### Scenario: Re-run after crash - fully committed blob
-- **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + arius-type present)
-- **THEN** the pipeline SHALL recover compressedSize from ContentLength and continue without re-uploading
+- **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + `arius_type` present)
+- **THEN** the pipeline SHALL recover compressedSize from ContentLength or metadata and continue without re-uploading
 
 #### Scenario: Re-run after crash - partially committed blob
-- **WHEN** a crash-recovery re-run encounters a partially committed blob (BlobAlreadyExistsException + arius-type absent)
+- **WHEN** a crash-recovery re-run encounters a partially committed blob (BlobAlreadyExistsException + `arius_type` absent)
 - **THEN** the pipeline SHALL delete the blob and retry the upload
 
-#### Scenario: Thin chunk already complete
-- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is present
-- **THEN** the pipeline SHALL skip silently (fully complete)
+#### Scenario: Thin chunk already committed
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk
+- **AND** `arius_type` is present
+- **THEN** the pipeline SHALL skip silently
 
 #### Scenario: Thin chunk partially committed
-- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is absent
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and `arius_type` is absent
 - **THEN** the pipeline SHALL delete the thin blob and retry
 
 #### Scenario: Clean run (no crash)
 - **WHEN** no crash occurred (normal run)
-- **THEN** dedup (Stage 2) filters known hashes so Stage 4 never encounters existing blobs; the BlobAlreadyExistsException path is never exercised
+- **THEN** dedup filters known hashes so upload stages do not encounter existing blobs for indexed content; BlobAlreadyExistsException remains a recovery path for index misses and concurrent/partial prior runs
+
+#### Scenario: Chunk-index flush interrupted before snapshot
+- **WHEN** archive fails after uploading chunks but before all touched chunk-index shards are flushed
+- **THEN** the failed run SHALL NOT publish a new snapshot
+- **AND** a rerun or explicit full chunk-index repair SHALL be able to restore complete chunk-index coverage for the uploaded chunks
 
 ### Requirement: Configurable storage tier
 The system SHALL upload chunks to the tier specified by `--tier` (default: Archive). Supported tiers: Hot, Cool, Cold, Archive.

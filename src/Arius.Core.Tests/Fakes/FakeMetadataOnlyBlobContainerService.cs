@@ -27,7 +27,7 @@ internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerServi
         return Task.FromResult(Metadata.TryGetValue(blobName, out var metadata) ? metadata : new BlobMetadata { Exists = false });
     }
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         yield break;
     }

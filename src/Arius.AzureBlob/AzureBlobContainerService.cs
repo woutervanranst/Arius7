@@ -135,14 +135,26 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── List ──────────────────────────────────────────────────────────────────
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath prefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var item in _container.GetBlobsAsync(
-                           traits: BlobTraits.None,
+                           traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
                            states: BlobStates.None,
                            prefix: prefix.ToBlobPrefix(),
                            cancellationToken: cancellationToken))
-            yield return RelativePath.Parse(item.Name);
+        {
+            yield return new BlobListItem
+            {
+                Name = RelativePath.Parse(item.Name),
+                Metadata = includeMetadata && item.Metadata is not null
+                    ? new Dictionary<string, string>(item.Metadata)
+                    : new Dictionary<string, string>(),
+                ContentLength = includeMetadata ? item.Properties.ContentLength : null,
+            };
+        }
     }
 
     // ── Metadata update ───────────────────────────────────────────────────────

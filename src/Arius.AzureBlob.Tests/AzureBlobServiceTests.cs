@@ -156,9 +156,9 @@ public class AzureBlobServiceTests
         var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
 
         var results = new List<string>();
-        await foreach (var path in containerService.ListAsync(BlobPaths.SnapshotsPrefix, CancellationToken.None))
+        await foreach (var item in containerService.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: CancellationToken.None))
         {
-            results.Add(path.ToString());
+            results.Add(item.Name.ToString());
         }
 
         results.ShouldBe(["snapshots/2026-04-01T120000.000Z"]);
@@ -183,9 +183,9 @@ public class AzureBlobServiceTests
         var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
 
         var results = new List<string>();
-        await foreach (var path in containerService.ListAsync(BlobPaths.ChunksPrefix, CancellationToken.None))
+        await foreach (var item in containerService.ListAsync(BlobPaths.ChunksPrefix, cancellationToken: CancellationToken.None))
         {
-            results.Add(path.ToString());
+            results.Add(item.Name.ToString());
         }
 
         results.ShouldBe(["chunks/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);

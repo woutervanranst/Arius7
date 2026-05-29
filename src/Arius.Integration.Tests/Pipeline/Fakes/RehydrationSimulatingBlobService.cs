@@ -58,8 +58,8 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return actual;
     }
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken ct = default)
-        => inner.ListAsync(prefix, ct);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken ct = default)
+        => inner.ListAsync(prefix, includeMetadata, ct);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct = default)

@@ -384,7 +384,7 @@ public class ListQueryHandlerTests
     {
         var blobs = new ThrowOnCreateBlobContainerService("ls");
         using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing", cacheBudgetBytes: 1024 * 1024);
-        var fileTreeService = new FileTreeService(blobs, s_encryption, index, "acct-ls-missing", "ctr-ls-missing");
+        var fileTreeService = new FileTreeService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
         var logger = new FakeLogger<ListQueryHandler>();
         var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, "acct-ls-missing", "ctr-ls-missing");

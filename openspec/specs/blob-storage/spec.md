@@ -51,7 +51,11 @@ The Azure implementation SHALL map both HTTP 412 ConditionNotMet (real Azure, `I
 - **THEN** the service SHALL overwrite unconditionally and SHALL NOT throw `BlobAlreadyExistsException`
 
 ### Requirement: Chunk blob operations
-The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
+The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
+
+`ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations MAY omit metadata and content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
+
+Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar chunk hash for that content hash. Metadata-aware listing SHALL expose this metadata when the backend provides blob metadata in listing results.
 
 #### Scenario: Upload large chunk
 - **WHEN** uploading a gzip+encrypted stream to `chunks/<hash>`
@@ -59,11 +63,25 @@ The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata a
 
 #### Scenario: HEAD check for crash recovery
 - **WHEN** checking if `chunks/<hash>` exists
-- **THEN** the service SHALL return existence, blob metadata (including `arius-type`), and blob tier
+- **THEN** the service SHALL return existence, blob metadata (including `arius_type`), and blob tier
 
 #### Scenario: Download for restore
 - **WHEN** downloading `chunks/<hash>` or `chunks-rehydrated/<hash>`
 - **THEN** the service SHALL return a readable stream
+
+#### Scenario: List names only
+- **WHEN** `ListAsync(prefix, includeMetadata: false)` is called
+- **THEN** each returned item SHALL include the blob name
+- **AND** callers SHALL NOT require metadata to be populated
+
+#### Scenario: List with metadata
+- **WHEN** `ListAsync(prefix, includeMetadata: true)` is called
+- **THEN** each returned item SHALL include the blob name and available metadata from the listing operation
+- **AND** repair workflows SHALL be able to inspect `arius_type` and thin chunk `parent_chunk_hash` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
+
+#### Scenario: Thin chunk parent metadata listed
+- **WHEN** `ListAsync(ChunkPrefix, includeMetadata: true)` returns a thin chunk blob
+- **THEN** the listed blob item SHALL expose `parent_chunk_hash` metadata when the backend listing provides metadata
 
 #### Scenario: OpenWriteAsync returns writable stream
 - **WHEN** `OpenWriteAsync("chunks/<hash>", contentType, tier)` is called
@@ -78,23 +96,23 @@ The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata a
 - **THEN** the service SHALL throw `BlobAlreadyExistsException` immediately (before any data is written)
 
 ### Requirement: Chunk types with blob metadata
-Each chunk blob SHALL carry metadata distinguishing its type. The `arius-type` metadata field SHALL be one of: `large`, `tar`, `thin`. Additional metadata: `original-size` (for large and thin), `chunk-size` (compressed blob size for large and tar), `compressed-size` (for thin: proportional estimate within tar). Metadata SHALL be written via `SetMetadataAsync` after the upload stream is closed (not during upload). The `arius-complete` metadata key SHALL NOT be used. The presence of `arius-type` SHALL serve as the sole signal that an upload completed successfully.
+Each chunk blob SHALL carry metadata distinguishing its type. The `arius_type` metadata field SHALL be one of: `large`, `tar`, `thin`. Additional metadata: `original_size` (for large and thin), `chunk_size` (compressed blob size for large and tar), `compressed_size` (for thin: proportional estimate within tar), and `parent_chunk_hash` (for thin). The `arius_complete` metadata key SHALL NOT be used. The presence of `arius_type` SHALL serve as the sole signal that an upload completed successfully.
 
 #### Scenario: Large chunk metadata
 - **WHEN** a large file chunk upload stream is closed and metadata is set
-- **THEN** blob metadata SHALL include `arius-type: large`, `original-size: <bytes>`, `chunk-size: <bytes>`
+- **THEN** blob metadata SHALL include `arius_type: large`, `original_size: <bytes>`, `chunk_size: <bytes>`
 
 #### Scenario: Thin chunk metadata
 - **WHEN** a thin chunk is created for a tar-bundled file
-- **THEN** blob metadata SHALL include `arius-type: thin`, `original-size: <bytes>`, `compressed-size: <bytes>`
+- **THEN** blob metadata SHALL include `arius_type: thin`, `parent_chunk_hash: <tar-chunk-hash>`, `original_size: <bytes>`, `compressed_size: <bytes>`
 
 #### Scenario: Tar chunk metadata
 - **WHEN** a tar bundle upload stream is closed and metadata is set
-- **THEN** blob metadata SHALL include `arius-type: tar`, `chunk-size: <bytes>`
+- **THEN** blob metadata SHALL include `arius_type: tar`, `chunk_size: <bytes>`
 
-#### Scenario: No arius-complete key
+#### Scenario: No arius_complete key
 - **WHEN** any chunk blob metadata is written
-- **THEN** the metadata SHALL NOT include an `arius-complete` key
+- **THEN** the metadata SHALL NOT include an `arius_complete` key
 
 ### Requirement: Container layout
 The blob storage SHALL organize blobs into the following virtual directories: `chunks/` (configurable tier), `chunks-rehydrated/` (Hot tier, temporary), `filetrees/` (Cool tier), `snapshots/` (Cool tier), `chunk-index/` (Cool tier).
