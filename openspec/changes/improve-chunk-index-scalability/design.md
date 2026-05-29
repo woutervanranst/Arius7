@@ -119,7 +119,7 @@ Rationale: Per-prefix work is naturally independent. Bounded `Parallel.ForEachAs
 
 ### Decision: Chunk Index Is The Fast Dedup Source, Chunks Are The Durable Recovery Source
 
-Archive uses the chunk index as the fast path for deduplication. If the chunk index misses, archive attempts the chunk upload using create-if-not-exists storage semantics. If the target chunk blob already exists and has complete `arius-type` metadata, `ChunkStorageService` recovers the stored metadata and archive records the missing chunk-index entry instead of treating the condition as failure.
+Archive uses the chunk index as the fast path for deduplication. If the chunk index misses, archive attempts the chunk upload using create-if-not-exists storage semantics. If the target chunk blob already exists and has complete `arius_type` metadata, `ChunkStorageService` recovers the stored metadata and archive records the missing chunk-index entry instead of treating the condition as failure.
 
 For large chunks this naturally recovers from an index miss because the upload target is `chunks/<content-hash>`. For small files, archive does not add a pre-bundling remote thin-chunk check in this change, because that would add per-small-file remote I/O to the hot path. Thin chunk/index gaps are repaired by explicit full repair.
 

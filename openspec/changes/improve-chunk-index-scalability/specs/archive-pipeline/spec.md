@@ -1,5 +1,18 @@
 ## MODIFIED Requirements
 
+### Requirement: Thin chunk creation
+The system SHALL create a thin chunk blob for each small file after its tar is successfully uploaded. The thin chunk SHALL be stored at `chunks/<content-hash>` with an empty body. Blob metadata SHALL include `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size` (proportional estimate based on the tar's compression ratio), written via `SetMetadataAsync` after upload. The parent tar chunk hash SHALL be stored in `parent_chunk_hash`, not in the thin chunk body.
+
+#### Scenario: Thin chunk for tar-bundled file
+- **WHEN** file with content-hash `abc123` is bundled in tar with hash `def456`
+- **THEN** a blob SHALL be created at `chunks/abc123` with an empty body
+- **AND** metadata SHALL include `arius_type: thin`, `parent_chunk_hash: def456`, `original_size`, and `compressed_size`
+
+#### Scenario: Thin chunk enables repair without body download
+- **WHEN** archive crashes after tar upload and thin chunk creation but before index update, and explicit full chunk-index repair is run
+- **THEN** repair SHALL reconstruct the index mapping from thin chunk metadata
+- **AND** repair SHALL NOT download the thin chunk body to read the parent tar chunk hash
+
 ### Requirement: Dedup check against chunk index
 The archive pipeline SHALL check each content hash against `ChunkIndexService` before uploading. Each hashed file SHALL be looked up through the chunk index without automatic repair. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, archive SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command. An in-flight set SHALL prevent duplicate uploads of the same content hash within a single archive run. The dedup stage SHALL be single-threaded to manage the in-flight set without locking.
 
@@ -143,27 +156,27 @@ The archive pipeline SHALL use optimistic concurrency for all chunk uploads: upl
 
 `OpenWriteAsync` and `UploadAsync(overwrite:false)` use create-if-not-exists semantics (IfNoneMatch=*). If the blob already exists, `BlobAlreadyExistsException` is raised.
 
-On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD check (GetMetadataAsync) to determine blob completeness using the `arius-type` metadata sentinel:
-- `arius-type` present → blob is fully committed (body + metadata); recover ContentLength or metadata as compressedSize and continue without re-uploading
-- `arius-type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
+On catching `BlobAlreadyExistsException`, the pipeline SHALL perform a HEAD check (GetMetadataAsync) to determine blob completeness using the `arius_type` metadata sentinel:
+- `arius_type` present → blob is fully committed (body + metadata); recover ContentLength or metadata as compressedSize and continue without re-uploading
+- `arius_type` absent → blob body was committed but metadata was not yet written (partial state); delete the blob and retry the upload from scratch (goto retry)
 
 This pattern applies to all three upload sub-stages: large file upload (Stage 4a), tar blob upload (Stage 4c-tar), and thin chunk creation (Stage 4c-thin). Thin chunk creation SHALL upload an empty blob body and then set all required thin chunk metadata, including `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`, in one metadata update. Chunk-index flush interruption SHALL be recoverable by rerunning archive or by running explicit full chunk-index repair; a failed run SHALL NOT publish a snapshot that references unflushed chunk-index entries.
 
 #### Scenario: Re-run after crash - fully committed blob
-- **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + arius-type present)
+- **WHEN** a crash-recovery re-run encounters a fully committed blob (BlobAlreadyExistsException + `arius_type` present)
 - **THEN** the pipeline SHALL recover compressedSize from ContentLength or metadata and continue without re-uploading
 
 #### Scenario: Re-run after crash - partially committed blob
-- **WHEN** a crash-recovery re-run encounters a partially committed blob (BlobAlreadyExistsException + arius-type absent)
+- **WHEN** a crash-recovery re-run encounters a partially committed blob (BlobAlreadyExistsException + `arius_type` absent)
 - **THEN** the pipeline SHALL delete the blob and retry the upload
 
 #### Scenario: Thin chunk already complete
-- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is present
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and `arius_type` is present
 - **AND** required thin chunk metadata is present and valid
 - **THEN** the pipeline SHALL skip silently (fully complete)
 
 #### Scenario: Thin chunk partially committed
-- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and arius-type is absent
+- **WHEN** `UploadAsync(overwrite:false)` raises BlobAlreadyExistsException for a thin chunk and `arius_type` is absent
 - **THEN** the pipeline SHALL delete the thin blob and retry
 
 #### Scenario: Clean run (no crash)

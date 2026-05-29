@@ -13,7 +13,7 @@ Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar
 
 #### Scenario: HEAD check for crash recovery
 - **WHEN** checking if `chunks/<hash>` exists
-- **THEN** the service SHALL return existence, blob metadata (including `arius-type`), and blob tier
+- **THEN** the service SHALL return existence, blob metadata (including `arius_type`), and blob tier
 
 #### Scenario: Download for restore
 - **WHEN** downloading `chunks/<hash>` or `chunks-rehydrated/<hash>`
@@ -27,7 +27,7 @@ Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar
 #### Scenario: List with metadata
 - **WHEN** `ListAsync(prefix, includeMetadata: true)` is called
 - **THEN** each returned item SHALL include the blob name and available metadata from the listing operation
-- **AND** repair workflows SHALL be able to inspect `arius-type` and thin chunk `parent_chunk_hash` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
+- **AND** repair workflows SHALL be able to inspect `arius_type` and thin chunk `parent_chunk_hash` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
 
 #### Scenario: Thin chunk parent metadata listed
 - **WHEN** `ListAsync(ChunkPrefix, includeMetadata: true)` returns a thin chunk blob

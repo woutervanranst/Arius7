@@ -29,6 +29,7 @@ _(none)_
 - `restore-pipeline`: Restore fails clearly on unresolved chunk-index entries and points users to explicit repair.
 - `file-tree-service`: Filetree validation no longer invalidates chunk-index caches as a hidden side effect.
 - `blob-storage`: Blob listing can optionally include metadata and content information for repair workflows, including thin chunk parent tar chunk hash metadata.
+- `audit-logging`: Archive, restore, ls, and repair logging follows the ADR-0007 phase/detail taxonomy without redundant completion logs.
 
 ## Impact
 
@@ -40,5 +41,6 @@ _(none)_
 - `src/Arius.Core/Shared/FileTree/FileTreeService.cs`: remove chunk-index dependency and hidden invalidation.
 - `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs`: explicit cache coordination and parallel archive-tail finalization.
 - `src/Arius.Core/Features/RestoreCommand/RestoreCommandHandler.cs`: clear unresolved-entry and corrupt-index errors that instruct users to run explicit repair.
+- Logging call sites in archive, restore, ls, and repair command handlers for ADR-0007-compliant phase/detail messages.
 - CLI command surface for explicit chunk-index repair.
 - Integration/E2E tests for full repair, corrupt-index failure, partial flush interruption, and archive-tail ordering.
