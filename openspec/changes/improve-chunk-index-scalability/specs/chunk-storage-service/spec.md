@@ -7,7 +7,7 @@
 - `UploadTarAsync(string chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress, CancellationToken)`
 - `UploadThinAsync(string contentHash, string parentChunkHash, long originalSize, long compressedSize, CancellationToken)`
 
-`UploadLargeAsync` and `UploadTarAsync` SHALL return a `ChunkUploadResult` containing the chunk hash, stored size, and whether the blob already existed. `UploadThinAsync` SHALL return `true` when it creates the thin chunk blob and `false` when a fully committed thin chunk already exists.
+`UploadLargeAsync` and `UploadTarAsync` SHALL return a `ChunkUploadResult` containing the chunk hash, stored size, and whether the blob already existed. `UploadThinAsync` SHALL return `true` when it creates the thin chunk blob and `false` when a committed thin chunk already exists.
 
 #### Scenario: Large chunk upload returns stored size
 - **WHEN** a large chunk is uploaded through `UploadLargeAsync`
@@ -24,22 +24,22 @@
 #### Scenario: Thin chunk upload stores parent hash in metadata
 - **WHEN** `UploadThinAsync` creates a thin chunk blob
 - **THEN** `ChunkStorageService` SHALL upload an empty blob body to `chunks/<content-hash>`
-- **AND** it SHALL set metadata `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size`
+- **AND** it SHALL include metadata `arius_type: thin`, `parent_chunk_hash`, `original_size`, and `compressed_size` on that upload
 - **AND** `parent_chunk_hash` SHALL contain the parent tar chunk hash passed to `UploadThinAsync`
 
-#### Scenario: Existing complete thin chunk is accepted
+#### Scenario: Existing committed thin chunk is accepted
 - **WHEN** `UploadThinAsync` encounters an existing thin chunk blob
-- **AND** metadata contains `arius_type: thin` plus valid `parent_chunk_hash`, `original_size`, and `compressed_size`
+- **AND** metadata contains `arius_type`
 - **THEN** `UploadThinAsync` SHALL return `false` without rewriting the blob
 
-#### Scenario: Existing incomplete thin chunk is retried
+#### Scenario: Existing uncommitted thin chunk is retried
 - **WHEN** `UploadThinAsync` encounters an existing thin chunk blob
-- **AND** required thin chunk metadata is missing or invalid
+- **AND** metadata does not contain `arius_type`
 - **THEN** `ChunkStorageService` SHALL treat the blob as incomplete
 - **AND** it SHALL delete and retry thin chunk creation
 
 ### Requirement: Chunk storage owns storage transforms and metadata protocol
-`ChunkStorageService` SHALL own the chunk storage encoding and decoding protocol. `UploadLargeAsync` and `UploadTarAsync` SHALL accept plaintext source streams and SHALL internally apply optional progress reporting, gzip compression, encryption, stored-size counting, blob upload, metadata writes, tier assignment, and create-if-not-exists crash-recovery rules. `UploadThinAsync` SHALL own thin chunk blob naming, empty-body upload, required metadata writes, and create-if-not-exists crash-recovery rules. `DownloadAsync(string chunkHash, IProgress<long>? progress, CancellationToken)` SHALL return a plaintext readable stream and SHALL internally choose the best readable blob source, apply optional progress reporting, decrypt, and gunzip before returning the stream.
+`ChunkStorageService` SHALL own the chunk storage encoding and decoding protocol. `UploadLargeAsync` and `UploadTarAsync` SHALL accept plaintext source streams and SHALL internally apply optional progress reporting, gzip compression, encryption, stored-size counting, blob upload, metadata writes, tier assignment, and create-if-not-exists crash-recovery rules. `UploadThinAsync` SHALL own thin chunk blob naming, empty-body upload with required metadata, and create-if-not-exists crash-recovery rules. `DownloadAsync(string chunkHash, IProgress<long>? progress, CancellationToken)` SHALL return a plaintext readable stream and SHALL internally choose the best readable blob source, apply optional progress reporting, decrypt, and gunzip before returning the stream.
 
 Feature handlers SHALL NOT construct chunk blob names, select chunk content types, write chunk metadata keys, or build the gzip/encryption stream chain themselves.
 
@@ -54,4 +54,4 @@ Feature handlers SHALL NOT construct chunk blob names, select chunk content type
 
 #### Scenario: Chunk storage handles already-exists recovery
 - **WHEN** a chunk upload encounters a previously existing blob at the target name
-- **THEN** `ChunkStorageService` SHALL interpret chunk metadata completeness and perform the existing recover-or-delete-and-retry behavior internally
+- **THEN** `ChunkStorageService` SHALL use `arius_type` as the committed-blob sentinel and perform the existing recover-or-delete-and-retry behavior internally

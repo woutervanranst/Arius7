@@ -60,7 +60,7 @@ Valid shards SHALL be trusted. If a shard exists and parses but does not contain
 ### Requirement: Repair reconstructs index entries from chunks
 Full repair SHALL rebuild chunk-index shards from committed chunk blobs. Large chunk blobs SHALL reconstruct entries where content hash equals chunk hash. Thin chunk blobs SHALL reconstruct entries where content hash maps to the parent tar chunk hash stored in thin chunk metadata key `parent_chunk_hash`. Tar chunk blobs SHALL NOT directly create chunk-index entries because thin chunks are the per-file mapping source. Chunk blobs without recognized `arius_type` metadata SHALL be ignored because `arius_type` is the completion sentinel.
 
-Committed thin chunks SHALL include `parent_chunk_hash`, `original_size`, and `compressed_size` metadata. A committed thin chunk with missing or invalid required metadata SHALL cause full repair to fail with a clear chunk-index repair error instead of silently omitting the mapping.
+Thin chunks SHALL include `parent_chunk_hash`, `original_size`, and `compressed_size` metadata. A thin chunk with `arius_type: thin` but missing or invalid required metadata SHALL cause full repair to fail with a clear chunk-index repair error instead of silently omitting the mapping.
 
 #### Scenario: Large chunk reconstructed
 - **WHEN** full repair sees `chunks/aa123...` with metadata `arius_type: large`
