@@ -336,18 +336,30 @@ public sealed class ChunkIndexService : IDisposable
 
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
-        var rebuiltPrefixes = new HashSet<PathSegment>();
+        var entriesByPrefix = new Dictionary<PathSegment, List<ShardEntry>>();
 
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             listedChunkCount++;
 
-            var entry = CreateRepairEntry(item);
+            var entry = await CreateRepairEntryAsync(item, cancellationToken);
             if (entry is null)
                 continue;
 
             var prefix = Shard.PrefixOf(entry.ContentHash);
+            if (!entriesByPrefix.TryGetValue(prefix, out var entries))
+            {
+                entries = [];
+                entriesByPrefix[prefix] = entries;
+            }
+
+            entries.Add(entry);
+            rebuiltEntryCount++;
+        }
+
+        foreach (var (prefix, entries) in entriesByPrefix)
+        {
             var l2Path = RelativePath.Root / prefix;
             var shard = new Shard();
             if (_l2FileSystem.FileExists(l2Path))
@@ -356,10 +368,10 @@ public sealed class ChunkIndexService : IDisposable
                 shard = ShardSerializer.DeserializeLocal(bytes);
             }
 
-            SaveToL2(prefix, shard.Merge([entry]));
-            rebuiltPrefixes.Add(prefix);
-            rebuiltEntryCount++;
+            SaveToL2(prefix, shard.Merge(entries));
         }
+
+        var rebuiltPrefixes = entriesByPrefix.Keys.ToHashSet();
 
         var uploadedShardCount = 0;
         foreach (var prefix in rebuiltPrefixes.OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal))
@@ -390,18 +402,24 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
+        _inFlight.Clear();
+        while (_pendingEntries.TryTake(out _))
+        {
+        }
+
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }
 
-    private static ShardEntry? CreateRepairEntry(BlobListItem item)
+    private async Task<ShardEntry?> CreateRepairEntryAsync(BlobListItem item, CancellationToken cancellationToken)
     {
-        if (!item.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+        var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
+        if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
             return null;
 
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin => CreateThinRepairEntry(item),
+            BlobMetadataKeys.TypeThin => await CreateThinRepairEntryAsync(item, cancellationToken),
             _ => null,
         };
     }
@@ -414,24 +432,43 @@ public sealed class ChunkIndexService : IDisposable
         return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
     }
 
-    private static ShardEntry CreateThinRepairEntry(BlobListItem item)
+    private async Task<ShardEntry> CreateThinRepairEntryAsync(BlobListItem item, CancellationToken cancellationToken)
     {
         var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        if (!item.Metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+        if (!TryReadParentChunkHash(item, out var parentChunkHash))
+            parentChunkHash = await ReadLegacyThinParentChunkHashAsync(item, cancellationToken);
 
         var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
         var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
         return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
     }
 
+    private static bool TryReadParentChunkHash(BlobListItem item, out ChunkHash parentChunkHash)
+    {
+        parentChunkHash = default;
+        return item.Metadata is not null
+               && item.Metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue)
+               && ChunkHash.TryParse(parentChunkHashValue, out parentChunkHash);
+    }
+
+    private async Task<ChunkHash> ReadLegacyThinParentChunkHashAsync(BlobListItem item, CancellationToken cancellationToken)
+    {
+        await using var stream = await _blobs.DownloadAsync(item.Name, cancellationToken);
+        using var reader = new StreamReader(stream);
+        var legacyParentChunkHashValue = (await reader.ReadToEndAsync(cancellationToken)).Trim();
+        if (!ChunkHash.TryParse(legacyParentChunkHashValue, out var parentChunkHash))
+            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+
+        return parentChunkHash;
+    }
+
     private static long ReadChunkSize(BlobListItem item)
-        => item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
             ? size
             : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
     private static long ReadRequiredLongMetadata(BlobListItem item, string key)
-        => item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+        => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
             ? parsed
             : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 }

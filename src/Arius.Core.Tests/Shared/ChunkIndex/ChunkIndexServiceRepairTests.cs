@@ -79,6 +79,45 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_ReadsLegacyThinParentChunkHashFromPayload_WhenMetadataIsMissing()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var thinContentHash = FakeContentHash('b');
+        var parentChunkHash = FakeChunkHash('c');
+        blobs.SeedBlob(
+            BlobPaths.ThinChunkPath(thinContentHash),
+            System.Text.Encoding.UTF8.GetBytes(parentChunkHash.ToString()),
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.OriginalSize] = "10",
+                [BlobMetadataKeys.CompressedSize] = "2",
+            });
+        using var index = CreateIndex(blobs, "repair-legacy-thin");
+
+        await index.RepairAsync();
+
+        (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2));
+    }
+
+    [Test]
+    public async Task RepairAsync_ClearsPendingAndInFlightEntries()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var staleContentHash = FakeContentHash('a');
+        var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2);
+        using var index = CreateIndex(blobs, "repair-clears-memory");
+        index.AddEntry(staleEntry);
+
+        await index.RepairAsync();
+        await index.FlushAsync();
+
+        (await index.LookupAsync(staleContentHash)).ShouldBeNull();
+        blobs.UploadedBlobNames.ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task RepairAsync_IgnoresTarAndUnknownChunks()
     {
         var blobs = new FakeInMemoryBlobContainerService();
