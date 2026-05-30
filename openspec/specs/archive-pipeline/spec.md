@@ -116,7 +116,7 @@ The system SHALL route files to the large file pipeline if their size is >= `--s
 - **THEN** the system SHALL route it to the tar builder
 
 ### Requirement: Large file upload
-The system SHALL upload large files individually as chunks using streaming upload. The upload pipeline SHALL use the streaming chain: `ProgressStream(FileStream) -> GZipStream -> EncryptingStream -> CountingStream -> OpenWriteAsync` to stream data to `chunks/<content-hash>`. The blob metadata SHALL include `arius_type: large`, `original_size`, and `chunk_size` (from `CountingStream.BytesWritten`), written via `SetMetadataAsync` after the upload stream closes. Content type SHALL be set to `application/aes256cbc+gzip` (encrypted) or `application/gzip` (plaintext). Multiple large files SHALL upload concurrently using `Parallel.ForEachAsync`.
+The system SHALL upload large files individually as chunks by delegating streaming upload details to `ChunkStorageService.UploadLargeAsync`. `ChunkStorageService.UploadLargeAsync` SHALL stream data to `chunks/<content-hash>`, write blob metadata including `arius_type: large`, `original_size`, and `chunk_size` after the upload stream closes, and set content type to `application/aes256cbc+gzip` (encrypted) or `application/gzip` (plaintext). Multiple large files SHALL upload concurrently using `Parallel.ForEachAsync`.
 
 #### Scenario: Large file upload with encryption
 - **WHEN** a 50 MB file is uploaded with a passphrase

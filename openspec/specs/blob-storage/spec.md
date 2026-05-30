@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Defines the blob storage abstraction layer, container layout, and rehydration strategy for Arius. Arius.Core depends only on the `IBlobStorageService` interface; the Azure implementation lives in Arius.AzureBlob.
+Defines the blob storage abstraction layer, container layout, and rehydration strategy for Arius. Arius.Core depends only on the `IBlobContainerService` interface; the Azure implementation lives in Arius.AzureBlob.
 
 ## Requirements
 
 ### Requirement: Blob storage abstraction
-The system SHALL define an `IBlobStorageService` interface in Arius.Core that abstracts all blob storage operations, including container creation. Arius.Core SHALL NOT reference Azure.Storage.Blobs or any Azure-specific types. The Azure implementation (`Arius.AzureBlob`) SHALL implement this interface. The interface SHALL include a `CreateContainerIfNotExistsAsync` method that ensures the blob container exists before any blob operations are performed.
+The system SHALL define an `IBlobContainerService` interface in Arius.Core that abstracts all blob storage operations, including container creation. Arius.Core SHALL NOT reference Azure.Storage.Blobs or any Azure-specific types. The Azure implementation (`Arius.AzureBlob`) SHALL implement this interface. The interface SHALL include a `CreateContainerIfNotExistsAsync` method that ensures the blob container exists before any blob operations are performed.
 
 #### Scenario: Core has no Azure dependency
 - **WHEN** Arius.Core is built
@@ -15,7 +15,7 @@ The system SHALL define an `IBlobStorageService` interface in Arius.Core that ab
 
 #### Scenario: Alternative backend
 - **WHEN** a new storage backend (e.g., S3) is needed in the future
-- **THEN** it SHALL be implementable by providing a new `IBlobStorageService` implementation without modifying Core
+- **THEN** it SHALL be implementable by providing a new `IBlobContainerService` implementation without modifying Core
 
 #### Scenario: Container creation at startup
 - **WHEN** the archive or restore pipeline handler starts
@@ -51,9 +51,9 @@ The Azure implementation SHALL map both HTTP 412 ConditionNotMet (real Azure, `I
 - **THEN** the service SHALL overwrite unconditionally and SHALL NOT throw `BlobAlreadyExistsException`
 
 ### Requirement: Chunk blob operations
-The `IBlobStorageService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
+The `IBlobContainerService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
 
-`ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations MAY omit metadata and content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
+`ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations SHALL leave metadata unset and MAY omit content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
 
 Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar chunk hash for that content hash. Metadata-aware listing SHALL expose this metadata when the backend provides blob metadata in listing results.
 
