@@ -151,7 +151,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
                 Name = RelativePath.Parse(item.Name),
                 Metadata = includeMetadata && item.Metadata is not null
                     ? new Dictionary<string, string>(item.Metadata)
-                    : new Dictionary<string, string>(),
+                    : null,
                 ContentLength = includeMetadata ? item.Properties.ContentLength : null,
             };
         }

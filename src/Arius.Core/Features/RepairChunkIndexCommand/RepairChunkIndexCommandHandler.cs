@@ -22,6 +22,10 @@ public sealed class RepairChunkIndexCommandHandler(
             logger.LogInformation("[repair] Done: listed={ListedChunks} rebuiltEntries={RebuiltEntries} rebuiltShards={RebuiltShards} uploadedShards={UploadedShards} deletedStaleShards={DeletedStaleShards}", result.ListedChunkCount, result.RebuiltEntryCount, result.RebuiltShardCount, result.UploadedShardCount, result.DeletedStaleShardCount);
             return new RepairChunkIndexResult { Success = true, Repair = result };
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "[repair] Failure");
