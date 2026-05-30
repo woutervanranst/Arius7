@@ -33,6 +33,9 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (includeMetadata)
+            throw new NotSupportedException("FakeSeededBlobContainerService does not model metadata-aware listing.");
+
         foreach (var name in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))

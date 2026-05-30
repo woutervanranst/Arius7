@@ -93,12 +93,23 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var blob = _blobs[blobName];
+            IReadOnlyDictionary<string, string>? metadata = null;
+            long? contentLength = null;
+
+            if (includeMetadata)
+            {
+                if (!_blobs.TryGetValue(blobName, out var blob))
+                    continue;
+
+                metadata = new Dictionary<string, string>(blob.Metadata);
+                contentLength = blob.Content.LongLength;
+            }
+
             yield return new BlobListItem
             {
                 Name = blobName,
-                Metadata = includeMetadata ? new Dictionary<string, string>(blob.Metadata) : new Dictionary<string, string>(),
-                ContentLength = includeMetadata ? blob.Content.LongLength : null,
+                Metadata = metadata,
+                ContentLength = contentLength,
             };
             await Task.Yield();
         }

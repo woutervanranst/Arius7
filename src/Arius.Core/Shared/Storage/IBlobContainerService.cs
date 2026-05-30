@@ -56,8 +56,7 @@ public sealed record BlobListItem
 {
     public required RelativePath Name { get; init; }
 
-    public IReadOnlyDictionary<string, string> Metadata { get; init; }
-        = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
     public long? ContentLength { get; init; }
 }
@@ -135,6 +134,7 @@ public interface IBlobContainerService
 
     /// <summary>
     /// Lists all blobs that start with <paramref name="prefix"/>.
+    /// Metadata is only populated when <paramref name="includeMetadata"/> is true.
     /// </summary>
     IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath      prefix,

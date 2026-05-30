@@ -13,7 +13,7 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
-        => AsyncEnumerable();
+        => AsyncEnumerable(prefix, cancellationToken);
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => Task.FromResult(blobName switch
@@ -49,10 +49,19 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 
     public void ReleaseDeletes() => _releaseDeletes.TrySetResult();
 
-    private async IAsyncEnumerable<BlobListItem> AsyncEnumerable()
+    private async IAsyncEnumerable<BlobListItem> AsyncEnumerable(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        yield return new BlobListItem { Name = BlobPaths.ChunkRehydratedPath(FakeChunkHash('a')) };
-        yield return new BlobListItem { Name = BlobPaths.ChunkRehydratedPath(FakeChunkHash('b')) };
+        foreach (var name in new[]
+                 {
+                     BlobPaths.ChunkRehydratedPath(FakeChunkHash('a')),
+                     BlobPaths.ChunkRehydratedPath(FakeChunkHash('b')),
+                 })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (name.StartsWith(prefix))
+                yield return new BlobListItem { Name = name };
+        }
+
         await Task.CompletedTask;
     }
 }

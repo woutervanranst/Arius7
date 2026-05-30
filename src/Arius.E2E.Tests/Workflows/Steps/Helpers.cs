@@ -95,6 +95,7 @@ internal static class Helpers
 
         // Assert that the thin chunk metadata points to the correct tar chunk.
         var thinMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(thinBlobName, cancellationToken);
+        thinMetadata.Metadata.ShouldContainKey(BlobMetadataKeys.ParentChunkHash);
         var parentChunkHash = ChunkHash.Parse(thinMetadata.Metadata[BlobMetadataKeys.ParentChunkHash]);
         parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk metadata should point at the tar chunk recorded in the chunk index.");
     }

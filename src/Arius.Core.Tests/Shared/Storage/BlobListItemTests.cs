@@ -24,7 +24,7 @@ public class BlobListItemTests
 
         items.Count.ShouldBe(1);
         items[0].Name.ShouldBe(blobName);
-        items[0].Metadata.ShouldBeEmpty();
+        items[0].Metadata.ShouldBeNull();
         items[0].ContentLength.ShouldBeNull();
     }
 
@@ -49,8 +49,9 @@ public class BlobListItemTests
 
         items.Count.ShouldBe(1);
         items[0].Name.ShouldBe(blobName);
-        items[0].Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
-        items[0].Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(parentChunkHash);
+        var metadata = items[0].Metadata.ShouldNotBeNull();
+        metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
+        metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(parentChunkHash);
         items[0].ContentLength.ShouldBe(3);
     }
 }
