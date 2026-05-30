@@ -75,9 +75,10 @@ public sealed class ChunkIndexService : IDisposable
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
-        var l2Root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
-        _l2FileSystem  = new RelativeFileSystem(l2Root);
+        _l2FileSystem         = new RelativeFileSystem(l2Root);
+
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
         _l2FileSystem.CreateDirectory(RelativePath.Root);
     }
@@ -204,34 +205,46 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         // L3 (Azure)
-        var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-        var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-        if (!meta.Exists)
+        var             blobName = BlobPaths.ChunkIndexShardPath(prefix);
+        await using var stream   = await TryGetShard(blobName, cancellationToken);
+
+        if (stream is null)
         {
             // New prefix — empty shard
             var empty = new Shard();
             PromoteToL1(prefix, empty, 0);
             return empty;
         }
-
-        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var             ms     = new MemoryStream();
-        await stream.CopyToAsync(ms, cancellationToken);
-        var downloaded = ms.ToArray();
-
-        Shard loadedShard;
-        try
+        else
         {
-            loadedShard = ShardSerializer.Deserialize(downloaded, _encryption);
-        }
-        catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
-        {
-            throw new ChunkIndexCorruptException(blobName, ex);
+            // Existing prefix — deserialize shard
+            Shard loadedShard;
+            try
+            {
+                loadedShard = ShardSerializer.Deserialize(stream, _encryption);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
+            {
+                throw new ChunkIndexCorruptException(blobName, ex);
+            }
+
+            SaveToL2(prefix, loadedShard);
+            PromoteToL1(prefix, loadedShard, str.Length);
+            return loadedShard;
         }
 
-        SaveToL2(prefix, loadedShard);
-        PromoteToL1(prefix, loadedShard, downloaded.Length);
-        return loadedShard;
+        async Task<Stream?> TryGetShard(RelativePath blobName, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _blobs.DownloadAsync(blobName, cancellationToken);
+            }
+            catch (InvalidOperationException e)
+            {
+                // The blob does not exist
+                return null;
+            }
+        }
     }
 
     private async Task FlushPrefixAsync(PathSegment prefix, IEnumerable<ShardEntry> entries, CancellationToken cancellationToken)
