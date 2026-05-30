@@ -3,9 +3,11 @@ using Arius.Core.Features.RepairChunkIndexCommand;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Spectre.Console;
 
 namespace Arius.Cli.Tests.Commands.Repair;
 
+[NotInParallel("AnsiConsoleRecorder")]
 public class RepairCommandTests
 {
     [Test]
@@ -26,9 +28,12 @@ public class RepairCommandTests
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
 
-        var exitCode = await rootCommand.Parse("repair-index -a acct -k key -c ctr").InvokeAsync();
+        var (exitCode, output) = await CaptureOutputAsync(async () => await rootCommand.Parse("repair-index -a acct -k key -c ctr").InvokeAsync());
 
         exitCode.ShouldBe(0);
+        output.ShouldContain("Repairing chunk index from committed chunks...");
+        output.ShouldContain("Repair complete. Listed 1 chunk(s), rebuilt 1 entries");
+        output.ShouldContain("uploaded 1, deleted 0 stale shard(s).");
         await mediator.Received(1).Send(Arg.Any<RepairChunkIndexCommand>(), Arg.Any<CancellationToken>());
     }
 
@@ -46,9 +51,11 @@ public class RepairCommandTests
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
 
-        var exitCode = await rootCommand.Parse("repair-index -a acct -k key -c ctr").InvokeAsync();
+        var (exitCode, output) = await CaptureOutputAsync(async () => await rootCommand.Parse("repair-index -a acct -k key -c ctr").InvokeAsync());
 
         exitCode.ShouldBe(1);
+        output.ShouldContain("Repair failed: repair failed");
+        output.ShouldContain("Rerun the repair command after fixing the reported problem.");
     }
 
     [Test]
@@ -57,8 +64,26 @@ public class RepairCommandTests
         var rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (_, _, _, _, _) =>
             Task.FromResult<IServiceProvider>(new ServiceCollection().BuildServiceProvider()));
 
-        var exitCode = await rootCommand.Parse("repair-index -k key -c ctr").InvokeAsync();
+        var (exitCode, output) = await CaptureOutputAsync(async () => await rootCommand.Parse("repair-index -k key -c ctr").InvokeAsync());
 
         exitCode.ShouldBe(1);
+        output.ShouldContain("Error: No account provided. Use --account / -a or set ARIUS_ACCOUNT.");
+    }
+
+    private static async Task<(int ExitCode, string Output)> CaptureOutputAsync(Func<Task<int>> invokeAsync)
+    {
+        var recorder = AnsiConsole.Console.CreateRecorder();
+        var savedConsole = AnsiConsole.Console;
+        AnsiConsole.Console = recorder;
+
+        try
+        {
+            var exitCode = await invokeAsync();
+            return (exitCode, recorder.ExportText());
+        }
+        finally
+        {
+            AnsiConsole.Console = savedConsole;
+        }
     }
 }
