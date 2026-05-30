@@ -343,7 +343,7 @@ public sealed class ChunkIndexService : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             listedChunkCount++;
 
-            var entry = await CreateRepairEntryAsync(item, cancellationToken);
+            var entry = CreateRepairEntry(item);
             if (entry is null)
                 continue;
 
@@ -410,7 +410,7 @@ public sealed class ChunkIndexService : IDisposable
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }
 
-    private async Task<ShardEntry?> CreateRepairEntryAsync(BlobListItem item, CancellationToken cancellationToken)
+    private static ShardEntry? CreateRepairEntry(BlobListItem item)
     {
         var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
         if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
@@ -419,7 +419,7 @@ public sealed class ChunkIndexService : IDisposable
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin => await CreateThinRepairEntryAsync(item, cancellationToken),
+            BlobMetadataKeys.TypeThin => CreateThinRepairEntry(item),
             _ => null,
         };
     }
@@ -432,34 +432,15 @@ public sealed class ChunkIndexService : IDisposable
         return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
     }
 
-    private async Task<ShardEntry> CreateThinRepairEntryAsync(BlobListItem item, CancellationToken cancellationToken)
+    private static ShardEntry CreateThinRepairEntry(BlobListItem item)
     {
         var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        if (!TryReadParentChunkHash(item, out var parentChunkHash))
-            parentChunkHash = await ReadLegacyThinParentChunkHashAsync(item, cancellationToken);
+        if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
 
         var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
         var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
         return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
-    }
-
-    private static bool TryReadParentChunkHash(BlobListItem item, out ChunkHash parentChunkHash)
-    {
-        parentChunkHash = default;
-        return item.Metadata is not null
-               && item.Metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue)
-               && ChunkHash.TryParse(parentChunkHashValue, out parentChunkHash);
-    }
-
-    private async Task<ChunkHash> ReadLegacyThinParentChunkHashAsync(BlobListItem item, CancellationToken cancellationToken)
-    {
-        await using var stream = await _blobs.DownloadAsync(item.Name, cancellationToken);
-        using var reader = new StreamReader(stream);
-        var legacyParentChunkHashValue = (await reader.ReadToEndAsync(cancellationToken)).Trim();
-        if (!ChunkHash.TryParse(legacyParentChunkHashValue, out var parentChunkHash))
-            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-
-        return parentChunkHash;
     }
 
     private static long ReadChunkSize(BlobListItem item)

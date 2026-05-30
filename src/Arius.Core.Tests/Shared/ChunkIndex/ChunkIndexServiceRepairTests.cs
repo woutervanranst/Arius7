@@ -79,29 +79,6 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
-    public async Task RepairAsync_ReadsLegacyThinParentChunkHashFromPayload_WhenMetadataIsMissing()
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var thinContentHash = FakeContentHash('b');
-        var parentChunkHash = FakeChunkHash('c');
-        blobs.SeedBlob(
-            BlobPaths.ThinChunkPath(thinContentHash),
-            System.Text.Encoding.UTF8.GetBytes(parentChunkHash.ToString()),
-            BlobTier.Cool,
-            new Dictionary<string, string>
-            {
-                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
-                [BlobMetadataKeys.OriginalSize] = "10",
-                [BlobMetadataKeys.CompressedSize] = "2",
-            });
-        using var index = CreateIndex(blobs, "repair-legacy-thin");
-
-        await index.RepairAsync();
-
-        (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2));
-    }
-
-    [Test]
     public async Task RepairAsync_ClearsPendingAndInFlightEntries()
     {
         var blobs = new FakeInMemoryBlobContainerService();

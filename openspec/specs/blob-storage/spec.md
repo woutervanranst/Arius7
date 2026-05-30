@@ -51,7 +51,7 @@ The Azure implementation SHALL map both HTTP 412 ConditionNotMet (real Azure, `I
 - **THEN** the service SHALL overwrite unconditionally and SHALL NOT throw `BlobAlreadyExistsException`
 
 ### Requirement: Chunk blob operations
-The `IBlobContainerService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
+The `IBlobContainerService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload and copy operations SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
 
 `ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations SHALL leave metadata unset and MAY omit content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
 
@@ -84,12 +84,8 @@ Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar
 - **THEN** the listed blob item SHALL expose `parent_chunk_hash` metadata when the backend listing provides metadata
 
 #### Scenario: OpenWriteAsync returns writable stream
-- **WHEN** `OpenWriteAsync("chunks/<hash>", contentType, tier)` is called
+- **WHEN** `OpenWriteAsync("chunks/<hash>", contentType)` is called
 - **THEN** the service SHALL return a writable `Stream` that uploads data to Azure as it is written, using `BlockBlobClient.OpenWriteAsync()` in the Azure implementation
-
-#### Scenario: OpenWriteAsync with access tier
-- **WHEN** `OpenWriteAsync` is called with tier Archive
-- **THEN** the blob SHALL be created in Archive tier
 
 #### Scenario: OpenWriteAsync throws BlobAlreadyExistsException
 - **WHEN** `OpenWriteAsync(blobName, …)` is called and a blob already exists at that path
