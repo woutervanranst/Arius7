@@ -32,23 +32,27 @@ public static class ShardSerializer
     /// <summary>
     /// Deserializes a <see cref="Shard"/> from a gzip-compressed (and optionally encrypted) byte array.
     /// </summary>
-    public static Shard Deserialize(byte[] data, IEncryptionService encryption)
+    public static Shard Deserialize(
+        byte[]            data,
+        IEncryptionService encryption)
     {
-        var       ms         = new MemoryStream(data);
-        var       decStream  = encryption.WrapForDecryption(ms);
-        var       gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var reader     = new StreamReader(gzipStream);
+        var ms         = new MemoryStream(data);
+        var decStream  = encryption.WrapForDecryption(ms);
+        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
         return Shard.ReadFrom(reader);
     }
 
     /// <summary>
     /// Deserializes a <see cref="Shard"/> from a readable stream (gzip + optional encryption).
     /// </summary>
-    public static Shard Deserialize(Stream source, IEncryptionService encryption)
+    public static Shard DeserializeFromStream(
+        Stream             source,
+        IEncryptionService encryption)
     {
-        var       decStream  = encryption.WrapForDecryption(source);
-        var       gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var reader     = new StreamReader(gzipStream);
+        var decStream  = encryption.WrapForDecryption(source);
+        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
         return Shard.ReadFrom(reader);
     }
 

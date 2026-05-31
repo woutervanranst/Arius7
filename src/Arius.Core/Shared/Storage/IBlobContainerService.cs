@@ -115,8 +115,6 @@ public interface IBlobContainerService
     /// <summary>
     /// Returns a readable stream for the blob at <paramref name="blobName"/>.
     /// The caller must dispose the stream when done.
-    ///
-    /// Throws InvalidOperationException if the blob does not exist.
     /// </summary>
     Task<Stream> DownloadAsync(
         RelativePath      blobName,

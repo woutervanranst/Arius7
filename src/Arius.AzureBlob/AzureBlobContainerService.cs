@@ -101,16 +101,9 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var blobClient = _container.GetBlobClient(blobName.ToString());
-            var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
-            return response.Value.Content;
-        }
-        catch (RequestFailedException e) when (e.Status == 404)
-        {
-            throw new InvalidOperationException($"Blob not found: {blobName}", e);
-        }
+        var blobClient = _container.GetBlobClient(blobName.ToString());
+        var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
+        return response.Value.Content;
     }
 
     // ── HEAD ──────────────────────────────────────────────────────────────────
