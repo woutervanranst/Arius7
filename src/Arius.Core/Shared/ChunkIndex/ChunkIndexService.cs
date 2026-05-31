@@ -168,16 +168,13 @@ public sealed class ChunkIndexService : IDisposable
 
         var byPrefix = _pendingEntries.GroupBy(e => Shard.PrefixOf(e.ContentHash)).ToList();
 
-        await Parallel.ForEachAsync(
-            byPrefix,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (group, ct) => await FlushPrefixAsync(group.Key, group, ct));
+        await Parallel.ForEachAsync(byPrefix, new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (group, ct) =>
+            {
+                await FlushPrefixAsync(group.Key, group, ct);
+            });
 
-        // Clear pending
-        while (_pendingEntries.TryTake(out _))
-        {
-        }
-
+        _pendingEntries.Clear();
         _sessionEntries.Clear();
     }
 
@@ -412,9 +409,7 @@ public sealed class ChunkIndexService : IDisposable
 
         _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
         _sessionEntries.Clear();
-        while (_pendingEntries.TryTake(out _))
-        {
-        }
+        _pendingEntries.Clear();
 
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }
