@@ -19,6 +19,9 @@ internal sealed class ThrowOnCreateBlobContainerService(string operationName) : 
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 

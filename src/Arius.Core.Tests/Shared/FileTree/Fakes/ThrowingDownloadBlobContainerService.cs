@@ -18,6 +18,9 @@ internal sealed class ThrowingDownloadBlobContainerService(Exception exception) 
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromException<Stream>(exception);
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromException<Stream?>(exception);
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 

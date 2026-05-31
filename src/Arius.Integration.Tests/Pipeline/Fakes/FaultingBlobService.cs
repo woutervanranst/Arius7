@@ -35,6 +35,9 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.DownloadAsync(blobName, cancellationToken);
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+        => inner.TryDownloadAsync(blobName, cancellationToken);
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.GetMetadataAsync(blobName, cancellationToken);
 

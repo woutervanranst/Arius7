@@ -29,6 +29,9 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.DownloadAsync(blobName, ct);
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken ct = default)
+        => inner.TryDownloadAsync(blobName, ct);
+
     public async Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken ct = default)
     {
         var actual = await inner.GetMetadataAsync(blobName, ct);

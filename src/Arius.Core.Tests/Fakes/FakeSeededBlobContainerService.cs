@@ -20,12 +20,15 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
     public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+        => await TryDownloadAsync(blobName, cancellationToken) ?? throw new BlobNotFoundException(blobName);
+
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         if (!_blobs.TryGetValue(blobName, out var content))
-            throw new FileNotFoundException(blobName.ToString());
+            return Task.FromResult<Stream?>(null);
 
-        return Task.FromResult<Stream>(new MemoryStream(content, writable: false));
+        return Task.FromResult<Stream?>(new MemoryStream(content, writable: false));
     }
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>

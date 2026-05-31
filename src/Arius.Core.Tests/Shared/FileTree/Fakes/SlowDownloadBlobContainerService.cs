@@ -42,6 +42,18 @@ internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
         return await _inner.DownloadAsync(blobName, cancellationToken);
     }
 
+    public async Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await DownloadAsync(blobName, cancellationToken);
+        }
+        catch (BlobNotFoundException)
+        {
+            return null;
+        }
+    }
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => _inner.GetMetadataAsync(blobName, cancellationToken);
 

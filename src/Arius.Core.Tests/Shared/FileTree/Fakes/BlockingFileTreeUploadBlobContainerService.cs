@@ -36,6 +36,9 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromResult<Stream?>(new MemoryStream());
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 
