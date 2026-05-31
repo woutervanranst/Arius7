@@ -203,10 +203,10 @@ public sealed class ChunkIndexService : IDisposable
             }
         }
 
-        // L3 (Azure)
+        // L3 (remote blob storage)
         var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-        var meta     = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-        if (!meta.Exists)
+        await using var stream = await _blobs.TryDownloadAsync(blobName, cancellationToken);
+        if (stream is null)
         {
             // New prefix — empty shard
             var empty = new Shard();
@@ -214,15 +214,12 @@ public sealed class ChunkIndexService : IDisposable
             return empty;
         }
 
-        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var             ms     = new MemoryStream();
-        await stream.CopyToAsync(ms, cancellationToken);
-        var downloaded = ms.ToArray();
+        var approximateSizeBytes = stream.CanSeek ? stream.Length : 0;
 
         Shard loadedShard;
         try
         {
-            loadedShard = ShardSerializer.Deserialize(downloaded, _encryption);
+            loadedShard = ShardSerializer.Deserialize(stream, _encryption);
         }
         catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
         {
@@ -230,7 +227,7 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         SaveToL2(prefix, loadedShard);
-        PromoteToL1(prefix, loadedShard, downloaded.Length);
+        PromoteToL1(prefix, loadedShard, approximateSizeBytes);
         return loadedShard;
     }
 

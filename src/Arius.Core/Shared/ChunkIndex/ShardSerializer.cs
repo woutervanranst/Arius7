@@ -46,7 +46,7 @@ public static class ShardSerializer
     /// <summary>
     /// Deserializes a <see cref="Shard"/> from a readable stream (gzip + optional encryption).
     /// </summary>
-    public static Shard DeserializeFromStream(
+    public static Shard Deserialize(
         Stream             source,
         IEncryptionService encryption)
     {

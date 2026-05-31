@@ -60,6 +60,25 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
+    public async Task LookupAsync_RemoteShard_DownloadsWithoutMetadataCheck()
+    {
+        var blobs = new ThrowOnMetadataBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("remote-no-metadata");
+        var contentHash = FakeContentHash('a');
+        var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        var shard = new Shard().Merge([entry]);
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)),
+            await ShardSerializer.SerializeAsync(shard, s_encryption),
+            BlobTier.Cool);
+        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+
+        var actual = await index.LookupAsync(contentHash);
+
+        actual.ShouldBe(entry);
+    }
+
+    [Test]
     public async Task LookupAsync_ValidShardMissingEntry_ReturnsMissWithoutRepair()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -145,4 +164,45 @@ public class ChunkIndexServiceLookupTests
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
+
+    private sealed class ThrowOnMetadataBlobContainerService : IBlobContainerService
+    {
+        private readonly FakeInMemoryBlobContainerService _inner = new();
+
+        public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null) =>
+            _inner.SeedBlob(blobName, content, tier);
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
+            _inner.CreateContainerIfNotExistsAsync(cancellationToken);
+
+        public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+            _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+
+        public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
+            _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+
+        public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+            _inner.DownloadAsync(blobName, cancellationToken);
+
+        public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+            _inner.TryDownloadAsync(blobName, cancellationToken);
+
+        public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Chunk-index shard lookup must not perform metadata checks.");
+
+        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
+            _inner.ListAsync(prefix, includeMetadata, cancellationToken);
+
+        public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
+            _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+
+        public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
+            _inner.SetTierAsync(blobName, tier, cancellationToken);
+
+        public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
+            _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
+
+        public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+            _inner.DeleteAsync(blobName, cancellationToken);
+    }
 }
