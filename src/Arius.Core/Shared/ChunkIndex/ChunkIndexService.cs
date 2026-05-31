@@ -12,7 +12,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// L3: Remote blob storage (download on miss, save to L2, promote to L1).
 ///
 /// Dedup lookups are batched by shard prefix to amortize downloads.
-/// An in-flight ConcurrentDictionary prevents duplicate uploads within one run.
+/// Session entries make newly uploaded chunks visible to lookups before they are flushed to shards.
 /// </summary>
 public sealed class ChunkIndexService : IDisposable
 {
@@ -41,12 +41,13 @@ public sealed class ChunkIndexService : IDisposable
     private          long                                             _l1UsedBytes;
     private readonly Lock                                             _l1Lock = new();
 
-    // ── Session entries ───────────────────────────────────────────────────────
+    // ── Write buffer ──────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Entries recorded during this service lifetime but not necessarily persisted to
-    /// remote chunk-index shards yet. This lets lookups see newly uploaded chunks before
-    /// <see cref="FlushAsync"/> writes the shard updates.
+    /// Write buffer for entries recorded during this service lifetime but not necessarily
+    /// persisted to remote chunk-index shards yet. This keeps <see cref="AddEntry"/> free
+    /// of shard-loading I/O while letting lookups see newly uploaded chunks before
+    /// <see cref="FlushAsync"/> merges the buffered entries into full shard pages.
     /// </summary>
     private readonly ConcurrentDictionary<ContentHash, ShardEntry> _sessionEntries = [];
 
@@ -83,12 +84,14 @@ public sealed class ChunkIndexService : IDisposable
         _l2FileSystem.CreateDirectory(RelativePath.Root);
     }
 
-    // ── Dedup lookup (tasks 4.6, 4.7) ─────────────────────────────────────────
+    // ── Lookup ─────────────────────────────────────────
 
     /// <summary>
     /// Batched dedup lookup: given a collection of content-hashes, returns the set
     /// that are already known (either from the tiered cache or session entries).
     /// Hashes are grouped by shard prefix to amortize shard downloads.
+    /// Misses are omitted from the returned dictionary; an all-miss lookup returns
+    /// an empty dictionary, not <c>null</c>.
     /// </summary>
     public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default)
     {
@@ -119,6 +122,10 @@ public sealed class ChunkIndexService : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Looks up a single content hash and returns <c>null</c> when the hash is not
+    /// known in either session entries or the persisted chunk-index shard.
+    /// </summary>
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
