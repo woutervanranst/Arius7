@@ -94,30 +94,25 @@ public sealed class ChunkIndexService : IDisposable
         ThrowIfRepairIncomplete();
 
         var result = new Dictionary<ContentHash, ShardEntry>();
+        var loadedShards = new Dictionary<PathSegment, Shard>();
 
-        // First pass: check in-flight set (no I/O)
-        var remaining = new List<ContentHash>();
         foreach (var hash in contentHashes)
         {
-            if (_inFlight.TryGetValue(hash, out var entry))
-                result[hash] = entry;
-            else
-                remaining.Add(hash);
-        }
-
-        if (remaining.Count == 0) 
-            return result;
-
-        // Group remaining by shard prefix and resolve each prefix through tiers
-        var byPrefix = remaining.GroupBy(Shard.PrefixOf);
-        foreach (var group in byPrefix)
-        {
-            var shard = await LoadShardAsync(group.Key, cancellationToken);
-            foreach (var hash in group)
+            if (_inFlight.TryGetValue(hash, out var inFlightEntry))
             {
-                if (shard.TryLookup(hash, out var entry) && entry is not null)
-                    result[hash] = entry;
+                result[hash] = inFlightEntry;
+                continue;
             }
+
+            var prefix = Shard.PrefixOf(hash);
+            if (!loadedShards.TryGetValue(prefix, out var shard))
+            {
+                shard = await LoadShardAsync(prefix, cancellationToken);
+                loadedShards[prefix] = shard;
+            }
+
+            if (shard.TryLookup(hash, out var shardEntry) && shardEntry is not null)
+                result[hash] = shardEntry;
         }
 
         return result;
