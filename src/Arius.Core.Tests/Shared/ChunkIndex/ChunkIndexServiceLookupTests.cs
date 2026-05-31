@@ -98,6 +98,45 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
+    public async Task LookupAsync_MultipleHashes_ReturnsHitsAndLoadsEachShardOnce()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var firstHash = FakeContentHash('a');
+        var secondHash = ContentHash.Parse($"{firstHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('b', 64 - ChunkIndexService.ShardPrefixLength)}");
+        var missingHash = ContentHash.Parse($"{firstHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('c', 64 - ChunkIndexService.ShardPrefixLength)}");
+        var otherPrefixHash = FakeContentHash('d');
+        var inFlightHash = FakeContentHash('e');
+        var firstEntry = new ShardEntry(firstHash, FakeChunkHash('1'), 10, 5);
+        var secondEntry = new ShardEntry(secondHash, FakeChunkHash('2'), 20, 8);
+        var otherPrefixEntry = new ShardEntry(otherPrefixHash, FakeChunkHash('3'), 30, 12);
+        var inFlightEntry = new ShardEntry(inFlightHash, FakeChunkHash('4'), 40, 16);
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash)),
+            await ShardSerializer.SerializeAsync(new Shard().Merge([firstEntry, secondEntry]), s_encryption),
+            BlobTier.Cool);
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash)),
+            await ShardSerializer.SerializeAsync(new Shard().Merge([otherPrefixEntry]), s_encryption),
+            BlobTier.Cool);
+        using var index = CreateIndex(blobs, "multiple");
+        index.AddEntry(inFlightEntry);
+
+        var actual = await index.LookupAsync([firstHash, secondHash, missingHash, otherPrefixHash, inFlightHash]);
+
+        actual.ShouldBe(new Dictionary<ContentHash, ShardEntry>
+        {
+            [firstHash] = firstEntry,
+            [secondHash] = secondEntry,
+            [otherPrefixHash] = otherPrefixEntry,
+            [inFlightHash] = inFlightEntry,
+        });
+        actual.ShouldNotContainKey(missingHash);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(1);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(1);
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(inFlightHash)));
+    }
+
+    [Test]
     public async Task LookupAsync_RepairMarkerExists_ThrowsRepairIncompleteException()
     {
         var blobs = new FakeInMemoryBlobContainerService();
