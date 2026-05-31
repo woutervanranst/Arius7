@@ -41,13 +41,14 @@ public sealed class ChunkIndexService : IDisposable
     private          long                                             _l1UsedBytes;
     private readonly Lock                                             _l1Lock = new();
 
-    // ── In-flight set (task 4.8) ──────────────────────────────────────────────
+    // ── Session entries ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Content hashes that have been successfully determined as "already uploaded" or
-    /// "just queued for upload" during this run, to prevent redundant uploads.
+    /// Entries recorded during this service lifetime but not necessarily persisted to
+    /// remote chunk-index shards yet. This lets lookups see newly uploaded chunks before
+    /// <see cref="FlushAsync"/> writes the shard updates.
     /// </summary>
-    private readonly ConcurrentDictionary<ContentHash, ShardEntry> _inFlight = [];
+    private readonly ConcurrentDictionary<ContentHash, ShardEntry> _sessionEntries = [];
 
     // ── Pending new entries (collected during run, flushed at end) ────────────
 
@@ -86,7 +87,7 @@ public sealed class ChunkIndexService : IDisposable
 
     /// <summary>
     /// Batched dedup lookup: given a collection of content-hashes, returns the set
-    /// that are already known (either from the tiered cache or the in-flight set).
+    /// that are already known (either from the tiered cache or session entries).
     /// Hashes are grouped by shard prefix to amortize shard downloads.
     /// </summary>
     public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default)
@@ -98,9 +99,9 @@ public sealed class ChunkIndexService : IDisposable
 
         foreach (var hash in contentHashes)
         {
-            if (_inFlight.TryGetValue(hash, out var inFlightEntry))
+            if (_sessionEntries.TryGetValue(hash, out var sessionEntry))
             {
-                result[hash] = inFlightEntry;
+                result[hash] = sessionEntry;
                 continue;
             }
 
@@ -122,8 +123,8 @@ public sealed class ChunkIndexService : IDisposable
     {
         ThrowIfRepairIncomplete();
 
-        if (_inFlight.TryGetValue(contentHash, out var inFlightEntry))
-            return inFlightEntry;
+        if (_sessionEntries.TryGetValue(contentHash, out var sessionEntry))
+            return sessionEntry;
 
         var shard = await LoadShardAsync(Shard.PrefixOf(contentHash), cancellationToken);
         return shard.TryLookup(contentHash, out var shardEntry)
@@ -134,14 +135,14 @@ public sealed class ChunkIndexService : IDisposable
     // ── Record new entry ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Records a newly uploaded chunk entry in the in-flight set and pending list.
+    /// Records a newly uploaded chunk entry in session entries and the pending list.
     /// At end-of-run, call <see cref="FlushAsync"/> to persist all pending entries.
     /// </summary>
     public void AddEntry(ShardEntry entry)
     {
         ThrowIfRepairIncomplete();
 
-        _inFlight[entry.ContentHash] = entry;
+        _sessionEntries[entry.ContentHash] = entry;
         _pendingEntries.Add(entry);
     }
 
@@ -169,6 +170,8 @@ public sealed class ChunkIndexService : IDisposable
         while (_pendingEntries.TryTake(out _))
         {
         }
+
+        _sessionEntries.Clear();
     }
 
     // ── Tier resolution ───────────────────────────────────────────────────────
@@ -401,7 +404,7 @@ public sealed class ChunkIndexService : IDisposable
         }
 
         _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
-        _inFlight.Clear();
+        _sessionEntries.Clear();
         while (_pendingEntries.TryTake(out _))
         {
         }
