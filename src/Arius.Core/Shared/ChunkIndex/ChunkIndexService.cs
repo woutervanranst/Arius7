@@ -178,6 +178,29 @@ public sealed class ChunkIndexService : IDisposable
         _sessionEntries.Clear();
     }
 
+    private async Task FlushPrefixAsync(PathSegment prefix, IEnumerable<ShardEntry> entries, CancellationToken cancellationToken)
+    {
+        var existing = await LoadShardAsync(prefix, cancellationToken);
+        var merged   = existing.Merge(entries);
+
+        var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
+        var blobName = BlobPaths.ChunkIndexShardPath(prefix);
+
+        await _blobs.UploadAsync(
+            blobName: blobName,
+            content: new MemoryStream(bytes),
+            metadata: new Dictionary<string, string>(),
+            tier: BlobTier.Cool,
+            contentType: _encryption.IsEncrypted
+                ? ContentTypes.ChunkIndexGcmEncrypted
+                : ContentTypes.ChunkIndexPlaintext,
+            overwrite: true,
+            cancellationToken: cancellationToken);
+
+        SaveToL2(prefix, merged);
+        PromoteToL1(prefix, merged, bytes.Length);
+    }
+
     // ── Tier resolution ───────────────────────────────────────────────────────
 
     private async Task<Shard> LoadShardAsync(PathSegment prefix, CancellationToken cancellationToken)
@@ -238,29 +261,6 @@ public sealed class ChunkIndexService : IDisposable
         SaveToL2(prefix, loadedShard);
         PromoteToL1(prefix, loadedShard, approximateSizeBytes);
         return loadedShard;
-    }
-
-    private async Task FlushPrefixAsync(PathSegment prefix, IEnumerable<ShardEntry> entries, CancellationToken cancellationToken)
-    {
-        var existing = await LoadShardAsync(prefix, cancellationToken);
-        var merged   = existing.Merge(entries);
-
-        var bytes    = await ShardSerializer.SerializeAsync(merged, _encryption, cancellationToken);
-        var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-
-        await _blobs.UploadAsync(
-            blobName: blobName,
-            content: new MemoryStream(bytes),
-            metadata: new Dictionary<string, string>(),
-            tier: BlobTier.Cool,
-            contentType: _encryption.IsEncrypted
-                ? ContentTypes.ChunkIndexGcmEncrypted
-                : ContentTypes.ChunkIndexPlaintext,
-            overwrite: true,
-            cancellationToken: cancellationToken);
-
-        SaveToL2(prefix, merged);
-        PromoteToL1(prefix, merged, bytes.Length);
     }
 
     private void ThrowIfRepairIncomplete()
