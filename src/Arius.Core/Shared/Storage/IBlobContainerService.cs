@@ -16,6 +16,20 @@ public sealed class BlobAlreadyExistsException : IOException
 }
 
 /// <summary>
+/// Thrown when a blob download is attempted against a blob that does not exist.
+/// </summary>
+public sealed class BlobNotFoundException : FileNotFoundException
+{
+    public RelativePath BlobName { get; }
+
+    public BlobNotFoundException(RelativePath blobName)
+        : base($"Blob not found: {blobName}")
+    {
+        BlobName = blobName;
+    }
+}
+
+/// <summary>
 /// Blob tier for uploaded content.
 /// Maps to Azure access tiers; other backends may map these to equivalent concepts.
 /// </summary>
@@ -115,8 +129,17 @@ public interface IBlobContainerService
     /// <summary>
     /// Returns a readable stream for the blob at <paramref name="blobName"/>.
     /// The caller must dispose the stream when done.
+    /// Throws <see cref="BlobNotFoundException"/> when the blob does not exist.
     /// </summary>
     Task<Stream> DownloadAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a readable stream for the blob at <paramref name="blobName"/>, or <c>null</c>
+    /// when the blob does not exist. The caller must dispose the stream when one is returned.
+    /// </summary>
+    Task<Stream?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 

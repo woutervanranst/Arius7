@@ -31,6 +31,44 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         ms.ToArray().ShouldBe(content);
     }
 
+    [Test]
+    public async Task Download_NonExistentBlob_ThrowsBlobNotFoundException()
+    {
+        var (_, svc) = await azurite.CreateTestServiceAsync();
+        var blobName = BlobPaths.ChunkPath("missing-download");
+
+        var ex = await Should.ThrowAsync<BlobNotFoundException>(() => svc.DownloadAsync(blobName));
+
+        ex.BlobName.ShouldBe(blobName);
+    }
+
+    [Test]
+    public async Task TryDownload_NonExistentBlob_ReturnsNull()
+    {
+        var (_, svc) = await azurite.CreateTestServiceAsync();
+
+        var stream = await svc.TryDownloadAsync(BlobPaths.ChunkPath("missing-try-download"));
+
+        stream.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task TryDownload_ExistingBlob_ReturnsContent()
+    {
+        var (_, svc) = await azurite.CreateTestServiceAsync();
+        var content = "Hello try-download!"u8.ToArray();
+        var blobName = BlobPaths.ChunkPath("try-download-existing");
+
+        await svc.UploadAsync(blobName, new MemoryStream(content), new Dictionary<string, string>(), BlobTier.Hot);
+
+        await using var stream = await svc.TryDownloadAsync(blobName);
+        stream.ShouldNotBeNull();
+        var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        ms.ToArray().ShouldBe(content);
+    }
+
     // ── HEAD: exists + metadata ───────────────────────────────────────────────
 
     [Test]

@@ -101,6 +101,34 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            return await DownloadCoreAsync(blobName, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsBlobNotFoundError(ex))
+        {
+            throw new BlobNotFoundException(blobName);
+        }
+    }
+
+    public async Task<Stream?> TryDownloadAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await DownloadCoreAsync(blobName, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsBlobNotFoundError(ex))
+        {
+            return null;
+        }
+    }
+
+    private async Task<Stream> DownloadCoreAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken)
+    {
         var blobClient = _container.GetBlobClient(blobName.ToString());
         var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
@@ -252,4 +280,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     private static bool IsAlreadyExistsError(RequestFailedException ex) =>
         ex is { Status: 412, ErrorCode: "ConditionNotMet" } ||
         ex is { Status: 409, ErrorCode: "BlobAlreadyExists" or "BlobArchived" };
+
+    private static bool IsBlobNotFoundError(RequestFailedException ex) =>
+        ex is { Status: 404, ErrorCode: "BlobNotFound" };
 }
