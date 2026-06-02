@@ -1,13 +1,15 @@
 ## MODIFIED Requirements
 
 ### Requirement: ChunkIndexService shared metadata index
-The system SHALL provide `ChunkIndexService` in `Arius.Core/Shared/ChunkIndex/` as the single shared facade responsible for content-hash lookup, pending `ShardEntry` recording, shard flush, and in-memory shard-cache invalidation. Chunk metadata lookup SHALL remain separate from chunk blob upload, download, hydration, and cleanup behavior owned by `ChunkStorageService`.
+The system SHALL provide public `ChunkIndexService` in `Arius.Core/Shared/ChunkIndex/` as the single shared facade responsible for content-hash lookup, pending `ShardEntry` recording, shard flush, and in-memory shard-cache invalidation. Chunk metadata lookup SHALL remain separate from chunk blob upload, download, hydration, and cleanup behavior owned by `ChunkStorageService`.
 
 The `ChunkIndexService` implementation SHALL keep read-through shard cache mechanics, read-only lookup behavior, and archive write-session buffering as separate internal responsibilities. The facade SHALL preserve current behavior for callers while delegating those responsibilities to focused internal components.
 
-`ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. `ChunkIndexService` SHALL construct those internal collaborators from its own dependencies rather than resolving them from the service collection. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
+`ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior and SHALL remain public during this change. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. `ChunkIndexService` SHALL construct those internal collaborators from its own dependencies rather than resolving them from the service collection. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
 
-`Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own per-prefix synchronization for operations that read, load, mutate, save, upload, or promote a shard. The shard cache/store SHALL NOT expose cached mutable `Shard` instances as long-lived caller-owned objects outside prefix-scoped read or update operations. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
+`Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own async per-prefix synchronization for operations that read, load, mutate, save, upload, or promote a shard. Read-only lookup and update/rebuild operations for the same prefix SHALL use the same prefix gate so readers cannot observe a mutable cached shard while it is being mutated, saved, uploaded, or promoted. The shard cache/store SHALL NOT expose cached mutable `Shard` instances as long-lived caller-owned objects outside prefix-scoped read or update operations. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
+
+The extracted write session SHALL make concurrent `AddEntry` calls safe for archive workers. It SHALL protect session-overlay and pending-entry state with a short critical-section gate or stronger equivalent that covers recording entries, session-overlay lookup, pending snapshot creation, flush-in-progress state, and successful whole-flush clearing. The gate SHALL NOT be held across shard-cache/store I/O or awaits. A `ConcurrentDictionary` MAY be used inside this implementation, but it SHALL NOT be the only mechanism used to define pending-entry ordering and flush snapshot/clear semantics. `AddEntry` SHALL fail fast or otherwise reject recording while `FlushAsync` is in progress.
 
 `ChunkIndexService` SHALL own repair orchestration and repair-in-progress marker enforcement. Normal operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check the repair marker at the facade boundary before delegating to extracted components. Extracted components SHALL NOT independently reject shard-cache/store operations solely because the repair marker exists, so explicit repair can rebuild local shard state and upload repaired shards while the marker is present.
 
@@ -43,11 +45,29 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **THEN** the shard cache/store SHALL synchronize that operation at the shard-prefix boundary
 - **AND** no two mutation/save/upload sequences for the same prefix SHALL run concurrently through the shard cache/store
 - **AND** `Shard` itself SHALL NOT use a concurrent dictionary solely to provide this synchronization
+- **AND** the implementation SHALL NOT hold the L1 LRU lock across asynchronous I/O
+
+#### Scenario: Read-only lookup does not observe in-progress shard mutation
+- **WHEN** a lookup and a flush or repair update target the same shard prefix
+- **THEN** both operations SHALL use the same prefix-scoped shard cache/store gate
+- **AND** the lookup SHALL return copied lookup results rather than a cached mutable `Shard` instance
+- **AND** it SHALL NOT observe the shard page while the update is mutating, saving, uploading, or promoting that prefix
 
 #### Scenario: Mutable cached shards are not handed out as caller-owned objects
 - **WHEN** the read-only reader or write session needs shard contents for a prefix
 - **THEN** it SHALL access those contents through prefix-scoped shard cache/store operations
 - **AND** the shard cache/store SHALL NOT return a cached mutable `Shard` instance for callers to hold and mutate outside the cache/store synchronization boundary
+
+#### Scenario: Concurrent entry recording is safe
+- **WHEN** multiple archive workers record chunk-index entries through `ChunkIndexService.AddEntry`
+- **THEN** the write session SHALL record each entry in the same-session overlay and pending flush state atomically with respect to other `AddEntry` calls
+- **AND** same-service lookups SHALL be able to resolve recorded session entries without corrupting write-session state
+
+#### Scenario: Flush snapshots pending state without racing entry recording
+- **WHEN** `FlushAsync` starts processing pending write-session entries
+- **THEN** it SHALL create a pending-entry snapshot under the write-session gate before performing shard-cache/store I/O
+- **AND** it SHALL reject or otherwise prevent `AddEntry` calls while that flush is in progress
+- **AND** it SHALL clear session and pending state only after all touched prefixes have flushed successfully
 
 #### Scenario: Batched lookup applies the write-session overlay before persisted lookup
 - **WHEN** `ChunkIndexService` performs batched lookup for content hashes that include entries recorded in the current archive session

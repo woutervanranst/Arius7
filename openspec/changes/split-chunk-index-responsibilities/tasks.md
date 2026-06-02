@@ -11,7 +11,8 @@
 - [ ] 2.3 Add shard update/rebuild operations that upload the remote shard, save L2, and promote L1 for flush and repair use without handing out caller-owned mutable cached shards.
 - [ ] 2.4 Move L1 and L2 cache invalidation behavior into the shard cache/store while preserving repair-marker safety.
 - [ ] 2.5 Treat `Shard` as an owned mutable page: replace copy-on-merge usage with explicit mutation operations and remove `Shard.Merge`.
-- [ ] 2.6 Add per-prefix synchronization inside the shard cache/store for read/load/mutate/save/upload/promote operations; do not make `Shard` internally concurrent.
+- [ ] 2.6 Add async per-prefix synchronization inside the shard cache/store for read/load/mutate/save/upload/promote operations; do not make `Shard` internally concurrent.
+- [ ] 2.7 Ensure read-only lookup returns copied results under the same prefix gate used by update/rebuild operations and never exposes cached mutable `Shard` ownership.
 
 ## 3. Extract Read And Write Responsibilities
 
@@ -19,11 +20,14 @@
 - [ ] 3.2 Create an internal chunk-index write session that owns session entries, pending entries, `AddEntry`, and `FlushAsync`.
 - [ ] 3.3 Keep same-session entries visible through the `ChunkIndexService` facade before falling back to the read-only reader.
 - [ ] 3.4 Keep fixed two-character shard-prefix calculation unchanged for reader and write-session grouping.
+- [ ] 3.5 Make concurrent `AddEntry` calls safe with a write-session gate or stronger equivalent, and reject entry recording while `FlushAsync` is in progress.
+- [ ] 3.6 Ensure `FlushAsync` snapshots pending entries before shard-cache/store I/O and clears write-session state only after the whole flush succeeds.
 
 ## 4. Slim Facade And Repair Integration
 
 - [ ] 4.1 Update `ChunkIndexService` to delegate lookup, add, flush, and cache invalidation to the extracted internal components.
 - [ ] 4.1a Construct extracted chunk-index collaborators inside `ChunkIndexService` instead of registering them separately in DI.
+- [ ] 4.1b Keep `ChunkIndexService` public during this responsibility split and keep extracted collaborators non-public.
 - [ ] 4.2 Keep repair orchestration on `ChunkIndexService` while reusing shard cache/store save and invalidation operations where practical.
 - [ ] 4.3 Ensure successful repair clears write-session state and leaves the repair in-progress marker behavior unchanged.
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.

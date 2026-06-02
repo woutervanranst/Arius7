@@ -38,9 +38,13 @@ Current callers use `ChunkIndexService` directly from archive, restore, list, hy
 
 `ChunkIndexService` should construct these internal collaborators from its existing constructor dependencies. The extracted components are ordinary internal objects, not service-collection registrations. If constructor setup becomes unwieldy later, an internal factory can be considered as a separate cleanup, but this change should not add DI registrations for the extracted reader, write session, or shard cache/store.
 
+`ChunkIndexService` remains public for this change. The split is an internal responsibility refactor, not a Core API visibility cleanup. Tightening the facade's visibility can be considered separately if the Arius.Core assembly boundary is reviewed more broadly.
+
 Alternative considered: inject separate reader and writer services into feature handlers immediately. That is a cleaner endpoint, but it expands the change across more callers and tests without changing behavior. Keeping the facade limits the first refactor to the chunk-index implementation boundary.
 
 Alternative considered: register the extracted internal components in DI while still keeping external callers on `ChunkIndexService`. That keeps construction declarative, but it creates an accidental service graph and makes future direct consumption easier. Manual construction inside the facade better matches the intent of an internal implementation split.
+
+Alternative considered: make `ChunkIndexService` internal during the split. That matches the general preference for internal implementation types, but it expands the change into API visibility and test-access cleanup. Keeping the existing public facade minimizes caller churn.
 
 ### Extract a shard cache/store component
 
@@ -62,7 +66,9 @@ The shard cache/store may be used by other chunk-index implementation components
 
 The shard cache/store owns thread-safety for mutable shard pages. It should provide per-prefix synchronization around operations that read, load, mutate, save, upload, or promote a shard for a prefix. The implementation should not make `Shard` itself thread-safe with `ConcurrentDictionary`; shard-level concurrency does not protect the larger L1/L2/L3 update sequence. Current flush and repair callers still group work so one worker processes a prefix, but the cache/store should enforce the prefix-level boundary rather than relying only on caller discipline.
 
-The shard cache/store should not return cached mutable `Shard` instances as long-lived caller-owned objects. Read-only lookup should either run inside a prefix-scoped cache/store operation or receive a transient read view whose lifetime does not cross mutation/save/upload operations. Write-session flush and repair should use prefix-scoped update/rebuild operations so the component that owns L1/L2/L3 state also owns mutable shard ownership.
+The shard cache/store should implement that boundary with an async per-prefix gate, such as a prefix-keyed `SemaphoreSlim`. Operations acquire the prefix gate before checking L1, loading L2/L3, mutating a shard page, serializing, saving L2, uploading L3, or promoting L1. They should never hold the L1 LRU lock across awaits, and lock ordering should be prefix gate first, then the short synchronous L1 lock when needed.
+
+The shard cache/store should not return cached mutable `Shard` instances as long-lived caller-owned objects. Read-only lookup should run inside a prefix-scoped cache/store operation and return copied lookup results, not the cached shard page. Write-session flush and repair should use prefix-scoped update/rebuild operations so the component that owns L1/L2/L3 state also owns mutable shard ownership. Because readers and writers use the same per-prefix gate, a lookup cannot observe a shard while another operation is mutating, saving, uploading, or promoting that prefix.
 
 Alternative considered: keep cache methods private inside `ChunkIndexService` and only extract write buffering. That leaves the largest mixed responsibility in place and gives little future seam for routing and split policy.
 
@@ -87,15 +93,20 @@ Move `_sessionEntries`, `_pendingEntries`, `AddEntry`, and `FlushAsync` behavior
 The write session remains unbounded in this change. It should keep the current semantics:
 
 - newly added entries are visible to same-service lookups before flush
+- concurrent `AddEntry` calls from archive workers are safe
 - pending entries are grouped by fixed shard prefix at flush
 - each touched shard is loaded, mutated with pending entries, uploaded, saved to L2, and promoted to L1
 - session and pending state are cleared only after the whole flush succeeds, or after successful repair
 
-The write session should not clear entries per prefix as each prefix succeeds. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.
+The write session should protect session and pending state with one short critical-section gate rather than relying only on `ConcurrentDictionary`. A `ConcurrentDictionary` can make same-session lookup safe, but it does not define append order, duplicate-entry last-writer semantics, or atomic snapshot/clear behavior across both session and pending collections. The write-session gate should cover recording a new entry into both collections, reading the session overlay for lookup, taking the pending snapshot that `FlushAsync` will process, marking flush in progress, and clearing state only after the whole flush succeeds. The gate must not be held across shard-cache/store I/O or awaits.
+
+`FlushAsync` is an archive-tail operation and is not expected to run concurrently with archive workers still calling `AddEntry`. The write session should still fail fast or otherwise reject `AddEntry` while a flush is in progress so misuse cannot silently clear entries that were added after the flush snapshot. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.
 
 Alternative considered: make the write session immediately bounded or disk-backed. That is the likely next hardening step for very large archives, but it changes archive runtime behavior and failure modes. This change only separates responsibilities.
 
 Alternative considered: clear successfully flushed prefixes as each prefix completes. That may reduce duplicate work after an in-process retry, but it changes partial-failure semantics and would need a more explicit recovery contract for entries that were cleared locally before the overall archive failed.
+
+Alternative considered: keep `ConcurrentDictionary` for session entries and a concurrent collection for pending entries as the entire write-session concurrency model. That preserves the current broad shape, but it leaves duplicate pending-entry ordering and flush snapshot/clear semantics implicit. A short write-session gate makes the contract explicit without adding I/O under lock.
 
 ### Keep repair orchestration in the facade initially
 
