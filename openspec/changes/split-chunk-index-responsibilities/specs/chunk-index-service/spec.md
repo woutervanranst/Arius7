@@ -30,6 +30,18 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **THEN** the facade SHALL delegate read-through shard cache mechanics, read-only lookup behavior, and archive write-session state to separate internal components
 - **AND** feature handlers SHALL NOT need to compute shard prefixes or access those internal components directly
 
+#### Scenario: Batched lookup applies the write-session overlay before persisted lookup
+- **WHEN** `ChunkIndexService` performs batched lookup for content hashes that include entries recorded in the current archive session
+- **THEN** the facade SHALL resolve those session entries before delegating to the read-only reader
+- **AND** the read-only reader SHALL receive only content hashes that missed the session overlay
+- **AND** the facade SHALL merge session hits with persisted-index results before returning to the caller
+
+#### Scenario: Extracted components use the existing fixed-layout constants
+- **WHEN** extracted chunk-index components need shard-prefix or flush-worker policy during this change
+- **THEN** they SHALL use the existing internal constants on `ChunkIndexService`
+- **AND** the change SHALL NOT introduce a separate chunk-index layout/options abstraction solely for the current fixed two-character prefix layout
+- **AND** code outside `Shared/ChunkIndex` SHALL NOT compute or persist chunk-index prefix lengths or shard-routing state
+
 #### Scenario: Facade boundary is enforced by architecture tests
 - **WHEN** architecture tests inspect dependencies on extracted chunk-index reader, write-session, and shard cache/store components
 - **THEN** code outside the chunk-index implementation SHALL NOT depend on those components directly

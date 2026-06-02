@@ -57,7 +57,11 @@ Move persisted-index lookup behavior into an internal reader, tentatively `Chunk
 
 The reader should not know about session write-buffer entries. `ChunkIndexService` can preserve current lookup semantics by checking the write session overlay first, then delegating misses to the reader.
 
+For batched lookup, the facade should split the input into write-session hits and persisted-index misses before calling the reader. The reader should receive only the misses, and the facade should merge the session hits with reader results. This keeps session overlay behavior at the operational boundary and avoids loading shards for content hashes already recorded during the current archive session.
+
 Alternative considered: let the reader check session entries. That keeps the lookup API convenient but makes the read-only component depend on archive write state, which is the coupling this change is meant to remove.
+
+Alternative considered: pass all hashes to the reader and let facade-level session entries overwrite persisted results afterward. That preserves returned values but performs unnecessary shard loads and weakens the reader/write-session separation.
 
 ### Extract an archive write session component
 
@@ -84,7 +88,11 @@ Alternative considered: extract `ChunkIndexRepairService` now. That may be usefu
 
 The refactor should keep using `Shard.PrefixOf(contentHash)` and `ChunkIndexService.ShardPrefixLength`. No routing table, longest-prefix lookup, split manifest, or new blob layout is introduced.
 
+The extracted internal reader, write-session, and shard cache/store components may depend on `ChunkIndexService.ShardPrefixLength` and `ChunkIndexService.FlushWorkers` during this change. Introducing a separate chunk-index layout/options abstraction is intentionally deferred until there is more layout state to own. This keeps the follow-up focused on responsibility extraction and preserves the accepted fixed-prefix design from `improve-chunk-index-scalability`.
+
 This creates a narrow seam for future routing without changing today's repository format.
+
+Alternative considered: introduce an internal chunk-index layout/options type now and move prefix length or flush-worker constants there. That may become appropriate with adaptive routing, persisted layout metadata, or configurable write-session policy, but it is unnecessary indirection for the current fixed-layout refactor.
 
 ## Risks / Trade-offs
 
