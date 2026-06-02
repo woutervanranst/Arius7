@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
@@ -81,26 +82,26 @@ public sealed class ChunkIndexService : IDisposable
         ThrowIfRepairIncomplete();
 
         var result = new Dictionary<ContentHash, ShardEntry>();
+        var sessionMisses = new List<ContentHash>();
 
-        var misses = new List<ContentHash>();
         foreach (var hash in contentHashes)
         {
-            if (_writeSession.TryLookup(hash, out var sessionEntry))
+            // Was it added in this session?
+            if (_writeSession.TryLookup(hash, out var sessionShard))
             {
-                result[hash] = sessionEntry;
+                result[hash] = sessionShard;
                 continue;
             }
 
-            misses.Add(hash);
+            sessionMisses.Add(hash);
         }
 
-        var persistedHits = await _reader.LookupAsync(misses, cancellationToken);
-        foreach (var (hash, entry) in persistedHits)
-        {
-            result[hash] = entry;
-        }
+        if (sessionMisses.Count == 0)
+            return result;
 
-        return result;
+        // Lookup in the cache
+        var cacheLookups = await _reader.LookupAsync(sessionMisses, cancellationToken);
+        return result.Concat(cacheLookups).ToFrozenDictionary();
     }
 
     /// <summary>

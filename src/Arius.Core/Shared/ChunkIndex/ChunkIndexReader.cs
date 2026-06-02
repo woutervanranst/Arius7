@@ -9,14 +9,15 @@ internal sealed class ChunkIndexReader(ChunkIndexShardCache shardCache)
         IEnumerable<ContentHash> contentHashes,
         CancellationToken cancellationToken = default)
     {
+        var result = new Dictionary<ContentHash, ShardEntry>();
+
         var byPrefix = contentHashes
             .GroupBy(Shard.PrefixOf)
             .ToArray();
 
         if (byPrefix.Length == 0)
-            return new Dictionary<ContentHash, ShardEntry>();
+            return result;
 
-        var result = new Dictionary<ContentHash, ShardEntry>();
         foreach (var group in byPrefix)
         {
             var hits = await shardCache.LookupAsync(group.Key, group.ToArray(), cancellationToken);
