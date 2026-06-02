@@ -10,6 +10,8 @@
 - [ ] 2.2 Move local L2 shard save behavior into the shard cache/store without changing local file format or paths.
 - [ ] 2.3 Add a shard save/upload operation that uploads the remote shard, saves L2, and promotes L1 for flush and repair use.
 - [ ] 2.4 Move L1 and L2 cache invalidation behavior into the shard cache/store while preserving repair-marker safety.
+- [ ] 2.5 Treat `Shard` as an owned mutable page: replace copy-on-merge usage with explicit mutation operations and remove `Shard.Merge`.
+- [ ] 2.6 Add per-prefix synchronization inside the shard cache/store for load/mutate/save/upload/promote operations; do not make `Shard` internally concurrent.
 
 ## 3. Extract Read And Write Responsibilities
 
@@ -25,8 +27,8 @@
 - [ ] 4.3 Ensure successful repair clears write-session state and leaves the repair in-progress marker behavior unchanged.
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.
 - [ ] 4.5 Keep repair-marker checks at the `ChunkIndexService` facade boundary for normal lookup, entry recording, and flush operations so explicit repair can reuse internal shard-cache/store operations while the marker exists.
-- [ ] 4.6 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
 - [ ] 4.6 Parallelize repair rebuilt-shard L2 write and remote upload work per prefix with bounded `Parallel.ForEachAsync`, keeping one worker per prefix.
+- [ ] 4.7 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
 
 ## 5. Documentation And Verification
 

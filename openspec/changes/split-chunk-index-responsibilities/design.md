@@ -49,7 +49,13 @@ It should not own `_sessionEntries`, `_pendingEntries`, public lookup behavior, 
 
 The shard cache/store may be used by other chunk-index implementation components where that keeps the facade small, but it must not become a direct dependency of non-chunk-index code. Normal archive, restore, list, and repair workflows still enter chunk-index behavior through `ChunkIndexService`.
 
+`Shard` should be treated as an owned mutable in-memory shard page, not an immutable value. Replace the current copy-on-merge shape with explicit mutation operations such as `AddOrUpdate` or `AddOrUpdateRange`, and remove the `Shard.Merge` method. Deterministic serialization still sorts entries by content hash, so persisted format remains unchanged.
+
+The shard cache/store owns thread-safety for mutable shard pages. It should provide per-prefix synchronization around operations that load, mutate, save, upload, or promote a shard for a prefix. The implementation should not make `Shard` itself thread-safe with `ConcurrentDictionary`; shard-level concurrency does not protect the larger L1/L2/L3 update sequence. Current flush and repair callers still group work so one worker processes a prefix, but the cache/store should enforce the prefix-level boundary rather than relying only on caller discipline.
+
 Alternative considered: keep cache methods private inside `ChunkIndexService` and only extract write buffering. That leaves the largest mixed responsibility in place and gives little future seam for routing and split policy.
+
+Alternative considered: make `Shard` internally thread-safe with `ConcurrentDictionary`. That adds per-entry overhead and still does not synchronize L1 promotion, L2 persistence, or remote upload for a prefix, so synchronization belongs at the shard cache/store boundary instead.
 
 ### Extract a read-only reader component
 
@@ -71,7 +77,7 @@ The write session remains unbounded in this change. It should keep the current s
 
 - newly added entries are visible to same-service lookups before flush
 - pending entries are grouped by fixed shard prefix at flush
-- each touched shard is loaded, merged, uploaded, saved to L2, and promoted to L1
+- each touched shard is loaded, mutated with pending entries, uploaded, saved to L2, and promoted to L1
 - session and pending state are cleared only after the whole flush succeeds, or after successful repair
 
 The write session should not clear entries per prefix as each prefix succeeds. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.

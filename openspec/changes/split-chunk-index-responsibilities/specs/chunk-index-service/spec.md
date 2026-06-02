@@ -7,6 +7,8 @@ The `ChunkIndexService` implementation SHALL keep read-through shard cache mecha
 
 `ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
 
+`Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own per-prefix synchronization for operations that load, mutate, save, upload, or promote a shard. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
+
 `ChunkIndexService` SHALL own repair orchestration and repair-in-progress marker enforcement. Normal operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check the repair marker at the facade boundary before delegating to extracted components. Extracted components SHALL NOT independently reject shard-cache/store operations solely because the repair marker exists, so explicit repair can rebuild local shard state and upload repaired shards while the marker is present.
 
 Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the extracted internal components, SHALL remain above 90% after this change. Existing chunk-index tests SHALL be split or renamed so each extracted responsibility has focused coverage while facade behavior remains covered through `ChunkIndexService` tests.
@@ -29,6 +31,18 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **WHEN** chunk-index lookup, archive entry recording, shard flush, or cache invalidation is executed through `ChunkIndexService`
 - **THEN** the facade SHALL delegate read-through shard cache mechanics, read-only lookup behavior, and archive write-session state to separate internal components
 - **AND** feature handlers SHALL NOT need to compute shard prefixes or access those internal components directly
+
+#### Scenario: Shards are mutable pages behind the shard cache/store boundary
+- **WHEN** a shard is loaded for flush or repair update
+- **THEN** the implementation SHALL update the owned in-memory shard page through explicit add-or-update mutation
+- **AND** it SHALL NOT create a replacement shard through `Shard.Merge`
+- **AND** persisted shard output SHALL remain sorted by content hash
+
+#### Scenario: Shard cache/store synchronizes mutable shard operations by prefix
+- **WHEN** chunk-index code loads, mutates, saves, uploads, or promotes a shard for a prefix
+- **THEN** the shard cache/store SHALL synchronize that operation at the shard-prefix boundary
+- **AND** no two mutation/save/upload sequences for the same prefix SHALL run concurrently through the shard cache/store
+- **AND** `Shard` itself SHALL NOT use a concurrent dictionary solely to provide this synchronization
 
 #### Scenario: Batched lookup applies the write-session overlay before persisted lookup
 - **WHEN** `ChunkIndexService` performs batched lookup for content hashes that include entries recorded in the current archive session
@@ -79,7 +93,7 @@ The repair in-progress marker SHALL be addressed through an internal `ChunkIndex
 
 Normal chunk-index operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check for the repair in-progress marker at operation start and throw `ChunkIndexRepairIncompleteException` when the marker exists. The `ChunkIndexService` constructor SHALL NOT fail solely because the repair in-progress marker exists, so the explicit repair command can construct the service and rerun repair. The explicit full repair API SHALL be allowed to run when the repair in-progress marker already exists. Cache invalidation that only clears local cache state MAY run while the marker exists, but SHALL NOT delete the marker.
 
-Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
+Full repair SHALL process rebuilt shard prefixes with bounded `Parallel.ForEachAsync` after the one metadata-aware chunk listing has completed. Each rebuilt prefix SHALL be handled by at most one worker, and each worker SHALL write the rebuilt local L2 shard file and upload the corresponding remote shard for its prefix. Full repair SHALL remember the set of shard prefixes that produced entries during the repair run. After rebuilt shards have been uploaded, full repair SHALL list existing blobs under `chunk-index/` and delete shard blobs whose names are not in that rebuilt prefix set.
 
 Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted while rebuilding local L2 shard files, while uploading rebuilt shards, or after uploading rebuilt shards but before deleting stale remote shard blobs, a later full repair SHALL purge the partial local rebuild and reconstruct shard contents from committed chunks again. Full repair SHALL NOT publish snapshots.
 
