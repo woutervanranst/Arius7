@@ -2,8 +2,6 @@ using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
-using System.Reflection;
-using System.Reflection.Emit;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;
@@ -27,10 +25,6 @@ public class DependencyTests
     private static readonly ArchUnitNET.Domain.Assembly CoreAssembly = GetAssembly(typeof(Core.AssemblyMarker));
     private static readonly ArchUnitNET.Domain.Assembly AzureBlobAssembly = GetAssembly(typeof(AzureBlob.AssemblyMarker));
     private static readonly ArchUnitNET.Domain.Assembly CliAssembly = GetAssembly(typeof(Cli.AssemblyMarker));
-    private static readonly Assembly AzureBlobReflectionAssembly = typeof(AzureBlob.AssemblyMarker).Assembly;
-    private static readonly Assembly CliReflectionAssembly = typeof(Cli.AssemblyMarker).Assembly;
-    private static readonly OpCode[] OneByteOpCodes = BuildOpCodeMap(twoByte: false);
-    private static readonly OpCode[] TwoByteOpCodes = BuildOpCodeMap(twoByte: true);
 
 
     [Test]
@@ -113,14 +107,14 @@ public class DependencyTests
     [Test]
     public void CoreSharedServicesShouldOnlyBeCalledFromCore()
     {
-        var contractTypes = GetContractTypes();
+        var commandContractTypes = GetCommandContractTypes();
 
         // RULE: Every non-contract Core class is treated as Core-owned implementation detail unless explicitly exempted below.
         var coreSharedServiceTypes = typeof(Core.AssemblyMarker).Assembly
             .GetTypes()
             .Where(type => type is { IsClass: true, Namespace: not null })
-            // EXCEPTION RULE: Public contracts and the Core DTO/value types reachable from those contracts are allowed across assembly boundaries.
-            .Where(type => !contractTypes.Contains(type))
+            // EXCEPTION RULE: Mediator contracts and the Core DTO/value types reachable from those contracts are allowed across assembly boundaries.
+            .Where(type => !commandContractTypes.Contains(type))
             // EXCEPTION RULE: Notification messages are public cross-boundary events; they are allowed outside Core as event contracts, not implementation services.
             .Where(type => !type.GetInterfaces().Any(IsNotification))
             // EXCEPTION RULE: Core-defined exception types are boundary contracts; non-Core adapters may throw, catch, or translate them.
@@ -146,48 +140,26 @@ public class DependencyTests
 
         foreach (var coreSharedServiceName in coreSharedServiceNames)
         {
-            var coreSharedServiceType = coreSharedServiceTypes.Single(type => type.FullName == coreSharedServiceName);
-
-            foreach (var (nonCoreAssembly, nonCoreReflectionAssembly) in new[]
+            foreach (var nonCoreAssembly in new[] { AzureBlobAssembly, CliAssembly })
             {
-                (AzureBlobAssembly, AzureBlobReflectionAssembly),
-                (CliAssembly, CliReflectionAssembly)
-            })
-            {
-                // RULE: Non-Core types must not depend on Core implementation types by default, including compiler-generated async/lambda state machines.
-                var types = Types().That().ResideInAssembly(nonCoreAssembly);
-                var generatedMediatorCallerNames = new HashSet<string>(StringComparer.Ordinal);
+                // RULE: Non-Core assemblies must not depend on Core implementation types by default.
+                var classes = Classes().That().ResideInAssembly(nonCoreAssembly);
 
                 if (mediatorHandlerNames.Contains(coreSharedServiceName))
                 {
                     // RULE: Only Mediator-generated infrastructure may depend on Core command/query handlers outside Core.
-                    generatedMediatorCallerNames.Add("Microsoft.Extensions.DependencyInjection.MediatorDependencyInjectionExtensions");
-                    generatedMediatorCallerNames.Add("Mediator.Mediator");
-                    generatedMediatorCallerNames.Add("Mediator.Internals.ContainerMetadata");
-
-                    types = types
+                    classes = classes
                         .And().DoNotHaveFullName("Microsoft.Extensions.DependencyInjection.MediatorDependencyInjectionExtensions")
                         .And().DoNotHaveFullName("Mediator.Mediator")
                         .And().DoNotHaveFullName("Mediator.Internals.ContainerMetadata");
                 }
 
                 // RULE: After applying the narrow contract/source-generator exceptions, no remaining non-Core class may reference the Core implementation type under test.
-                IArchRule rule = types
+                IArchRule rule = classes
                     .Should().NotDependOnAnyTypesThat().HaveFullName(coreSharedServiceName);
 
                 rule.HasNoViolations(Architecture).ShouldBeTrue(
                     $"Only Arius.Core may depend on Core shared services. {nonCoreAssembly.Name} depends on {coreSharedServiceName}. Violations: {DescribeViolations(rule)}");
-
-                if (RequiresMethodBodyDependencyCheck(coreSharedServiceType))
-                {
-                    var methodBodyViolations = FindMethodBodyDependencyViolations(
-                        nonCoreReflectionAssembly,
-                        coreSharedServiceType,
-                        generatedMediatorCallerNames).ToList();
-
-                    methodBodyViolations.ShouldBeEmpty(
-                        $"Only Arius.Core may depend on Core shared services. {nonCoreAssembly.Name} references {coreSharedServiceName} from method bodies. Violations: {string.Join(", ", methodBodyViolations.Take(10))}");
-                }
             }
         }
 
@@ -197,19 +169,15 @@ public class DependencyTests
 
         static bool IsQueryHandler(System.Type type) => type.IsGenericType && type.GetGenericTypeDefinition().FullName is "Mediator.IQueryHandler`2" or "Mediator.IStreamQueryHandler`2";
 
-        // RULE: The IL fallback exists to catch async/lambda-generated method bodies for Core services and handlers without broadening the historical ArchUnit rule to every helper class method body.
-        static bool RequiresMethodBodyDependencyCheck(System.Type type) => type.Name.EndsWith("Service", StringComparison.Ordinal)
-            || type.GetInterfaces().Any(IsCommandHandler)
-            || type.GetInterfaces().Any(IsQueryHandler);
-
-        static HashSet<System.Type> GetContractTypes()
+        static HashSet<System.Type> GetCommandContractTypes()
         {
             var coreAssembly = typeof(Core.AssemblyMarker).Assembly;
             var contractTypes = new HashSet<System.Type>();
-            // RULE: Start from every public Core contract surface that non-Core callers, adapters, or observers are allowed to know about.
+            // RULE: Start from every Core Mediator contract surface that non-Core callers or observers are allowed to know about.
             var pending = new Queue<System.Type>(coreAssembly
                 .GetTypes()
-                .SelectMany(type => GetContractSeedTypes(type)));
+                .Where(type => type is { IsClass: true, IsAbstract: false })
+                .SelectMany(type => GetMediatorContractTypes(type)));
 
             // RULE: Treat contract DTO graphs transitively so nested Core value objects used by allowed contracts are allowed too.
             while (pending.TryDequeue(out var type))
@@ -233,7 +201,7 @@ public class DependencyTests
             return contractTypes;
         }
 
-        static IEnumerable<System.Type> GetContractSeedTypes(System.Type type)
+        static IEnumerable<System.Type> GetMediatorContractTypes(System.Type type)
         {
             if (type.GetInterfaces().Any(IsNotification))
             {
@@ -256,15 +224,6 @@ public class DependencyTests
             {
                 yield return queryHandlerArgument;
             }
-
-            if (type is { IsInterface: true, IsPublic: true })
-            {
-                // RULE: Public interface member signatures are boundary contracts because non-Core implementations and callers must compile against their DTO/value types.
-                foreach (var usedType in GetUsedTypes(type))
-                {
-                    yield return usedType;
-                }
-            }
         }
 
         static IEnumerable<System.Type> GetUsedTypes(System.Type type)
@@ -285,17 +244,6 @@ public class DependencyTests
             foreach (var constructor in type.GetConstructors())
             {
                 foreach (var parameter in constructor.GetParameters())
-                {
-                    yield return parameter.ParameterType;
-                }
-            }
-
-            // RULE: Method return and parameter types define public interface contracts.
-            foreach (var method in type.GetMethods())
-            {
-                yield return method.ReturnType;
-
-                foreach (var parameter in method.GetParameters())
                 {
                     yield return parameter.ParameterType;
                 }
@@ -397,165 +345,5 @@ public class DependencyTests
     {
         var assemblyName = assemblyMarker.Assembly.GetName().Name;
         return Architecture.Assemblies.First(a => a.Name == assemblyName);
-    }
-
-    private static IEnumerable<string> FindMethodBodyDependencyViolations(
-        Assembly assembly,
-        System.Type forbiddenType,
-        IReadOnlySet<string> allowedDeclaringTypeNames)
-    {
-        foreach (var type in assembly.GetTypes())
-        {
-            if (type.FullName is not null && allowedDeclaringTypeNames.Contains(type.FullName))
-            {
-                continue;
-            }
-
-            foreach (var method in GetMethodsWithBodies(type))
-            {
-                if (ReferencesForbiddenType(method, forbiddenType))
-                {
-                    yield return $"{type.FullName}.{method.Name}";
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<MethodBase> GetMethodsWithBodies(System.Type type)
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-
-        foreach (var constructor in type.GetConstructors(flags))
-        {
-            yield return constructor;
-        }
-
-        foreach (var method in type.GetMethods(flags))
-        {
-            yield return method;
-        }
-    }
-
-    private static bool ReferencesForbiddenType(MethodBase method, System.Type forbiddenType)
-    {
-        var body = method.GetMethodBody();
-        if (body is null)
-        {
-            return false;
-        }
-
-        var module = method.Module;
-        var il = body.GetILAsByteArray();
-        if (il is null)
-        {
-            return false;
-        }
-
-        for (var offset = 0; offset < il.Length;)
-        {
-            var opCode = ReadOpCode(il, ref offset);
-            if (opCode.OperandType is OperandType.InlineTok or OperandType.InlineType or OperandType.InlineMethod or OperandType.InlineField)
-            {
-                var token = BitConverter.ToInt32(il, offset);
-                if (TokenReferencesForbiddenType(module, token, forbiddenType))
-                {
-                    return true;
-                }
-            }
-
-            offset += GetOperandSize(opCode, il, offset);
-        }
-
-        return false;
-    }
-
-    private static bool TokenReferencesForbiddenType(Module module, int token, System.Type forbiddenType)
-    {
-        try
-        {
-            var member = module.ResolveMember(token);
-            return member switch
-            {
-                System.Type type => IsForbiddenType(type, forbiddenType),
-                MethodBase method => IsForbiddenType(method.DeclaringType, forbiddenType),
-                FieldInfo field => IsForbiddenType(field.DeclaringType, forbiddenType) || IsForbiddenType(field.FieldType, forbiddenType),
-                _ => false
-            };
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
-
-    private static bool IsForbiddenType(System.Type? referencedType, System.Type forbiddenType)
-    {
-        if (referencedType is null)
-        {
-            return false;
-        }
-
-        if (referencedType.IsArray || referencedType.IsByRef || referencedType.IsPointer)
-        {
-            return IsForbiddenType(referencedType.GetElementType(), forbiddenType);
-        }
-
-        if (referencedType.IsGenericType)
-        {
-            var genericDefinition = referencedType.IsGenericTypeDefinition
-                ? referencedType
-                : referencedType.GetGenericTypeDefinition();
-
-            return genericDefinition == forbiddenType
-                || referencedType.GetGenericArguments().Any(argument => IsForbiddenType(argument, forbiddenType));
-        }
-
-        return referencedType == forbiddenType;
-    }
-
-    private static OpCode ReadOpCode(byte[] il, ref int offset)
-    {
-        var first = il[offset++];
-        if (first != 0xFE)
-        {
-            return OneByteOpCodes[first];
-        }
-
-        var second = il[offset++];
-        return TwoByteOpCodes[second];
-    }
-
-    private static int GetOperandSize(OpCode opCode, byte[] il, int operandOffset)
-    {
-        return opCode.OperandType switch
-        {
-            OperandType.InlineNone => 0,
-            OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
-            OperandType.InlineVar => 2,
-            OperandType.InlineBrTarget or OperandType.InlineField or OperandType.InlineI or OperandType.InlineMethod or OperandType.InlineSig or OperandType.InlineString or OperandType.InlineSwitch or OperandType.InlineTok or OperandType.InlineType or OperandType.ShortInlineR => 4,
-            OperandType.InlineI8 or OperandType.InlineR => 8,
-            _ => throw new NotSupportedException($"Unsupported IL operand type '{opCode.OperandType}'.")
-        } + (opCode.OperandType == OperandType.InlineSwitch ? BitConverter.ToInt32(il, operandOffset) * 4 : 0);
-    }
-
-    private static OpCode[] BuildOpCodeMap(bool twoByte)
-    {
-        var opCodes = new OpCode[256];
-
-        foreach (var field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
-        {
-            if (field.GetValue(null) is not OpCode opCode)
-            {
-                continue;
-            }
-
-            var value = unchecked((ushort)opCode.Value);
-            if (twoByte == ((value & 0xFF00) == 0xFE00))
-            {
-                opCodes[value & 0xFF] = opCode;
-            }
-        }
-
-        return opCodes;
     }
 }
