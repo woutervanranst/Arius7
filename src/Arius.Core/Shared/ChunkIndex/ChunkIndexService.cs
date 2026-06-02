@@ -29,11 +29,10 @@ public sealed class ChunkIndexService : IDisposable
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobContainerService _blobs;
-    private readonly IEncryptionService _encryption;
-    private readonly RelativeFileSystem _repositoryFileSystem;
-    private readonly ChunkIndexShardCache _shardCache;
-    private readonly ChunkIndexReader _reader;
+    private readonly IBlobContainerService  _blobs;
+    private readonly RelativeFileSystem     _repositoryFileSystem;
+    private readonly ChunkIndexShardCache   _shardCache;
+    private readonly ChunkIndexReader       _reader;
     private readonly ChunkIndexWriteSession _writeSession;
 
     /// <summary>
@@ -55,11 +54,10 @@ public sealed class ChunkIndexService : IDisposable
         long l1CacheBudgetBytes = DefaultL1CacheBudgetBytes)
     {
         _blobs         = blobs;
-        _encryption    = encryption;
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
-        var l2FileSystem      = new RelativeFileSystem(l2Root);
+        var l2FileSystem = new RelativeFileSystem(l2Root);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
         l2FileSystem.CreateDirectory(RelativePath.Root);
 
@@ -144,12 +142,6 @@ public sealed class ChunkIndexService : IDisposable
         await _writeSession.FlushAsync(_shardCache, cancellationToken);
     }
 
-    private void ThrowIfRepairIncomplete()
-    {
-        if (_repositoryFileSystem.FileExists(RepairInProgressMarkerPath))
-            throw new ChunkIndexRepairIncompleteException(RepairInProgressMarkerPath);
-    }
-
     public void Dispose()
     {
         /* future: flush in-progress state */
@@ -170,10 +162,12 @@ public sealed class ChunkIndexService : IDisposable
         _shardCache.InvalidateCaches();
     }
 
+    // -- Repair
+
     public async Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default)
     {
         _shardCache.InvalidateL1();
-        await _repositoryFileSystem.WriteAllBytesAsync(RepairInProgressMarkerPath, [], cancellationToken);
+        await AddRepairMarker();
         _shardCache.InvalidateCaches();
 
         var listedChunkCount = 0;
@@ -223,7 +217,7 @@ public sealed class ChunkIndexService : IDisposable
             deletedStaleShardCount++;
         }
 
-        _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
+        DeleteRepairMarker();
         _writeSession.Clear();
 
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
@@ -271,4 +265,14 @@ public sealed class ChunkIndexService : IDisposable
         => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
             ? parsed
             : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
+
+    private void ThrowIfRepairIncomplete()
+    {
+        if (IsRepairMarker())
+            throw new ChunkIndexRepairIncompleteException();
+    }
+
+    private       bool IsRepairMarker()  => _repositoryFileSystem.FileExists(RepairInProgressMarkerPath);
+    private async Task AddRepairMarker() => await _repositoryFileSystem.WriteAllBytesAsync(RepairInProgressMarkerPath, [], CancellationToken.None);
+    private       void DeleteRepairMarker() => _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
 }

@@ -1,9 +1,8 @@
 namespace Arius.Core.Shared.ChunkIndex;
 
-public sealed class ChunkIndexRepairIncompleteException(RelativePath markerPath) 
-    : InvalidOperationException($"Chunk index repair is incomplete. Rerun the explicit chunk-index repair command before archive, restore, or list operations. Repair marker: {markerPath}")
+public sealed class ChunkIndexRepairIncompleteException() 
+    : InvalidOperationException($"Chunk index repair is incomplete. Rerun the explicit chunk-index repair command before archive, restore, or list operations.")
 {
-    public RelativePath MarkerPath { get; } = markerPath;
 }
 
 public sealed class ChunkIndexCorruptException(RelativePath shardBlobName, Exception innerException) 

@@ -30,10 +30,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 {
     // ── Concurrency knobs ─────────────────────────────────────────────────────
 
-    private const int HashWorkers     = 4;
-    private const int UploadWorkers   = 4;
+    private const int HashWorkers      = 4;
+    private const int UploadWorkers    = 4;
     private const int TarUploadWorkers = 1;
-    private const int ChannelCapacity = 64;
+    private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
