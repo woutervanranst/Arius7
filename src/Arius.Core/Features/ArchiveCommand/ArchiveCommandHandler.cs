@@ -520,8 +520,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 _chunkIndex.InvalidateCaches();
 
             _logger.LogInformation("[phase] archive-tail");
+            var flushTask   = _chunkIndex.FlushAsync(cancellationToken);
+
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
-            var flushTask = _chunkIndex.FlushAsync(cancellationToken);
             var treeTask = treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
 
             await Task.WhenAll(flushTask, treeTask);
