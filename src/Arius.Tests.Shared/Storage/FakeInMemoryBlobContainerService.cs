@@ -60,11 +60,15 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         }));
     }
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+        => await TryDownloadAsync(blobName, cancellationToken) ?? throw new BlobNotFoundException(blobName);
+
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         _requestedBlobNames.Enqueue(blobName);
-        var blob = _blobs[blobName];
-        return Task.FromResult<Stream>(new MemoryStream(blob.Content, writable: false));
+        return Task.FromResult(_blobs.TryGetValue(blobName, out var blob)
+            ? (Stream?)new MemoryStream(blob.Content, writable: false)
+            : null);
     }
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
@@ -83,14 +87,34 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         });
     }
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath prefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return blobName;
+            IReadOnlyDictionary<string, string>? metadata = null;
+            long? contentLength = null;
+
+            if (includeMetadata)
+            {
+                if (!_blobs.TryGetValue(blobName, out var blob))
+                    continue;
+
+                metadata = new Dictionary<string, string>(blob.Metadata);
+                contentLength = blob.Content.LongLength;
+            }
+
+            yield return new BlobListItem
+            {
+                Name = blobName,
+                Metadata = metadata,
+                ContentLength = contentLength,
+            };
             await Task.Yield();
         }
     }

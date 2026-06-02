@@ -122,10 +122,10 @@ public class ShardTests
                 200,
                 80)
         };
-        var populated = shard.Merge(entries);
+        shard.AddOrUpdateRange(entries);
 
         var writer = new StringWriter();
-        populated.WriteTo(writer);
+        shard.WriteTo(writer);
         var text = writer.ToString();
 
         var reader  = new StringReader(text);
@@ -139,42 +139,37 @@ public class ShardTests
     }
 
     [Test]
-    public void Shard_Merge_NewEntriesAddedToExisting()
+    public void Shard_AddOrUpdateRange_NewEntriesAddedToExisting()
     {
-        var original = new Shard().Merge([new ShardEntry(FakeContentHash('1'), FakeChunkHash('a'), 10, 5)]);
-        var merged = original.Merge([new ShardEntry(FakeContentHash('2'), FakeChunkHash('b'), 20, 8)]);
+        var shard = new Shard();
+        shard.AddOrUpdate(new ShardEntry(FakeContentHash('1'), FakeChunkHash('a'), 10, 5));
+        shard.AddOrUpdate(new ShardEntry(FakeContentHash('2'), FakeChunkHash('b'), 20, 8));
 
-        merged.TryLookup(FakeContentHash('1'), out _).ShouldBeTrue();
-        merged.TryLookup(FakeContentHash('2'), out _).ShouldBeTrue();
-        merged.Count.ShouldBe(2);
+        shard.TryLookup(FakeContentHash('1'), out _).ShouldBeTrue();
+        shard.TryLookup(FakeContentHash('2'), out _).ShouldBeTrue();
+        shard.Count.ShouldBe(2);
     }
 
     [Test]
-    public void Shard_Merge_DuplicateContentHash_LastWriterWins()
+    public void Shard_AddOrUpdateRange_DuplicateContentHash_LastWriterWins()
     {
         var contentHash = FakeContentHash('1');
-        var original    = new Shard().Merge([new ShardEntry(contentHash, FakeChunkHash('a'), 10, 5)]);
-        var merged      = original.Merge([new ShardEntry(contentHash,    FakeChunkHash('b'), 10, 3)]);
+        var shard = new Shard();
+        shard.AddOrUpdateRange([
+            new ShardEntry(contentHash, FakeChunkHash('a'), 10, 5),
+            new ShardEntry(contentHash, FakeChunkHash('b'), 10, 3),
+        ]);
 
-        merged.TryLookup(contentHash, out var e).ShouldBeTrue();
+        shard.TryLookup(contentHash, out var e).ShouldBeTrue();
         e!.ChunkHash.ShouldBe(FakeChunkHash('b'));
-        merged.Count.ShouldBe(1);
+        shard.Count.ShouldBe(1);
     }
 
     [Test]
-    public void Shard_Merge_OriginalIsImmutable()
-    {
-        var original = new Shard().Merge([new ShardEntry(FakeContentHash('1'), FakeChunkHash('a'), 10, 5)]);
-        _ = original.Merge([new ShardEntry(FakeContentHash('2'), FakeChunkHash('b'), 20, 8)]);
-
-        original.TryLookup(FakeContentHash('2'), out _).ShouldBeFalse();
-    }
-
-    [Test]
-    public void Shard_PrefixOf_Returns4Characters()
+    public void Shard_PrefixOf_UsesChunkIndexShardPrefixLength()
     {
         Shard.PrefixOf(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
-            .ShouldBe(PathSegment.Parse("aabb"));
+            .ShouldBe(PathSegment.Parse("aa"));
     }
 
     [Test]

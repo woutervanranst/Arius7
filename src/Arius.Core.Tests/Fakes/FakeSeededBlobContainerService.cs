@@ -20,25 +20,31 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
     public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+        => await TryDownloadAsync(blobName, cancellationToken) ?? throw new BlobNotFoundException(blobName);
+
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         if (!_blobs.TryGetValue(blobName, out var content))
-            throw new FileNotFoundException(blobName.ToString());
+            return Task.FromResult<Stream?>(null);
 
-        return Task.FromResult<Stream>(new MemoryStream(content, writable: false));
+        return Task.FromResult<Stream?>(new MemoryStream(content, writable: false));
     }
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName) });
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (includeMetadata)
+            throw new NotSupportedException("FakeSeededBlobContainerService does not model metadata-aware listing.");
+
         foreach (var name in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return name;
+            yield return new BlobListItem { Name = name };
             await Task.Yield();
         }
     }

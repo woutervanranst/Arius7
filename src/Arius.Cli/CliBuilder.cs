@@ -1,5 +1,6 @@
 using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Ls;
+using Arius.Cli.Commands.Repair;
 using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
@@ -72,6 +73,7 @@ public static class CliBuilder
         rootCommand.Subcommands.Add(ArchiveVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(RestoreVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(LsVerb.Build(serviceProviderFactory));
+        rootCommand.Subcommands.Add(RepairVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(UpdateVerb.Build());
         return rootCommand;
     }

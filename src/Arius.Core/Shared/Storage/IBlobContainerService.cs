@@ -16,6 +16,20 @@ public sealed class BlobAlreadyExistsException : IOException
 }
 
 /// <summary>
+/// Thrown when a blob download is attempted against a blob that does not exist.
+/// </summary>
+public sealed class BlobNotFoundException : FileNotFoundException
+{
+    public RelativePath BlobName { get; }
+
+    public BlobNotFoundException(RelativePath blobName)
+        : base($"Blob not found: {blobName}")
+    {
+        BlobName = blobName;
+    }
+}
+
+/// <summary>
 /// Blob tier for uploaded content.
 /// Maps to Azure access tiers; other backends may map these to equivalent concepts.
 /// </summary>
@@ -47,6 +61,18 @@ public sealed class BlobMetadata
     public          bool         IsRehydrating    { get; init; }
     public          IReadOnlyDictionary<string, string> Metadata { get; init; }
         = new Dictionary<string, string>();
+}
+
+/// <summary>
+/// Blob information returned by prefix listings.
+/// </summary>
+public sealed record BlobListItem
+{
+    public required RelativePath Name { get; init; }
+
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
+    public long? ContentLength { get; init; }
 }
 
 /// <summary>
@@ -103,8 +129,17 @@ public interface IBlobContainerService
     /// <summary>
     /// Returns a readable stream for the blob at <paramref name="blobName"/>.
     /// The caller must dispose the stream when done.
+    /// Throws <see cref="BlobNotFoundException"/> when the blob does not exist.
     /// </summary>
     Task<Stream> DownloadAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a readable stream for the blob at <paramref name="blobName"/>, or <c>null</c>
+    /// when the blob does not exist. The caller must dispose the stream when one is returned.
+    /// </summary>
+    Task<Stream?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 
@@ -121,10 +156,12 @@ public interface IBlobContainerService
     // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Lists all blob names that start with <paramref name="prefix"/>.
+    /// Lists all blobs that start with <paramref name="prefix"/>.
+    /// Metadata is only populated when <paramref name="includeMetadata"/> is true.
     /// </summary>
-    IAsyncEnumerable<RelativePath> ListAsync(
+    IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath      prefix,
+        bool              includeMetadata   = false,
         CancellationToken cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────

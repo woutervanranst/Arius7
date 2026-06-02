@@ -10,6 +10,14 @@ public readonly record struct ContentHash
 
     public string Prefix4 => Value[..4];
 
+    public string Prefix(int length)
+    {
+        if (length < 0 || length > Value.Length)
+            throw new ArgumentOutOfRangeException(nameof(length), length, "Prefix length must be between 0 and the hash length.");
+
+        return Value[..length];
+    }
+
     public string Short8 => Value[..8];
 
     private string Value => field ?? throw new InvalidOperationException("ContentHash is uninitialized.");

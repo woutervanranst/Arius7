@@ -60,29 +60,26 @@ public sealed class Shard
 
     public Shard() => _entries = [];
 
-    private Shard(Dictionary<ContentHash, ShardEntry> entries) => _entries = entries;
-
     public int Count => _entries.Count;
 
     // ── Lookup ─────────────────────────────────────────────────────────────────
 
     public bool TryLookup(ContentHash contentHash, out ShardEntry? entry) => _entries.TryGetValue(contentHash, out entry);
 
-    // ── Merge ──────────────────────────────────────────────────────────────────
+    // ── Mutation ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns a new shard that contains all entries from this shard plus
-    /// the provided <paramref name="newEntries"/>. Existing entries are kept
-    /// (last-writer-wins if duplicate content-hash is present in newEntries).
+    /// Adds or replaces an entry in this owned mutable shard page.
     /// </summary>
-    public Shard Merge(IEnumerable<ShardEntry> newEntries)
-    {
-        var combined = new Dictionary<ContentHash, ShardEntry>(_entries);
+    public void AddOrUpdate(ShardEntry entry) => _entries[entry.ContentHash] = entry;
 
-        foreach (var e in newEntries)
-            combined[e.ContentHash] = e;
-        
-        return new Shard(combined);
+    /// <summary>
+    /// Adds or replaces entries in this owned mutable shard page. Duplicate content hashes use last-writer-wins order.
+    /// </summary>
+    public void AddOrUpdateRange(IEnumerable<ShardEntry> entries)
+    {
+        foreach (var entry in entries)
+            AddOrUpdate(entry);
     }
 
     // ── Serialize ──────────────────────────────────────────────────────────────
@@ -99,22 +96,21 @@ public sealed class Shard
     /// <summary>Parses a shard from a text reader.</summary>
     public static Shard ReadFrom(TextReader reader)
     {
-        var entries = new Dictionary<ContentHash, ShardEntry>();
+        var shard = new Shard();
         while (reader.ReadLine() is { } line)
         {
             var entry = ShardEntry.TryParse(line);
             if (entry is not null)
-                entries[entry.ContentHash] = entry;
+                shard.AddOrUpdate(entry);
         }
 
-        return new Shard(entries);
+        return shard;
     }
 
     // ── Prefix calculation ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the 2-character (1-byte / 4-bit + 4-bit) shard prefix for a content-hash.
-    /// With 65,536 shards this is the first 4 hex chars (2 bytes) of the hash.
+    /// Returns the configured shard prefix for a content-hash.
     /// </summary>
-    public static PathSegment PrefixOf(ContentHash contentHash) => PathSegment.Parse(contentHash.Prefix4);
+    public static PathSegment PrefixOf(ContentHash contentHash) => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.ShardPrefixLength));
 }

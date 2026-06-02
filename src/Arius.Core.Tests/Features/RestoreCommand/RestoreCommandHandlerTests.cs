@@ -85,7 +85,7 @@ public class RestoreCommandHandlerTests
             var       blobs           = new ThrowOnCreateBlobContainerService("restore");
             var       encryption      = new PlaintextPassthroughService();
             using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
             var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
             var       mediator        = Substitute.For<IMediator>();
             var       logger          = new FakeLogger<RestoreCommandHandler>();
@@ -257,7 +257,7 @@ public class RestoreCommandHandlerTests
         try
         {
             using var index           = new ChunkIndexService(blobs, encryption, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, index, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
             var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
 
             var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8).ToString());

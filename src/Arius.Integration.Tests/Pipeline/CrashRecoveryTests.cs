@@ -38,7 +38,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         var mediator = Substitute.For<IMediator>();
         var logger = new FakeLogger<ArchiveCommandHandler>();
         return new ArchiveCommandHandler(
-            blobService, encryption, index, new ChunkStorageService(blobService, encryption), new FileTreeService(blobService, encryption, index, Account, containerName), new SnapshotService(blobService, encryption, Account, containerName), mediator,
+            blobService, encryption, index, new ChunkStorageService(blobService, encryption), new FileTreeService(blobService, encryption, Account, containerName), new SnapshotService(blobService, encryption, Account, containerName), mediator,
             logger,
             Account, containerName);
     }
@@ -77,8 +77,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // The large-file path writes metadata in a separate call after OpenWrite completes,
         // so a concurrent fault can leave uploaded chunk bodies without arius-type metadata.
         var blobs = new List<RelativePath>();
-        await foreach (var name in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
-            blobs.Add(name);
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+            blobs.Add(item.Name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
 
         // ── Run 2: use real service → should complete, deduplicate already-uploaded chunk

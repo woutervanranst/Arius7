@@ -25,11 +25,14 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.DownloadAsync(blobName, cancellationToken);
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        _inner.TryDownloadAsync(blobName, cancellationToken);
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken cancellationToken = default) =>
-        _inner.ListAsync(prefix, cancellationToken);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
+        _inner.ListAsync(prefix, includeMetadata, cancellationToken);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {

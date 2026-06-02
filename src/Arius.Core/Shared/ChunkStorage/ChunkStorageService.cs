@@ -90,14 +90,14 @@ public sealed class ChunkStorageService : IChunkStorageService
             await _blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
             await _blobs.SetTierAsync(blobName, tier, cancellationToken);
 
-            return new ChunkUploadResult(chunkHash, storedSize, AlreadyExisted: false);
+            return new ChunkUploadResult(chunkHash, storedSize, AlreadyExisted: false, OriginalSize: sourceSize);
         }
         catch (BlobAlreadyExistsException)
         {
             // DESIGN DECISION: The Metadata is written only after a successful upload, so we can assume that if the blob has this metadata, the upload completed successfully
             var existing = await _blobs.GetMetadataAsync(blobName, cancellationToken);
             if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true);
+                return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true, OriginalSize: TryReadOriginalSize(existing.Metadata));
 
             await _blobs.DeleteAsync(blobName, cancellationToken);
             content.Position = 0;
@@ -113,6 +113,11 @@ public sealed class ChunkStorageService : IChunkStorageService
         return isTar ? ContentTypes.TarPlaintext : ContentTypes.LargePlaintext;
     }
 
+    private static long? TryReadOriginalSize(IReadOnlyDictionary<string, string> metadata)
+        => metadata.TryGetValue(BlobMetadataKeys.OriginalSize, out var value) && long.TryParse(value, out var originalSize)
+            ? originalSize
+            : null;
+
     private async Task<bool> UploadThinCoreAsync(
         ContentHash contentHash,
         ChunkHash parentChunkHash,
@@ -124,6 +129,7 @@ public sealed class ChunkStorageService : IChunkStorageService
         var metadata = new Dictionary<string, string>
         {
             [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+            [BlobMetadataKeys.ParentChunkHash] = parentChunkHash.ToString(),
             [BlobMetadataKeys.OriginalSize] = originalSize.ToString(),
             [BlobMetadataKeys.CompressedSize] = compressedSize.ToString(),
         };
@@ -133,14 +139,13 @@ public sealed class ChunkStorageService : IChunkStorageService
         {
             await _blobs.UploadAsync(
                 blobName: blobName,
-                content: new MemoryStream(System.Text.Encoding.UTF8.GetBytes(parentChunkHash.ToString())),
-                metadata: new Dictionary<string, string>(),
+                content: new MemoryStream(Array.Empty<byte>(), writable: false),
+                metadata: metadata,
                 tier: BlobTier.Cool,
                 contentType: ContentTypes.Thin,
                 overwrite: false,
                 cancellationToken: cancellationToken);
 
-            await _blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
             return true;
         }
         catch (BlobAlreadyExistsException)
@@ -199,8 +204,9 @@ public sealed class ChunkStorageService : IChunkStorageService
         var blobNames = new List<RelativePath>();
         long totalBytes = 0;
 
-        await foreach (var blobName in _blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken: cancellationToken))
         {
+            var blobName = item.Name;
             blobNames.Add(blobName);
             var meta = await _blobs.GetMetadataAsync(blobName, cancellationToken);
             totalBytes += meta.ContentLength ?? 0;

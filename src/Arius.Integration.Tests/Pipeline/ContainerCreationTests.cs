@@ -45,7 +45,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var mediator   = Substitute.For<IMediator>();
         var logger     = new FakeLogger<ArchiveCommandHandler>();
         var handler    = new ArchiveCommandHandler(
-            svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, index, Account, containerName),
+            svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, Account, containerName),
             new SnapshotService(svc, encryption, Account, containerName), mediator,
             logger,
             Account, containerName);

@@ -7,7 +7,7 @@ public class ShardSerializerLocalTests
     [Test]
     public void SerializeLocal_ThenDeserializeLocal_RoundTrips()
     {
-        var shard = new Shard().Merge([
+        var shard = CreateShard(
             new ShardEntry(
                 FakeContentHash('a'),
                 FakeChunkHash('b'),
@@ -18,7 +18,7 @@ public class ShardSerializerLocalTests
                 FakeChunkHash('d'),
                 100,
                 40)
-        ]);
+        );
 
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
@@ -33,13 +33,13 @@ public class ShardSerializerLocalTests
     [Test]
     public void SerializeLocal_ProducesHumanReadableText()
     {
-        var shard = new Shard().Merge([
+        var shard = CreateShard(
             new ShardEntry(
                 FakeContentHash('a'),
                 FakeChunkHash('b'),
                 512,
                 256)
-        ]);
+        );
 
         var bytes = ShardSerializer.SerializeLocal(shard);
         var text  = System.Text.Encoding.UTF8.GetString(bytes);
@@ -54,13 +54,13 @@ public class ShardSerializerLocalTests
     public void SerializeLocal_IsNotEncryptedOrCompressed()
     {
         var encSvc = new PassphraseEncryptionService("my-passphrase");
-        var shard  = new Shard().Merge([
+        var shard = CreateShard(
             new ShardEntry(
                 FakeContentHash('a'),
                 FakeChunkHash('b'),
                 512,
                 256)
-        ]);
+        );
 
         var localBytes = ShardSerializer.SerializeLocal(shard);
 
@@ -76,5 +76,12 @@ public class ShardSerializerLocalTests
         var bytes  = ShardSerializer.SerializeLocal(shard);
         var loaded = ShardSerializer.DeserializeLocal(bytes);
         loaded.Count.ShouldBe(0);
+    }
+
+    private static Shard CreateShard(params ShardEntry[] entries)
+    {
+        var shard = new Shard();
+        shard.AddOrUpdateRange(entries);
+        return shard;
     }
 }

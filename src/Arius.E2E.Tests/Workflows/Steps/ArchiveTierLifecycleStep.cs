@@ -173,8 +173,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         {
             var blobNames = new List<RelativePath>();
 
-            await foreach (var blobName in blobContainer.ListAsync(prefix, cancellationToken))
-                blobNames.Add(blobName);
+            await foreach (var item in blobContainer.ListAsync(prefix, cancellationToken: cancellationToken))
+                blobNames.Add(item.Name);
 
             foreach (var blobName in blobNames)
                 await blobContainer.DeleteAsync(blobName, cancellationToken);

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
@@ -88,6 +89,30 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_WhenChunkIndexFlushFails_DoesNotPublishSnapshotAndKeepsSessionEntries()
+    {
+        var blobs = new ThrowOnChunkIndexUploadBlobContainerService();
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(
+            blobs,
+            "test-account",
+            $"test-container-{Guid.NewGuid():N}",
+            new PlaintextPassthroughService(),
+            TestTempRoots.CreateDirectory("archive-test"));
+        var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 2 * 1024 * 1024);
+        var contentHash = fixture.Encryption.ComputeHash(content);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool);
+
+        result.Success.ShouldBeFalse();
+        (await fixture.Snapshot.ResolveAsync()).ShouldBeNull();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+
+        blobs.FailChunkIndexUploads = false;
+        await fixture.Index.FlushAsync();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+    }
+
+    [Test]
     public async Task Archive_NewContent_EmitsConsistentPhaseTimingLogs()
     {
         await using var fixture = await CreateArchiveFixtureAsync();
@@ -112,8 +137,7 @@ public class ArchiveRecoveryTests
         messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] flush-index", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] build-filetree", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] archive-tail", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
@@ -323,5 +347,37 @@ public class ArchiveRecoveryTests
         }
 
         return ChunkHash.Parse(fixture.Encryption.ComputeHash(tarStream.ToArray()));
+    }
+
+    private sealed class ThrowOnChunkIndexUploadBlobContainerService : IBlobContainerService
+    {
+        private readonly FakeInMemoryBlobContainerService _inner = new();
+
+        public bool FailChunkIndexUploads { get; set; } = true;
+
+        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => _inner.CreateContainerIfNotExistsAsync(cancellationToken);
+
+        public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+            => FailChunkIndexUploads && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
+                ? throw new InvalidOperationException("chunk-index upload failed")
+                : _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+
+        public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) => _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
+
+        public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DownloadAsync(blobName, cancellationToken);
+
+        public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.TryDownloadAsync(blobName, cancellationToken);
+
+        public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.GetMetadataAsync(blobName, cancellationToken);
+
+        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) => _inner.ListAsync(prefix, includeMetadata, cancellationToken);
+
+        public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
+
+        public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) => _inner.SetTierAsync(blobName, tier, cancellationToken);
+
+        public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
+
+        public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DeleteAsync(blobName, cancellationToken);
     }
 }

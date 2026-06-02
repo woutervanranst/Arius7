@@ -101,6 +101,34 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            return await DownloadCoreAsync(blobName, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsBlobNotFoundError(ex))
+        {
+            throw new BlobNotFoundException(blobName);
+        }
+    }
+
+    public async Task<Stream?> TryDownloadAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await DownloadCoreAsync(blobName, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (IsBlobNotFoundError(ex))
+        {
+            return null;
+        }
+    }
+
+    private async Task<Stream> DownloadCoreAsync(
+        RelativePath      blobName,
+        CancellationToken cancellationToken)
+    {
         var blobClient = _container.GetBlobClient(blobName.ToString());
         var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
@@ -135,14 +163,26 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── List ──────────────────────────────────────────────────────────────────
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath prefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var item in _container.GetBlobsAsync(
-                           traits: BlobTraits.None,
+                           traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
                            states: BlobStates.None,
                            prefix: prefix.ToBlobPrefix(),
                            cancellationToken: cancellationToken))
-            yield return RelativePath.Parse(item.Name);
+        {
+            yield return new BlobListItem
+            {
+                Name = RelativePath.Parse(item.Name),
+                Metadata = includeMetadata && item.Metadata is not null
+                    ? new Dictionary<string, string>(item.Metadata)
+                    : null,
+                ContentLength = includeMetadata ? item.Properties.ContentLength : null,
+            };
+        }
     }
 
     // ── Metadata update ───────────────────────────────────────────────────────
@@ -240,4 +280,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     private static bool IsAlreadyExistsError(RequestFailedException ex) =>
         ex is { Status: 412, ErrorCode: "ConditionNotMet" } ||
         ex is { Status: 409, ErrorCode: "BlobAlreadyExists" or "BlobArchived" };
+
+    private static bool IsBlobNotFoundError(RequestFailedException ex) =>
+        ex is { Status: 404, ErrorCode: "BlobNotFound" };
 }

@@ -67,7 +67,7 @@ The system SHALL report a clear error when a requested snapshot version does not
 - **THEN** the system SHALL report the snapshot was not found and list available snapshot timestamps
 
 ### Requirement: Size lookup from chunk index
-The system SHALL retrieve file sizes from the chunk index `original-size` field when streaming file entries. Sizes SHALL be looked up in per-directory batches (all file hashes in a single directory are batched into one `LookupAsync` call). If the chunk index lookup fails (e.g., shard not available), the size SHALL be `null`.
+The system SHALL retrieve file sizes from the chunk index `original-size` field when streaming file entries. Sizes SHALL be looked up in per-directory batches (all file hashes in a single directory are batched into one `LookupAsync` call). If a content hash is not found in the chunk index during `ls`, the size SHALL be `null`. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, `ls` SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command.
 
 #### Scenario: Size displayed from index
 - **WHEN** streaming file entries
@@ -76,6 +76,11 @@ The system SHALL retrieve file sizes from the chunk index `original-size` field 
 #### Scenario: Size unavailable
 - **WHEN** a content hash is not found in the chunk index during ls
 - **THEN** the system SHALL set `OriginalSize` to `null` for that entry
+
+#### Scenario: Corrupt chunk index fails with repair instruction
+- **WHEN** chunk-index lookup during `ls` detects a corrupt remote shard or interrupted local repair state
+- **THEN** `ls` SHALL fail with a clear chunk-index error
+- **AND** the error SHALL instruct the user to run the explicit chunk-index repair command
 
 ### Requirement: Recursive flag
 The `ListQuery` SHALL accept a `Recursive` property (default `true`). When `Recursive=true`, the system SHALL perform a full depth-first tree walk, streaming all entries in all subdirectories. When `Recursive=false`, the system SHALL stream only the immediate children of the target directory (one level deep). `Recursive` and `Prefix` are orthogonal: `Prefix` navigates to the starting directory, `Recursive` controls depth.

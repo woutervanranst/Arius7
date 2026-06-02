@@ -441,17 +441,17 @@ public class FileTreeServiceTests
         blobs.FileTreesListed.ShouldBeFalse();
     }
 
-    // ── 7.6  ValidateAsync — mismatch — creates markers + deletes L2 ──────────
+    // ── 7.6  ValidateAsync — mismatch — creates markers ──────────
 
     [Test]
-    public async Task ValidateAsync_SnapshotMismatch_MarkerFilesCreated_L2Deleted()
+    public async Task ValidateAsync_SnapshotMismatch_MarkerFilesCreated_AndReturnsMismatch()
     {
         const string acct = "tc-val-miss", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
-        // Determine the L2 dir and pre-populate it with a dummy file
+        // Determine the L2 dir and pre-populate it with a dummy file. FileTreeService no longer owns chunk-index invalidation.
         var chunkL2FileSystem = new RelativeFileSystem(fixture.ChunkIndexCacheDirectory);
         chunkL2FileSystem.CreateDirectory(RelativePath.Root);
         var dummyL2File = RelativePath.Parse("dummy-shard.dat");
@@ -469,14 +469,16 @@ public class FileTreeServiceTests
         // Two remote filetree blobs.
         blobs.SeedBlob(BlobPaths.FileTreePath(firstRemoteHash), [], contentType: null);
         blobs.SeedBlob(BlobPaths.FileTreePath(secondRemoteHash), [], contentType: null);
-        await fixture.FileTreeService.ValidateAsync();
+        var result = await fixture.FileTreeService.ValidateAsync();
+
+        result.SnapshotMismatch.ShouldBeTrue();
 
         // Empty marker files created for remote filetrees.
         File.Exists(ResolveCachePath(fixture.FileTreeCacheDirectory, firstRemoteHash)).ShouldBeTrue();
         File.Exists(ResolveCachePath(fixture.FileTreeCacheDirectory, secondRemoteHash)).ShouldBeTrue();
 
-        // L2 dummy file deleted.
-        chunkL2FileSystem.FileExists(dummyL2File).ShouldBeFalse();
+        // Chunk-index L2 remains untouched; archive coordinates mutable index invalidation.
+        chunkL2FileSystem.FileExists(dummyL2File).ShouldBeTrue();
     }
 
     // ── 7.7  ValidateAsync — mismatch does NOT overwrite existing cache files ──

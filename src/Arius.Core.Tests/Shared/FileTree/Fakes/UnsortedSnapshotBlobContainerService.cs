@@ -22,10 +22,13 @@ internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<Relativ
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });
 
-    public async IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (prefix == BlobPaths.SnapshotsPrefix)
         {
@@ -35,7 +38,7 @@ internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<Relativ
                     continue;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return snapshot;
+                yield return new BlobListItem { Name = snapshot };
                 await Task.Yield();
             }
 

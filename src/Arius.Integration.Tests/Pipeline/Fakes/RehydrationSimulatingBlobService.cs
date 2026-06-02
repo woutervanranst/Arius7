@@ -29,6 +29,9 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
     public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.DownloadAsync(blobName, ct);
 
+    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken ct = default)
+        => inner.TryDownloadAsync(blobName, ct);
+
     public async Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken ct = default)
     {
         var actual = await inner.GetMetadataAsync(blobName, ct);
@@ -58,8 +61,8 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return actual;
     }
 
-    public IAsyncEnumerable<RelativePath> ListAsync(RelativePath prefix, CancellationToken ct = default)
-        => inner.ListAsync(prefix, ct);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken ct = default)
+        => inner.ListAsync(prefix, includeMetadata, ct);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct = default)

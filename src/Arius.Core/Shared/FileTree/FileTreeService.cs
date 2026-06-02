@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
-using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -20,18 +19,14 @@ namespace Arius.Core.Shared.FileTree;
 ///     On mismatch, it lists all remote <c>filetrees/</c> blobs and materializes an empty marker
 ///     file on disk for each one not already cached, so that <see cref="ExistsInRemote"/> is
 ///     always a rooted relative filesystem existence check on both fast and slow paths.</item>
-///   <item>On snapshot mismatch the chunk-index L2 directory is also deleted so
-///     <see cref="ChunkIndexService"/> is forced to re-download stale shards.</item>
 /// </list>
 /// </summary>
 public sealed class FileTreeService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
-    private readonly ChunkIndexService     _chunkIndex;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
     private readonly RelativeFileSystem    _snapshotCacheFileSystem;
-    private readonly RelativeFileSystem    _chunkIndexCacheFileSystem;
 
     /// <summary>
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
@@ -42,26 +37,21 @@ public sealed class FileTreeService
 
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
-    /// <param name="chunkIndex">Chunk index service — used to invalidate the L1 in-memory cache on snapshot mismatch.</param>
     /// <param name="accountName">Used to derive the local cache directory.</param>
     /// <param name="containerName">Used to derive the local cache directory.</param>
     public FileTreeService(
         IBlobContainerService blobs,
         IEncryptionService    encryption,
-        ChunkIndexService     chunkIndex,
         string                accountName,
         string                containerName)
     {
         _blobs           = blobs;
         _encryption      = encryption;
-        _chunkIndex      = chunkIndex;
         var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
         var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
-        var chunkIndexCacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
 
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _snapshotCacheFileSystem = new RelativeFileSystem(snapshotCacheRoot);
-        _chunkIndexCacheFileSystem = new RelativeFileSystem(chunkIndexCacheRoot);
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
         // Note: snapshot cache root is created by SnapshotService; we only read it here.
     }
@@ -260,10 +250,10 @@ public sealed class FileTreeService
     ///
     /// Must be called once before <see cref="ExistsInRemote"/>.
     /// </summary>
-    public async Task ValidateAsync(CancellationToken cancellationToken = default)
+    public async Task<FileTreeValidationResult> ValidateAsync(CancellationToken cancellationToken = default)
     {
         if (_validated)
-            return;
+            return new FileTreeValidationResult(SnapshotMismatch: false);
 
         // Latest local snapshot filename (lexicographic = chronological due to timestamp format)
         PathSegment? latestLocal = _snapshotCacheFileSystem.EnumerateFileNames(RelativePath.Root)
@@ -273,8 +263,9 @@ public sealed class FileTreeService
 
         // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
         var remoteSnapshots = new List<PathSegment>();
-        await foreach (var name in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: cancellationToken))
         {
+            var name = item.Name;
             if (name != RelativePath.Root)
                 remoteSnapshots.Add(name.Name);
         }
@@ -288,7 +279,7 @@ public sealed class FileTreeService
         if (latestRemote is null)
         {
             _validated = true;
-            return;
+            return new FileTreeValidationResult(SnapshotMismatch: false);
         }
 
         // Fast path: this machine wrote the last snapshot.
@@ -297,7 +288,7 @@ public sealed class FileTreeService
             localSnapshot == remoteSnapshot)
         {
             _validated = true;
-            return;
+            return new FileTreeValidationResult(SnapshotMismatch: false);
         }
 
         // Slow path: snapshot mismatch (or no local snapshot at all).
@@ -306,9 +297,10 @@ public sealed class FileTreeService
         //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
         //   any uncached remote trees now so ExistsInRemote() can stay a cheap local file existence
         //   check during the entire build instead of doing a remote existence probe per tree node.
-        await foreach (var blobName in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var blobName = item.Name;
             var relativePath = RelativePath.Root / blobName.Name;
             if (!_diskCacheFileSystem.FileExists(relativePath))
             {
@@ -317,13 +309,8 @@ public sealed class FileTreeService
             }
         }
 
-        // Invalidate chunk-index L2 (another machine may have updated shards)
-        _chunkIndexCacheFileSystem.ClearDirectory(RelativePath.Root);
-
-        // Also clear the in-memory L1 cache so stale shard data is not served from memory.
-        _chunkIndex.InvalidateL1();
-
         _validated = true;
+        return new FileTreeValidationResult(SnapshotMismatch: true);
     }
 
     // ── ExistsInRemote ────────────────────────────────────────────────────

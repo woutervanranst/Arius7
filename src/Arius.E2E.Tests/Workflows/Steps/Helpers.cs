@@ -67,7 +67,7 @@ internal static class Helpers
         };
 
     public static async Task<int> CountBlobsAsync(IBlobContainerService blobContainer, RelativePath prefix, CancellationToken cancellationToken)
-        => await blobContainer.ListAsync(prefix, cancellationToken).CountAsync(cancellationToken: cancellationToken);
+        => await blobContainer.ListAsync(prefix, cancellationToken: cancellationToken).CountAsync(cancellationToken: cancellationToken);
 
     public static Task<SnapshotManifest?> ResolveLatestSnapshotAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
         => state.Fixture.Repository.Snapshot.ResolveAsync(cancellationToken: cancellationToken);
@@ -93,11 +93,11 @@ internal static class Helpers
         entry.ShouldNotBeNull($"Chunk index should resolve small duplicate content hash '{contentHash}'.");
         entry!.ChunkHash.ShouldNotBe(ChunkHash.Parse(contentHash), "Small bundled files should resolve to their parent tar chunk hash.");
 
-        // Assert that the ThinChunk is pointing to the correct TarChunk
-        await using var thinStream = await state.Fixture.BlobContainer.DownloadAsync(thinBlobName, cancellationToken);
-        using var reader = new StreamReader(thinStream);
-        var parentChunkHash = ChunkHash.Parse(await reader.ReadToEndAsync(cancellationToken));
-        parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk body should point at the tar chunk recorded in the chunk index.");
+        // Assert that the thin chunk metadata points to the correct tar chunk.
+        var thinMetadata = await state.Fixture.BlobContainer.GetMetadataAsync(thinBlobName, cancellationToken);
+        thinMetadata.Metadata.ShouldContainKey(BlobMetadataKeys.ParentChunkHash);
+        var parentChunkHash = ChunkHash.Parse(thinMetadata.Metadata[BlobMetadataKeys.ParentChunkHash]);
+        parentChunkHash.ShouldBe(entry.ChunkHash, "Thin chunk metadata should point at the tar chunk recorded in the chunk index.");
     }
 
     private static Task<ShardEntry?> LookupChunkAsync(RepresentativeWorkflowState state, ContentHash contentHash, CancellationToken cancellationToken)

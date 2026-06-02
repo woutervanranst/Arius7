@@ -18,6 +18,9 @@ public static class BlobMetadataKeys
     /// <summary>Proportional compressed size estimate for this file within a tar bundle (for thin chunks).</summary>
     public const string CompressedSize    = "compressed_size";
 
+    /// <summary>Parent tar chunk hash for a thin chunk.</summary>
+    public const string ParentChunkHash   = "parent_chunk_hash";
+
     // ── Chunk type values ──────────────────────────────────────────────────────
 
     public const string TypeLarge = "large";
@@ -81,7 +84,7 @@ public static class BlobPaths
     /// <summary>Snapshot manifests.</summary>
     public static RelativePath SnapshotsPrefix => RelativePath.Root / PathSegment.Parse("snapshots");
 
-    /// <summary>Chunk index shards (65536 shards by 2-byte prefix).</summary>
+    /// <summary>Chunk index shards.</summary>
     public static RelativePath ChunkIndexPrefix => RelativePath.Root / PathSegment.Parse("chunk-index");
 
     public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / PathSegment.Parse(hash.ToString());
