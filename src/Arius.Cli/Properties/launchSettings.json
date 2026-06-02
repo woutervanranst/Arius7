@@ -3,6 +3,14 @@
     "10 archive": {
       "commandName": "Project",
       "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariusci -c test -t Cool"
+    },
+    "20 restore": {
+      "commandName": "Project",
+      "commandLineArgs": "restore \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source-Restore\" -a ariusci -c test"
+    },
+    "30 repair chunk-index": {
+      "commandName": "Project",
+      "commandLineArgs": "repair-index -a ariusci -c test"
     }
   }
 }
