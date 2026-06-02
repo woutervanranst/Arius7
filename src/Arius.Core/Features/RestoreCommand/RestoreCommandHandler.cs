@@ -180,7 +180,7 @@ public sealed class RestoreCommandHandler
                 var contentHashes = toRestore
                     .Select(file => file.ContentHash)
                     .Distinct()
-                    .ToList();
+                    .ToList(); // TODO this is a bottleneck --> make it streaming
                 var indexEntries = await _index.LookupAsync(contentHashes, cancellationToken);
 
                 // Group files by chunk hash
