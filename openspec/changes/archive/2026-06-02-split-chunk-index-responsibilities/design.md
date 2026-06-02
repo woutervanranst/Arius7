@@ -58,7 +58,7 @@ This component should expose operations at the shard-prefix level:
 - invalidate L1
 - invalidate L1 and L2 cache state
 
-It should not own `_sessionEntries`, `_pendingEntries`, public lookup behavior, or repair entry reconstruction.
+It should not own archive write-session state, public lookup behavior, or repair entry reconstruction.
 
 The shard cache/store may be used by other chunk-index implementation components where that keeps the facade small, but it must not become a direct dependency of non-chunk-index code. Normal archive, restore, list, and repair workflows still enter chunk-index behavior through `ChunkIndexService`.
 
@@ -88,7 +88,7 @@ Alternative considered: pass all hashes to the reader and let facade-level sessi
 
 ### Extract an archive write session component
 
-Move `_sessionEntries`, `_pendingEntries`, `AddEntry`, and `FlushAsync` behavior into an internal write-session component, tentatively `ChunkIndexWriteSession`.
+Move archive session entries, `AddEntry`, and `FlushAsync` behavior into an internal write-session component, tentatively `ChunkIndexWriteSession`.
 
 The write session remains unbounded in this change. It should keep the current semantics:
 
@@ -98,15 +98,15 @@ The write session remains unbounded in this change. It should keep the current s
 - each touched shard is loaded, mutated with pending entries, uploaded, saved to L2, and promoted to L1
 - session and pending state are cleared only after the whole flush succeeds, or after successful repair
 
-The write session should protect session and pending state with one short critical-section gate rather than relying only on `ConcurrentDictionary`. A `ConcurrentDictionary` can make same-session lookup safe, but it does not define append order, duplicate-entry last-writer semantics, or atomic snapshot/clear behavior across both session and pending collections. The write-session gate should cover recording a new entry into both collections, reading the session overlay for lookup, taking the pending snapshot that `FlushAsync` will process, marking flush in progress, and clearing state only after the whole flush succeeds. The gate must not be held across shard-cache/store I/O or awaits.
+The write session can rely on a content-hash-keyed `ConcurrentDictionary` for same-session lookup and pending-flush state. This matches archive semantics: duplicate entries use last-writer-wins by content hash, and `FlushAsync` is an archive-tail operation that starts after upload workers have stopped recording entries. A separate write-session gate is not required for normal `AddEntry` calls and would unnecessarily serialize concurrent archive workers. `FlushAsync` should still use an atomic flush-in-progress guard so only one flush runs at a time, snapshot the current entries before shard-cache/store I/O, and clear state only after the whole flush succeeds.
 
-`FlushAsync` is an archive-tail operation and is not expected to run concurrently with archive workers still calling `AddEntry`. The write session should still fail fast or otherwise reject `AddEntry` while a flush is in progress so misuse cannot silently clear entries that were added after the flush snapshot. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.
+`FlushAsync` is an archive-tail operation and is not expected to run concurrently with archive workers still calling `AddEntry`. The write session should still fail fast when `AddEntry` observes that a flush is already in progress, but it does not need an atomic check-and-add boundary for a caller racing the start of flush because archive orchestration drains entry-producing workers first. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.
 
 Alternative considered: make the write session immediately bounded or disk-backed. That is the likely next hardening step for very large archives, but it changes archive runtime behavior and failure modes. This change only separates responsibilities.
 
 Alternative considered: clear successfully flushed prefixes as each prefix completes. That may reduce duplicate work after an in-process retry, but it changes partial-failure semantics and would need a more explicit recovery contract for entries that were cleared locally before the overall archive failed.
 
-Alternative considered: keep `ConcurrentDictionary` for session entries and a concurrent collection for pending entries as the entire write-session concurrency model. That preserves the current broad shape, but it leaves duplicate pending-entry ordering and flush snapshot/clear semantics implicit. A short write-session gate makes the contract explicit without adding I/O under lock.
+Alternative considered: protect all write-session state with a short critical-section gate. That makes racing `AddEntry`/`FlushAsync` misuse locally atomic, but `FlushAsync` is already an archive-tail operation and normal entry recording benefits from not being serialized through a write-session lock. An atomic flush-in-progress guard plus concurrent content-hash-keyed session state is enough for the implemented archive contract.
 
 ### Keep repair orchestration in the facade initially
 

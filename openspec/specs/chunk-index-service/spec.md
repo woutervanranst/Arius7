@@ -13,7 +13,7 @@ The `ChunkIndexService` implementation SHALL keep read-through shard cache mecha
 
 `Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own async per-prefix synchronization for operations that read, load, mutate, save, upload, or promote a shard. Read-only lookup and update/rebuild operations for the same prefix SHALL use the same prefix gate so readers cannot observe a mutable cached shard while it is being mutated, saved, uploaded, or promoted. The shard cache/store SHALL NOT expose cached mutable `Shard` instances as long-lived caller-owned objects outside prefix-scoped read or update operations. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
 
-The extracted write session SHALL make concurrent `AddEntry` calls safe for archive workers. It SHALL protect session-overlay and pending-entry state with a short critical-section gate or stronger equivalent that covers recording entries, session-overlay lookup, pending snapshot creation, flush-in-progress state, and successful whole-flush clearing. The gate SHALL NOT be held across shard-cache/store I/O or awaits. A `ConcurrentDictionary` MAY be used inside this implementation, but it SHALL NOT be the only mechanism used to define pending-entry ordering and flush snapshot/clear semantics. `AddEntry` SHALL fail fast or otherwise reject recording while `FlushAsync` is in progress.
+The extracted write session SHALL make concurrent `AddEntry` calls safe for archive workers without serializing normal entry recording through a write-session lock. Session-overlay and pending-flush state MAY be represented by the same content-hash-keyed concurrent collection when duplicate entries use last-writer-wins semantics. `FlushAsync` SHALL be treated as an archive-tail operation that starts after archive workers have stopped recording entries. It SHALL prevent concurrent flushes, snapshot the current session entries before shard-cache/store I/O, and clear session state only after all touched prefixes have flushed successfully. `AddEntry` SHALL fail fast when it observes a flush already in progress, but the write session does not need to provide an atomic check-and-add boundary for calls racing a flush start because that race is outside the archive pipeline contract.
 
 `ChunkIndexService` SHALL own repair orchestration and repair-in-progress marker enforcement. Normal operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check the repair marker at the facade boundary before delegating to extracted components. Extracted components SHALL NOT independently reject shard-cache/store operations solely because the repair marker exists, so explicit repair can rebuild local shard state and upload repaired shards while the marker is present.
 
@@ -64,13 +64,16 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 
 #### Scenario: Concurrent entry recording is safe
 - **WHEN** multiple archive workers record chunk-index entries through `ChunkIndexService.AddEntry`
-- **THEN** the write session SHALL record each entry in the same-session overlay and pending flush state atomically with respect to other `AddEntry` calls
+- **THEN** the write session SHALL record each entry in same-session overlay and pending flush state without corrupting concurrent writer state
 - **AND** same-service lookups SHALL be able to resolve recorded session entries without corrupting write-session state
+- **AND** duplicate content hashes SHALL use last-writer-wins semantics
 
-#### Scenario: Flush snapshots pending state without racing entry recording
+#### Scenario: Flush snapshots stable archive-tail state
 - **WHEN** `FlushAsync` starts processing pending write-session entries
-- **THEN** it SHALL create a pending-entry snapshot under the write-session gate before performing shard-cache/store I/O
-- **AND** it SHALL reject or otherwise prevent `AddEntry` calls while that flush is in progress
+- **THEN** it SHALL reject concurrent flush calls
+- **AND** it SHALL snapshot the current session entries before performing shard-cache/store I/O
+- **AND** it SHALL fail fast when `AddEntry` observes that the flush is already in progress
+- **AND** archive command orchestration SHALL await entry-producing workers before starting the flush
 - **AND** it SHALL clear session and pending state only after all touched prefixes have flushed successfully
 
 #### Scenario: Batched lookup applies the write-session overlay before persisted lookup
@@ -436,4 +439,3 @@ The system SHALL provide repository-scoped path helpers for local cache and log 
 #### Scenario: CLI logs path does not depend on chunk index service
 - **WHEN** CLI code derives the repository logs directory
 - **THEN** it SHALL use the shared repository path helper and SHALL NOT depend on `ChunkIndexService` for the repository directory name
-

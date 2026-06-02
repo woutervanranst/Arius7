@@ -120,8 +120,8 @@ public sealed class ChunkIndexService : IDisposable
     // ── Record new entry ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Records a newly uploaded chunk entry in session entries and the pending list.
-    /// At end-of-run, call <see cref="FlushAsync"/> to persist all pending entries.
+    /// Records a newly uploaded chunk entry in the current archive session.
+    /// At end-of-run, call <see cref="FlushAsync"/> to persist recorded entries.
     /// </summary>
     public void AddEntry(ShardEntry entry)
     {

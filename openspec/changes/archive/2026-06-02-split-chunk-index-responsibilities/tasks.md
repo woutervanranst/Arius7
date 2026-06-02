@@ -21,8 +21,8 @@
 - [x] 3.2 Create an internal chunk-index write session that owns session entries, pending entries, `AddEntry`, and `FlushAsync`.
 - [x] 3.3 Keep same-session entries visible through the `ChunkIndexService` facade before falling back to the read-only reader.
 - [x] 3.4 Keep fixed two-character shard-prefix calculation unchanged for reader and write-session grouping.
-- [x] 3.5 Make concurrent `AddEntry` calls safe with a write-session gate or stronger equivalent, and reject entry recording while `FlushAsync` is in progress.
-- [x] 3.6 Ensure `FlushAsync` snapshots pending entries before shard-cache/store I/O and clears write-session state only after the whole flush succeeds.
+- [x] 3.5 Make concurrent `AddEntry` calls safe without serializing normal entry recording through a write-session lock, and fail fast when entry recording observes `FlushAsync` in progress.
+- [x] 3.6 Ensure archive orchestration drains entry-producing workers before `FlushAsync`, and ensure `FlushAsync` snapshots pending entries before shard-cache/store I/O and clears write-session state only after the whole flush succeeds.
 
 ## 4. Slim Facade And Repair Integration
 
