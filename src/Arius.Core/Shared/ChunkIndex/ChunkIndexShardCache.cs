@@ -13,10 +13,10 @@ internal sealed class ChunkIndexShardCache(
     private sealed record L1Entry(PathSegment Prefix, Shard Shard, long Size);
 
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
-    private readonly LinkedList<L1Entry> _l1Lru = [];
-    private readonly Dictionary<PathSegment, LinkedListNode<L1Entry>> _l1Map = [];
-    private readonly Lock _l1Lock = new();
-    private long _l1UsedBytes;
+    private readonly LinkedList<L1Entry>                              _l1Lru       = [];
+    private readonly Dictionary<PathSegment, LinkedListNode<L1Entry>> _l1Map       = [];
+    private readonly Lock                                             _l1Lock      = new();
+    private          long                                             _l1UsedBytes;
 
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {

@@ -28,8 +28,7 @@ internal sealed class ChunkIndexWriteSession
             if (_sessionEntries.IsEmpty)
                 return;
 
-            var pendingSnapshot = _sessionEntries.Values.ToArray();
-            var byPrefix = pendingSnapshot
+            var byPrefix = _sessionEntries.Values
                 .GroupBy(e => Shard.PrefixOf(e.ContentHash))
                 .Select(g => new KeyValuePair<PathSegment, ShardEntry[]>(g.Key, [.. g]))
                 .ToArray();
@@ -37,7 +36,10 @@ internal sealed class ChunkIndexWriteSession
             await Parallel.ForEachAsync(
                 byPrefix,
                 new ParallelOptions { MaxDegreeOfParallelism = ChunkIndexService.FlushWorkers, CancellationToken = cancellationToken },
-                async (group, ct) => await shardCache.UpdateShardAsync(group.Key, group.Value, ct));
+                async (group, ct) =>
+                {
+                    await shardCache.UpdateShardAsync(group.Key, group.Value, ct);
+                });
 
             _sessionEntries.Clear();
         }
