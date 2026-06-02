@@ -1,47 +1,34 @@
+using System.Collections.Concurrent;
+
 namespace Arius.Core.Shared.ChunkIndex;
 
 internal sealed class ChunkIndexWriteSession
 {
-    private readonly Lock _gate = new();
-    private readonly Dictionary<ContentHash, ShardEntry> _sessionEntries = [];
-    private readonly List<ShardEntry> _pendingEntries = [];
-    private bool _flushInProgress;
+    private readonly ConcurrentDictionary<ContentHash, ShardEntry> _sessionEntries = [];
+    private int _flushInProgress;
 
     public bool TryLookup(ContentHash contentHash, out ShardEntry entry)
-    {
-        lock (_gate)
-            return _sessionEntries.TryGetValue(contentHash, out entry!);
-    }
+        => _sessionEntries.TryGetValue(contentHash, out entry!);
 
     public void AddEntry(ShardEntry entry)
     {
-        lock (_gate)
-        {
-            if (_flushInProgress)
-                throw new InvalidOperationException("Cannot record chunk-index entries while a flush is in progress.");
+        if (Volatile.Read(ref _flushInProgress) != 0)
+            throw new InvalidOperationException("Cannot record chunk-index entries while a flush is in progress.");
 
-            _sessionEntries[entry.ContentHash] = entry;
-            _pendingEntries.Add(entry);
-        }
+        _sessionEntries[entry.ContentHash] = entry;
     }
 
     public async Task FlushAsync(ChunkIndexShardCache shardCache, CancellationToken cancellationToken = default)
     {
-        ShardEntry[] pendingSnapshot;
-        lock (_gate)
-        {
-            if (_flushInProgress)
-                throw new InvalidOperationException("Chunk-index flush is already in progress.");
-
-            if (_pendingEntries.Count == 0)
-                return;
-
-            _flushInProgress = true;
-            pendingSnapshot = [.. _pendingEntries];
-        }
+        if (Interlocked.Exchange(ref _flushInProgress, 1) != 0)
+            throw new InvalidOperationException("Chunk-index flush is already in progress.");
 
         try
         {
+            if (_sessionEntries.IsEmpty)
+                return;
+
+            var pendingSnapshot = _sessionEntries.Values.ToArray();
             var byPrefix = pendingSnapshot
                 .GroupBy(e => Shard.PrefixOf(e.ContentHash))
                 .Select(g => new KeyValuePair<PathSegment, ShardEntry[]>(g.Key, [.. g]))
@@ -52,29 +39,19 @@ internal sealed class ChunkIndexWriteSession
                 new ParallelOptions { MaxDegreeOfParallelism = ChunkIndexService.FlushWorkers, CancellationToken = cancellationToken },
                 async (group, ct) => await shardCache.UpdateShardAsync(group.Key, group.Value, ct));
 
-            lock (_gate)
-            {
-                _pendingEntries.Clear();
-                _sessionEntries.Clear();
-                _flushInProgress = false;
-            }
+            _sessionEntries.Clear();
         }
-        catch
+        finally
         {
-            lock (_gate)
-                _flushInProgress = false;
-
-            throw;
+            Volatile.Write(ref _flushInProgress, 0);
         }
     }
 
     public void Clear()
     {
-        lock (_gate)
-        {
-            _pendingEntries.Clear();
-            _sessionEntries.Clear();
-            _flushInProgress = false;
-        }
+        if (Volatile.Read(ref _flushInProgress) != 0)
+            throw new InvalidOperationException("Cannot clear chunk-index entries while a flush is in progress.");
+
+        _sessionEntries.Clear();
     }
 }

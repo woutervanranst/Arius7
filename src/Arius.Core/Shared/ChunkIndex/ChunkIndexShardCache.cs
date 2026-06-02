@@ -21,7 +21,7 @@ internal sealed class ChunkIndexShardCache(
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         var result = await LookupAsync(Shard.PrefixOf(contentHash), [contentHash], cancellationToken);
-        return result.TryGetValue(contentHash, out var entry) ? entry : null;
+        return result.GetValueOrDefault(contentHash);
     }
 
     public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(
