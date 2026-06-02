@@ -108,25 +108,27 @@ entries sharing that prefix.
 | L2 — disk | `~/.arius/{account}-{container}/chunk-index/{prefix}` | One file per shard prefix. Plain serialized bytes. Corrupt files are deleted and treated as misses. |
 | L3 — Azure | `chunk-index/{prefix}` blob | Authoritative source. A hit populates L2 and L1. |
 
-`ChunkIndexService` is a write-back cache with a write buffer. It avoids
-per-upload remote shard writes, but still makes newly uploaded chunks visible to
-subsequent lookups before the buffered entries are flushed into shard files.
+`ChunkIndexService` is the public facade for chunk-index operations. Internally,
+it separates three responsibilities:
 
-**Two auxiliary structures (memory, session-scoped):**
+- a read-through shard cache/store that owns L1, L2, L3, L1 eviction, L2 saves,
+  remote uploads, cache invalidation, and per-prefix synchronization;
+- a read-only reader that groups persisted lookup misses by two-character shard
+  prefix and asks the shard cache/store once per prefix;
+- a write session that keeps same-run entries visible before flush and snapshots
+  pending entries at archive tail.
 
-- `_sessionEntries` — newly recorded `ShardEntry` values that may not be
-  persisted to any shard yet. Checked before L1/L2/L3, so lookups can see chunks
-  uploaded earlier in the same service lifetime even before `FlushAsync` runs.
-  This dictionary is not bounded by `DefaultL1CacheBudgetBytes`; it is cleared
-  after a successful `FlushAsync` or `RepairAsync`.
-- `_pendingEntries` — accumulates new `ShardEntry` values to merge into shards.
-  Flushed in bulk at end-of-run by `FlushAsync`.
+The write session is a write-back overlay. It avoids per-upload remote shard
+writes, but still makes newly uploaded chunks visible to subsequent lookups
+before the buffered entries are flushed into shard files. This overlay is not
+bounded by `DefaultL1CacheBudgetBytes`; that budget applies only to L1 shard
+pages.
 
 ```mermaid
 flowchart TD
-    A[LookupAsync content hash] --> B{In _sessionEntries?}
+    A[LookupAsync content hash] --> B{In write-session overlay?}
     B -->|yes| C[Return session entry]
-    B -->|no| D[Shard prefix]
+    B -->|no| D[Reader groups by shard prefix]
     D --> E{L1 memory shard cache}
     E -->|hit| F[Lookup entry in shard]
     E -->|miss| G{L2 disk shard file}
@@ -143,61 +145,71 @@ flowchart TD
     N -->|yes| O[Return shard entry]
     N -->|no| P[Miss]
 
-    Q[AddEntry after chunk upload] --> R[_sessionEntries]
-    Q --> S[_pendingEntries]
-    S --> T[FlushAsync]
-    T --> U[Load current shard through L1/L2/L3]
-    U --> V[Merge pending entries]
-    V --> W[Upload merged shard to Azure]
-    V --> X[Save merged shard to L2]
-    V --> Y[Promote merged shard to L1]
-    W --> Z[Clear _pendingEntries and _sessionEntries]
+    Q[AddEntry after chunk upload] --> R[write-session overlay]
+    Q --> S[pending write-session entries]
+    S --> T[FlushAsync snapshots pending entries]
+    T --> U[Shard cache/store loads current shard]
+    U --> V[Mutate owned shard page]
+    V --> W[Upload updated shard to Azure]
+    V --> X[Save updated shard to L2]
+    V --> Y[Promote updated shard to L1]
+    W --> Z[Clear write-session state]
     X --> Z
     Y --> Z
 ```
 
-`_sessionEntries` and L1 overlap deliberately but represent different states:
+The write-session overlay and L1 overlap deliberately but represent different
+states:
 
-- `_sessionEntries` is a visibility overlay for entries recorded after upload
-  but before they have been merged into chunk-index shards. In cache terminology,
-  it is the write buffer for this write-back cache.
+- The write-session overlay contains entries recorded after upload but before
+  they have been merged into chunk-index shards.
 - L1 is the bounded cache for whole materialized shards loaded from L2/L3 or
-  promoted after `FlushAsync` writes merged shard state. A shard is the cache
-  page.
+  promoted after `FlushAsync` writes shard state. A shard is the cache page.
 - Before `FlushAsync`, L1 may still hold an older shard that does not contain a
-  new entry. `LookupAsync` must check `_sessionEntries` first to avoid missing
+  new entry. `LookupAsync` must check the write-session overlay first to avoid missing
   newly uploaded chunks.
-- During `FlushAsync`, pending entries are merged into the current shard, then
-  saved to L2 and promoted to L1. Only after that succeeds are `_pendingEntries`
-  and `_sessionEntries` cleared.
+- During `FlushAsync`, pending entries are applied to the current owned mutable
+  shard page, then uploaded, saved to L2, and promoted to L1. Only after the
+  whole flush succeeds is write-session state cleared.
 - `DefaultL1CacheBudgetBytes` applies only to L1 shard objects. It does not limit
-  `_sessionEntries` or `_pendingEntries`.
+  the write-session overlay or pending entries.
 
 This is intentionally not implemented as a dirty flag on L1 shard pages. A newly
 uploaded entry may belong to a shard that is not currently loaded in L1. Marking
 that shard dirty would require loading the full shard during `AddEntry`, making
 upload workers perform shard-cache I/O and weakening flush batching. The write
 buffer keeps `AddEntry` cheap; `FlushAsync` is the point where buffered entries
-are merged into full shard pages and made clean in L1/L2/L3.
+are applied to full shard pages and made clean in L1/L2/L3.
 
 **Key operations:**
 
-- `LookupAsync` — checks `_sessionEntries` first, then resolves misses through
-  the shared L1 → L2 → L3 shard cache.
-- `AddEntry` — adds a newly uploaded chunk to `_sessionEntries` and
-  `_pendingEntries` immediately after upload.
-- `FlushAsync` — merges pending entries into existing shards, uploads merged
-  shards to Azure, saves to L2, promotes to L1, then clears `_pendingEntries`
-  and `_sessionEntries`.
+- `LookupAsync` — checks the write-session overlay first, then resolves misses
+  through the reader and shared L1 → L2 → L3 shard cache.
+- `AddEntry` — records a newly uploaded chunk in the write-session overlay and
+  pending flush state immediately after upload.
+- `FlushAsync` — snapshots pending entries, applies them to owned shard pages,
+  uploads updated shards to Azure, saves to L2, promotes to L1, then clears
+  write-session state after the whole flush succeeds.
 - `InvalidateCaches` — clears L2 and L1. Called by `ArchiveCommandHandler` when
   `FileTreeService.ValidateAsync` reports a snapshot mismatch, so stale shard
   files and objects are not used during the following flush.
 - `InvalidateL1` — clears only the in-memory LRU. Used when L2 has already been
   cleared by another code path.
+- `RepairAsync` — marks repair in progress, clears L1 and L2 shard cache state,
+  scans committed chunk blobs once with metadata, groups reconstructed entries by
+  shard prefix in memory, then writes and uploads complete replacement shards for
+  the rebuilt prefixes. It deletes stale remote shard blobs after rebuilt shards
+  are uploaded and clears the repair marker only after completion.
+
+Normal lookup, entry recording, and flush operations fail while the repair marker
+exists. Explicit repair is allowed to run with the marker present so an
+interrupted repair can be rerun safely. Cache invalidation does not delete the
+repair marker.
 
 `ArchiveCommandHandler` also keeps its own per-run `inFlightHashes` set during
 dedup routing. That is the queued-upload guard that prevents duplicate uploads
-before upload workers call `AddEntry`; it is separate from `_sessionEntries`.
+before upload workers call `AddEntry`; it is separate from the write-session
+overlay.
 
 **Why mutable shards require tiered invalidation:** Unlike tree blobs, shards
 are mutable — any machine can extend a shard by uploading new chunks. When the

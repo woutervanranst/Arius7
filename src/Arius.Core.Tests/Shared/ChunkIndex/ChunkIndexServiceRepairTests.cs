@@ -55,6 +55,38 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_ReplacesRebuiltPrefixInsteadOfMergingStaleShardContents()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-replace-prefix");
+        var rebuiltHash = FakeContentHash('a');
+        var staleHash = ContentHash.Parse($"{rebuiltHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('f', 64 - ChunkIndexService.ShardPrefixLength)}");
+        var staleShard = new Shard();
+        staleShard.AddOrUpdate(new ShardEntry(staleHash, FakeChunkHash('f'), 999, 111));
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(rebuiltHash)),
+            await ShardSerializer.SerializeAsync(staleShard, s_encryption),
+            BlobTier.Cool);
+        blobs.SeedBlob(
+            BlobPaths.ChunkPath(ChunkHash.Parse(rebuiltHash)),
+            [1, 2, 3],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.OriginalSize] = "100",
+                [BlobMetadataKeys.ChunkSize] = "3",
+            });
+        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+
+        var result = await index.RepairAsync();
+
+        result.RebuiltShardCount.ShouldBe(1);
+        (await index.LookupAsync(rebuiltHash)).ShouldBe(new ShardEntry(rebuiltHash, ChunkHash.Parse(rebuiltHash), 100, 3));
+        (await index.LookupAsync(staleHash)).ShouldBeNull();
+    }
+
+    [Test]
     public async Task RepairAsync_InvalidThinMetadata_FailsAndKeepsRepairMarker()
     {
         var blobs = new FakeInMemoryBlobContainerService();

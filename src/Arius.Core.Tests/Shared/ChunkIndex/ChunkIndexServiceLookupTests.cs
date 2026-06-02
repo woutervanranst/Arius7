@@ -43,7 +43,7 @@ public class ChunkIndexServiceLookupTests
         var repositoryKey = UniqueRepositoryKey("local-corrupt");
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        var shard = new Shard().Merge([entry]);
+        var shard = CreateShard(entry);
         var shardBlobName = BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash));
         blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(shard, s_encryption), BlobTier.Cool);
 
@@ -66,7 +66,7 @@ public class ChunkIndexServiceLookupTests
         var repositoryKey = UniqueRepositoryKey("remote-no-metadata");
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        var shard = new Shard().Merge([entry]);
+        var shard = CreateShard(entry);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)),
             await ShardSerializer.SerializeAsync(shard, s_encryption),
@@ -84,7 +84,7 @@ public class ChunkIndexServiceLookupTests
         var blobs = new FakeInMemoryBlobContainerService();
         var existingHash = FakeContentHash('a');
         var missingHash = ContentHash.Parse($"{existingHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('b', 64 - ChunkIndexService.ShardPrefixLength)}");
-        var shard = new Shard().Merge([new ShardEntry(existingHash, FakeChunkHash('c'), 10, 5)]);
+        var shard = CreateShard(new ShardEntry(existingHash, FakeChunkHash('c'), 10, 5));
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(missingHash)),
             await ShardSerializer.SerializeAsync(shard, s_encryption),
@@ -114,11 +114,11 @@ public class ChunkIndexServiceLookupTests
         
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash)),
-            await ShardSerializer.SerializeAsync(new Shard().Merge([firstEntry, secondEntry]), s_encryption),
+            await ShardSerializer.SerializeAsync(CreateShard(firstEntry, secondEntry), s_encryption),
             BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash)),
-            await ShardSerializer.SerializeAsync(new Shard().Merge([otherPrefixEntry]), s_encryption),
+            await ShardSerializer.SerializeAsync(CreateShard(otherPrefixEntry), s_encryption),
             BlobTier.Cool);
         using var index = CreateIndex(blobs, "multiple");
         index.AddEntry(inFlightEntry);
@@ -127,13 +127,11 @@ public class ChunkIndexServiceLookupTests
         var actual = await index.LookupAsync([firstHash, secondHash, missingHash, otherPrefixHash, inFlightHash]);
 
         // Assert
-        actual.ShouldBe(new Dictionary<ContentHash, ShardEntry>
-        {
-            [firstHash]       = firstEntry,
-            [secondHash]      = secondEntry,
-            [otherPrefixHash] = otherPrefixEntry,
-            [inFlightHash]    = inFlightEntry,
-        });
+        actual.Count.ShouldBe(4);
+        actual[firstHash].ShouldBe(firstEntry);
+        actual[secondHash].ShouldBe(secondEntry);
+        actual[otherPrefixHash].ShouldBe(otherPrefixEntry);
+        actual[inFlightHash].ShouldBe(inFlightEntry);
         actual.ShouldNotContainKey(missingHash);
         blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(1);
         blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(1);
@@ -204,6 +202,13 @@ public class ChunkIndexServiceLookupTests
     {
         var repositoryKey = UniqueRepositoryKey(name);
         return new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+    }
+
+    private static Shard CreateShard(params ShardEntry[] entries)
+    {
+        var shard = new Shard();
+        shard.AddOrUpdateRange(entries);
+        return shard;
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
