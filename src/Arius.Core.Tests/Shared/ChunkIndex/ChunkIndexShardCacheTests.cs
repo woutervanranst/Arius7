@@ -32,19 +32,19 @@ public class ChunkIndexShardCacheTests
     }
 
     [Test]
-    public async Task LookupAsync_ReturnsCopiedResultsInsteadOfMutableShard()
+    public async Task GetShardAsync_ReturnsLoadedShard()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var cache = CreateCache(blobs, UniqueRepositoryKey("cache-lookup-copy"));
+        var cache = CreateCache(blobs, UniqueRepositoryKey("cache-get-shard"));
         var contentHash = FakeContentHash('a');
         var prefix = Shard.PrefixOf(contentHash);
         var entry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5);
         await cache.UpdateShardAsync(prefix, [entry]);
 
-        var hits = await cache.LookupAsync(prefix, [contentHash]);
+        var shard = await cache.GetShardAsync(prefix);
 
-        hits.ShouldBe(new Dictionary<ContentHash, ShardEntry> { [contentHash] = entry });
-        hits.ShouldBeAssignableTo<IReadOnlyDictionary<ContentHash, ShardEntry>>();
+        shard.TryLookup(contentHash, out var actual).ShouldBeTrue();
+        actual.ShouldBe(entry);
     }
 
     private static ChunkIndexShardCache CreateCache(FakeInMemoryBlobContainerService blobs, string repositoryKey)

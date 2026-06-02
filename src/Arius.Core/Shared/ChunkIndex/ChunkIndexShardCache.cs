@@ -21,40 +21,17 @@ internal sealed class ChunkIndexShardCache(
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         var prefix = Shard.PrefixOf(contentHash);
-        var gate = GetPrefixGate(prefix);
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            var shard = await LoadShardAsync(prefix, cancellationToken);
-            return shard.TryLookup(contentHash, out var entry) ? entry : null;
-        }
-        finally
-        {
-            gate.Release();
-        }
+        var shard = await GetShardAsync(prefix, cancellationToken);
+        return shard.TryLookup(contentHash, out var entry) ? entry : null;
     }
 
-    public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(
-        PathSegment prefix,
-        IReadOnlyCollection<ContentHash> contentHashes,
-        CancellationToken cancellationToken = default)
+    public async Task<Shard> GetShardAsync(PathSegment prefix, CancellationToken cancellationToken = default)
     {
-        if (contentHashes.Count == 0)
-            return new Dictionary<ContentHash, ShardEntry>();
-
         var gate = GetPrefixGate(prefix);
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var shard = await LoadShardAsync(prefix, cancellationToken);
-            var result = new Dictionary<ContentHash, ShardEntry>();
-            foreach (var contentHash in contentHashes)
-            {
-                if (shard.TryLookup(contentHash, out var entry) && entry is not null)
-                    result[contentHash] = entry;
-            }
-
-            return result;
+            return await LoadShardAsync(prefix, cancellationToken);
         }
         finally
         {
@@ -166,7 +143,7 @@ internal sealed class ChunkIndexShardCache(
         }
 
         await SaveToL2Async(prefix, loadedShard, cancellationToken);
-        PromoteToL1(prefix, loadedShard, stream.Position);
+        PromoteToL1(prefix, loadedShard, stream.Position /* stream is non seekable; position is a good proxy */);
         return loadedShard;
     }
 
