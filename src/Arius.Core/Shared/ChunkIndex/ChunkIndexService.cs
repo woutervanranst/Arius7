@@ -57,12 +57,13 @@ public sealed class ChunkIndexService : IDisposable
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
-        var l2FileSystem = new RelativeFileSystem(l2Root);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
+        
+        var l2FileSystem = new RelativeFileSystem(l2Root);
         l2FileSystem.CreateDirectory(RelativePath.Root);
 
-        _shardCache = new ChunkIndexShardCache(blobs, encryption, l2FileSystem, l1CacheBudgetBytes);
-        _reader = new ChunkIndexReader(_shardCache);
+        _shardCache   = new ChunkIndexShardCache(blobs, encryption, l2FileSystem, l1CacheBudgetBytes);
+        _reader       = new ChunkIndexReader(_shardCache);
         _writeSession = new ChunkIndexWriteSession();
     }
 
@@ -145,16 +146,6 @@ public sealed class ChunkIndexService : IDisposable
     public void Dispose()
     {
         /* future: flush in-progress state */
-    }
-
-    /// <summary>
-    /// Clears the in-memory L1 LRU cache. Called by <see cref="FileTreeService"/> when a
-    /// snapshot mismatch is detected, to ensure stale shard data is not served from memory
-    /// after the L2 disk cache has been deleted.
-    /// </summary>
-    public void InvalidateL1()
-    {
-        _shardCache.InvalidateL1();
     }
 
     public void InvalidateCaches()
