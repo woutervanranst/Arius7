@@ -4,7 +4,7 @@
 
 This makes the archive write path look like part of the read cache even though it has different constraints. The L1 shard-cache budget only bounds materialized shard pages; the archive write buffer grows with newly uploaded chunks until flush. A minimal responsibility split will make that distinction explicit without changing persisted data or command behavior.
 
-The previous chunk-index scalability spec also described full repair as using local L2 as bounded disk-backed rebuild state, while the implemented repair scans chunks once, groups reconstructed entries by shard prefix in memory, then writes and uploads rebuilt shards. This change treats the implementation as the behavior to preserve and clarifies the spec accordingly. A bounded disk-backed repair rebuild remains a separate hardening concern, not part of this responsibility split.
+The previous chunk-index scalability spec also described full repair as using local L2 as bounded disk-backed rebuild state, while the implemented repair scans chunks once, groups reconstructed entries by shard prefix in memory, then writes and uploads rebuilt shards. This change deliberately aligns the spec with the implementation and preserves that in-memory repair shape during the responsibility split. A bounded disk-backed repair rebuild remains a separate hardening concern, not part of this change.
 
 ## Goals / Non-Goals
 
@@ -116,6 +116,8 @@ Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal op
 
 Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. This intentionally rectifies the drift between the archived scalability spec's disk-backed rebuild wording and the current implementation. The shard cache/store extraction should support repair writing complete rebuilt shards as replacements for those prefixes. Repair should not merge rebuilt entries with stale L2 or remote shard contents, and it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
 
+This intentionally supersedes the archived scalability change's accepted disk-backed repair wording for this PR. The accepted behavior after this change is the implemented one: in-memory prefix grouping followed by complete rebuilt-shard replacement. Bounded disk-backed repair can still be reintroduced later as a focused durability hardening change with its own recovery contract and tests.
+
 Repair should parallelize rebuilt-shard processing per prefix with bounded `Parallel.ForEachAsync`. The metadata-aware `chunks/` listing remains a single scan that builds the in-memory prefix groups. After that scan, each rebuilt prefix can independently write its L2 shard and upload the corresponding remote shard. No two repair workers should process the same prefix concurrently.
 
 Alternative considered: extract `ChunkIndexRepairService` now. That may be useful later, but repair has domain-specific reconstruction rules and command-facing behavior. Extracting it at the same time risks turning a minimal split into a broader rewrite.
@@ -123,6 +125,8 @@ Alternative considered: extract `ChunkIndexRepairService` now. That may be usefu
 Alternative considered: stream each reconstructed repair entry directly into L2 shard state while listing chunks, keeping only prefix metadata in memory. That would better bound repair memory usage, but it changes the current repair implementation shape and is not required for this responsibility split.
 
 Alternative considered: restore the archived scalability spec's disk-backed repair rebuild contract as part of this follow-up. That may still be the right durability hardening later, but it would combine a behavioral repair rewrite with the responsibility extraction and make this change harder to verify.
+
+Alternative considered: fix the implementation to match the archived disk-backed repair wording before splitting responsibilities. That would preserve the stronger bounded-memory target, but it expands this follow-up beyond an internal responsibility split and makes the PR resolve two separate concerns at once.
 
 ### Keep fixed prefix calculation unchanged
 

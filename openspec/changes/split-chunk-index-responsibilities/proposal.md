@@ -2,7 +2,7 @@
 
 `ChunkIndexService` currently owns read-through shard caching, archive write buffering, shard persistence, and repair behavior in one class. That coupling makes archive memory behavior harder to reason about and blocks future chunk-index evolution, including bounded write sessions and adaptive shard routing.
 
-The archived chunk-index scalability spec also drifted from the implementation by describing full repair as disk-backed local L2 rebuild state while the implemented repair groups reconstructed entries by shard prefix in memory before writing shard files. This follow-up rectifies that drift by documenting the current in-memory repair shape as the behavior preserved by this refactor.
+The archived chunk-index scalability spec also drifted from the implementation by describing full repair as disk-backed local L2 rebuild state while the implemented repair groups reconstructed entries by shard prefix in memory before writing shard files. This follow-up deliberately aligns the spec with the implemented in-memory repair shape as the behavior preserved by this refactor. Bounded disk-backed repair remains a separate hardening concern.
 
 ## What Changes
 

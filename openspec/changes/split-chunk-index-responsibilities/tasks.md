@@ -2,7 +2,8 @@
 
 - [ ] 1.1 Review existing chunk-index lookup, flush, invalidation, and repair tests for coverage of facade behavior before extraction.
 - [ ] 1.2 Split existing chunk-index tests by responsibility so facade behavior remains in `ChunkIndexService` tests and moved implementation behavior has focused component tests.
-- [ ] 1.3 Add or adjust focused tests only where behavior currently lacks coverage for same-session lookup visibility, batched persisted lookup grouping, cache invalidation, mutable shard updates, per-prefix cache/store synchronization, and successful flush clearing write-session state.
+- [ ] 1.3 Add or adjust focused tests only where behavior currently lacks coverage for same-session lookup visibility, session-overlay-first batched lookup, batched persisted lookup grouping, cache invalidation, repair-marker facade checks, mutable shard updates, per-prefix cache/store synchronization, and successful flush clearing write-session state.
+- [ ] 1.4 Add or preserve coverage that a partial flush failure fails the archive path without clearing write-session state or publishing a snapshot.
 
 ## 2. Extract Shard Cache/Store
 
@@ -36,10 +37,11 @@
 - [ ] 4.7 Parallelize repair rebuilt-shard L2 write and remote upload work per prefix with bounded `Parallel.ForEachAsync`, keeping one worker per prefix.
 - [ ] 4.8 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
 - [ ] 4.9 Preserve and test the current full-repair behavior that groups reconstructed entries by shard prefix in memory before writing rebuilt L2 shard files.
+- [ ] 4.10 Preserve full-repair stale shard deletion and idempotent rerun behavior while parallelizing rebuilt-prefix writes/uploads.
 
 ## 5. Documentation And Verification
 
-- [ ] 5.1 Update `docs/cache.md` to describe the separated read-through shard cache and archive write-session responsibilities.
+- [ ] 5.1 Update `docs/cache.md` after extraction if the current description no longer accurately describes the separated read-through shard cache, write-session overlay, repair-marker behavior, and full-repair rebuild flow.
 - [ ] 5.2 Measure coverage for `src/Arius.Core/Shared/ChunkIndex/` and confirm line coverage is greater than 90%, including the extracted components.
 - [ ] 5.3 Run focused chunk-index component, facade lookup, flush, invalidation, and repair tests.
 - [ ] 5.4 Run `dotnet test --project src/Arius.Architecture.Tests/Arius.Architecture.Tests.csproj`.
