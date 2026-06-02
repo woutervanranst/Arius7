@@ -1,7 +1,8 @@
 ## 1. Preserve Current Behavior With Focused Coverage
 
 - [ ] 1.1 Review existing chunk-index lookup, flush, invalidation, and repair tests for coverage of facade behavior before extraction.
-- [ ] 1.2 Add or adjust focused tests only where behavior currently lacks coverage for same-session lookup visibility, cache invalidation, and successful flush clearing write-session state.
+- [ ] 1.2 Split existing chunk-index tests by responsibility so facade behavior remains in `ChunkIndexService` tests and moved implementation behavior has focused component tests.
+- [ ] 1.3 Add or adjust focused tests only where behavior currently lacks coverage for same-session lookup visibility, cache invalidation, and successful flush clearing write-session state.
 
 ## 2. Extract Shard Cache/Store
 
@@ -23,10 +24,13 @@
 - [ ] 4.2 Keep repair orchestration on `ChunkIndexService` while reusing shard cache/store save and invalidation operations where practical.
 - [ ] 4.3 Ensure successful repair clears write-session state and leaves the repair in-progress marker behavior unchanged.
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.
+- [ ] 4.5 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
 
 ## 5. Documentation And Verification
 
 - [ ] 5.1 Update `docs/cache.md` to describe the separated read-through shard cache and archive write-session responsibilities.
-- [ ] 5.2 Run focused chunk-index lookup and repair tests.
-- [ ] 5.3 Run relevant feature tests that use chunk-index lookup or write behavior.
-- [ ] 5.4 Run `openspec status --change split-chunk-index-responsibilities` and confirm the change is apply-ready.
+- [ ] 5.2 Measure coverage for `src/Arius.Core/Shared/ChunkIndex/` and confirm line coverage is greater than 90%, including the extracted components.
+- [ ] 5.3 Run focused chunk-index component, facade lookup, flush, invalidation, and repair tests.
+- [ ] 5.4 Run `dotnet test --project src/Arius.Architecture.Tests/Arius.Architecture.Tests.csproj`.
+- [ ] 5.5 Run relevant feature tests that use chunk-index lookup or write behavior.
+- [ ] 5.6 Run `openspec status --change split-chunk-index-responsibilities` and confirm the change is apply-ready.

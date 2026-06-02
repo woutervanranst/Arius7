@@ -5,7 +5,8 @@
 ## What Changes
 
 - Split the existing chunk-index implementation into focused internal components while preserving current external behavior.
-- Keep `ChunkIndexService` as the public facade injected into existing handlers during this change.
+- Keep `ChunkIndexService` as the operational boundary and public facade injected into existing handlers during this change.
+- Add architecture coverage that prevents feature handlers, DI registrations, and other shared services from consuming the extracted internal components directly.
 - Move L1/L2/L3 shard loading, persistence, and cache invalidation into a dedicated shard cache/store component.
 - Move archive-session write buffering and flushing into a dedicated write-session component.
 - Move read-only lookup behavior into a dedicated reader component that uses the shard cache/store.
@@ -25,6 +26,7 @@ None.
 ## Impact
 
 - Affected code: `src/Arius.Core/Shared/ChunkIndex/`, `src/Arius.Core/ServiceCollectionExtensions.cs`, and tests under `src/Arius.Core.Tests/Shared/ChunkIndex/`.
+- Affected tests: split existing chunk-index tests by extracted responsibility, add focused coverage for the new components, and add an architecture test for the facade boundary under `src/Arius.Architecture.Tests/`.
 - Public behavior: no command-line behavior, persisted blob naming, shard serialization, or repository compatibility changes.
 - APIs: `ChunkIndexService` remains the compatibility facade for current callers; extracted components are internal implementation details.
 - Dependencies: no new external dependencies.

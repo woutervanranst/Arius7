@@ -30,6 +30,8 @@ This makes the archive write path look like part of the read cache even though i
 
 Current callers use `ChunkIndexService` directly from archive, restore, list, hydration-status, repair, integration tests, and E2E fixtures. This refactor keeps that facade stable and delegates work internally.
 
+`ChunkIndexService` remains the operational boundary. The extracted reader, write session, and shard cache/store are implementation details, not independently callable services. They should not be registered separately in DI or consumed directly by feature handlers, other shared services, tests that exercise user-facing behavior, or future callers. An architecture test should capture this boundary so the split does not turn into a new public service graph by accident.
+
 Alternative considered: inject separate reader and writer services into feature handlers immediately. That is a cleaner endpoint, but it expands the change across more callers and tests without changing behavior. Keeping the facade limits the first refactor to the chunk-index implementation boundary.
 
 ### Extract a shard cache/store component
@@ -44,6 +46,8 @@ This component should expose operations at the shard-prefix level:
 - invalidate L1 and L2 cache state
 
 It should not own `_sessionEntries`, `_pendingEntries`, public lookup behavior, or repair entry reconstruction.
+
+The shard cache/store may be used by other chunk-index implementation components where that keeps the facade small, but it must not become a direct dependency of non-chunk-index code. Normal archive, restore, list, and repair workflows still enter chunk-index behavior through `ChunkIndexService`.
 
 Alternative considered: keep cache methods private inside `ChunkIndexService` and only extract write buffering. That leaves the largest mixed responsibility in place and gives little future seam for routing and split policy.
 
@@ -86,4 +90,5 @@ This creates a narrow seam for future routing without changing today's repositor
 - [Risk] Behavior can drift during extraction, especially session-entry visibility and repair-marker checks. -> Mitigation: preserve existing tests and add focused tests where behavior moves behind new seams.
 - [Risk] The write session remains unbounded, so the memory risk is not solved. -> Mitigation: document this as a non-goal and keep the extracted write session as the future place for bounded flushing.
 - [Risk] Repair may still feel too large in `ChunkIndexService`. -> Mitigation: leave repair extraction as a separate follow-up after read/write/cache seams are stable.
+- [Risk] Internal components become accidental service boundaries. -> Mitigation: keep them internal, avoid separate DI registrations, and add an architecture test that enforces `ChunkIndexService` as the operational boundary.
 - [Risk] Internal component names may imply future adaptive routing before it exists. -> Mitigation: keep names tied to current behavior: reader, write session, shard cache/store.
