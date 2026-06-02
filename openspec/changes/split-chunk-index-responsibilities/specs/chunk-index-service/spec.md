@@ -7,6 +7,8 @@ The `ChunkIndexService` implementation SHALL keep read-through shard cache mecha
 
 `ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
 
+`ChunkIndexService` SHALL own repair orchestration and repair-in-progress marker enforcement. Normal operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check the repair marker at the facade boundary before delegating to extracted components. Extracted components SHALL NOT independently reject shard-cache/store operations solely because the repair marker exists, so explicit repair can rebuild local shard state and upload repaired shards while the marker is present.
+
 Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the extracted internal components, SHALL remain above 90% after this change. Existing chunk-index tests SHALL be split or renamed so each extracted responsibility has focused coverage while facade behavior remains covered through `ChunkIndexService` tests.
 
 #### Scenario: Archive handler uses chunk index for dedup metadata
@@ -32,6 +34,11 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **WHEN** architecture tests inspect dependencies on extracted chunk-index reader, write-session, and shard cache/store components
 - **THEN** code outside the chunk-index implementation SHALL NOT depend on those components directly
 - **AND** feature handlers, DI registration, CLI code, storage code, restore/list/archive workflows, and other shared services SHALL use `ChunkIndexService` as the chunk-index operation boundary
+
+#### Scenario: Repair marker is enforced at the facade boundary
+- **WHEN** the repair in-progress marker exists
+- **THEN** normal lookup, entry recording, and flush calls through `ChunkIndexService` SHALL fail before delegating to extracted components
+- **AND** explicit repair through `ChunkIndexService` SHALL still be able to use internal shard-cache/store operations while the marker exists
 
 #### Scenario: New components have focused coverage
 - **WHEN** tests are run with coverage for `src/Arius.Core/Shared/ChunkIndex/`

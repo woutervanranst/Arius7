@@ -24,7 +24,8 @@
 - [ ] 4.2 Keep repair orchestration on `ChunkIndexService` while reusing shard cache/store save and invalidation operations where practical.
 - [ ] 4.3 Ensure successful repair clears write-session state and leaves the repair in-progress marker behavior unchanged.
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.
-- [ ] 4.5 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
+- [ ] 4.5 Keep repair-marker checks at the `ChunkIndexService` facade boundary for normal lookup, entry recording, and flush operations so explicit repair can reuse internal shard-cache/store operations while the marker exists.
+- [ ] 4.6 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
 
 ## 5. Documentation And Verification
 

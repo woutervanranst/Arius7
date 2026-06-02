@@ -76,6 +76,8 @@ Alternative considered: make the write session immediately bounded or disk-backe
 
 Full repair can remain on `ChunkIndexService` for the first split. It should use the shard cache/store for local shard writes, remote shard upload, and cache invalidation where practical, and clear the write session after successful repair.
 
+Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal operations. Lookup, entry recording, and flush should fail before delegating when the marker exists. The extracted internal components should not independently block shard-cache/store operations solely because the marker exists, because explicit repair owns that marker and must be able to rebuild local shard state and upload repaired shards while the marker is present.
+
 Alternative considered: extract `ChunkIndexRepairService` now. That may be useful later, but repair has domain-specific reconstruction rules and command-facing behavior. Extracting it at the same time risks turning a minimal split into a broader rewrite.
 
 ### Keep fixed prefix calculation unchanged
