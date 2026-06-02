@@ -178,6 +178,7 @@ public sealed class ChunkIndexService : IDisposable
             var prefix = Shard.PrefixOf(entry.ContentHash);
             if (!entriesByPrefix.TryGetValue(prefix, out var entries))
             {
+                // Initialize empty shardentry list
                 entries = [];
                 entriesByPrefix[prefix] = entries;
             }
@@ -186,8 +187,9 @@ public sealed class ChunkIndexService : IDisposable
             rebuiltEntryCount++;
         }
 
-        var rebuiltPrefixes = entriesByPrefix.Keys.ToHashSet();
+        var rebuiltPrefixes = entriesByPrefix.Keys.ToHashSet(); // TODO this doesnt scale well
 
+        // Rebuild on disk & upload
         var uploadedShardCount = 0;
         await Parallel.ForEachAsync(
             entriesByPrefix,
@@ -198,16 +200,21 @@ public sealed class ChunkIndexService : IDisposable
                 Interlocked.Increment(ref uploadedShardCount);
             });
 
+        // Delete stale shards
         var deletedStaleShardCount = 0;
-        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, cancellationToken: cancellationToken))
-        {
-            var prefix = item.Name.Name;
-            if (rebuiltPrefixes.Contains(prefix))
-                continue;
+        await Parallel.ForEachAsync(
+            _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, cancellationToken: cancellationToken),
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (item, ct) =>
+            {
+                if (rebuiltPrefixes.Contains(item.Name.Name))
+                    return;
 
-            await _blobs.DeleteAsync(item.Name, cancellationToken);
-            deletedStaleShardCount++;
-        }
+                await _blobs.DeleteAsync(item.Name, ct);
+
+                Interlocked.Increment(ref deletedStaleShardCount);
+            });
+        
 
         DeleteRepairMarker();
         _writeSession.Clear();
@@ -224,8 +231,9 @@ public sealed class ChunkIndexService : IDisposable
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin => CreateThinRepairEntry(item),
-            _ => null,
+            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item),
+            BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
+            _                          => null,
         };
     }
 
