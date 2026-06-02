@@ -155,7 +155,6 @@ internal sealed class ChunkIndexShardCache(
             return empty;
         }
 
-        var approximateSizeBytes = stream.CanSeek ? stream.Length : 0;
         Shard loadedShard;
         try
         {
@@ -167,7 +166,7 @@ internal sealed class ChunkIndexShardCache(
         }
 
         await SaveToL2Async(prefix, loadedShard, cancellationToken);
-        PromoteToL1(prefix, loadedShard, approximateSizeBytes);
+        PromoteToL1(prefix, loadedShard, stream.Position);
         return loadedShard;
     }
 

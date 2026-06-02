@@ -20,7 +20,10 @@ internal sealed class ChunkIndexReader(ChunkIndexShardCache shardCache)
 
         foreach (var group in byPrefix)
         {
+            // Get the shard
             var hits = await shardCache.LookupAsync(group.Key, group.ToArray(), cancellationToken);
+            
+            // Get the entry out of the shard
             foreach (var (contentHash, entry) in hits)
                 result[contentHash] = entry;
         }
