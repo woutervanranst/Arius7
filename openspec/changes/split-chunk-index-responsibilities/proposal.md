@@ -2,6 +2,8 @@
 
 `ChunkIndexService` currently owns read-through shard caching, archive write buffering, shard persistence, and repair behavior in one class. That coupling makes archive memory behavior harder to reason about and blocks future chunk-index evolution, including bounded write sessions and adaptive shard routing.
 
+The archived chunk-index scalability spec also drifted from the implementation by describing full repair as disk-backed local L2 rebuild state while the implemented repair groups reconstructed entries by shard prefix in memory before writing shard files. This follow-up rectifies that drift by documenting the current in-memory repair shape as the behavior preserved by this refactor.
+
 ## What Changes
 
 - Split the existing chunk-index implementation into focused internal components while preserving current external behavior.
@@ -11,7 +13,7 @@
 - Treat `Shard` as an owned mutable in-memory page behind the shard cache/store boundary, replacing `Shard.Merge` with explicit add-or-update mutation.
 - Move archive-session write buffering and flushing into a dedicated write-session component.
 - Move read-only lookup behavior into a dedicated reader component that uses the shard cache/store.
-- Parallelize full repair's rebuilt-shard write/upload work per shard prefix with bounded `Parallel.ForEachAsync` while preserving the one metadata-aware chunk listing and in-memory reconstruction grouping.
+- Parallelize full repair's rebuilt-shard write/upload work per shard prefix with bounded `Parallel.ForEachAsync` while preserving and specifying the current one metadata-aware chunk listing and in-memory reconstruction grouping.
 - Keep fixed two-character shard prefixes and the existing blob layout unchanged.
 - Keep repair command behavior and repository safety checks unchanged, while allowing repair to use the extracted components.
 

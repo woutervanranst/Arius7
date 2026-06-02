@@ -5,7 +5,7 @@ The system SHALL provide `ChunkIndexService` in `Arius.Core/Shared/ChunkIndex/` 
 
 The `ChunkIndexService` implementation SHALL keep read-through shard cache mechanics, read-only lookup behavior, and archive write-session buffering as separate internal responsibilities. The facade SHALL preserve current behavior for callers while delegating those responsibilities to focused internal components.
 
-`ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
+`ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. `ChunkIndexService` SHALL construct those internal collaborators from its own dependencies rather than resolving them from the service collection. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
 
 `Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own per-prefix synchronization for operations that read, load, mutate, save, upload, or promote a shard. The shard cache/store SHALL NOT expose cached mutable `Shard` instances as long-lived caller-owned objects outside prefix-scoped read or update operations. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
 
@@ -78,6 +78,11 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **THEN** code outside the chunk-index implementation SHALL NOT depend on those components directly
 - **AND** feature handlers, DI registration, CLI code, storage code, restore/list/archive workflows, and other shared services SHALL use `ChunkIndexService` as the chunk-index operation boundary
 
+#### Scenario: Extracted components are constructed inside the facade
+- **WHEN** `ChunkIndexService` initializes its extracted reader, write-session, and shard cache/store collaborators
+- **THEN** it SHALL construct them as internal implementation objects from its own dependencies
+- **AND** `ServiceCollectionExtensions` SHALL NOT register those extracted components separately
+
 #### Scenario: Repair marker is enforced at the facade boundary
 - **WHEN** the repair in-progress marker exists
 - **THEN** normal lookup, entry recording, and flush calls through `ChunkIndexService` SHALL fail before delegating to extracted components
@@ -131,7 +136,7 @@ The system SHALL collect new chunk index entries during archive and flush update
 - **AND** the write session SHALL keep session and pending entries because the whole flush did not succeed
 
 ### Requirement: Explicit full chunk-index repair
-The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL purge the local L2 chunk-index cache, scan committed chunk blobs once with `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin entries, group reconstructed entries by shard prefix in memory, write rebuilt local L2 shard files for each non-empty prefix, upload every rebuilt non-empty shard to `chunk-index/<prefix>`, and retain the rebuilt L2 files as the current local chunk-index cache. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
+The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL purge the local L2 chunk-index cache, scan committed chunk blobs once with `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin entries, group reconstructed entries by shard prefix in memory, write rebuilt local L2 shard files for each non-empty prefix, upload every rebuilt non-empty shard to `chunk-index/<prefix>`, and retain the rebuilt L2 files as the current local chunk-index cache. This in-memory prefix grouping SHALL be treated as the current repair behavior preserved by this responsibility split; full repair SHALL NOT become a streaming disk-backed rebuild workflow in this change. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
 
 Full repair assumes no concurrent archive or repair operation is mutating the same remote archive. Distributed locking or remote repair leases are out of scope.
 
@@ -152,6 +157,11 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 - **AND** it SHALL write local L2 shard files for every prefix that has reconstructed entries
 - **AND** it SHALL upload chunk-index shards for every prefix that has reconstructed entries
 - **AND** it SHALL NOT write empty chunk-index shards
+
+#### Scenario: Full repair does not stream entries into L2 during this split
+- **WHEN** full chunk-index repair scans committed chunk blobs
+- **THEN** it SHALL group reconstructed entries by shard prefix in memory before writing rebuilt local L2 shard files
+- **AND** it SHALL NOT merge each reconstructed entry directly into local L2 shard state as part of this responsibility split
 
 #### Scenario: Full repair scans chunks once
 - **WHEN** full chunk-index repair runs

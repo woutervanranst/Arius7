@@ -4,6 +4,8 @@
 
 This makes the archive write path look like part of the read cache even though it has different constraints. The L1 shard-cache budget only bounds materialized shard pages; the archive write buffer grows with newly uploaded chunks until flush. A minimal responsibility split will make that distinction explicit without changing persisted data or command behavior.
 
+The previous chunk-index scalability spec also described full repair as using local L2 as bounded disk-backed rebuild state, while the implemented repair scans chunks once, groups reconstructed entries by shard prefix in memory, then writes and uploads rebuilt shards. This change treats the implementation as the behavior to preserve and clarifies the spec accordingly. A bounded disk-backed repair rebuild remains a separate hardening concern, not part of this responsibility split.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -13,6 +15,7 @@ This makes the archive write path look like part of the read cache even though i
 - Separate read-through shard cache mechanics from archive write-session state.
 - Separate read-only lookup behavior from write buffering and flushing.
 - Keep repair behavior correct while allowing it to reuse the extracted shard cache/store functionality.
+- Rectify the repair spec/implementation drift by specifying the current in-memory prefix grouping repair shape.
 - Make future bounded write sessions and dynamic shard routing easier to introduce later.
 
 **Non-Goals:**
@@ -21,6 +24,7 @@ This makes the archive write path look like part of the read cache even though i
 - Do not change the two-character shard-prefix layout.
 - Do not change chunk-index blob names, local cache paths, or shard serialization formats.
 - Do not make archive write buffering bounded in this change.
+- Do not make full repair rebuild state disk-backed or otherwise bounded in this change.
 - Do not replace current feature-handler injection with separate public reader/writer services.
 - Do not introduce distributed locking or concurrent archive coordination.
 
@@ -32,7 +36,11 @@ Current callers use `ChunkIndexService` directly from archive, restore, list, hy
 
 `ChunkIndexService` remains the operational boundary. The extracted reader, write session, and shard cache/store are implementation details, not independently callable services. They should not be registered separately in DI or consumed directly by feature handlers, other shared services, tests that exercise user-facing behavior, or future callers. An architecture test should capture this boundary so the split does not turn into a new public service graph by accident.
 
+`ChunkIndexService` should construct these internal collaborators from its existing constructor dependencies. The extracted components are ordinary internal objects, not service-collection registrations. If constructor setup becomes unwieldy later, an internal factory can be considered as a separate cleanup, but this change should not add DI registrations for the extracted reader, write session, or shard cache/store.
+
 Alternative considered: inject separate reader and writer services into feature handlers immediately. That is a cleaner endpoint, but it expands the change across more callers and tests without changing behavior. Keeping the facade limits the first refactor to the chunk-index implementation boundary.
+
+Alternative considered: register the extracted internal components in DI while still keeping external callers on `ChunkIndexService`. That keeps construction declarative, but it creates an accidental service graph and makes future direct consumption easier. Manual construction inside the facade better matches the intent of an internal implementation split.
 
 ### Extract a shard cache/store component
 
@@ -95,13 +103,15 @@ Full repair can remain on `ChunkIndexService` for the first split. It should use
 
 Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal operations. Lookup, entry recording, and flush should fail before delegating when the marker exists. The extracted internal components should not independently block shard-cache/store operations solely because the marker exists, because explicit repair owns that marker and must be able to rebuild local shard state and upload repaired shards while the marker is present.
 
-Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. The shard cache/store extraction should support repair writing complete rebuilt shards as replacements for those prefixes. Repair should not merge rebuilt entries with stale L2 or remote shard contents, and it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
+Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. This intentionally rectifies the drift between the archived scalability spec's disk-backed rebuild wording and the current implementation. The shard cache/store extraction should support repair writing complete rebuilt shards as replacements for those prefixes. Repair should not merge rebuilt entries with stale L2 or remote shard contents, and it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
 
 Repair should parallelize rebuilt-shard processing per prefix with bounded `Parallel.ForEachAsync`. The metadata-aware `chunks/` listing remains a single scan that builds the in-memory prefix groups. After that scan, each rebuilt prefix can independently write its L2 shard and upload the corresponding remote shard. No two repair workers should process the same prefix concurrently.
 
 Alternative considered: extract `ChunkIndexRepairService` now. That may be useful later, but repair has domain-specific reconstruction rules and command-facing behavior. Extracting it at the same time risks turning a minimal split into a broader rewrite.
 
 Alternative considered: stream each reconstructed repair entry directly into L2 shard state while listing chunks, keeping only prefix metadata in memory. That would better bound repair memory usage, but it changes the current repair implementation shape and is not required for this responsibility split.
+
+Alternative considered: restore the archived scalability spec's disk-backed repair rebuild contract as part of this follow-up. That may still be the right durability hardening later, but it would combine a behavioral repair rewrite with the responsibility extraction and make this change harder to verify.
 
 ### Keep fixed prefix calculation unchanged
 
@@ -118,6 +128,7 @@ Alternative considered: introduce an internal chunk-index layout/options type no
 - [Risk] The facade plus internal components may temporarily add indirection without reducing public API surface. -> Mitigation: keep extracted components internal, small, and directly aligned to existing methods.
 - [Risk] Behavior can drift during extraction, especially session-entry visibility and repair-marker checks. -> Mitigation: preserve existing tests and add focused tests where behavior moves behind new seams.
 - [Risk] The write session remains unbounded, so the memory risk is not solved. -> Mitigation: document this as a non-goal and keep the extracted write session as the future place for bounded flushing.
+- [Risk] Full repair remains in-memory by prefix group, so very large repositories can still pressure memory during repair. -> Mitigation: document this as an explicit preserved behavior and defer bounded disk-backed repair rebuild to a focused hardening change.
 - [Risk] Repair may still feel too large in `ChunkIndexService`. -> Mitigation: leave repair extraction as a separate follow-up after read/write/cache seams are stable.
 - [Risk] Internal components become accidental service boundaries. -> Mitigation: keep them internal, avoid separate DI registrations, and add an architecture test that enforces `ChunkIndexService` as the operational boundary.
 - [Risk] Internal component names may imply future adaptive routing before it exists. -> Mitigation: keep names tied to current behavior: reader, write session, shard cache/store.

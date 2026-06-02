@@ -23,6 +23,7 @@
 ## 4. Slim Facade And Repair Integration
 
 - [ ] 4.1 Update `ChunkIndexService` to delegate lookup, add, flush, and cache invalidation to the extracted internal components.
+- [ ] 4.1a Construct extracted chunk-index collaborators inside `ChunkIndexService` instead of registering them separately in DI.
 - [ ] 4.2 Keep repair orchestration on `ChunkIndexService` while reusing shard cache/store save and invalidation operations where practical.
 - [ ] 4.3 Ensure successful repair clears write-session state and leaves the repair in-progress marker behavior unchanged.
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.
@@ -30,6 +31,7 @@
 - [ ] 4.6 Ensure repair writes complete rebuilt shards as prefix replacements from in-memory groups rather than merging with stale L2 or remote shard contents.
 - [ ] 4.7 Parallelize repair rebuilt-shard L2 write and remote upload work per prefix with bounded `Parallel.ForEachAsync`, keeping one worker per prefix.
 - [ ] 4.8 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
+- [ ] 4.9 Preserve and test the current full-repair behavior that groups reconstructed entries by shard prefix in memory before writing rebuilt L2 shard files.
 
 ## 5. Documentation And Verification
 
