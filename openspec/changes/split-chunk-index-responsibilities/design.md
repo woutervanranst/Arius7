@@ -9,7 +9,7 @@ This makes the archive write path look like part of the read cache even though i
 **Goals:**
 
 - Preserve current external behavior and repository compatibility.
-- Keep `ChunkIndexService` as the facade used by feature handlers and tests during this change.
+- Keep `ChunkIndexService` as the facade used by feature handlers and user-facing behavior tests during this change.
 - Separate read-through shard cache mechanics from archive write-session state.
 - Separate read-only lookup behavior from write buffering and flushing.
 - Keep repair behavior correct while allowing it to reuse the extracted shard cache/store functionality.
@@ -40,8 +40,9 @@ Move L1/L2/L3 shard loading, L1 eviction, L2 persistence, remote shard upload, a
 
 This component should expose operations at the shard-prefix level:
 
-- load a shard by prefix through L1/L2/L3
-- save/upload a complete shard and update L2/L1
+- perform read-only lookup for a prefix through L1/L2/L3 without handing out mutable shard ownership
+- apply prefix-scoped updates to an owned shard page, upload the updated shard, save L2, and promote L1
+- write a complete rebuilt shard for repair, upload it, save L2, and promote L1
 - invalidate L1
 - invalidate L1 and L2 cache state
 
@@ -51,7 +52,9 @@ The shard cache/store may be used by other chunk-index implementation components
 
 `Shard` should be treated as an owned mutable in-memory shard page, not an immutable value. Replace the current copy-on-merge shape with explicit mutation operations such as `AddOrUpdate` or `AddOrUpdateRange`, and remove the `Shard.Merge` method. Deterministic serialization still sorts entries by content hash, so persisted format remains unchanged.
 
-The shard cache/store owns thread-safety for mutable shard pages. It should provide per-prefix synchronization around operations that load, mutate, save, upload, or promote a shard for a prefix. The implementation should not make `Shard` itself thread-safe with `ConcurrentDictionary`; shard-level concurrency does not protect the larger L1/L2/L3 update sequence. Current flush and repair callers still group work so one worker processes a prefix, but the cache/store should enforce the prefix-level boundary rather than relying only on caller discipline.
+The shard cache/store owns thread-safety for mutable shard pages. It should provide per-prefix synchronization around operations that read, load, mutate, save, upload, or promote a shard for a prefix. The implementation should not make `Shard` itself thread-safe with `ConcurrentDictionary`; shard-level concurrency does not protect the larger L1/L2/L3 update sequence. Current flush and repair callers still group work so one worker processes a prefix, but the cache/store should enforce the prefix-level boundary rather than relying only on caller discipline.
+
+The shard cache/store should not return cached mutable `Shard` instances as long-lived caller-owned objects. Read-only lookup should either run inside a prefix-scoped cache/store operation or receive a transient read view whose lifetime does not cross mutation/save/upload operations. Write-session flush and repair should use prefix-scoped update/rebuild operations so the component that owns L1/L2/L3 state also owns mutable shard ownership.
 
 Alternative considered: keep cache methods private inside `ChunkIndexService` and only extract write buffering. That leaves the largest mixed responsibility in place and gives little future seam for routing and split policy.
 
@@ -63,7 +66,7 @@ Move persisted-index lookup behavior into an internal reader, tentatively `Chunk
 
 The reader should not know about session write-buffer entries. `ChunkIndexService` can preserve current lookup semantics by checking the write session overlay first, then delegating misses to the reader.
 
-For batched lookup, the facade should split the input into write-session hits and persisted-index misses before calling the reader. The reader should receive only the misses, and the facade should merge the session hits with reader results. This keeps session overlay behavior at the operational boundary and avoids loading shards for content hashes already recorded during the current archive session.
+For batched lookup, the facade should split the input into write-session hits and persisted-index misses before calling the reader. The reader should receive only the misses, group them by fixed shard prefix, ask the shard cache/store for each prefix once, and merge reader results with the session hits before returning. This keeps session overlay behavior at the operational boundary, avoids loading shards for content hashes already recorded during the current archive session, and avoids repeated L1/L2/L3 work for multiple misses in the same prefix.
 
 Alternative considered: let the reader check session entries. That keeps the lookup API convenient but makes the read-only component depend on archive write state, which is the coupling this change is meant to remove.
 
@@ -92,7 +95,7 @@ Full repair can remain on `ChunkIndexService` for the first split. It should use
 
 Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal operations. Lookup, entry recording, and flush should fail before delegating when the marker exists. The extracted internal components should not independently block shard-cache/store operations solely because the marker exists, because explicit repair owns that marker and must be able to rebuild local shard state and upload repaired shards while the marker is present.
 
-Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. The shard cache/store extraction should support repair writing complete rebuilt shards, but it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
+Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. The shard cache/store extraction should support repair writing complete rebuilt shards as replacements for those prefixes. Repair should not merge rebuilt entries with stale L2 or remote shard contents, and it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
 
 Repair should parallelize rebuilt-shard processing per prefix with bounded `Parallel.ForEachAsync`. The metadata-aware `chunks/` listing remains a single scan that builds the in-memory prefix groups. After that scan, each rebuilt prefix can independently write its L2 shard and upload the corresponding remote shard. No two repair workers should process the same prefix concurrently.
 

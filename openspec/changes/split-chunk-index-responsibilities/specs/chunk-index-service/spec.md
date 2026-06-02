@@ -7,7 +7,7 @@ The `ChunkIndexService` implementation SHALL keep read-through shard cache mecha
 
 `ChunkIndexService` SHALL remain the operational boundary for chunk-index behavior. Extracted chunk-index components SHALL be internal implementation details and SHALL NOT be registered as separate DI services or consumed directly by feature handlers, other shared services, CLI code, storage code, or user-facing tests. Architecture tests SHALL enforce that callers outside the chunk-index implementation use `ChunkIndexService` rather than the extracted reader, write-session, or shard cache/store components.
 
-`Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own per-prefix synchronization for operations that load, mutate, save, upload, or promote a shard. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
+`Shard` SHALL be treated as an owned mutable in-memory shard page. The implementation SHALL remove copy-on-merge shard mutation and provide explicit mutation operations such as add-or-update entry/range behavior. `Shard` SHALL NOT use an internal concurrent dictionary solely for this change. The extracted shard cache/store SHALL own per-prefix synchronization for operations that read, load, mutate, save, upload, or promote a shard. The shard cache/store SHALL NOT expose cached mutable `Shard` instances as long-lived caller-owned objects outside prefix-scoped read or update operations. Persisted shard serialization SHALL remain deterministic by writing entries sorted by content hash.
 
 `ChunkIndexService` SHALL own repair orchestration and repair-in-progress marker enforcement. Normal operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL check the repair marker at the facade boundary before delegating to extracted components. Extracted components SHALL NOT independently reject shard-cache/store operations solely because the repair marker exists, so explicit repair can rebuild local shard state and upload repaired shards while the marker is present.
 
@@ -39,16 +39,27 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **AND** persisted shard output SHALL remain sorted by content hash
 
 #### Scenario: Shard cache/store synchronizes mutable shard operations by prefix
-- **WHEN** chunk-index code loads, mutates, saves, uploads, or promotes a shard for a prefix
+- **WHEN** chunk-index code reads, loads, mutates, saves, uploads, or promotes a shard for a prefix
 - **THEN** the shard cache/store SHALL synchronize that operation at the shard-prefix boundary
 - **AND** no two mutation/save/upload sequences for the same prefix SHALL run concurrently through the shard cache/store
 - **AND** `Shard` itself SHALL NOT use a concurrent dictionary solely to provide this synchronization
+
+#### Scenario: Mutable cached shards are not handed out as caller-owned objects
+- **WHEN** the read-only reader or write session needs shard contents for a prefix
+- **THEN** it SHALL access those contents through prefix-scoped shard cache/store operations
+- **AND** the shard cache/store SHALL NOT return a cached mutable `Shard` instance for callers to hold and mutate outside the cache/store synchronization boundary
 
 #### Scenario: Batched lookup applies the write-session overlay before persisted lookup
 - **WHEN** `ChunkIndexService` performs batched lookup for content hashes that include entries recorded in the current archive session
 - **THEN** the facade SHALL resolve those session entries before delegating to the read-only reader
 - **AND** the read-only reader SHALL receive only content hashes that missed the session overlay
 - **AND** the facade SHALL merge session hits with persisted-index results before returning to the caller
+
+#### Scenario: Batched persisted lookup groups misses by shard prefix
+- **WHEN** the read-only reader receives multiple content hashes for persisted-index lookup
+- **THEN** it SHALL group those hashes by fixed shard prefix
+- **AND** it SHALL use the shard cache/store at most once per prefix for that batched lookup
+- **AND** it SHALL return hits while omitting misses from the result
 
 #### Scenario: Write-session state clears only after whole flush succeeds
 - **WHEN** pending write-session entries touch multiple shard prefixes
@@ -81,6 +92,43 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **WHEN** the current `ChunkIndexService` tests are updated for the split
 - **THEN** facade behavior SHALL remain covered through `ChunkIndexService` tests
 - **AND** implementation-detail behavior that moved into extracted components SHALL be covered by focused component tests rather than one broad service test file
+
+### Requirement: Shard merge and flush
+The system SHALL collect new chunk index entries during archive and flush updated shards before publishing the snapshot. For each modified shard prefix, the chunk-index write session SHALL ask the shard cache/store to load or create the current shard, apply all pending entries for that prefix to the owned mutable shard page with last-writer-wins semantics by content hash, upload the updated shard, update local L2 cache state, and promote the updated shard to L1. If remote storage has no existing shard for a modified prefix, the service SHALL create a new shard. Flush SHALL process independent shard prefixes with bounded parallelism while ensuring a given prefix is handled by only one flush worker. The implementation SHALL NOT use a `Shard.Merge` method for this behavior.
+
+#### Scenario: New entries applied to existing shard
+- **WHEN** 50 new files have content hashes with the same shard prefix
+- **THEN** the write session SHALL load that shard through the shard cache/store
+- **AND** it SHALL apply the 50 entries to the owned mutable shard page
+- **AND** it SHALL upload the updated shard and update local caches
+
+#### Scenario: Duplicate pending content hash uses last writer
+- **WHEN** pending entries contain multiple entries for the same content hash
+- **THEN** the flushed shard SHALL contain the last recorded entry for that content hash
+
+#### Scenario: First archive creates shards
+- **WHEN** archiving to an empty repository
+- **THEN** the service SHALL create new shards for each prefix that has entries
+
+#### Scenario: Snapshot waits for index flush
+- **WHEN** an archive run has pending chunk index entries
+- **THEN** the archive pipeline SHALL complete `ChunkIndexService.FlushAsync` before creating the snapshot
+
+#### Scenario: Independent prefixes flush in parallel
+- **WHEN** pending chunk index entries touch multiple shard prefixes
+- **THEN** the service SHALL process those prefixes using bounded parallelism
+- **AND** no two workers SHALL write the same shard prefix concurrently
+- **AND** the shard cache/store SHALL also serialize mutation/save/upload operations for the same prefix
+
+#### Scenario: Flush uses internal worker constant
+- **WHEN** `ChunkIndexService.FlushAsync` processes touched shard prefixes
+- **THEN** it SHALL bound concurrency using an internal worker-count constant on `ChunkIndexService`
+
+#### Scenario: Partial flush failure does not publish snapshot
+- **WHEN** parallel chunk-index flush fails after writing some shard prefixes
+- **THEN** the archive operation SHALL fail
+- **AND** no snapshot SHALL be published for that failed archive run
+- **AND** the write session SHALL keep session and pending entries because the whole flush did not succeed
 
 ### Requirement: Explicit full chunk-index repair
 The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from chunk blobs using the configured shard prefix length. Full repair SHALL purge the local L2 chunk-index cache, scan committed chunk blobs once with `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin entries, group reconstructed entries by shard prefix in memory, write rebuilt local L2 shard files for each non-empty prefix, upload every rebuilt non-empty shard to `chunk-index/<prefix>`, and retain the rebuilt L2 files as the current local chunk-index cache. Full repair SHALL NOT write empty shard blobs. Committed chunk blobs are append-only repository data; full repair SHALL treat chunk storage as the durable source for chunk-index reconstruction.
