@@ -102,6 +102,7 @@ public sealed class ChunkIndexService : IDisposable
 
         foreach (var hash in contentHashes)
         {
+            // Was it added in this session?
             if (_sessionEntries.TryGetValue(hash, out var sessionEntry))
             {
                 result[hash] = sessionEntry;
@@ -205,7 +206,7 @@ public sealed class ChunkIndexService : IDisposable
 
     private async Task<Shard> LoadShardAsync(PathSegment prefix, CancellationToken cancellationToken)
     {
-        // L1 hit?
+        // L1 hit? (in-memory)
         lock (_l1Lock)
         {
             if (_l1Map.TryGetValue(prefix, out var node))
@@ -217,7 +218,7 @@ public sealed class ChunkIndexService : IDisposable
             }
         }
 
-        // L2 hit?
+        // L2 hit? (local filesystem)
         var l2Path = RelativePath.Root / prefix;
         if (_l2FileSystem.FileExists(l2Path))
         {
