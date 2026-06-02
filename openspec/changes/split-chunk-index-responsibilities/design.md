@@ -72,9 +72,13 @@ The write session remains unbounded in this change. It should keep the current s
 - newly added entries are visible to same-service lookups before flush
 - pending entries are grouped by fixed shard prefix at flush
 - each touched shard is loaded, merged, uploaded, saved to L2, and promoted to L1
-- session and pending state are cleared after successful flush or repair
+- session and pending state are cleared only after the whole flush succeeds, or after successful repair
+
+The write session should not clear entries per prefix as each prefix succeeds. If any touched shard upload or cache update fails, `FlushAsync` should fail without publishing a snapshot and without treating the write-session state as successfully flushed. This preserves current retry semantics and keeps partial remote flush recovery aligned with the archived scalability change: rerun archive or run explicit full repair.
 
 Alternative considered: make the write session immediately bounded or disk-backed. That is the likely next hardening step for very large archives, but it changes archive runtime behavior and failure modes. This change only separates responsibilities.
+
+Alternative considered: clear successfully flushed prefixes as each prefix completes. That may reduce duplicate work after an in-process retry, but it changes partial-failure semantics and would need a more explicit recovery contract for entries that were cleared locally before the overall archive failed.
 
 ### Keep repair orchestration in the facade initially
 

@@ -36,6 +36,12 @@ Automated test coverage for `src/Arius.Core/Shared/ChunkIndex/`, including the e
 - **AND** the read-only reader SHALL receive only content hashes that missed the session overlay
 - **AND** the facade SHALL merge session hits with persisted-index results before returning to the caller
 
+#### Scenario: Write-session state clears only after whole flush succeeds
+- **WHEN** pending write-session entries touch multiple shard prefixes
+- **AND** `FlushAsync` starts writing those shard prefixes
+- **THEN** the write session SHALL keep session and pending entries until all touched prefixes have been flushed successfully
+- **AND** if any prefix flush fails, `FlushAsync` SHALL fail without clearing the write-session state as successfully flushed
+
 #### Scenario: Extracted components use the existing fixed-layout constants
 - **WHEN** extracted chunk-index components need shard-prefix or flush-worker policy during this change
 - **THEN** they SHALL use the existing internal constants on `ChunkIndexService`
