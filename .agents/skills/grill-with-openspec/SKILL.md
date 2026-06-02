@@ -1,5 +1,5 @@
 ---
-name: grill-with-docs
+name: grill-with-openspec
 description: Grilling session that challenges an OpenSpec change against the existing domain model, sharpens terminology, and updates the change artifacts and ADRs inline as decisions crystallise. Use when user wants to stress-test an OpenSpec change against their project's language and documented decisions, or mentions "grill me".
 ---
 
