@@ -86,7 +86,11 @@ Full repair can remain on `ChunkIndexService` for the first split. It should use
 
 Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal operations. Lookup, entry recording, and flush should fail before delegating when the marker exists. The extracted internal components should not independently block shard-cache/store operations solely because the marker exists, because explicit repair owns that marker and must be able to rebuild local shard state and upload repaired shards while the marker is present.
 
+Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. The shard cache/store extraction should support repair writing complete rebuilt shards, but it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
+
 Alternative considered: extract `ChunkIndexRepairService` now. That may be useful later, but repair has domain-specific reconstruction rules and command-facing behavior. Extracting it at the same time risks turning a minimal split into a broader rewrite.
+
+Alternative considered: stream each reconstructed repair entry directly into L2 shard state while listing chunks, keeping only prefix metadata in memory. That would better bound repair memory usage, but it changes the current repair implementation shape and is not required for this responsibility split.
 
 ### Keep fixed prefix calculation unchanged
 
