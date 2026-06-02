@@ -20,6 +20,9 @@ internal sealed class ChunkIndexWriteSession
 
     public async Task FlushAsync(ChunkIndexShardCache shardCache, CancellationToken cancellationToken = default)
     {
+        // Flush is an archive-tail operation: all AddEntry producers must have stopped before this runs.
+        // It is fail-fast for accidental overlap, not interoperable with concurrent AddEntry calls.
+
         if (Interlocked.Exchange(ref _flushInProgress, 1) != 0)
             throw new InvalidOperationException("Chunk-index flush is already in progress.");
 
