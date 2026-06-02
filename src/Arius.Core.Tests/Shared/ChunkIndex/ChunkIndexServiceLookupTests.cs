@@ -98,7 +98,7 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
-    public async Task LookupAsync_MultipleHashes_ReturnsHitsAndLoadsEachShardOnce()
+    public async Task LookupAsync_MultipleHashes_ReturnsHitsAndOmitsMisses()
     {
         // Arrange
         var blobs            = new FakeInMemoryBlobContainerService();

@@ -182,8 +182,8 @@ are merged into full shard pages and made clean in L1/L2/L3.
 
 **Key operations:**
 
-- `LookupAsync` — checks `_sessionEntries` first, then loads shards for misses
-  through L1 → L2 → L3. Batched lookups load each shard prefix at most once.
+- `LookupAsync` — checks `_sessionEntries` first, then resolves misses through
+  the shared L1 → L2 → L3 shard cache.
 - `AddEntry` — adds a newly uploaded chunk to `_sessionEntries` and
   `_pendingEntries` immediately after upload.
 - `FlushAsync` — merges pending entries into existing shards, uploads merged

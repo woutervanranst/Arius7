@@ -77,9 +77,9 @@ public sealed class ChunkIndexService : IDisposable
         _encryption    = encryption;
         _l1BudgetBytes = cacheBudgetBytes;
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
-        var l2Root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
+        var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
-        _l2FileSystem  = new RelativeFileSystem(l2Root);
+        _l2FileSystem         = new RelativeFileSystem(l2Root);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
         _l2FileSystem.CreateDirectory(RelativePath.Root);
     }
@@ -89,7 +89,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <summary>
     /// Batched dedup lookup: given a collection of content-hashes, returns the set
     /// that are already known (either from the tiered cache or session entries).
-    /// Hashes are grouped by shard prefix to amortize shard downloads.
+    /// Shards are resolved through the shared L1/L2/L3 cache.
     /// Misses are omitted from the returned dictionary; an all-miss lookup returns
     /// an empty dictionary, not <c>null</c>.
     /// </summary>
@@ -98,7 +98,6 @@ public sealed class ChunkIndexService : IDisposable
         ThrowIfRepairIncomplete();
 
         var result = new Dictionary<ContentHash, ShardEntry>();
-        var loadedShards = new Dictionary<PathSegment, Shard>();
 
         foreach (var hash in contentHashes)
         {
@@ -109,13 +108,7 @@ public sealed class ChunkIndexService : IDisposable
                 continue;
             }
 
-            var prefix = Shard.PrefixOf(hash);
-            if (!loadedShards.TryGetValue(prefix, out var shard))
-            {
-                shard = await LoadShardAsync(prefix, cancellationToken);
-                loadedShards[prefix] = shard;
-            }
-
+            var shard = await LoadShardAsync(Shard.PrefixOf(hash), cancellationToken);
             if (shard.TryLookup(hash, out var shardEntry) && shardEntry is not null)
                 result[hash] = shardEntry;
         }
