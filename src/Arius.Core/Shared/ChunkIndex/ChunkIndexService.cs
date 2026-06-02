@@ -1,4 +1,3 @@
-using System.Collections.Frozen;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
@@ -101,7 +100,8 @@ public sealed class ChunkIndexService : IDisposable
 
         // Lookup in the cache
         var cacheLookups = await _reader.LookupAsync(sessionMisses, cancellationToken);
-        return result.Concat(cacheLookups).ToFrozenDictionary();
+
+        return result.Concat(cacheLookups).ToDictionary();
     }
 
     /// <summary>
