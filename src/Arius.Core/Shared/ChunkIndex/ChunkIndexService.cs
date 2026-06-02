@@ -7,7 +7,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// <summary>
 /// Three-tier chunk index cache.
 ///
-/// L1: In-memory LRU (configurable byte budget, default 512 MB).
+/// L1: In-memory LRU for materialized shard pages (configurable byte budget, default 512 MB).
 /// L2: Local disk at <c>~/.arius/{accountName}-{containerName}/chunk-index/</c>.
 /// L3: Remote blob storage (download on miss, save to L2, promote to L1).
 ///
@@ -18,7 +18,11 @@ public sealed class ChunkIndexService : IDisposable
 {
     // ── Configuration ─────────────────────────────────────────────────────────
 
-    public const long DefaultCacheBudgetBytes = 512L * 1024 * 1024; // 512 MB
+    /// <summary>
+    /// Default byte budget for L1 materialized shard pages.
+    /// This does not bound the session write buffer or pending flush entries.
+    /// </summary>
+    public const long DefaultL1CacheBudgetBytes = 512L * 1024 * 1024; // 512 MB
 
     internal const int ShardPrefixLength = 2;
     internal const int FlushWorkers = 8;
@@ -62,7 +66,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <param name="encryption">Encryption/hashing service.</param>
     /// <param name="accountName">Account name used to derive the on-disk L2 cache directory under the user's profile.</param>
     /// <param name="containerName">Container name used to derive the on-disk L2 cache directory under the user's profile.</param>
-    /// <param name="cacheBudgetBytes">Approximate byte budget for the in-memory L1 cache.</param>
+    /// <param name="l1CacheBudgetBytes">Approximate byte budget for in-memory L1 shard pages.</param>
     /// <remarks>
     /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
     /// </remarks>
@@ -71,11 +75,11 @@ public sealed class ChunkIndexService : IDisposable
         IEncryptionService encryption, 
         string accountName, 
         string containerName, 
-        long cacheBudgetBytes = DefaultCacheBudgetBytes)
+        long l1CacheBudgetBytes = DefaultL1CacheBudgetBytes)
     {
         _blobs         = blobs;
         _encryption    = encryption;
-        _l1BudgetBytes = cacheBudgetBytes;
+        _l1BudgetBytes = l1CacheBudgetBytes;
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);

@@ -117,7 +117,7 @@ subsequent lookups before the buffered entries are flushed into shard files.
 - `_sessionEntries` — newly recorded `ShardEntry` values that may not be
   persisted to any shard yet. Checked before L1/L2/L3, so lookups can see chunks
   uploaded earlier in the same service lifetime even before `FlushAsync` runs.
-  This dictionary is not bounded by `DefaultCacheBudgetBytes`; it is cleared
+  This dictionary is not bounded by `DefaultL1CacheBudgetBytes`; it is cleared
   after a successful `FlushAsync` or `RepairAsync`.
 - `_pendingEntries` — accumulates new `ShardEntry` values to merge into shards.
   Flushed in bulk at end-of-run by `FlushAsync`.
@@ -170,7 +170,7 @@ flowchart TD
 - During `FlushAsync`, pending entries are merged into the current shard, then
   saved to L2 and promoted to L1. Only after that succeeds are `_pendingEntries`
   and `_sessionEntries` cleared.
-- `DefaultCacheBudgetBytes` applies only to L1 shard objects. It does not limit
+- `DefaultL1CacheBudgetBytes` applies only to L1 shard objects. It does not limit
   `_sessionEntries` or `_pendingEntries`.
 
 This is intentionally not implemented as a dirty flag on L1 shard pages. A newly

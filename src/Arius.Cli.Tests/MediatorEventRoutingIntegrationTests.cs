@@ -32,7 +32,7 @@ public class MediatorEventRoutingIntegrationTests
             passphrase:       null,
             accountName:      "test",
             containerName:    "test",
-            cacheBudgetBytes: 0);
+            l1CacheBudgetBytes: 0);
 
         return services.BuildServiceProvider();
     }

@@ -26,7 +26,7 @@ public static class ServiceCollectionExtensions
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
-    /// <param name="cacheBudgetBytes">Maximum cache budget, in bytes, for the chunk index service.</param>
+    /// <param name="l1CacheBudgetBytes">Maximum byte budget for the chunk index service's in-memory L1 shard cache.</param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
@@ -34,7 +34,7 @@ public static class ServiceCollectionExtensions
         string?                 passphrase,
         string                  accountName,
         string                  containerName,
-        long                    cacheBudgetBytes = ChunkIndexService.DefaultCacheBudgetBytes)
+        long                    l1CacheBudgetBytes = ChunkIndexService.DefaultL1CacheBudgetBytes)
     {
         // Storage
         services.AddSingleton(blobContainer);
@@ -56,7 +56,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
                 containerName,
-                cacheBudgetBytes));
+                l1CacheBudgetBytes));
 
         services.AddSingleton<ChunkStorageService>(sp =>
             new ChunkStorageService(
