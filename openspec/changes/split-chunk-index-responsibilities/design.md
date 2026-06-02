@@ -88,6 +88,8 @@ Repair-in-progress marker enforcement stays on `ChunkIndexService` for normal op
 
 Full repair remains an in-memory reconstruction workflow in this change: it scans committed chunks, groups reconstructed entries by shard prefix in memory, then writes rebuilt shard contents to L2 before uploading remote shards. The shard cache/store extraction should support repair writing complete rebuilt shards, but it should not turn repair into a streaming per-entry L2 merge workflow during this refactor.
 
+Repair should parallelize rebuilt-shard processing per prefix with bounded `Parallel.ForEachAsync`. The metadata-aware `chunks/` listing remains a single scan that builds the in-memory prefix groups. After that scan, each rebuilt prefix can independently write its L2 shard and upload the corresponding remote shard. No two repair workers should process the same prefix concurrently.
+
 Alternative considered: extract `ChunkIndexRepairService` now. That may be useful later, but repair has domain-specific reconstruction rules and command-facing behavior. Extracting it at the same time risks turning a minimal split into a broader rewrite.
 
 Alternative considered: stream each reconstructed repair entry directly into L2 shard state while listing chunks, keeping only prefix metadata in memory. That would better bound repair memory usage, but it changes the current repair implementation shape and is not required for this responsibility split.

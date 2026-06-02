@@ -96,6 +96,12 @@ Full repair SHALL be idempotent and safe to rerun. If full repair is interrupted
 - **THEN** it SHALL perform one metadata-aware listing for `chunks/`
 - **AND** it SHALL NOT rebuild by issuing one chunk listing per possible shard prefix
 
+#### Scenario: Full repair writes rebuilt prefixes in parallel
+- **WHEN** full chunk-index repair has grouped reconstructed entries by shard prefix
+- **THEN** it SHALL process rebuilt shard prefixes with bounded `Parallel.ForEachAsync`
+- **AND** each rebuilt prefix SHALL be processed by at most one worker
+- **AND** each worker SHALL write the rebuilt local L2 shard and upload the rebuilt remote shard for its prefix
+
 #### Scenario: Full repair deletes stale shards
 - **WHEN** full chunk-index repair completes local shard reconstruction and uploads rebuilt shards
 - **AND** an existing `chunk-index/` shard blob is not in the expected rebuilt prefix set

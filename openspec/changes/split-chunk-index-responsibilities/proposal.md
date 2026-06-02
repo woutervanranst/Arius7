@@ -10,6 +10,7 @@
 - Move L1/L2/L3 shard loading, persistence, and cache invalidation into a dedicated shard cache/store component.
 - Move archive-session write buffering and flushing into a dedicated write-session component.
 - Move read-only lookup behavior into a dedicated reader component that uses the shard cache/store.
+- Parallelize full repair's rebuilt-shard write/upload work per shard prefix with bounded `Parallel.ForEachAsync` while preserving the one metadata-aware chunk listing and in-memory reconstruction grouping.
 - Keep fixed two-character shard prefixes and the existing blob layout unchanged.
 - Keep repair command behavior and repository safety checks unchanged, while allowing repair to use the extracted components.
 

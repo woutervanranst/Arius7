@@ -26,6 +26,7 @@
 - [ ] 4.4 Keep existing handler and DI call sites using `ChunkIndexService` as the facade.
 - [ ] 4.5 Keep repair-marker checks at the `ChunkIndexService` facade boundary for normal lookup, entry recording, and flush operations so explicit repair can reuse internal shard-cache/store operations while the marker exists.
 - [ ] 4.6 Add an architecture test proving extracted chunk-index components are not consumed directly outside the chunk-index implementation boundary and `ChunkIndexService` remains the operation entry point.
+- [ ] 4.6 Parallelize repair rebuilt-shard L2 write and remote upload work per prefix with bounded `Parallel.ForEachAsync`, keeping one worker per prefix.
 
 ## 5. Documentation And Verification
 
