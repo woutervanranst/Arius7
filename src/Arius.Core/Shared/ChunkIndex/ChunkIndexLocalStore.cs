@@ -28,7 +28,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         _fileSystem.CreateDirectory(RelativePath.Root);
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = GetAbsoluteDatabasePath(),
+            DataSource = root.Resolve(_databasePath),
             Mode       = SqliteOpenMode.ReadWriteCreate,
             Pooling    = true,
         }.ToString();
@@ -470,9 +470,6 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         => Convert.FromHexString(value);
 
     // -- FILE MARKERS ---------------------------------------------------------
-
-    private string GetAbsoluteDatabasePath()
-        => _rootDirectory.Resolve(_databasePath);
 
     private void WriteDirtyMarker()
     {
