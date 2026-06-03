@@ -107,6 +107,57 @@ ChunkIndexService
 
 Rationale: two disk-backed components that both know about unflushed archive entries would split transaction ownership and make partial-flush recovery harder. A single local store can make dirty-row writes, prefix selection, and dirty cleanup transactional.
 
+### Local store API
+
+`ChunkIndexLocalStore` owns SQLite details, but its public internal methods should be chunk-index-domain operations rather than SQL-shaped commands. A representative API is:
+
+```csharp
+internal sealed class ChunkIndexLocalStore : IAsyncDisposable
+{
+    public Task InitializeAsync(CancellationToken cancellationToken);
+
+    public Task<ShardEntry?> GetValueOrDefaultAsync(
+        ContentHash contentHash,
+        CancellationToken cancellationToken);
+
+    public Task UpsertDirtyAsync(
+        ShardEntry entry,
+        CancellationToken cancellationToken);
+
+    public Task UpsertCleanRangeAsync(
+        PathSegment prefix,
+        IAsyncEnumerable<ShardEntry> entries,
+        CancellationToken cancellationToken);
+
+    public Task<bool> IsPrefixLoadedAsync(
+        PathSegment prefix,
+        CancellationToken cancellationToken);
+
+    public Task MarkPrefixLoadedAsync(
+        PathSegment prefix,
+        CancellationToken cancellationToken);
+
+    public IAsyncEnumerable<PathSegment> GetDirtyPrefixesAsync(
+        CancellationToken cancellationToken);
+
+    public IAsyncEnumerable<ShardEntry> ReadPrefixEntriesAsync(
+        PathSegment prefix,
+        CancellationToken cancellationToken);
+
+    public Task MarkDirtyPrefixesCleanAsync(
+        IReadOnlyCollection<PathSegment> prefixes,
+        CancellationToken cancellationToken);
+
+    public Task ClearCleanCacheAsync(CancellationToken cancellationToken);
+
+    public Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
+}
+```
+
+`UpsertCleanRangeAsync` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. Dirty rows represent current archive operational state and win over remote cache hydration.
+
+Avoid putting `GetOrAdd`-style remote loading on the local store. The “add” side requires remote shard download and wire deserialization, so that coordination belongs in the reader/writer orchestration path. A dedicated prefix-loader helper is optional, not required. Use the decision rule: keep prefix-loading coordination inline while only one or two call sites need it; extract a focused internal helper only if lookup and flush share enough code that extraction reduces complexity.
+
 ### Suggested local schema
 
 Use binary hash storage to avoid string overhead and keep indexes compact.

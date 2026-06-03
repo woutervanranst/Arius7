@@ -29,6 +29,50 @@ CREATE INDEX ix_chunk_index_entries_dirty_prefix
     ON chunk_index_entries(dirty, prefix);
 ```
 
+The local store SHALL expose a domain-specific API for local chunk-index facts and mutations. The API SHALL provide operations equivalent to:
+
+```csharp
+Task InitializeAsync(CancellationToken cancellationToken);
+
+Task<ShardEntry?> GetValueOrDefaultAsync(
+    ContentHash contentHash,
+    CancellationToken cancellationToken);
+
+Task UpsertDirtyAsync(
+    ShardEntry entry,
+    CancellationToken cancellationToken);
+
+Task UpsertCleanRangeAsync(
+    PathSegment prefix,
+    IAsyncEnumerable<ShardEntry> entries,
+    CancellationToken cancellationToken);
+
+Task<bool> IsPrefixLoadedAsync(
+    PathSegment prefix,
+    CancellationToken cancellationToken);
+
+Task MarkPrefixLoadedAsync(
+    PathSegment prefix,
+    CancellationToken cancellationToken);
+
+IAsyncEnumerable<PathSegment> GetDirtyPrefixesAsync(
+    CancellationToken cancellationToken);
+
+IAsyncEnumerable<ShardEntry> ReadPrefixEntriesAsync(
+    PathSegment prefix,
+    CancellationToken cancellationToken);
+
+Task MarkDirtyPrefixesCleanAsync(
+    IReadOnlyCollection<PathSegment> prefixes,
+    CancellationToken cancellationToken);
+
+Task ClearCleanCacheAsync(CancellationToken cancellationToken);
+
+Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
+```
+
+`UpsertCleanRangeAsync` SHALL ingest rows loaded from a remote shard with `dirty = 0` and SHALL NOT overwrite a local row whose current value has `dirty = 1`. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
+
 #### Scenario: Local store owns pending state
 - **WHEN** archive workers record new chunk-index entries during an archive run
 - **THEN** the entries SHALL be upserted to the SQLite-backed local store with `dirty = 1`
@@ -38,6 +82,12 @@ CREATE INDEX ix_chunk_index_entries_dirty_prefix
 - **WHEN** a chunk-index lookup requests a content hash recorded earlier in the same archive run
 - **THEN** the lookup SHALL read the matching `chunk_index_entries` row
 - **AND** the row SHALL be visible even when it has not yet been flushed to the remote chunk index
+
+#### Scenario: Remote rows are ingested as clean cache rows
+- **WHEN** chunk-index code downloads and deserializes a remote shard for a prefix
+- **THEN** it SHALL ingest the remote shard entries through `UpsertCleanRangeAsync`
+- **AND** the ingested rows SHALL be stored with `dirty = 0`
+- **AND** any existing local dirty row for the same content hash SHALL remain protected and SHALL NOT be overwritten by clean remote ingestion
 
 #### Scenario: Writer coordinates without owning state
 - **WHEN** chunk-index flush starts for pending archive entries
@@ -51,6 +101,12 @@ CREATE INDEX ix_chunk_index_entries_dirty_prefix
 - **AND** it SHALL stream all rows for that prefix ordered by content hash from `chunk_index_entries`
 - **AND** it SHALL upload the resulting shard to the remote chunk index
 - **AND** dirty rows SHALL be marked `dirty = 0` only after all touched prefixes upload successfully
+
+#### Scenario: Local store API stays storage-focused
+- **WHEN** chunk-index internals need to ensure a prefix is loaded from remote storage
+- **THEN** they SHALL coordinate remote download and shard deserialization outside the local store
+- **AND** they SHALL use the local store only for loaded-prefix checks, clean-row ingestion, loaded-prefix marking, and row reads
+- **AND** the implementation SHALL NOT add a separate prefix-loader class solely to expose a collection-style `GetOrAdd` method
 
 #### Scenario: Local store does not own remote publication
 - **WHEN** a touched prefix must be flushed to the remote chunk index
