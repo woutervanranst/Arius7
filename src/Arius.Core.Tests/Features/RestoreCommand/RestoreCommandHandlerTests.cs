@@ -7,6 +7,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -332,6 +333,61 @@ public class RestoreCommandHandlerTests
         restoreResult.FilesRestored.ShouldBe(1);
         fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
         fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photoshop/logo.png")).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Handle_ResolvesChunksViaBoundedChunkIndexBatches()
+    {
+        var accountName = $"acct-restore-batched-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-batched-{Guid.NewGuid():N}";
+        var blobs = new FakeInMemoryBlobContainerService();
+
+        {
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(
+                blobs,
+                accountName,
+                containerName,
+                new PlaintextPassthroughService());
+
+            for (var i = 0; i < 300; i++)
+            {
+                var relativePath = RelativePath.Parse($"batch/file-{i:D3}.bin");
+                await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, [(byte)(i % 251)], CancellationToken.None);
+            }
+
+            var archiveResult = await fixture.CreateArchiveHandler().Handle(
+                new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+                {
+                    RootDirectory = fixture.LocalDirectory.ToString(),
+                    UploadTier = BlobTier.Cool,
+                    SmallFileThreshold = 0,
+                }),
+                CancellationToken.None);
+
+            archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+        }
+
+        RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
+
+        await using var restoreFixture = await RepositoryTestFixture.CreateWithEncryptionAsync(
+            blobs,
+            accountName,
+            containerName,
+            new PlaintextPassthroughService());
+
+        var requestedBlobNames = blobs.RequestedBlobNames;
+        requestedBlobNames.Clear();
+
+        var restoreResult = await restoreFixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = restoreFixture.RestoreDirectory.ToString(),
+                Overwrite = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        requestedBlobNames.Count(name => name == BlobPaths.SnapshotsPrefix).ShouldBeGreaterThan(1);
     }
 
     [Test]

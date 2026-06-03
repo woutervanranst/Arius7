@@ -191,6 +191,77 @@ public class AzureBlobServiceTests
         results.ShouldBe(["chunks/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
     }
 
+    [Test]
+    public async Task UploadAsync_ReturnsOpaqueBlobIdentityFromAzureEtag()
+    {
+        var container = new FakeContainer("repo-a", exists: true, []);
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient([container]),
+            "account",
+            "key");
+
+        var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
+
+        var result = await containerService.UploadAsync(
+            RelativePath.Parse("chunks/identity-upload"),
+            new MemoryStream([1, 2, 3]),
+            new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge },
+            BlobTier.Cool,
+            cancellationToken: CancellationToken.None);
+
+        result.BlobIdentity.ShouldBe("\"etag-upload\"");
+    }
+
+    [Test]
+    public async Task GetMetadataAsync_ReturnsOpaqueBlobIdentityFromAzureEtag()
+    {
+        var container = new FakeContainer(
+            "repo-a",
+            exists: true,
+            ["chunks/identity-head"])
+        {
+            MetadataEtag = new ETag("\"etag-head\"")
+        };
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient([container]),
+            "account",
+            "key");
+
+        var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
+
+        var result = await containerService.GetMetadataAsync(RelativePath.Parse("chunks/identity-head"), CancellationToken.None);
+
+        result.Exists.ShouldBeTrue();
+        result.BlobIdentity.ShouldBe("\"etag-head\"");
+    }
+
+    [Test]
+    public async Task ListAsync_WithMetadata_ReturnsOpaqueBlobIdentityFromAzureEtag()
+    {
+        var container = new FakeContainer(
+            "repo-a",
+            exists: true,
+            ["chunks/identity-list"])
+        {
+            ListEtag = new ETag("\"etag-list\"")
+        };
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient([container]),
+            "account",
+            "key");
+
+        var containerService = await service.GetContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
+
+        var results = new List<BlobListItem>();
+        await foreach (var item in containerService.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: CancellationToken.None))
+        {
+            results.Add(item);
+        }
+
+        results.ShouldHaveSingleItem();
+        results[0].BlobIdentity.ShouldBe("\"etag-list\"");
+    }
+
     private sealed class FakeBlobServiceClient(IReadOnlyList<FakeContainer> containers) : BlobServiceClient
     {
         public override AsyncPageable<BlobContainerItem> GetBlobContainersAsync(
@@ -262,37 +333,11 @@ public class AzureBlobServiceTests
                     name,
                     false,
                     BlobsModelFactory.BlobItemProperties(
-                        true,
-                        new Uri("https://example.test/blob"),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        1L,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        default,
-                        null,
-                        null,
-                        null,
-                        null),
+                        accessTierInferred: true,
+                        copySource: new Uri("https://example.test/blob"),
+                        contentLength: 1L,
+                        accessTier: AccessTier.Cool,
+                        eTag: container.ListEtag),
                     null,
                     new Dictionary<string, string>())));
             }
@@ -317,37 +362,11 @@ public class AzureBlobServiceTests
                     name,
                     false,
                     BlobsModelFactory.BlobItemProperties(
-                        true,
-                        new Uri("https://example.test/blob"),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        1L,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        default,
-                        null,
-                        null,
-                        null,
-                        null),
+                        accessTierInferred: true,
+                        copySource: new Uri("https://example.test/blob"),
+                        contentLength: 1L,
+                        accessTier: AccessTier.Cool,
+                        eTag: container.ListEtag),
                     null,
                     new Dictionary<string, string>()))
                 .ToArray();
@@ -360,6 +379,18 @@ public class AzureBlobServiceTests
 
     private sealed class FakeBlobClient(FakeContainer container, string blobName) : BlobClient
     {
+        public override Task<Response<BlobContentInfo>> UploadAsync(Stream content, BlobUploadOptions options, CancellationToken cancellationToken = default)
+        {
+            if (blobName == ".arius-preflight-probe")
+            {
+                container.UploadedProbe = true;
+            }
+
+            return Task.FromResult(Response.FromValue(
+                BlobsModelFactory.BlobContentInfo(new ETag("\"etag-upload\""), default, default, default, default, default, default),
+                FakeResponse.Instance));
+        }
+
         public override Task<Response<BlobContentInfo>> UploadAsync(Stream content, bool overwrite = false, CancellationToken cancellationToken = default)
         {
             if (blobName == ".arius-preflight-probe")
@@ -369,6 +400,18 @@ public class AzureBlobServiceTests
 
             return Task.FromResult(Response.FromValue(
                 BlobsModelFactory.BlobContentInfo(default, default, default, default, default, default, default),
+                FakeResponse.Instance));
+        }
+
+        public override Task<Response<BlobProperties>> GetPropertiesAsync(BlobRequestConditions conditions = null!, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Response.FromValue(
+                BlobsModelFactory.BlobProperties(
+                    lastModified: DateTimeOffset.UtcNow,
+                    contentLength: 3,
+                    accessTier: AccessTier.Cool.ToString(),
+                    eTag: container.MetadataEtag,
+                    metadata: new Dictionary<string, string>()),
                 FakeResponse.Instance));
         }
 
@@ -390,6 +433,8 @@ public class AzureBlobServiceTests
         public IReadOnlyList<string> BlobNames { get; } = blobNames;
         public bool UploadedProbe { get; set; }
         public bool DeletedProbe { get; set; }
+        public ETag MetadataEtag { get; set; } = default;
+        public ETag ListEtag { get; set; } = default;
     }
 
     private sealed class FakeResponse : Response

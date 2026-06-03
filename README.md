@@ -313,8 +313,9 @@ each line maps a content-hash to its chunk-hash:
 ```
 
 For large files, content-hash equals chunk-hash. For tar-bundled files, chunk-hash is
-the tar-hash. A 3-tier cache (in-memory LRU, local disk at
-`~/.arius/cache/<repo-id>/chunk-index/`, remote blob) makes lookups fast.
+the tar-hash. Arius keeps local chunk-index state in a SQLite cache under the repository
+state directory, validates touched prefixes lazily against the latest snapshot, and can
+rebuild the local cache or the remote shards from committed chunks when repair is needed.
 
 ## Toolchain
 

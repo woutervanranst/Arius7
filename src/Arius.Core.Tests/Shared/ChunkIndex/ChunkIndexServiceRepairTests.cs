@@ -55,6 +55,40 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_WritesRepairMarker_RecreatesSqliteCache_AndStagesEntriesInSqlite()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-sqlite-staging");
+        var cache = new RelativeFileSystem(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        cache.CreateDirectory(RelativePath.Root);
+
+        blobs.SeedBlob(
+            BlobPaths.ChunkPath(FakeChunkHash('a')),
+            [1, 2, 3],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.OriginalSize] = "100",
+                [BlobMetadataKeys.ChunkSize] = "3",
+            });
+
+        using var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        staleStore.UpsertDirty(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
+        staleStore.Dispose();
+
+        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+
+        var result = await index.RepairAsync();
+
+        result.RebuiltEntryCount.ShouldBe(1);
+        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeTrue();
+        cache.FileExists(RelativePath.Parse("cache.sqlite")).ShouldBeTrue();
+        var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
+        repository.FileExists(ChunkIndexService.RepairInProgressMarkerPath).ShouldBeFalse();
+    }
+
+    [Test]
     public async Task RepairAsync_ReplacesRebuiltPrefixInsteadOfMergingStaleShardContents()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -152,17 +186,20 @@ public class ChunkIndexServiceRepairTests
         var repositoryKey = UniqueRepositoryKey("repair-rerun");
         var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
         var cache = new RelativeFileSystem(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        var store = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
         repository.CreateDirectory(RelativePath.Root);
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        await cache.WriteAllBytesAsync(RelativePath.Root / PathSegment.Parse("aa"), [1, 2, 3], CancellationToken.None);
+        store.UpsertDirty(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        store.Dispose();
         using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
         result.RebuiltEntryCount.ShouldBe(0);
         repository.FileExists(ChunkIndexService.RepairInProgressMarkerPath).ShouldBeFalse();
-        cache.FileExists(RelativePath.Root / PathSegment.Parse("aa")).ShouldBeFalse();
+        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeTrue();
+        cache.FileExists(RelativePath.Parse("cache.sqlite")).ShouldBeTrue();
     }
 
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)

@@ -162,6 +162,26 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
+    public async Task UploadLargeAsync_OpenWriteConflict_FetchesMetadataAfterSuccessfulStreamUpload()
+    {
+        var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: RetryChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        blobs.MetadataRequests.ShouldContain(BlobPaths.ChunkPath(RetryChunkHash));
+    }
+
+    [Test]
     public async Task UploadLargeAsync_RetryAfterMetadataConflict_ReportsSingleProgressSequence()
     {
         var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
@@ -282,6 +302,29 @@ public class ChunkStorageServiceUploadTests
         var metadata = await blobs.GetMetadataAsync(BlobPaths.ThinChunkPath(RetryThinContentHash));
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
         metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(RetryThinParentChunkHash.ToString());
+    }
+
+    [Test]
+    public async Task UploadThinAsync_UsesReturnedBlobIdentityWithoutParsingIt()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+
+        var metadata = await blobs.UploadAsync(
+            BlobPaths.ThinChunkPath(ThinContentHash),
+            new MemoryStream(Array.Empty<byte>(), writable: false),
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.ParentChunkHash] = ThinParentChunkHash.ToString(),
+                [BlobMetadataKeys.OriginalSize] = "12",
+                [BlobMetadataKeys.CompressedSize] = "3",
+            },
+            BlobTier.Cool,
+            ContentTypes.Thin,
+            cancellationToken: CancellationToken.None);
+
+        metadata.BlobIdentity.ShouldNotBeNull();
+        metadata.BlobIdentity.ShouldStartWith("fake:");
     }
 
 }

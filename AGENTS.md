@@ -221,8 +221,8 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
 - `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
 
 - Chunk-index shards are **mutable**. Multiple runs/machines can extend or overwrite shard content for the same prefix.
-- Because chunk-index data is mutable, `ChunkIndexService` uses a tiered cache: L1 memory, L2 disk, L3 blob storage.
-- On snapshot mismatch, chunk-index caches may be stale and must be invalidated.
+- Because chunk-index data is mutable, `ChunkIndexService` keeps the local cache in SQLite, validates touched prefixes lazily against the latest snapshot, and preserves dirty rows until flush succeeds.
+- On snapshot mismatch, only clean chunk-index cache state is invalidated; dirty rows must survive until they are flushed or the run is retried.
 
 - Filetree blobs are **immutable** and content-addressed.
 - Because filetree blobs are immutable, `FileTreeService` can trust any non-corrupt local cache file permanently.

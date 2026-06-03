@@ -12,6 +12,7 @@ internal sealed class BlobAlreadyExistsOnSetMetadataOnceBlobContainerService : I
     private int _remainingFailures = 1;
 
     public ICollection<RelativePath> DeletedBlobNames => _inner.DeletedBlobNames;
+    public ICollection<RelativePath> MetadataRequests => _inner.RequestedBlobNames;
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
         _inner.CreateContainerIfNotExistsAsync(cancellationToken);

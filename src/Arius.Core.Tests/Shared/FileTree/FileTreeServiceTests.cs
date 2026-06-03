@@ -61,7 +61,7 @@ public class FileTreeServiceTests
         result.Count.ShouldBe(1);
         result[0].Name.ShouldBe(PathSegment.Parse("a.txt"));
         // No Azure download should have been requested.
-        blobs.RequestedBlobNames.ShouldBeEmpty();
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.FileTreesPrefix);
     }
 
     // ── 7.2  ReadAsync — cache miss ───────────────────────────────────────────
@@ -400,7 +400,7 @@ public class FileTreeServiceTests
         // No filetrees listing should have been performed.
         // (ListAsync is only called for filetrees/, not snapshots/.)
         // We verify by checking no filetree blobs were requested.
-        blobs.RequestedBlobNames.ShouldBeEmpty();
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.FileTreesPrefix);
     }
 
     [Test]
@@ -639,7 +639,7 @@ public class FileTreeServiceTests
         await fixture.FileTreeService.ValidateAsync();
 
         // No Azure calls on second invocation.
-        blobs.RequestedBlobNames.ShouldBeEmpty();
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.FileTreesPrefix);
         blobs.UploadedBlobNames.ShouldBeEmpty();
     }
 

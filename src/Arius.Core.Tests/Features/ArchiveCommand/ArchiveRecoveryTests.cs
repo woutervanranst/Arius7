@@ -1,12 +1,15 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
@@ -109,6 +112,100 @@ public class ArchiveRecoveryTests
 
         blobs.FailChunkIndexUploads = false;
         await fixture.Index.FlushAsync();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_RecordsLargeDirtyRowOnlyAfterUploadLargeReturns()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 2 * 1024 * 1024);
+        var contentHash = fixture.Encryption.ComputeHash(content);
+        var chunkHash = ChunkHash.Parse(contentHash);
+        var observedMissingDuringUpload = false;
+
+        var chunkStorage = new RecordingChunkStorageService(
+            uploadLargeAsync: async (actualChunkHash, _, sourceSize, _, _, _) =>
+            {
+                actualChunkHash.ShouldBe(chunkHash);
+                (await fixture.Index.LookupAsync(contentHash)).ShouldBeNull();
+                observedMissingDuringUpload = true;
+                return new ChunkUploadResult(actualChunkHash, StoredSize: sourceSize / 2, AlreadyExisted: false, OriginalSize: sourceSize);
+            });
+
+        var handler = new ArchiveCommandHandler(
+            fixture.BlobContainer,
+            fixture.Encryption,
+            fixture.Index,
+            chunkStorage,
+            fixture.FileTreeService,
+            fixture.Snapshot,
+            fixture.Mediator,
+            new FakeLogger<ArchiveCommandHandler>(),
+            fixture.AccountName,
+            fixture.ContainerName);
+
+        var result = await handler.Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier = BlobTier.Cool,
+                SmallFileThreshold = 0,
+            }),
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        observedMissingDuringUpload.ShouldBeTrue();
+        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_RecordsThinDirtyRowOnlyAfterUploadThinReturns()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 256);
+        var contentHash = fixture.Encryption.ComputeHash(content);
+        var tarUploaded = false;
+        var observedMissingDuringThinUpload = false;
+
+        var chunkStorage = new RecordingChunkStorageService(
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
+            {
+                tarUploaded = true;
+                return Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: sourceSize / 2, AlreadyExisted: false, OriginalSize: sourceSize));
+            },
+            uploadThinAsync: async (actualContentHash, _, _, _, _) =>
+            {
+                tarUploaded.ShouldBeTrue();
+                actualContentHash.ShouldBe(contentHash);
+                (await fixture.Index.LookupAsync(contentHash)).ShouldBeNull();
+                observedMissingDuringThinUpload = true;
+                return true;
+            });
+
+        var handler = new ArchiveCommandHandler(
+            fixture.BlobContainer,
+            fixture.Encryption,
+            fixture.Index,
+            chunkStorage,
+            fixture.FileTreeService,
+            fixture.Snapshot,
+            fixture.Mediator,
+            new FakeLogger<ArchiveCommandHandler>(),
+            fixture.AccountName,
+            fixture.ContainerName);
+
+        var result = await handler.Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+            }),
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        observedMissingDuringThinUpload.ShouldBeTrue();
         (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
@@ -379,5 +476,34 @@ public class ArchiveRecoveryTests
         public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
 
         public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DeleteAsync(blobName, cancellationToken);
+    }
+
+    private sealed class RecordingChunkStorageService(
+        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadLargeAsync = null,
+        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadTarAsync = null,
+        Func<ContentHash, ChunkHash, long, long, CancellationToken, Task<bool>>? uploadThinAsync = null) : IChunkStorageService
+    {
+        public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+            => uploadLargeAsync is not null
+                ? uploadLargeAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                : throw new NotSupportedException();
+
+        public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+            => uploadTarAsync is not null
+                ? uploadTarAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                : throw new NotSupportedException();
+
+        public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long compressedSize, CancellationToken cancellationToken = default)
+            => uploadThinAsync is not null
+                ? uploadThinAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken)
+                : throw new NotSupportedException();
+
+        public Task<Stream> DownloadAsync(ChunkHash chunkHash, IProgress<long>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<ChunkHydrationStatus> GetHydrationStatusAsync(ChunkHash chunkHash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task StartRehydrationAsync(ChunkHash chunkHash, RehydratePriority priority, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }
