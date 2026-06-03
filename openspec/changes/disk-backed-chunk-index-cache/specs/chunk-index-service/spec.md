@@ -123,3 +123,45 @@ Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
 - **WHEN** chunk-index cache invalidation clears local cache state
 - **THEN** rows with `dirty = 0` MAY be discarded
 - **AND** rows with `dirty = 1` SHALL be preserved or the operation SHALL fail clearly without treating the dirty rows as successfully discarded
+
+## MODIFIED Requirements
+
+### Requirement: Explicit full chunk-index repair
+The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from committed chunk blobs using the configured shard prefix length. Full repair SHALL use SQLite-backed local repair state instead of grouping all reconstructed entries in managed memory. Repair SHALL stream one metadata-aware chunk listing from `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin chunk-index entries, and upsert each reconstructed entry into disk-backed local repair state as it is discovered.
+
+Full repair SHALL write a repair-in-progress marker before clearing or rebuilding local chunk-index state. The repair marker SHALL live outside the purgeable local chunk-index cache and SHALL NOT be deleted by cache invalidation. Normal chunk-index operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL fail clearly while the marker exists. The explicit repair API SHALL be allowed to run when the marker already exists so an interrupted repair can be rerun.
+
+After reconstructed entries are staged locally, full repair SHALL stream each rebuilt prefix from SQLite ordered by content hash, serialize each remote shard using the existing shard wire format, upload every non-empty rebuilt shard to `chunk-index/<prefix>`, and delete stale remote shard blobs whose prefixes were not rebuilt. Full repair SHALL clear dirty repair state and the repair marker only after rebuilt shard upload and stale-shard deletion succeed. Full repair SHALL NOT publish snapshots.
+
+Full repair remains explicit and idempotent. If full repair is interrupted while staging entries, uploading rebuilt shards, or deleting stale remote shards, a later full repair SHALL purge partial repair state and reconstruct shard contents again from committed chunks. Distributed locking or remote repair leases remain out of scope.
+
+#### Scenario: Full repair stages reconstructed entries on disk
+- **WHEN** full chunk-index repair scans committed large and thin chunk blobs
+- **THEN** it SHALL reconstruct chunk-index entries for those chunks
+- **AND** it SHALL upsert each reconstructed entry into SQLite-backed local repair state
+- **AND** it SHALL NOT group all reconstructed entries by shard prefix in managed memory
+
+#### Scenario: Full repair streams rebuilt prefixes from SQLite
+- **WHEN** full chunk-index repair has staged reconstructed entries locally
+- **THEN** it SHALL stream rows for each rebuilt prefix from SQLite ordered by content hash
+- **AND** it SHALL serialize and upload a remote chunk-index shard for every non-empty rebuilt prefix
+- **AND** persisted shard output SHALL remain deterministic
+
+#### Scenario: Full repair scans chunks once
+- **WHEN** full chunk-index repair runs
+- **THEN** it SHALL perform one metadata-aware listing for `chunks/`
+- **AND** it SHALL NOT rebuild by issuing one chunk listing per possible shard prefix
+
+#### Scenario: Full repair deletes stale shards
+- **WHEN** full chunk-index repair completes rebuilt shard uploads
+- **AND** an existing `chunk-index/` shard blob is not in the rebuilt prefix set tracked by local repair state
+- **THEN** full repair SHALL delete that stale shard blob
+
+#### Scenario: Full repair can be rerun after interruption
+- **WHEN** full chunk-index repair is interrupted after staging only some entries or writing only some remote shard prefixes
+- **THEN** rerunning full repair SHALL purge partial repair state
+- **AND** it SHALL reconstruct shard contents again from committed chunks
+
+#### Scenario: Full repair does not publish snapshot
+- **WHEN** full chunk-index repair writes repaired shard blobs
+- **THEN** it SHALL NOT create or update any snapshot manifest
