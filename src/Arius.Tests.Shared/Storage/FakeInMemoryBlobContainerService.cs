@@ -103,6 +103,8 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        _requestedBlobNames.Enqueue(prefix);
+
         foreach (var blobName in _blobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
