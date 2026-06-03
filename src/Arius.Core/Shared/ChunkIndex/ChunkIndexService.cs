@@ -27,8 +27,6 @@ public sealed class ChunkIndexService : IDisposable
     internal const int FlushWorkers = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
-    // ── Dependencies ──────────────────────────────────────────────────────────
-
     private readonly IBlobContainerService  _blobs;
     private readonly RelativeFileSystem     _repositoryFileSystem;
     private readonly ChunkIndexShardCache   _shardCache;

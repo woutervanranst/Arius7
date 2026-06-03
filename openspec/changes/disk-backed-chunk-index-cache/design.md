@@ -109,7 +109,7 @@ If local SQLite is lost, lookup rehydrates from remote shards. If remote shards 
 Do not keep `ChunkIndexLocalStore` and `ChunkIndexWriteSession` as two independent state owners. The local SQLite store should own all disk-backed tables and transactions for:
 
 - loaded shard rows
-- loaded-prefix freshness state
+- loaded-prefix freshness state, including the snapshot identity and remote shard identity used when the prefix was last validated
 - pending archive entries
 - repair staging rows or repair run state
 
@@ -146,7 +146,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         PathSegment prefix,
         IEnumerable<ShardEntry> entries);
 
-    public bool IsPrefixLoaded(PathSegment prefix);
+    public LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix);
 
     public IEnumerable<PathSegment> GetDirtyPrefixes();
 
@@ -162,7 +162,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 }
 ```
 
-`IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion. Dirty rows represent current archive operational state and win over remote cache hydration.
+`IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion, including the current latest snapshot identity and the remote shard identity used for validation. Dirty rows represent current archive operational state and win over remote cache hydration.
 
 `IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
 
@@ -196,8 +196,11 @@ CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_dirty_prefix
     ON chunk_index_entries(dirty, prefix);
 
 CREATE TABLE IF NOT EXISTS loaded_prefixes (
-    prefix          TEXT NOT NULL PRIMARY KEY,
-    loaded_at_utc   TEXT NOT NULL
+    prefix                      TEXT NOT NULL PRIMARY KEY,
+    remote_exists               INTEGER NOT NULL,
+    remote_etag                 TEXT,
+    validated_snapshot_identity TEXT NOT NULL,
+    loaded_at_utc               TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS metadata (
@@ -212,17 +215,43 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 Store route-related values in a way that can evolve later. For the fixed-prefix change, `prefix` is the current two-character prefix from `Shard.PrefixOf`. A later dynamic-prefix change can replace that with a leaf prefix from a route table without changing feature callers.
 
+### Lookup freshness and validation
+
+The loaded-prefix state is snapshot-scoped. The implementation should resolve the current latest snapshot identity once per archive, restore, or list operation and use it as the local cache epoch for clean chunk-index rows. The identity can be the latest snapshot blob name or another stable repository snapshot identity already available through snapshot resolution. SQLite remains hidden behind `ChunkIndexService`; the implementation can pass the identity into chunk-index operations or provide it through an internal shared repository-state dependency.
+
+When the current latest snapshot identity matches `loaded_prefixes.validated_snapshot_identity`, clean rows for that prefix can be trusted without a remote shard metadata call. When it differs, the prefix is not automatically purged. Instead, the next operation that touches that prefix revalidates only that prefix against the remote shard identity:
+
+```text
+1. Read loaded_prefixes for the touched prefix.
+2. If validated_snapshot_identity matches the current latest snapshot identity, trust local clean rows.
+3. If it differs or no loaded-prefix row exists, read remote identity for chunk-index/<prefix>:
+   a. missing shard -> remote identity is (exists = false, etag = null)
+   b. existing shard -> remote identity is (exists = true, etag = remote ETag)
+4. If the stored remote identity matches the current remote identity:
+   a. keep existing clean rows
+   b. update validated_snapshot_identity for that prefix to the current latest snapshot identity
+5. If the remote identity differs:
+   a. delete clean rows for that prefix only
+   b. preserve dirty rows for that prefix
+   c. download and ingest the remote shard as clean rows, or ingest an empty prefix if the shard is missing
+   d. store the current remote identity and current latest snapshot identity in loaded_prefixes
+```
+
+This avoids a repository-wide cache purge when only one shard changed. It also avoids listing or checking every chunk-index shard on every operation. Remote shard metadata calls are proportional to prefixes actually touched by the operation and only needed when a prefix was loaded under a different snapshot identity or was not loaded locally.
+
+Dirty rows must be preserved during prefix refresh because archive-tail flush can have current-run entries already recorded for a prefix whose remote base needs to be revalidated before upload. Failed flush retry paths can also leave dirty rows that must be merged with the refreshed remote base rather than silently discarded.
+
+Cross-machine explicit repair invalidation is out of scope for this change. A repair on another machine can rewrite chunk-index shards without publishing a new snapshot. Detecting that immediately requires a separate chunk-index epoch/manifest marker or equivalent remote coordination and is tracked as future work.
+
 ### Lookup flow
 
 Single-hash lookup:
 
 ```text
-1. Check chunk_index_entries by content_hash.
-2. If not found and the hash's current prefix is not loaded:
-   a. download remote chunk-index/<prefix> if it exists
-   b. ingest entries into chunk_index_entries with dirty = 0 and mark loaded_prefixes(prefix) in one SQLite transaction; if the remote shard is missing, ingest an empty prefix and still mark it loaded
-   d. retry pending/base lookup
-3. Return miss if the loaded prefix does not contain the hash.
+1. Resolve the hash's current prefix.
+2. Ensure the prefix is loaded and validated for the current latest snapshot identity using the lazy per-prefix validation flow.
+3. Check chunk_index_entries by content_hash.
+4. Return miss if the validated loaded prefix does not contain the hash.
 ```
 
 Batched lookup groups hashes by prefix and ensures each prefix is loaded at most once. It should avoid materializing full shard dictionaries. It may still return an `IReadOnlyDictionary` because that is the current public API, but internally it should read only requested hashes from SQLite.
@@ -245,10 +274,10 @@ Flush uses dirty rows as the source of touched prefixes:
 1. Set a simple in-process flush-in-progress guard so accidental overlapping `AddEntry` calls throw.
 2. Query distinct touched prefixes from chunk_index_entries where dirty = 1 after the guard is set.
 3. For each touched prefix with bounded parallelism:
-   a. ensure the remote/base prefix is loaded into chunk_index_entries
+   a. ensure the remote/base prefix is loaded and validated for the current latest snapshot identity, preserving dirty rows while refreshing stale clean rows
    b. stream all chunk_index_entries rows for that prefix ordered by content_hash into remote shard serialization
    c. upload chunk-index/<prefix>
-4. Set dirty = 0 for flushed dirty rows only after all touched prefixes upload successfully.
+4. Set dirty = 0 for flushed dirty rows and update loaded-prefix remote identity only after all touched prefixes upload successfully.
 ```
 
 Ordering the streamed output preserves deterministic shard serialization. This does not require keeping an in-memory `Shard` dictionary.
@@ -256,6 +285,8 @@ Ordering the streamed output preserves deterministic shard serialization. This d
 Because the current shard count and future dynamic split direction bound individual shard size, upload may materialize one prefix at a time into `Shard` and a serialized `byte[]`. This is accepted bounded memory. It must not reintroduce a repository-wide memory cache or keep materialized shards beyond the bounded workers currently flushing or repairing prefixes.
 
 Partial failure behavior remains conservative: if any prefix upload fails, the archive fails and no snapshot is published. Dirty rows remain in SQLite for the current local state. A later rerun can retry the flush or explicit repair can rebuild from committed chunks.
+
+If the storage boundary exposes conditional uploads by remote ETag or create-if-missing semantics, flush should use them for the touched prefix to avoid overwriting another writer's shard update between prefix validation and upload. On a conditional conflict, the implementation should refresh the prefix again, merge the preserved dirty rows with the new remote base, and retry within bounded policy or fail clearly. If conditional upload support is not yet available, the implementation must still preserve dirty rows and fail without snapshot publication on upload errors; stronger lost-update protection can be added when the storage boundary exposes ETag conditions.
 
 The implementation should be careful when combining SQLite transactions and remote upload. It cannot make a remote blob upload and SQLite update atomically transactional. The existing safety rule remains: snapshot publication waits for flush success, and repair can recover from partial remote shard updates.
 
@@ -280,7 +311,7 @@ Repair remains explicit and idempotent. It does not publish snapshots.
 
 ### Cache invalidation and local corruption
 
-`InvalidateCaches` should clear discardable local chunk-index cache rows (`dirty = 0`) and loaded-prefix state, but it must not delete the repair-in-progress marker and must not silently discard dirty rows. Archive-tail snapshot mismatch invalidation must preserve dirty rows recorded for the current archive.
+`InvalidateCaches` should clear discardable local chunk-index cache rows (`dirty = 0`) and loaded-prefix state only when a full local cache purge is deliberately requested, but routine snapshot changes should prefer lazy per-prefix revalidation. In either case, invalidation must not delete the repair-in-progress marker and must not silently discard dirty rows. Archive-tail snapshot mismatch invalidation must preserve dirty rows recorded for the current archive.
 
 `ClearCleanCache` should delete `dirty = 0` rows and clear all `loaded_prefixes`. It should preserve `dirty = 1` rows. A dirty row alone does not mean its prefix is fully loaded; later flush must still ensure the prefix is loaded from remote before uploading the complete shard.
 

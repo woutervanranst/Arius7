@@ -10,6 +10,7 @@ This follow-up moves normal chunk-index work to bounded-memory disk-backed opera
 - Keep SQLite local-only: it is a cache and working store, not a repository source of truth and not uploaded as a chunk-index artifact.
 - Preserve the current remote `chunk-index/<prefix>` shard blob layout and serialization format for this change.
 - Store loaded shard rows, loaded-prefix freshness state, and archive dirty entries in the local SQLite store so normal lookup, entry recording, and flush avoid unbounded managed-memory collections.
+- Validate loaded prefixes lazily against the current latest snapshot identity. A changed snapshot marks existing loaded-prefix state as needing per-prefix revalidation rather than forcing a repository-wide local cache purge.
 - Rebuild full repair through disk-backed local state instead of grouping all reconstructed entries in memory.
 - Keep dynamic chunk-prefix splitting out of scope, while introducing internal seams so a later change can replace fixed-prefix routing with longest-prefix routing and route-manifest interpretation behind `ChunkIndexService`.
 - Add bounded restore/list chunk-index lookup behavior so restore and list no longer require all candidate content hashes or lookup results to be materialized at once.
