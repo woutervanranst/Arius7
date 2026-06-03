@@ -199,8 +199,7 @@ CREATE TABLE IF NOT EXISTS loaded_prefixes (
     prefix                      TEXT NOT NULL PRIMARY KEY,
     remote_exists               INTEGER NOT NULL,
     remote_etag                 TEXT,
-    validated_snapshot_identity TEXT NOT NULL,
-    loaded_at_utc               TEXT NOT NULL
+    validated_snapshot_identity TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS metadata (
@@ -239,7 +238,7 @@ When the current latest snapshot identity matches `loaded_prefixes.validated_sna
 
 This avoids a repository-wide cache purge when only one shard changed. It also avoids listing or checking every chunk-index shard on every operation. Remote shard metadata calls are proportional to prefixes actually touched by the operation and only needed when a prefix was loaded under a different snapshot identity or was not loaded locally.
 
-Dirty rows must be preserved during prefix refresh because archive-tail flush can have current-run entries already recorded for a prefix whose remote base needs to be revalidated before upload. Failed flush retry paths can also leave dirty rows that must be merged with the refreshed remote base rather than silently discarded.
+In the normal archive path, the deduplication lookup for a content hash should validate that prefix before `AddEntry` records a dirty row for the same content hash. Dirty-row preservation during prefix refresh is still required as defensive behavior, not as the expected happy path. `AddEntry` is a service operation and should not depend on every caller having just performed a validating lookup. A remote shard can also change after an earlier lookup but before archive-tail flush, and a failed previous flush can leave dirty rows locally for a later retry. In those cases, refreshing stale clean rows must merge the refreshed remote base with protected dirty rows rather than silently discarding current-run or retryable archive state.
 
 Cross-machine explicit repair invalidation is out of scope for this change. A repair on another machine can rewrite chunk-index shards without publishing a new snapshot. Detecting that immediately requires a separate chunk-index epoch/manifest marker or equivalent remote coordination and is tracked as future work.
 

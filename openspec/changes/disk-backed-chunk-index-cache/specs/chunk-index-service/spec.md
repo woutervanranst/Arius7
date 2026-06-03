@@ -40,8 +40,7 @@ CREATE TABLE loaded_prefixes (
     prefix                      TEXT NOT NULL PRIMARY KEY,
     remote_exists               INTEGER NOT NULL,
     remote_etag                 TEXT,
-    validated_snapshot_identity TEXT NOT NULL,
-    loaded_at_utc               TEXT NOT NULL
+    validated_snapshot_identity TEXT NOT NULL
 );
 ```
 
@@ -169,10 +168,15 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 - **AND** dirty rows SHALL be marked `dirty = 0` only after all touched prefixes upload successfully
 
 #### Scenario: Dirty rows survive prefix refresh before flush
-- **WHEN** archive-tail flush refreshes a touched prefix because the stored remote identity is stale
+- **WHEN** archive-tail flush refreshes a touched prefix because the stored remote identity is stale after an earlier lookup, a direct `AddEntry`, or a failed previous flush left dirty rows locally
 - **THEN** clean rows for that prefix MAY be deleted and replaced from the remote shard
 - **AND** dirty rows for current-run archive entries SHALL be preserved
 - **AND** the uploaded shard SHALL include both refreshed clean rows and preserved dirty rows
+
+#### Scenario: Normal archive lookup validates before entry recording
+- **WHEN** the archive pipeline performs deduplication lookup for a content hash before recording a new chunk-index entry for that same content hash
+- **THEN** the lookup SHOULD validate the hash's prefix against the current latest snapshot identity before `AddEntry` records the dirty row
+- **AND** later dirty-row preservation during flush SHALL remain a defensive protection for direct entry recording, remote changes after lookup, and failed-flush retry state
 
 #### Scenario: One-prefix materialization is allowed
 - **WHEN** chunk-index code serializes a loaded prefix for remote upload
