@@ -349,27 +349,4 @@ When reviewing SQLite C# code, check:
 
 ## Source Material Reviewed
 
-This skill is distilled from every Markdown page under `dotnet/docs/docs/standard/data/sqlite` as of 2026-06-03:
-
-- `adonet-limitations.md`
-- `async.md`
-- `backup.md`
-- `batching.md`
-- `blob-io.md`
-- `bulk-insert.md`
-- `collation.md`
-- `compare.md`
-- `connection-strings.md`
-- `custom-versions.md`
-- `dapper-limitations.md`
-- `database-errors.md`
-- `encryption.md`
-- `extensions.md`
-- `index.md`
-- `in-memory-databases.md`
-- `interop.md`
-- `metadata.md`
-- `parameters.md`
-- `transactions.md`
-- `types.md`
-- `user-defined-functions.md`
+This skill is distilled from every Markdown page under `dotnet/docs/docs/standard/data/sqlite` as of 2026-06-03.
