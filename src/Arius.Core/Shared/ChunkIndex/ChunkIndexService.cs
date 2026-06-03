@@ -10,17 +10,16 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// </summary>
 public sealed class ChunkIndexService : IDisposable
 {
-    internal const int ShardPrefixLength = 2;
-    internal const int FlushWorkers = 8;
+    internal const           int          ShardPrefixLength          = 2;
+    internal const           int          FlushWorkers               = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
-    private readonly IBlobContainerService  _blobs;
-    private readonly IEncryptionService     _encryption;
-    private readonly RelativeFileSystem     _repositoryFileSystem;
-    private readonly LocalDirectory         _localStoreRoot;
-    private readonly ChunkIndexLocalStore   _localStore;
+    private readonly IBlobContainerService                            _blobs;
+    private readonly IEncryptionService                               _encryption;
+    private readonly RelativeFileSystem                               _repositoryFileSystem;
+    private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
-    private int _flushInProgress;
+    private          int                                              _flushInProgress;
 
     public ChunkIndexService(
         IBlobContainerService blobs, 
@@ -35,7 +34,6 @@ public sealed class ChunkIndexService : IDisposable
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
 
-        _localStoreRoot = l2Root;
         _localStore     = new ChunkIndexLocalStore(l2Root);
     }
 
