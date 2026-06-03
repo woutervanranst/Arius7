@@ -27,12 +27,13 @@ None.
 ### Modified Capabilities
 
 - `chunk-index-service`: Change chunk-index local cache, archive write-session, flush, and repair behavior to use bounded-memory disk-backed local state while preserving current remote shard compatibility and source-of-truth semantics.
+- `blob-storage`: Expand blob metadata returned by storage operations with an opaque remote blob identity so chunk-index prefixes can be validated lazily without downloading unchanged shard bodies.
 - `restore-pipeline`: Change restore chunk resolution to use bounded streaming or batching instead of materializing all content hashes and lookup results at once.
 - `list-query`: Change list size lookup to use bounded chunk-index lookup batches while preserving streaming output.
 
 ## Impact
 
-- Affected code: `src/Arius.Core/Shared/ChunkIndex/`, `src/Arius.Core/ServiceCollectionExtensions.cs`, and chunk-index tests.
+- Affected code: `src/Arius.Core/Shared/ChunkIndex/`, `src/Arius.Core/Shared/Storage/`, storage backend implementations, `src/Arius.Core/ServiceCollectionExtensions.cs`, and chunk-index tests.
 - Affected behavior: local chunk-index cache files change from per-prefix plaintext L2 files plus L1 memory pages to a local SQLite working store. The store is still discardable and recoverable from remote shard blobs or chunk blobs via repair.
 - Affected dependencies: add a SQLite ADO.NET dependency, expected to be `Microsoft.Data.Sqlite`, used only by chunk-index internals. Do not introduce EF Core.
 - Remote compatibility: current `chunk-index/<prefix>` blob names and shard serialization remain unchanged.

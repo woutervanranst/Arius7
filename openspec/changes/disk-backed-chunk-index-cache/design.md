@@ -45,7 +45,7 @@ Use `Microsoft.Data.Sqlite` directly through raw synchronous commands, readers, 
 ~/.arius/{account}-{container}/chunk-index/cache.sqlite
 ```
 
-SQLite replaces both the current L1 shard-page cache and the plaintext per-prefix L2 shard files. It stores local hydrated index rows and pending archive rows in B-tree indexes so point lookup does not require loading a whole shard into managed memory.
+SQLite replaces both the current L1 shard-page cache and the plaintext per-prefix L2 shard files. There is no separate in-memory LRU shard cache, no plaintext per-prefix local shard file cache, and no `--dedup-cache-mb` managed cache budget after this change. SQLite stores local hydrated index rows and pending archive rows in B-tree indexes so point lookup does not require loading a whole shard into managed memory.
 
 The local database is discardable. If it is missing, stale, or corrupt, chunk-index code can recreate it and rehydrate needed prefixes from remote `chunk-index/<prefix>` blobs. Explicit repair can rebuild remote shards from committed chunks when remote shard state itself is corrupt or incomplete.
 
@@ -74,6 +74,7 @@ Keep three failure states separate:
 - Dirty rows are not corruption. They are unflushed local archive state that should be flushed to remote shard blobs before snapshot publication.
 - Local SQLite corruption is local cache corruption. Move aside or delete the local database and rehydrate needed clean rows from remote shard blobs. If this interrupts an active archive/flush, fail the operation and do not publish a snapshot.
 - Remote chunk-index shard corruption is repository metadata corruption. Normal operations fail clearly and explicit full repair rebuilds remote shards from committed chunk blobs.
+- Corrupt local SQLite that contains or may contain dirty rows is not silently recoverable. Non-archive operations should fail with a clear message that tells the user to rerun archive or delete the local `.arius` folder. Emergency restore remains recoverable because deleting the local `.arius` folder discards the local cache/working store and lets restore rehydrate clean rows from remote shard blobs.
 
 Alternative considered: custom unsorted per-leaf files scanned linearly. That can be elegant when dynamic prefix splitting guarantees small leaf files, but without dynamic routing in this change fixed two-character prefixes can still contain tens of thousands of entries at 10M chunks. Making unsorted scans efficient would force dynamic prefix splitting into this change and expand scope into route-manifest correctness.
 
@@ -144,7 +145,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     public void UpsertDirtyRange(IEnumerable<ShardEntry> entries);
 
     public void IngestCleanPrefix(
-        PathSegment prefix,
+        LoadedPrefixState loadedPrefix,
         IEnumerable<ShardEntry> entries);
 
     public LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix);
@@ -163,7 +164,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 }
 ```
 
-`IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion, including the current latest snapshot identity and the remote shard identity used for validation. Dirty rows represent current archive operational state and win over remote cache hydration.
+`IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion, using the explicit loaded-prefix state passed by the caller: prefix, current latest snapshot identity, remote existence, and remote blob identity. Dirty rows represent retryable archive operational state and win over remote cache hydration.
 
 `IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command whose parameters are created once and assigned new values per row. The command should be assigned to the active transaction, and parameters for hashes, sizes, prefix, and dirty flags should use explicit SQLite types. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
 
@@ -202,7 +203,7 @@ CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_dirty_prefix
 CREATE TABLE IF NOT EXISTS loaded_prefixes (
     prefix                      TEXT NOT NULL PRIMARY KEY,
     remote_exists               INTEGER NOT NULL CHECK (remote_exists IN (0, 1)),
-    remote_etag                 TEXT,
+    remote_blob_identity        TEXT,
     validated_snapshot_identity TEXT NOT NULL,
     CHECK (length(prefix) > 0),
     CHECK (length(validated_snapshot_identity) > 0)
@@ -226,14 +227,14 @@ Store route-related values in a way that can evolve later. For the fixed-prefix 
 
 The loaded-prefix state is snapshot-scoped. The implementation should resolve the current latest snapshot identity once per archive, restore, or list operation and use it as the local cache epoch for clean chunk-index rows. The identity can be the latest snapshot blob name or another stable repository snapshot identity already available through snapshot resolution. SQLite remains hidden behind `ChunkIndexService`; the implementation can pass the identity into chunk-index operations or provide it through an internal shared repository-state dependency.
 
-When the current latest snapshot identity matches `loaded_prefixes.validated_snapshot_identity`, clean rows for that prefix can be trusted without a remote shard metadata call. When it differs, the prefix is not automatically purged. Instead, the next operation that touches that prefix revalidates only that prefix against the remote shard identity:
+When the current latest snapshot identity matches `loaded_prefixes.validated_snapshot_identity`, clean rows for that prefix can be trusted without a remote shard metadata call. When it differs, the prefix is not automatically purged. Instead, the next operation that touches that prefix revalidates only that prefix against the remote shard identity. For Azure Blob Storage this identity is the blob ETag. Core treats it as an opaque string exposed by the storage boundary, not as an Azure-specific type.
 
 ```text
 1. Read loaded_prefixes for the touched prefix.
 2. If validated_snapshot_identity matches the current latest snapshot identity, trust local clean rows.
 3. If it differs or no loaded-prefix row exists, read remote identity for chunk-index/<prefix>:
    a. missing shard -> remote identity is (exists = false, etag = null)
-   b. existing shard -> remote identity is (exists = true, etag = remote ETag)
+   b. existing shard -> remote identity is (exists = true, blob identity = remote ETag for Azure)
 4. If the stored remote identity matches the current remote identity:
    a. keep existing clean rows
    b. update validated_snapshot_identity for that prefix to the current latest snapshot identity
@@ -295,6 +296,8 @@ Because the current shard count and future dynamic split direction bound individ
 
 Partial failure behavior remains conservative: if any prefix upload fails, the archive fails and no snapshot is published. Dirty rows remain in SQLite for the current local state. A later rerun can retry the flush or explicit repair can rebuild from committed chunks.
 
+After a shard upload succeeds, the implementation must update loaded-prefix state with the new remote blob identity. Prefer returning `BlobMetadata` from `UploadAsync` so the Azure implementation can populate it from the upload response ETag. For upload paths that complete through `OpenWriteAsync`, the caller should request `GetMetadataAsync` after closing the write stream when it needs the resulting blob identity.
+
 If the storage boundary exposes conditional uploads by remote ETag or create-if-missing semantics, flush should use them for the touched prefix to avoid overwriting another writer's shard update between prefix validation and upload. On a conditional conflict, the implementation should refresh the prefix again, merge the preserved dirty rows with the new remote base, and retry within bounded policy or fail clearly. If conditional upload support is not yet available, the implementation must still preserve dirty rows and fail without snapshot publication on upload errors; stronger lost-update protection can be added when the storage boundary exposes ETag conditions.
 
 The implementation should be careful when combining SQLite transactions and remote upload. It cannot make a remote blob upload and SQLite update atomically transactional. The existing safety rule remains: snapshot publication waits for flush success, and repair can recover from partial remote shard updates.
@@ -324,9 +327,10 @@ Repair remains explicit and idempotent. It does not publish snapshots.
 
 `ClearCleanCache` should delete `dirty = 0` rows and clear all `loaded_prefixes`. It should preserve `dirty = 1` rows. A dirty row alone does not mean its prefix is fully loaded; later flush must still ensure the prefix is loaded from remote before uploading the complete shard.
 
-Local SQLite corruption should be treated as local cache corruption. The implementation may move the corrupt database aside to a `.bak` file or delete/recreate it because committed chunks and remote shards remain the durable source of truth. If corruption is detected during an archive run with dirty rows, the operation must fail clearly and must not publish a snapshot; a rerun or explicit repair can recover from committed chunks.
+Local SQLite corruption should be treated as local cache corruption only when the database contains no protected dirty state. Because dirty rows are retryable archive operational state, corruption that may have affected dirty rows must fail clearly rather than pretending the rows were discarded safely. The error should tell the user to rerun archive or delete the local `.arius` folder. Deleting the local `.arius` folder is an acceptable emergency restore path because restore can rehydrate clean rows from remote shard blobs.
 
-- If no archive flush is in progress, delete/recreate the database and rehydrate from remote as needed.
+- If the database is corrupt and known not to contain dirty rows, delete/recreate it and rehydrate from remote as needed.
+- If the database is corrupt and may contain dirty rows, fail clearly with rerun/delete-local-state guidance.
 - If corruption interrupts an active archive or flush, fail clearly rather than continuing as if dirty rows were flushed.
 
 This preserves the distinction between discardable cache state and current-run operational state.
