@@ -57,11 +57,12 @@ Use conservative SQLite settings appropriate for a local cache:
 - A bounded SQLite page cache rather than managed object caches.
 - Explicit transactions for shard ingestion, dirty-row recording, flush prefix updates, and repair staging.
 - Synchronous `ExecuteReader`, `ExecuteNonQuery`, and transaction APIs rather than `ExecuteReaderAsync`, `ExecuteNonQueryAsync`, or other async SQLite overloads.
-- Bulk insert/update loops that use one transaction and reuse the same parameterized command, following `Microsoft.Data.Sqlite` bulk-insert guidance.
+- Bulk insert/update loops that use one transaction, bind the command to that transaction, and reuse the same parameterized command and parameter objects, following `Microsoft.Data.Sqlite` bulk-insert guidance.
 
 The recommended connection/concurrency model is:
 
 - `ChunkIndexLocalStore` owns the connection string and SQLite schema, not a long-lived EF-style context.
+- Build SQLite connection strings with `SqliteConnectionStringBuilder` so the local database file path cannot be interpreted as connection-string options.
 - Store operations open short-lived `SqliteConnection` instances and rely on normal Microsoft.Data.Sqlite pooling unless profiling shows a reason to hold a dedicated connection.
 - Do not use `Cache=Shared` with WAL; Microsoft guidance discourages mixing shared cache and write-ahead logging.
 - Serialize SQLite writes through a local gate because SQLite still has a single-writer model.
@@ -164,7 +165,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 
 `IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion, including the current latest snapshot identity and the remote shard identity used for validation. Dirty rows represent current archive operational state and win over remote cache hydration.
 
-`IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
+`IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command whose parameters are created once and assigned new values per row. The command should be assigned to the active transaction, and parameters for hashes, sizes, prefix, and dirty flags should use explicit SQLite types. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
 
 `ReadPrefixEntries` uses a callback rather than returning a deferred `IEnumerable<ShardEntry>` so the local store owns the SQLite connection and reader lifetime. The callback should consume entries synchronously. For this change, it is acceptable to materialize one prefix at a time into a `Shard` and serialize that one prefix to a `byte[]` for remote upload. That keeps peak memory bounded by one remote shard plus bounded worker concurrency while avoiding a complicated streaming serializer rewrite. The implementation should not keep multiple materialized shards beyond the bounded flush/repair worker count and should not cache materialized `Shard` objects in memory after the operation.
 
@@ -182,11 +183,14 @@ Use one row table for both hydrated remote entries and unflushed archive entries
 CREATE TABLE IF NOT EXISTS chunk_index_entries (
     content_hash    BLOB NOT NULL PRIMARY KEY,
     chunk_hash      BLOB NOT NULL,
-    original_size   INTEGER NOT NULL,
-    compressed_size INTEGER NOT NULL,
+    original_size   INTEGER NOT NULL CHECK (original_size >= 0),
+    compressed_size INTEGER NOT NULL CHECK (compressed_size >= 0),
     prefix          TEXT NOT NULL,
-    dirty           INTEGER NOT NULL DEFAULT 0,
-    recorded_order  INTEGER
+    dirty           INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
+    recorded_order  INTEGER,
+    CHECK (length(content_hash) = 32),
+    CHECK (length(chunk_hash) = 32),
+    CHECK (length(prefix) > 0)
 );
 
 CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_prefix
@@ -197,14 +201,18 @@ CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_dirty_prefix
 
 CREATE TABLE IF NOT EXISTS loaded_prefixes (
     prefix                      TEXT NOT NULL PRIMARY KEY,
-    remote_exists               INTEGER NOT NULL,
+    remote_exists               INTEGER NOT NULL CHECK (remote_exists IN (0, 1)),
     remote_etag                 TEXT,
-    validated_snapshot_identity TEXT NOT NULL
+    validated_snapshot_identity TEXT NOT NULL,
+    CHECK (length(prefix) > 0),
+    CHECK (length(validated_snapshot_identity) > 0)
 );
 
 CREATE TABLE IF NOT EXISTS metadata (
     key             TEXT NOT NULL PRIMARY KEY,
-    value           TEXT NOT NULL
+    value           TEXT NOT NULL,
+    CHECK (length(key) > 0),
+    CHECK (length(value) > 0)
 );
 ```
 
@@ -260,6 +268,8 @@ Restore/list pipeline scalability is in scope at the chunk-index API boundary. T
 ### Archive entry recording
 
 `AddEntry` upserts directly into `chunk_index_entries` with `dirty = 1`. This preserves same-session visibility without an in-memory dictionary or a separate pending table.
+
+Dirty rows are retryable local operational state, not just current-process memory. That retry contract depends on a strict ordering invariant: chunk-index code may record a dirty row only after the referenced large chunk or thin chunk is durably uploaded. A dirty row that survives a failed archive-tail flush can therefore be retried by a later operation without requiring the failed archive run to have published a snapshot, because the row only points at already committed chunk storage. If local SQLite corruption interrupts dirty state before flush succeeds, the active operation must fail clearly rather than silently discarding rows whose referenced chunks may already exist.
 
 Concurrent archive workers may call `AddEntry`. The local store should serialize writes through one connection/gate or use short transactions in a way that is safe with SQLite's single-writer model. It is acceptable for dirty-row writes to be serialized because each write is small and disk-backed; if profiling shows overhead, the implementation can batch through a bounded channel, but it must not reintroduce an unbounded managed-memory queue.
 
@@ -375,7 +385,7 @@ Local migration can be cache-based:
 1. New versions create `cache.sqlite` under the chunk-index local state directory.
 2. Existing plaintext L2 shard files may be ignored or deleted as stale cache state.
 3. Needed prefixes are rehydrated from remote `chunk-index/<prefix>` blobs on demand.
-4. When moving or deleting the SQLite cache, include `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` after all local-store connections are closed. Best-effort backups should use a `.bak` suffix for the database family.
+4. When moving or deleting the SQLite cache, include `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` after all local-store connections are closed and `SqliteConnection.ClearAllPools()` has been called. Best-effort backups should use a `.bak` suffix for the database family.
 5. If rollback occurs, the old implementation can ignore or delete `cache.sqlite` and rehydrate plaintext L2 files from remote shards as before.
 
 Because local cache state is not the source of truth, no durable data migration is required.
