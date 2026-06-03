@@ -52,7 +52,7 @@ Use conservative SQLite settings appropriate for a local cache:
 
 - WAL mode for append/update behavior during archive and repair.
 - A bounded SQLite page cache rather than managed object caches.
-- Explicit transactions for shard ingestion, pending-entry recording, flush prefix updates, and repair staging.
+- Explicit transactions for shard ingestion, dirty-row recording, flush prefix updates, and repair staging.
 
 Alternative considered: custom unsorted per-leaf files scanned linearly. That can be elegant when dynamic prefix splitting guarantees small leaf files, but without dynamic routing in this change fixed two-character prefixes can still contain tens of thousands of entries at 10M chunks. Making unsorted scans efficient would force dynamic prefix splitting into this change and expand scope into route-manifest correctness.
 
@@ -103,13 +103,17 @@ ChunkIndexService
   └─ ChunkIndexRemoteStore   // remote shard download/upload serialization
 ```
 
-`ChunkIndexWriteSession` should not own a collection. It can remain as a behavior boundary that enforces flush-in-progress rules and calls `ChunkIndexLocalStore` for pending-entry persistence. If that layer becomes a pass-through after implementation, remove it and keep the behavior on `ChunkIndexService` or a focused writer component. The design preference is: one owner for local state, separate names only where they clarify behavior.
+`ChunkIndexWriteSession` should not own a collection. It can remain as a behavior boundary that enforces flush-in-progress rules and calls `ChunkIndexLocalStore` for dirty-row persistence. If that layer becomes a pass-through after implementation, remove it and keep the behavior on `ChunkIndexService` or a focused writer component. The design preference is: one owner for local state, separate names only where they clarify behavior.
 
-Rationale: two disk-backed components that both know about pending entries would split transaction ownership and make partial-flush recovery harder. A single local store can make pending-entry writes, prefix selection, promotion into cached rows, and pending cleanup transactional.
+Rationale: two disk-backed components that both know about unflushed archive entries would split transaction ownership and make partial-flush recovery harder. A single local store can make dirty-row writes, prefix selection, and dirty cleanup transactional.
 
 ### Suggested local schema
 
 Use binary hash storage to avoid string overhead and keep indexes compact.
+Use one row table for both hydrated remote entries and unflushed archive entries. The `dirty` flag distinguishes discardable cache rows from current archive operational state:
+
+- `dirty = 0`: hydrated remote/cache row, safe to discard during cache invalidation.
+- `dirty = 1`: unflushed archive row, protected state that must not be silently lost.
 
 ```sql
 CREATE TABLE IF NOT EXISTS chunk_index_entries (
@@ -117,23 +121,16 @@ CREATE TABLE IF NOT EXISTS chunk_index_entries (
     chunk_hash      BLOB NOT NULL,
     original_size   INTEGER NOT NULL,
     compressed_size INTEGER NOT NULL,
-    prefix          TEXT NOT NULL
+    prefix          TEXT NOT NULL,
+    dirty           INTEGER NOT NULL DEFAULT 0,
+    recorded_order  INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_prefix
     ON chunk_index_entries(prefix, content_hash);
 
-CREATE TABLE IF NOT EXISTS pending_entries (
-    content_hash    BLOB NOT NULL PRIMARY KEY,
-    chunk_hash      BLOB NOT NULL,
-    original_size   INTEGER NOT NULL,
-    compressed_size INTEGER NOT NULL,
-    prefix          TEXT NOT NULL,
-    recorded_order  INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS ix_pending_entries_prefix
-    ON pending_entries(prefix, content_hash);
+CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_dirty_prefix
+    ON chunk_index_entries(dirty, prefix);
 
 CREATE TABLE IF NOT EXISTS loaded_prefixes (
     prefix          TEXT NOT NULL PRIMARY KEY,
@@ -146,7 +143,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 ```
 
-`recorded_order` is available if deterministic last-writer-wins behavior needs to be audited or tested, though `content_hash` primary-key upsert is enough for current duplicate semantics.
+`recorded_order` is available if deterministic last-writer-wins behavior needs to be audited or tested, though `content_hash` primary-key upsert is enough for current duplicate semantics. Archive `AddEntry` upserts the row with `dirty = 1`, so same-run lookup naturally sees the new value from the same table.
 
 Store route-related values in a way that can evolve later. For the fixed-prefix change, `prefix` is the current two-character prefix from `Shard.PrefixOf`. A later dynamic-prefix change can replace that with a leaf prefix from a route table without changing feature callers.
 
@@ -155,14 +152,13 @@ Store route-related values in a way that can evolve later. For the fixed-prefix 
 Single-hash lookup:
 
 ```text
-1. Check pending_entries by content_hash.
-2. Check chunk_index_entries by content_hash.
-3. If not found and the hash's current prefix is not loaded:
+1. Check chunk_index_entries by content_hash.
+2. If not found and the hash's current prefix is not loaded:
    a. download remote chunk-index/<prefix> if it exists
-   b. ingest entries into chunk_index_entries in one transaction
+   b. ingest entries into chunk_index_entries in one transaction with dirty = 0
    c. mark loaded_prefixes(prefix)
    d. retry pending/base lookup
-4. Return miss if the loaded prefix does not contain the hash.
+3. Return miss if the loaded prefix does not contain the hash.
 ```
 
 Batched lookup groups hashes by prefix and ensures each prefix is loaded at most once. It should avoid materializing full shard dictionaries. It may still return an `IReadOnlyDictionary` because that is the current public API, but internally it should read only requested hashes from SQLite.
@@ -171,30 +167,29 @@ Restore/list pipeline scalability remains a follow-up. This change should not ma
 
 ### Archive entry recording
 
-`AddEntry` upserts directly into `pending_entries` inside the local SQLite store. This preserves same-session visibility without an in-memory dictionary.
+`AddEntry` upserts directly into `chunk_index_entries` with `dirty = 1`. This preserves same-session visibility without an in-memory dictionary or a separate pending table.
 
-Concurrent archive workers may call `AddEntry`. The local store should serialize writes through one connection/gate or use short transactions in a way that is safe with SQLite's single-writer model. It is acceptable for pending-entry writes to be serialized because each write is small and disk-backed; if profiling shows overhead, the implementation can batch through a bounded channel, but it must not reintroduce an unbounded managed-memory queue.
+Concurrent archive workers may call `AddEntry`. The local store should serialize writes through one connection/gate or use short transactions in a way that is safe with SQLite's single-writer model. It is acceptable for dirty-row writes to be serialized because each write is small and disk-backed; if profiling shows overhead, the implementation can batch through a bounded channel, but it must not reintroduce an unbounded managed-memory queue.
 
 `AddEntry` should still fail fast when a flush is already in progress, matching the existing archive-tail contract.
 
 ### Flush flow
 
-Flush uses pending entries as the source of touched prefixes:
+Flush uses dirty rows as the source of touched prefixes:
 
 ```text
 1. Prevent concurrent flush and reject overlapping AddEntry calls.
-2. Query distinct pending prefixes from pending_entries.
+2. Query distinct touched prefixes from chunk_index_entries where dirty = 1.
 3. For each touched prefix with bounded parallelism:
    a. ensure the remote/base prefix is loaded into chunk_index_entries
-   b. upsert pending rows for that prefix into chunk_index_entries
-   c. stream chunk_index_entries for that prefix ordered by content_hash into remote shard serialization
-   d. upload chunk-index/<prefix>
-4. Clear pending_entries only after all touched prefixes flush successfully.
+   b. stream all chunk_index_entries rows for that prefix ordered by content_hash into remote shard serialization
+   c. upload chunk-index/<prefix>
+4. Set dirty = 0 for flushed dirty rows only after all touched prefixes upload successfully.
 ```
 
 Ordering the streamed output preserves deterministic shard serialization. This does not require keeping an in-memory `Shard` dictionary.
 
-Partial failure behavior remains conservative: if any prefix upload fails, the archive fails and no snapshot is published. Pending entries remain in SQLite for the current local state. A later rerun can retry the flush or explicit repair can rebuild from committed chunks.
+Partial failure behavior remains conservative: if any prefix upload fails, the archive fails and no snapshot is published. Dirty rows remain in SQLite for the current local state. A later rerun can retry the flush or explicit repair can rebuild from committed chunks.
 
 The implementation should be careful when combining SQLite transactions and remote upload. It cannot make a remote blob upload and SQLite update atomically transactional. The existing safety rule remains: snapshot publication waits for flush success, and repair can recover from partial remote shard updates.
 
@@ -210,7 +205,7 @@ Full repair should stop grouping all reconstructed entries in memory. Instead:
 5. Track rebuilt prefixes in SQLite, not in a managed HashSet when the representation may grow later.
 6. Stream each rebuilt prefix from SQLite to remote shard upload with bounded parallelism.
 7. List existing remote chunk-index shards and delete stale shard blobs whose prefixes were not rebuilt.
-8. Clear pending entries and the repair marker only after successful upload and stale deletion.
+8. Clear dirty state and the repair marker only after successful upload and stale deletion.
 ```
 
 For the current fixed two-character prefix layout, rebuilt prefix count is at most 256, so the prefix set is not the main memory risk. Still, putting repair state in SQLite keeps the design aligned with future dynamic prefixes where leaf count can be much larger.
@@ -219,12 +214,12 @@ Repair remains explicit and idempotent. It does not publish snapshots.
 
 ### Cache invalidation and local corruption
 
-`InvalidateCaches` should clear local chunk-index cache rows and loaded-prefix state, but it must not delete the repair-in-progress marker. It should also clear pending entries only when the operation semantically owns a complete cache reset and no archive session is in progress. Archive-tail snapshot mismatch invalidation must not accidentally discard pending entries recorded for the current archive.
+`InvalidateCaches` should clear discardable local chunk-index cache rows (`dirty = 0`) and loaded-prefix state, but it must not delete the repair-in-progress marker and must not silently discard dirty rows. Archive-tail snapshot mismatch invalidation must preserve dirty rows recorded for the current archive.
 
 Local SQLite corruption should be treated like local cache corruption when safe:
 
-- If no archive flush is in progress and no pending entries are needed, delete/recreate the database and rehydrate from remote as needed.
-- If pending entries exist and the database is corrupt, fail clearly rather than silently discarding unflushed archive state.
+- If no archive flush is in progress and no dirty rows are needed, delete/recreate the database and rehydrate from remote as needed.
+- If dirty rows exist and the database is corrupt, fail clearly rather than silently discarding unflushed archive state.
 
 This preserves the distinction between discardable cache state and current-run operational state.
 
