@@ -17,7 +17,7 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
     public Task CreateContainerIfNotExistsAsync(CancellationToken ct = default)
         => inner.CreateContainerIfNotExistsAsync(ct);
 
-    public Task UploadAsync(RelativePath blobName, Stream content,
+    public Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content,
         IReadOnlyDictionary<string, string> metadata, BlobTier tier,
         string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         => inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, ct);

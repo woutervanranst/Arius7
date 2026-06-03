@@ -10,7 +10,7 @@ internal sealed class ThrowOnCreateBlobContainerService(string operationName) : 
         throw new InvalidOperationException($"CreateContainerIfNotExistsAsync should not be called by {operationName}.");
     }
 
-    public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
+    public Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>

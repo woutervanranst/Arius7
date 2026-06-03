@@ -15,6 +15,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 {
     private readonly ConcurrentDictionary<RelativePath, StoredBlob> _blobs = new();
     private readonly ConcurrentDictionary<RelativePath, int> _openWriteAlreadyExists = new();
+    private long _identitySequence;
 
     private readonly ConcurrentQueue<RelativePath> _requestedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _deletedBlobNames = new();
@@ -26,7 +27,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         await using var ms = new MemoryStream();
         await content.CopyToAsync(ms, cancellationToken);
@@ -34,8 +35,17 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         if (!overwrite && _blobs.ContainsKey(blobName))
             throw new BlobAlreadyExistsException(blobName);
 
-        _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false);
+        var identity = NextIdentity(blobName);
+        _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false, identity);
         _uploadedBlobNames.Enqueue(blobName);
+        return new BlobMetadata
+        {
+            Exists = true,
+            BlobIdentity = identity,
+            Tier = tier,
+            ContentLength = ms.Length,
+            Metadata = new Dictionary<string, string>(metadata)
+        };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
@@ -55,7 +65,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
         return Task.FromResult<Stream>(new CommitOnDisposeStream(bytes =>
         {
-            _blobs[blobName] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false);
+            _blobs[blobName] = new StoredBlob(bytes, new Dictionary<string, string>(), null, contentType, false, NextIdentity(blobName));
             _uploadedBlobNames.Enqueue(blobName);
         }));
     }
@@ -80,6 +90,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         return Task.FromResult(new BlobMetadata
         {
             Exists = true,
+            BlobIdentity = blob.BlobIdentity,
             Tier = blob.Tier,
             ContentLength = blob.Content.LongLength,
             IsRehydrating = blob.IsRehydrating,
@@ -112,6 +123,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
             yield return new BlobListItem
             {
                 Name = blobName,
+                BlobIdentity = _blobs.TryGetValue(blobName, out var currentBlob) ? currentBlob.BlobIdentity : null,
                 Metadata = metadata,
                 ContentLength = contentLength,
             };
@@ -136,7 +148,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default)
     {
         var source = _blobs[sourceBlobName];
-        _blobs[destinationBlobName] = source with { Tier = destinationTier, IsRehydrating = false };
+        _blobs[destinationBlobName] = source with { Tier = destinationTier, IsRehydrating = false, BlobIdentity = NextIdentity(destinationBlobName) };
         return Task.CompletedTask;
     }
 
@@ -152,7 +164,13 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         => _openWriteAlreadyExists[blobName] = throwOnce ? 1 : int.MaxValue;
 
     public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null, IReadOnlyDictionary<string, string>? metadata = null, string? contentType = null, bool isRehydrating = false)
-        => _blobs[blobName] = new StoredBlob(content, metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata), tier, contentType, isRehydrating);
+        => _blobs[blobName] = new StoredBlob(content, metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata), tier, contentType, isRehydrating, NextIdentity(blobName));
+
+    public void SetBlobIdentity(RelativePath blobName, string blobIdentity)
+    {
+        var blob = _blobs[blobName];
+        _blobs[blobName] = blob with { BlobIdentity = blobIdentity };
+    }
 
 
     public void ClearMetadata(RelativePath blobPath)
@@ -209,7 +227,11 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         Dictionary<string, string> Metadata,
         BlobTier? Tier,
         string? ContentType,
-        bool IsRehydrating);
+        bool IsRehydrating,
+        string BlobIdentity);
+
+    private string NextIdentity(RelativePath blobName)
+        => $"fake:{blobName}:{Interlocked.Increment(ref _identitySequence)}";
 
     private sealed class CommitOnDisposeStream(Action<byte[]> onCommit) : MemoryStream
     {

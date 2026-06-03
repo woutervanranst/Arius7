@@ -30,7 +30,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── Upload ────────────────────────────────────────────────────────────────
 
-    public async Task UploadAsync(
+    public async Task<BlobMetadata> UploadAsync(
         RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
@@ -58,7 +58,15 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
         try
         {
-            await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+            var result = await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+            return new BlobMetadata
+            {
+                Exists = true,
+                BlobIdentity = result.Value.ETag.ToString(),
+                Tier = tier,
+                ContentLength = content.CanSeek ? content.Length : null,
+                Metadata = new Dictionary<string, string>(metadata)
+            };
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
@@ -149,6 +157,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             return new BlobMetadata
             {
                 Exists        = true,
+                BlobIdentity  = p.ETag.ToString(),
                 Tier          = FromAzureTier(p.AccessTier),
                 ContentLength = p.ContentLength,
                 IsRehydrating = p.ArchiveStatus is "rehydrate-pending-to-hot" or "rehydrate-pending-to-cool" or "rehydrate-pending-to-cold",
@@ -177,6 +186,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             yield return new BlobListItem
             {
                 Name = RelativePath.Parse(item.Name),
+                BlobIdentity = item.Properties.ETag?.ToString(),
                 Metadata = includeMetadata && item.Metadata is not null
                     ? new Dictionary<string, string>(item.Metadata)
                     : null,

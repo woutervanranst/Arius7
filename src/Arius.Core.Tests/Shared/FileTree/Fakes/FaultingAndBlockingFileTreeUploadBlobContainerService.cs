@@ -12,15 +12,16 @@ internal sealed class FaultingAndBlockingFileTreeUploadBlobContainerService : IB
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         if (!blobName.StartsWith(BlobPaths.FileTreesPrefix))
-            return;
+            return new BlobMetadata { Exists = true, Tier = tier, Metadata = new Dictionary<string, string>(metadata) };
 
         if (Interlocked.Increment(ref _fileTreeUploads) == 1)
             throw new InvalidOperationException("Simulated filetree upload failure.");
 
         await _blockedUploads.Task.WaitAsync(cancellationToken);
+        return new BlobMetadata { Exists = true, Tier = tier, Metadata = new Dictionary<string, string>(metadata) };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>

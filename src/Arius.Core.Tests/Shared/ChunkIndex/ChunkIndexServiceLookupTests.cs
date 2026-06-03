@@ -1,6 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
@@ -60,9 +61,9 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
-    public async Task LookupAsync_RemoteShard_DownloadsWithoutMetadataCheck()
+    public async Task LookupAsync_RemoteShard_ValidatesPrefixBeforeDownload()
     {
-        var blobs = new ThrowOnMetadataBlobContainerService();
+        var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("remote-no-metadata");
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
@@ -76,6 +77,7 @@ public class ChunkIndexServiceLookupTests
         var actual = await index.LookupAsync(contentHash);
 
         actual.ShouldBe(entry);
+        blobs.RequestedBlobNames.ShouldContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)));
     }
 
     [Test]
@@ -133,9 +135,32 @@ public class ChunkIndexServiceLookupTests
         actual[otherPrefixHash].ShouldBe(otherPrefixEntry);
         actual[inFlightHash].ShouldBe(inFlightEntry);
         actual.ShouldNotContainKey(missingHash);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(1);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(1);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(2);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(2);
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(inFlightHash)));
+    }
+
+    [Test]
+    public async Task LookupAsync_LoadedPrefixForCurrentSnapshot_SkipsRepeatedMetadataValidation()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("lookup-skip-revalidate");
+        var snapshotBlob = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        blobs.SeedBlob(snapshotBlob, [1], BlobTier.Cool);
+        var contentHash = FakeContentHash('a');
+        var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)),
+            await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption),
+            BlobTier.Cool);
+        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+
+        (await index.LookupAsync(contentHash)).ShouldBe(entry);
+        blobs.RequestedBlobNames.Clear();
+
+        (await index.LookupAsync(contentHash)).ShouldBe(entry);
+
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)));
     }
 
     [Test]
@@ -213,44 +238,4 @@ public class ChunkIndexServiceLookupTests
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
 
-    private sealed class ThrowOnMetadataBlobContainerService : IBlobContainerService
-    {
-        private readonly FakeInMemoryBlobContainerService _inner = new();
-
-        public void SeedBlob(RelativePath blobName, byte[] content, BlobTier? tier = null) =>
-            _inner.SeedBlob(blobName, content, tier);
-
-        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) =>
-            _inner.CreateContainerIfNotExistsAsync(cancellationToken);
-
-        public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default) =>
-            _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
-
-        public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
-            _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
-
-        public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-            _inner.DownloadAsync(blobName, cancellationToken);
-
-        public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-            _inner.TryDownloadAsync(blobName, cancellationToken);
-
-        public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Chunk-index shard lookup must not perform metadata checks.");
-
-        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
-            _inner.ListAsync(prefix, includeMetadata, cancellationToken);
-
-        public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
-            _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
-
-        public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) =>
-            _inner.SetTierAsync(blobName, tier, cancellationToken);
-
-        public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) =>
-            _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
-
-        public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-            _inner.DeleteAsync(blobName, cancellationToken);
-    }
 }

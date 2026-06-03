@@ -17,7 +17,7 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         if (blobName.StartsWith(BlobPaths.FileTreesPrefix))
         {
@@ -28,6 +28,7 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
         }
 
         Uploaded.TryAdd(blobName, 0);
+        return new BlobMetadata { Exists = true, Tier = tier, Metadata = new Dictionary<string, string>(metadata) };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>

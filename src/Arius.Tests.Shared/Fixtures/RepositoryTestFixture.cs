@@ -11,6 +11,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -228,6 +229,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
+        SqliteConnection.ClearAllPools();
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -246,6 +248,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Index.Dispose();
+        SqliteConnection.ClearAllPools();
 
         return ValueTask.CompletedTask;
     }

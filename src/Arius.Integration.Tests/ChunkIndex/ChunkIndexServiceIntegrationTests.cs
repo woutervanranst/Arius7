@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Data.Sqlite;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 
@@ -87,10 +88,10 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         result.ChunkHash.ShouldBe(chunkHash);
     }
 
-    // ── Stale L2 file (old encrypted bytes) → cache miss → L3 fallthrough ───────
+    // ── Corrupt local SQLite store → recover → L3 fallthrough ──────────────────
 
     [Test]
-    public async Task StaleL2File_IsTreatedAsCacheMiss_AndRefetchedFromL3()
+    public async Task CorruptLocalStore_IsRecreated_AndRefetchedFromL3()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
         var encryption    = new PassphraseEncryptionService(Passphrase);
@@ -104,22 +105,36 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
-        // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
-        var prefix = Shard.PrefixOf(contentHash);
-        var l2Path = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName).Resolve(RelativePath.Parse(prefix.ToString()));
-        await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
+        // Step 2: create a new service instance with cold local state.
+        var svc2 = new ChunkIndexService(blobs, encryption, Account, containerName);
 
-        // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
-        var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
+        // Step 3: corrupt the local SQLite cache so the next lookup must recover and refill it.
+        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName);
+        var databasePath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite"));
+        var walPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-wal"));
+        var shmPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-shm"));
+        SqliteConnection.ClearAllPools();
+        if (File.Exists(walPath))
+            File.Delete(walPath);
+        if (File.Exists(shmPath))
+            File.Delete(shmPath);
+
+        await File.WriteAllBytesAsync(databasePath, [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62]); // "not-a-db"
+
+        // Step 4: recovery should fall through to L3.
         var result = await svc2.LookupAsync(contentHash);
 
         // The entry must still be found (came from L3)
         result.ShouldNotBeNull();
         result.ChunkHash.ShouldBe(chunkHash);
 
-        // And L2 must now be in plaintext format (re-cached by the service)
-        File.Exists(l2Path).ShouldBeTrue();
-        var text = await File.ReadAllTextAsync(l2Path);
-        text.ShouldContain(contentHash.ToString());
+        // And the SQLite local store must have been recreated and refilled.
+        File.Exists(databasePath).ShouldBeTrue();
+        using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM chunk_index_entries WHERE content_hash = $contentHash;";
+        command.Parameters.Add("$contentHash", SqliteType.Blob).Value = Convert.FromHexString(contentHash.ToString());
+        (await command.ExecuteScalarAsync()).ShouldBe(1L);
     }
 }
