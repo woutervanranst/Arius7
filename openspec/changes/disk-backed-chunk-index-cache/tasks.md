@@ -88,7 +88,7 @@
 - [x] 10.1 Add or update architecture tests proving SQLite, `Microsoft.Data.Sqlite`, and `ChunkIndexLocalStore` are referenced only inside `src/Arius.Core/Shared/ChunkIndex/` and its tests.
 - [x] 10.2 Add or update architecture tests proving feature handlers, restore, list, DI registrations, and other shared services consume `ChunkIndexService` instead of internal chunk-index store, reader, writer, or repair components.
 - [x] 10.3 Remove obsolete in-memory shard cache, plaintext L2 cache, `Shard.Merge`, and write-session pending collection code after replacement tests are green.
-- [ ] 10.4 Update `docs/cache.md` if its chunk-index cache description no longer matches the SQLite-backed local cache, lazy prefix validation, dirty-row protection, and disk-backed repair flow.
+- [x] 10.4 Update `docs/cache.md` if its chunk-index cache description no longer matches the SQLite-backed local cache, lazy prefix validation, dirty-row protection, and disk-backed repair flow.
 - [ ] 10.5 Update `README.md` or `AGENTS.md` only if user-facing behavior or AI-agent guidance materially changes.
 
 ## 11. Acceptance Verification
@@ -97,6 +97,6 @@
 - [x] 11.2 Run storage backend tests affected by blob identity and upload return metadata: `dotnet test --project src/Arius.AzureBlob.Tests/Arius.AzureBlob.Tests.csproj` and relevant `src/Arius.Integration.Tests` storage tests when Docker or backend prerequisites are available.
 - [x] 11.3 Run architecture boundary tests: `dotnet test --project src/Arius.Architecture.Tests/Arius.Architecture.Tests.csproj`.
 - [x] 11.4 Run relevant restore, list, archive, and repair integration tests that exercise chunk-index lookup, flush, corruption, and repair behavior.
-- [ ] 11.5 Measure final line coverage for `src/Arius.Core/Shared/ChunkIndex/` and do not accept the change until it is at least 90%.
-- [ ] 11.6 Confirm coverage includes focused tests for `ChunkIndexLocalStore`, prefix validation, dirty-row recording, flush, invalidation, corruption handling, repair, and the `ChunkIndexService` facade.
+- [x] 11.5 Measure final line coverage for `src/Arius.Core/Shared/ChunkIndex/` and do not accept the change until it is at least 90%.
+- [x] 11.6 Confirm coverage includes focused tests for `ChunkIndexLocalStore`, prefix validation, dirty-row recording, flush, invalidation, corruption handling, repair, and the `ChunkIndexService` facade.
 - [x] 11.7 Run `openspec validate disk-backed-chunk-index-cache --strict` and confirm the change is apply-ready.
