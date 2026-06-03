@@ -69,9 +69,9 @@ bool HasDirtyRows();
 
 `IngestCleanPrefix` SHALL ingest rows loaded from a remote shard with `dirty = 0`, SHALL NOT overwrite a local row whose current value has `dirty = 1`, and SHALL mark the prefix loaded in the same SQLite transaction as the clean-row ingestion. `IngestCleanPrefix` and `UpsertDirtyRange` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
 
-`ReadPrefixEntries` SHALL keep SQLite connection and reader lifetime owned by the local store. It SHALL consume rows through a synchronous callback or equivalent local-store-owned iteration pattern rather than returning a deferred sequence whose database resources can escape the local store boundary. If remote upload needs asynchronous I/O, chunk-index orchestration SHALL bridge local row reads to remote upload through bounded memory or bounded temporary storage.
+`ReadPrefixEntries` SHALL keep SQLite connection and reader lifetime owned by the local store. It SHALL consume rows through a synchronous callback or equivalent local-store-owned iteration pattern rather than returning a deferred sequence whose database resources can escape the local store boundary. Chunk-index serialization MAY materialize one prefix at a time into a `Shard` and serialized byte array for remote upload. This is accepted bounded memory when limited to one prefix per bounded worker and when materialized shard objects are not cached after the operation.
 
-The local store SHALL track a schema version in the `metadata` table. If the local SQLite schema version is incompatible, the local store MAY recreate the database because it is cache state.
+The local store SHALL track `schema_version = 1` in the `metadata` table. If the local SQLite schema version is incompatible, the local store MAY recreate the database because it is cache state.
 
 #### Scenario: Local store owns pending state
 - **WHEN** archive workers record new chunk-index entries during an archive run
@@ -89,6 +89,12 @@ The local store SHALL track a schema version in the `metadata` table. If the loc
 - **AND** the ingested rows SHALL be stored with `dirty = 0`
 - **AND** the prefix SHALL be marked loaded in the same SQLite transaction as row ingestion
 - **AND** any existing local dirty row for the same content hash SHALL remain protected and SHALL NOT be overwritten by clean remote ingestion
+
+#### Scenario: Missing remote shard marks empty prefix loaded
+- **WHEN** chunk-index lookup or flush ensures a prefix is loaded and the remote shard blob does not exist
+- **THEN** it SHALL ingest an empty clean prefix through `IngestCleanPrefix`
+- **AND** the prefix SHALL be marked loaded in SQLite in the same transaction
+- **AND** later misses for that prefix SHALL NOT repeatedly download or probe the missing remote shard during the same local cache epoch
 
 #### Scenario: SQLite work uses synchronous APIs
 - **WHEN** chunk-index local-store code executes SQLite commands or reads SQLite rows
@@ -118,6 +124,12 @@ The local store SHALL track a schema version in the `metadata` table. If the loc
 - **AND** it SHALL upload the resulting shard to the remote chunk index
 - **AND** dirty rows SHALL be marked `dirty = 0` only after all touched prefixes upload successfully
 
+#### Scenario: One-prefix materialization is allowed
+- **WHEN** chunk-index code serializes a loaded prefix for remote upload
+- **THEN** it MAY materialize that one prefix into an in-memory `Shard` and serialized byte array
+- **AND** the number of concurrently materialized prefixes SHALL be bounded by the configured flush or repair worker count
+- **AND** materialized `Shard` instances SHALL NOT be retained as an in-memory cache after upload or ingestion completes
+
 #### Scenario: Prefix operations are serialized by prefix
 - **WHEN** two chunk-index operations need to hydrate, ingest, stream, or upload the same prefix
 - **THEN** those operations SHALL be serialized through a prefix-scoped gate
@@ -145,6 +157,12 @@ The local store SHALL track a schema version in the `metadata` table. If the loc
 - **THEN** the local store MAY recreate the local SQLite cache
 - **AND** subsequent lookup SHALL rehydrate needed prefixes from remote chunk-index shards
 
+#### Scenario: SQLite cache file family is moved or deleted together
+- **WHEN** chunk-index code moves aside, deletes, or recreates the local SQLite cache
+- **THEN** it SHALL first close local-store SQLite connections
+- **AND** it SHALL handle `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` as one cache file family
+- **AND** best-effort backup files SHALL use a `.bak` suffix
+
 #### Scenario: Single owner for SQLite schema
 - **WHEN** chunk-index internals need to read or mutate local chunk-index tables
 - **THEN** they SHALL do so through the SQLite-backed local store
@@ -152,8 +170,10 @@ The local store SHALL track a schema version in the `metadata` table. If the loc
 
 #### Scenario: Cache invalidation preserves dirty rows
 - **WHEN** chunk-index cache invalidation clears local cache state
-- **THEN** rows with `dirty = 0` MAY be discarded
+- **THEN** rows with `dirty = 0` SHALL be discarded
+- **AND** loaded-prefix state SHALL be cleared
 - **AND** rows with `dirty = 1` SHALL be preserved or the operation SHALL fail clearly without treating the dirty rows as successfully discarded
+- **AND** a preserved dirty row SHALL NOT by itself mean that its prefix is fully loaded
 
 #### Scenario: Corrupt local SQLite cache can be rebuilt
 - **WHEN** chunk-index startup or lookup detects that the local SQLite cache is corrupt

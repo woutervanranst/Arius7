@@ -166,7 +166,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 
 `IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
 
-`ReadPrefixEntries` uses a callback rather than returning a deferred `IEnumerable<ShardEntry>` so the local store owns the SQLite connection and reader lifetime. The callback should consume entries synchronously. If remote upload needs async I/O, chunk-index orchestration should serialize entries through a bounded stream or temporary file rather than letting a SQLite reader live across an arbitrary async upload boundary.
+`ReadPrefixEntries` uses a callback rather than returning a deferred `IEnumerable<ShardEntry>` so the local store owns the SQLite connection and reader lifetime. The callback should consume entries synchronously. For this change, it is acceptable to materialize one prefix at a time into a `Shard` and serialize that one prefix to a `byte[]` for remote upload. That keeps peak memory bounded by one remote shard plus bounded worker concurrency while avoiding a complicated streaming serializer rewrite. The implementation should not keep multiple materialized shards beyond the bounded flush/repair worker count and should not cache materialized `Shard` objects in memory after the operation.
 
 Avoid putting `GetOrAdd`-style remote loading on the local store. The “add” side requires remote shard download and wire deserialization, so that coordination belongs in the reader/writer orchestration path. A dedicated prefix-loader helper is optional, not required. Use the decision rule: keep prefix-loading coordination inline while only one or two call sites need it; extract a focused internal helper only if lookup and flush share enough code that extraction reduces complexity.
 
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 `recorded_order` is available if deterministic last-writer-wins behavior needs to be audited or tested, though `content_hash` primary-key upsert is enough for current duplicate semantics. Archive `AddEntry` upserts the row with `dirty = 1`, so same-run lookup naturally sees the new value from the same table.
 
-`metadata` should include a schema version. On incompatible schema version, the local store can recreate the database because it is cache state.
+`metadata` should include `schema_version = 1`. On incompatible schema version, the local store can recreate the database because it is cache state.
 
 Store route-related values in a way that can evolve later. For the fixed-prefix change, `prefix` is the current two-character prefix from `Shard.PrefixOf`. A later dynamic-prefix change can replace that with a leaf prefix from a route table without changing feature callers.
 
@@ -220,7 +220,7 @@ Single-hash lookup:
 1. Check chunk_index_entries by content_hash.
 2. If not found and the hash's current prefix is not loaded:
    a. download remote chunk-index/<prefix> if it exists
-   b. ingest entries into chunk_index_entries with dirty = 0 and mark loaded_prefixes(prefix) in one SQLite transaction
+   b. ingest entries into chunk_index_entries with dirty = 0 and mark loaded_prefixes(prefix) in one SQLite transaction; if the remote shard is missing, ingest an empty prefix and still mark it loaded
    d. retry pending/base lookup
 3. Return miss if the loaded prefix does not contain the hash.
 ```
@@ -253,6 +253,8 @@ Flush uses dirty rows as the source of touched prefixes:
 
 Ordering the streamed output preserves deterministic shard serialization. This does not require keeping an in-memory `Shard` dictionary.
 
+Because the current shard count and future dynamic split direction bound individual shard size, upload may materialize one prefix at a time into `Shard` and a serialized `byte[]`. This is accepted bounded memory. It must not reintroduce a repository-wide memory cache or keep materialized shards beyond the bounded workers currently flushing or repairing prefixes.
+
 Partial failure behavior remains conservative: if any prefix upload fails, the archive fails and no snapshot is published. Dirty rows remain in SQLite for the current local state. A later rerun can retry the flush or explicit repair can rebuild from committed chunks.
 
 The implementation should be careful when combining SQLite transactions and remote upload. It cannot make a remote blob upload and SQLite update atomically transactional. The existing safety rule remains: snapshot publication waits for flush success, and repair can recover from partial remote shard updates.
@@ -279,6 +281,8 @@ Repair remains explicit and idempotent. It does not publish snapshots.
 ### Cache invalidation and local corruption
 
 `InvalidateCaches` should clear discardable local chunk-index cache rows (`dirty = 0`) and loaded-prefix state, but it must not delete the repair-in-progress marker and must not silently discard dirty rows. Archive-tail snapshot mismatch invalidation must preserve dirty rows recorded for the current archive.
+
+`ClearCleanCache` should delete `dirty = 0` rows and clear all `loaded_prefixes`. It should preserve `dirty = 1` rows. A dirty row alone does not mean its prefix is fully loaded; later flush must still ensure the prefix is loaded from remote before uploading the complete shard.
 
 Local SQLite corruption should be treated as local cache corruption. The implementation may move the corrupt database aside to a `.bak` file or delete/recreate it because committed chunks and remote shards remain the durable source of truth. If corruption is detected during an archive run with dirty rows, the operation must fail clearly and must not publish a snapshot; a rerun or explicit repair can recover from committed chunks.
 
@@ -341,6 +345,7 @@ Local migration can be cache-based:
 1. New versions create `cache.sqlite` under the chunk-index local state directory.
 2. Existing plaintext L2 shard files may be ignored or deleted as stale cache state.
 3. Needed prefixes are rehydrated from remote `chunk-index/<prefix>` blobs on demand.
-4. If rollback occurs, the old implementation can ignore or delete `cache.sqlite` and rehydrate plaintext L2 files from remote shards as before.
+4. When moving or deleting the SQLite cache, include `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` after all local-store connections are closed. Best-effort backups should use a `.bak` suffix for the database family.
+5. If rollback occurs, the old implementation can ignore or delete `cache.sqlite` and rehydrate plaintext L2 files from remote shards as before.
 
 Because local cache state is not the source of truth, no durable data migration is required.
