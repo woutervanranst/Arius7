@@ -22,7 +22,7 @@ The remote repository format should not return to a single uploaded/downloaded d
 - Keep the SQLite dependency isolated to `src/Arius.Core/Shared/ChunkIndex/` and use raw synchronous ADO.NET-style access, not EF Core.
 - Preserve same-service visibility for entries recorded during the current archive session before they are flushed.
 - Make full repair stream reconstructed entries into disk-backed local state instead of grouping all entries in memory.
-- Add bounded chunk-index lookup flow for restore and list so those callers do not materialize all content hashes or lookup results at once.
+- Add bounded chunk-index lookup flow for restore and list so those callers do not materialize all chunk-index lookup inputs or results at once when avoidable.
 - Leave clear seams for a later dynamic chunk-prefix change.
 
 **Non-Goals:**
@@ -31,6 +31,7 @@ The remote repository format should not return to a single uploaded/downloaded d
 - Do not upload or download a local SQLite database as the remote chunk index.
 - Do not change remote shard serialization or encryption behavior.
 - Do not use EF Core.
+- Do not redesign restore into a fully streaming or disk-backed restore-plan pipeline in this change.
 - Do not make restore/list callers depend on SQLite or chunk-index implementation details.
 - Do not introduce distributed locking for concurrent archive/repair operations.
 
@@ -66,6 +67,12 @@ The recommended connection/concurrency model is:
 - Serialize SQLite writes through a local gate because SQLite still has a single-writer model.
 - Allow read operations to use their own connection where safe. Streaming reads should own their connection and reader for the duration of enumeration and dispose both promptly.
 - Use per-prefix gates around prefix hydration and flush/upload coordination so two operations do not concurrently download, ingest, stream, or upload the same prefix.
+
+Keep three failure states separate:
+
+- Dirty rows are not corruption. They are unflushed local archive state that should be flushed to remote shard blobs before snapshot publication.
+- Local SQLite corruption is local cache corruption. Move aside or delete the local database and rehydrate needed clean rows from remote shard blobs. If this interrupts an active archive/flush, fail the operation and do not publish a snapshot.
+- Remote chunk-index shard corruption is repository metadata corruption. Normal operations fail clearly and explicit full repair rebuilds remote shards from committed chunk blobs.
 
 Alternative considered: custom unsorted per-leaf files scanned linearly. That can be elegant when dynamic prefix splitting guarantees small leaf files, but without dynamic routing in this change fixed two-character prefixes can still contain tens of thousands of entries at 10M chunks. Making unsorted scans efficient would force dynamic prefix splitting into this change and expand scope into route-manifest correctness.
 
@@ -135,17 +142,17 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 
     public void UpsertDirtyRange(IEnumerable<ShardEntry> entries);
 
-    public void UpsertCleanRange(
+    public void IngestCleanPrefix(
         PathSegment prefix,
         IEnumerable<ShardEntry> entries);
 
     public bool IsPrefixLoaded(PathSegment prefix);
 
-    public void MarkPrefixLoaded(PathSegment prefix);
-
     public IEnumerable<PathSegment> GetDirtyPrefixes();
 
-    public IEnumerable<ShardEntry> ReadPrefixEntries(PathSegment prefix);
+    public void ReadPrefixEntries(
+        PathSegment prefix,
+        Action<ShardEntry> consume);
 
     public void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes);
 
@@ -155,9 +162,11 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 }
 ```
 
-`UpsertCleanRange` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. Dirty rows represent current archive operational state and win over remote cache hydration.
+`IngestCleanPrefix` is used when a remote shard has been downloaded and deserialized. It inserts or updates clean cache rows with `dirty = 0`, but it must not overwrite a local dirty row for the same content hash. It also marks the prefix loaded in the same SQLite transaction as the clean-row ingestion. Dirty rows represent current archive operational state and win over remote cache hydration.
 
-`UpsertCleanRange` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command. A bounded channel may be used by higher-level async workflows to bridge remote shard download/deserialization into synchronous SQLite writes, but the channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
+`IngestCleanPrefix` and `UpsertDirtyRange` should perform bulk ingestion with one transaction and a reused parameterized command. A bounded channel SHALL be used when higher-level async workflows need to bridge remote shard download/deserialization into synchronous SQLite writes. The channel must have a fixed capacity and must be drained before the prefix is marked loaded or dirty rows are considered flushed.
+
+`ReadPrefixEntries` uses a callback rather than returning a deferred `IEnumerable<ShardEntry>` so the local store owns the SQLite connection and reader lifetime. The callback should consume entries synchronously. If remote upload needs async I/O, chunk-index orchestration should serialize entries through a bounded stream or temporary file rather than letting a SQLite reader live across an arbitrary async upload boundary.
 
 Avoid putting `GetOrAdd`-style remote loading on the local store. The “add” side requires remote shard download and wire deserialization, so that coordination belongs in the reader/writer orchestration path. A dedicated prefix-loader helper is optional, not required. Use the decision rule: keep prefix-loading coordination inline while only one or two call sites need it; extract a focused internal helper only if lookup and flush share enough code that extraction reduces complexity.
 
@@ -199,6 +208,8 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 `recorded_order` is available if deterministic last-writer-wins behavior needs to be audited or tested, though `content_hash` primary-key upsert is enough for current duplicate semantics. Archive `AddEntry` upserts the row with `dirty = 1`, so same-run lookup naturally sees the new value from the same table.
 
+`metadata` should include a schema version. On incompatible schema version, the local store can recreate the database because it is cache state.
+
 Store route-related values in a way that can evolve later. For the fixed-prefix change, `prefix` is the current two-character prefix from `Shard.PrefixOf`. A later dynamic-prefix change can replace that with a leaf prefix from a route table without changing feature callers.
 
 ### Lookup flow
@@ -209,8 +220,7 @@ Single-hash lookup:
 1. Check chunk_index_entries by content_hash.
 2. If not found and the hash's current prefix is not loaded:
    a. download remote chunk-index/<prefix> if it exists
-   b. ingest entries into chunk_index_entries in one transaction with dirty = 0
-   c. mark loaded_prefixes(prefix)
+   b. ingest entries into chunk_index_entries with dirty = 0 and mark loaded_prefixes(prefix) in one SQLite transaction
    d. retry pending/base lookup
 3. Return miss if the loaded prefix does not contain the hash.
 ```
@@ -303,7 +313,7 @@ The local SQLite schema can later cache route leaves or loaded leaf prefixes wit
 
 `RestoreCommandHandler` currently materializes all distinct content hashes and all returned index entries for a restore plan. This does not scale for very large restores.
 
-This change should stop restore and list from requiring unbounded chunk-index lookup materialization while preserving dependency boundaries. SQLite must not leak into restore or list. Possible API shapes include:
+This change should stop restore and list from requiring unbounded chunk-index lookup materialization while preserving dependency boundaries. It does not require a full restore streaming-plan rewrite. SQLite must not leak into restore or list. Possible API shapes include:
 
 ```csharp
 IAsyncEnumerable<ShardEntry> LookupStreamingAsync(
@@ -311,7 +321,7 @@ IAsyncEnumerable<ShardEntry> LookupStreamingAsync(
     CancellationToken cancellationToken);
 ```
 
-or bounded-batch APIs that keep `ChunkIndexService` as the only dependency. The exact API can be chosen during implementation, but restore and list should consume chunk-index lookup results in bounded batches or streams rather than `ToList`-ing all candidate content hashes and one full lookup dictionary for very large operations.
+or bounded-batch APIs that keep `ChunkIndexService` as the only dependency. The exact API can be chosen during implementation, but restore and list should consume chunk-index lookup inputs and results in bounded batches or streams where possible rather than `ToList`-ing all candidate content hashes and one full lookup dictionary for very large operations.
 
 ## Risks / Trade-offs
 

@@ -3,7 +3,7 @@
 ### Requirement: Chunk resolution from index
 The restore pipeline SHALL look up each content hash through `ChunkIndexService` to determine the chunk hash and chunk type from the resolved chunk metadata. Restore SHALL NOT run automatic chunk-index repair. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, restore SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command. For large files, the content hash equals the chunk hash. For tar-bundled files, the content hash maps to a different chunk hash for the parent tar. The system SHALL group file entries by chunk hash to minimize downloads (multiple files from the same tar -> one download).
 
-Restore chunk resolution SHALL use bounded streaming or bounded-batch chunk-index lookup. It SHALL NOT require materializing all distinct content hashes for the restore operation and all returned chunk-index entries in memory at once. SQLite and chunk-index local-store details SHALL remain hidden behind `ChunkIndexService`; restore SHALL depend only on chunk-index service APIs.
+Restore chunk resolution SHALL use bounded streaming or bounded-batch chunk-index lookup where possible. It SHALL NOT require materializing all distinct content hashes for the restore operation and all returned chunk-index entries in memory at once solely for chunk-index lookup. This change does not require a full restore streaming-plan rewrite or a disk-backed restore plan. SQLite and chunk-index local-store details SHALL remain hidden behind `ChunkIndexService`; restore SHALL depend only on chunk-index service APIs.
 
 If any snapshot-referenced content hash remains unresolved after chunk-index lookup, restore SHALL fail with a clear error that identifies missing chunk-index entries and instructs the user to run the explicit chunk-index repair command.
 
@@ -37,7 +37,7 @@ If any snapshot-referenced content hash remains unresolved after chunk-index loo
 #### Scenario: Restore chunk resolution is bounded
 - **WHEN** restore processes a very large snapshot or subtree
 - **THEN** it SHALL resolve content hashes through chunk-index streaming or bounded lookup batches
-- **AND** it SHALL NOT create one full in-memory list of all distinct content hashes plus one full in-memory dictionary of all resolved chunk-index entries for the entire restore operation
+- **AND** it SHALL NOT create one full in-memory list of all distinct content hashes plus one full in-memory dictionary of all resolved chunk-index entries solely for chunk-index lookup
 
 #### Scenario: Restore does not depend on SQLite
 - **WHEN** restore performs chunk resolution

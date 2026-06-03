@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Size lookup from chunk index
-The system SHALL retrieve file sizes from the chunk index `original-size` field when streaming file entries. Sizes SHALL be looked up through `ChunkIndexService` using bounded batches or streaming lookup so `ls` can preserve progressive streaming output without materializing unbounded content-hash lists or lookup result dictionaries. If a content hash is not found in the chunk index during `ls`, the size SHALL be `null`. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, `ls` SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command.
+The system SHALL retrieve file sizes from the chunk index `original-size` field when streaming file entries. Sizes SHALL be looked up through `ChunkIndexService` using bounded batches or streaming lookup where possible so `ls` can preserve progressive streaming output without materializing unbounded content-hash lists or lookup result dictionaries. If a content hash is not found in the chunk index during `ls`, the size SHALL be `null`. If chunk-index lookup detects a corrupt remote shard or interrupted local repair state, `ls` SHALL fail with a clear error that instructs the user to run the explicit chunk-index repair command.
 
 SQLite and chunk-index local-store details SHALL remain hidden behind `ChunkIndexService`; list query code SHALL NOT reference SQLite or chunk-index local-store internals directly.
 

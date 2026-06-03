@@ -15,6 +15,8 @@ The local store SHALL enable write-ahead logging for the local cache database an
 
 Local SQLite corruption SHALL be treated as local cache corruption. The implementation MAY move the corrupt database aside to a `.bak` file or delete and recreate it. If corruption is detected during an active archive or flush before a snapshot is published, the operation SHALL fail clearly and SHALL NOT continue as if dirty rows were flushed.
 
+The implementation SHALL keep dirty rows, corrupt local SQLite state, and corrupt remote chunk-index shards as separate states. Dirty rows are valid unflushed archive state. Corrupt local SQLite is local cache corruption and MAY be deleted or recreated. Corrupt remote chunk-index shards are repository metadata corruption and SHALL be handled by failing normal operations with repair guidance and by explicit full repair from committed chunks.
+
 The local SQLite schema SHALL use a single entry table with a dirty flag equivalent to:
 
 ```sql
@@ -46,17 +48,17 @@ void UpsertDirty(ShardEntry entry);
 
 void UpsertDirtyRange(IEnumerable<ShardEntry> entries);
 
-void UpsertCleanRange(
+void IngestCleanPrefix(
     PathSegment prefix,
     IEnumerable<ShardEntry> entries);
 
 bool IsPrefixLoaded(PathSegment prefix);
 
-void MarkPrefixLoaded(PathSegment prefix);
-
 IEnumerable<PathSegment> GetDirtyPrefixes();
 
-IEnumerable<ShardEntry> ReadPrefixEntries(PathSegment prefix);
+void ReadPrefixEntries(
+    PathSegment prefix,
+    Action<ShardEntry> consume);
 
 void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes);
 
@@ -65,7 +67,11 @@ void ClearCleanCache();
 bool HasDirtyRows();
 ```
 
-`UpsertCleanRange` SHALL ingest rows loaded from a remote shard with `dirty = 0` and SHALL NOT overwrite a local row whose current value has `dirty = 1`. `UpsertCleanRange` and `UpsertDirtyRange` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
+`IngestCleanPrefix` SHALL ingest rows loaded from a remote shard with `dirty = 0`, SHALL NOT overwrite a local row whose current value has `dirty = 1`, and SHALL mark the prefix loaded in the same SQLite transaction as the clean-row ingestion. `IngestCleanPrefix` and `UpsertDirtyRange` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
+
+`ReadPrefixEntries` SHALL keep SQLite connection and reader lifetime owned by the local store. It SHALL consume rows through a synchronous callback or equivalent local-store-owned iteration pattern rather than returning a deferred sequence whose database resources can escape the local store boundary. If remote upload needs asynchronous I/O, chunk-index orchestration SHALL bridge local row reads to remote upload through bounded memory or bounded temporary storage.
+
+The local store SHALL track a schema version in the `metadata` table. If the local SQLite schema version is incompatible, the local store MAY recreate the database because it is cache state.
 
 #### Scenario: Local store owns pending state
 - **WHEN** archive workers record new chunk-index entries during an archive run
@@ -79,8 +85,9 @@ bool HasDirtyRows();
 
 #### Scenario: Remote rows are ingested as clean cache rows
 - **WHEN** chunk-index code downloads and deserializes a remote shard for a prefix
-- **THEN** it SHALL ingest the remote shard entries through `UpsertCleanRange`
+- **THEN** it SHALL ingest the remote shard entries through `IngestCleanPrefix`
 - **AND** the ingested rows SHALL be stored with `dirty = 0`
+- **AND** the prefix SHALL be marked loaded in the same SQLite transaction as row ingestion
 - **AND** any existing local dirty row for the same content hash SHALL remain protected and SHALL NOT be overwritten by clean remote ingestion
 
 #### Scenario: SQLite work uses synchronous APIs
@@ -92,6 +99,11 @@ bool HasDirtyRows();
 - **WHEN** the local store ingests many clean or dirty chunk-index entries
 - **THEN** it SHALL perform the writes in a SQLite transaction
 - **AND** it SHALL reuse a parameterized command across rows rather than compiling one command per row
+
+#### Scenario: Async-to-sync ingestion uses bounded channels
+- **WHEN** remote shard download or deserialization feeds entries into synchronous SQLite ingestion
+- **THEN** the bridge between asynchronous remote I/O and synchronous SQLite writes SHALL be bounded
+- **AND** it SHALL NOT buffer an unbounded number of shard entries in managed memory
 
 #### Scenario: Writer coordinates without owning state
 - **WHEN** chunk-index flush starts for pending archive entries
@@ -123,6 +135,16 @@ bool HasDirtyRows();
 - **AND** a separate chunk-index component SHALL serialize and upload the remote shard blob
 - **AND** the local store SHALL NOT treat a SQLite transaction as an atomic transaction with remote blob upload
 
+#### Scenario: Prefix row streaming does not leak SQLite resources
+- **WHEN** chunk-index code streams rows for a prefix from the local store
+- **THEN** the local store SHALL own and dispose the SQLite connection and reader used for that stream
+- **AND** the local store SHALL NOT return a deferred sequence that lets SQLite reader lifetime escape the local-store boundary
+
+#### Scenario: Local schema version mismatch recreates cache
+- **WHEN** the local SQLite metadata schema version is missing or incompatible
+- **THEN** the local store MAY recreate the local SQLite cache
+- **AND** subsequent lookup SHALL rehydrate needed prefixes from remote chunk-index shards
+
 #### Scenario: Single owner for SQLite schema
 - **WHEN** chunk-index internals need to read or mutate local chunk-index tables
 - **THEN** they SHALL do so through the SQLite-backed local store
@@ -142,6 +164,11 @@ bool HasDirtyRows();
 - **WHEN** local SQLite corruption is detected during an active archive or flush
 - **THEN** the archive operation SHALL fail clearly
 - **AND** it SHALL NOT publish a snapshot for work whose dirty chunk-index rows were not successfully flushed
+
+#### Scenario: Corrupt remote shard remains repair condition
+- **WHEN** normal chunk-index lookup downloads a remote shard blob that cannot be deserialized
+- **THEN** lookup SHALL fail with a clear chunk-index corruption error
+- **AND** the error SHALL instruct the user to run explicit full chunk-index repair
 
 ## MODIFIED Requirements
 
