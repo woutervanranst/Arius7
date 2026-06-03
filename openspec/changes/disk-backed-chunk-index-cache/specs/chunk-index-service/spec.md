@@ -9,6 +9,12 @@ Archive write-session or writer components SHALL NOT own an independent pending-
 
 The local store SHALL NOT upload or download remote shard blobs and SHALL NOT own archive-tail publication policy. Remote shard download/upload, shard wire serialization, flush-in-progress rejection, and partial-flush behavior SHALL remain coordinated outside the local store through `ChunkIndexService` and focused chunk-index internals.
 
+The local store SHALL use synchronous `Microsoft.Data.Sqlite` ADO.NET APIs for SQLite work. It SHALL NOT use `Microsoft.Data.Sqlite` async command or reader methods because SQLite does not support asynchronous I/O and those async overloads execute synchronously. Chunk-index operations MAY remain async at higher orchestration boundaries where they perform remote blob I/O.
+
+The local store SHALL enable write-ahead logging for the local cache database and SHALL avoid SQLite shared-cache mode with WAL. SQLite writes SHALL be serialized by the local store. Prefix hydration and prefix flush/upload coordination SHALL be serialized per prefix so concurrent operations cannot download, ingest, stream, or upload the same prefix at the same time.
+
+Local SQLite corruption SHALL be treated as local cache corruption. The implementation MAY move the corrupt database aside to a `.bak` file or delete and recreate it. If corruption is detected during an active archive or flush before a snapshot is published, the operation SHALL fail clearly and SHALL NOT continue as if dirty rows were flushed.
+
 The local SQLite schema SHALL use a single entry table with a dirty flag equivalent to:
 
 ```sql
@@ -32,46 +38,34 @@ CREATE INDEX ix_chunk_index_entries_dirty_prefix
 The local store SHALL expose a domain-specific API for local chunk-index facts and mutations. The API SHALL provide operations equivalent to:
 
 ```csharp
-Task InitializeAsync(CancellationToken cancellationToken);
+void Initialize();
 
-Task<ShardEntry?> GetValueOrDefaultAsync(
-    ContentHash contentHash,
-    CancellationToken cancellationToken);
+ShardEntry? GetValueOrDefault(ContentHash contentHash);
 
-Task UpsertDirtyAsync(
-    ShardEntry entry,
-    CancellationToken cancellationToken);
+void UpsertDirty(ShardEntry entry);
 
-Task UpsertCleanRangeAsync(
+void UpsertDirtyRange(IEnumerable<ShardEntry> entries);
+
+void UpsertCleanRange(
     PathSegment prefix,
-    IAsyncEnumerable<ShardEntry> entries,
-    CancellationToken cancellationToken);
+    IEnumerable<ShardEntry> entries);
 
-Task<bool> IsPrefixLoadedAsync(
-    PathSegment prefix,
-    CancellationToken cancellationToken);
+bool IsPrefixLoaded(PathSegment prefix);
 
-Task MarkPrefixLoadedAsync(
-    PathSegment prefix,
-    CancellationToken cancellationToken);
+void MarkPrefixLoaded(PathSegment prefix);
 
-IAsyncEnumerable<PathSegment> GetDirtyPrefixesAsync(
-    CancellationToken cancellationToken);
+IEnumerable<PathSegment> GetDirtyPrefixes();
 
-IAsyncEnumerable<ShardEntry> ReadPrefixEntriesAsync(
-    PathSegment prefix,
-    CancellationToken cancellationToken);
+IEnumerable<ShardEntry> ReadPrefixEntries(PathSegment prefix);
 
-Task MarkDirtyPrefixesCleanAsync(
-    IReadOnlyCollection<PathSegment> prefixes,
-    CancellationToken cancellationToken);
+void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes);
 
-Task ClearCleanCacheAsync(CancellationToken cancellationToken);
+void ClearCleanCache();
 
-Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
+bool HasDirtyRows();
 ```
 
-`UpsertCleanRangeAsync` SHALL ingest rows loaded from a remote shard with `dirty = 0` and SHALL NOT overwrite a local row whose current value has `dirty = 1`. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
+`UpsertCleanRange` SHALL ingest rows loaded from a remote shard with `dirty = 0` and SHALL NOT overwrite a local row whose current value has `dirty = 1`. `UpsertCleanRange` and `UpsertDirtyRange` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard download and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
 
 #### Scenario: Local store owns pending state
 - **WHEN** archive workers record new chunk-index entries during an archive run
@@ -85,9 +79,19 @@ Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
 
 #### Scenario: Remote rows are ingested as clean cache rows
 - **WHEN** chunk-index code downloads and deserializes a remote shard for a prefix
-- **THEN** it SHALL ingest the remote shard entries through `UpsertCleanRangeAsync`
+- **THEN** it SHALL ingest the remote shard entries through `UpsertCleanRange`
 - **AND** the ingested rows SHALL be stored with `dirty = 0`
 - **AND** any existing local dirty row for the same content hash SHALL remain protected and SHALL NOT be overwritten by clean remote ingestion
+
+#### Scenario: SQLite work uses synchronous APIs
+- **WHEN** chunk-index local-store code executes SQLite commands or reads SQLite rows
+- **THEN** it SHALL use synchronous Microsoft.Data.Sqlite APIs
+- **AND** it SHALL NOT call async Microsoft.Data.Sqlite command or reader methods for local SQLite work
+
+#### Scenario: Bulk ingestion uses transactions and prepared commands
+- **WHEN** the local store ingests many clean or dirty chunk-index entries
+- **THEN** it SHALL perform the writes in a SQLite transaction
+- **AND** it SHALL reuse a parameterized command across rows rather than compiling one command per row
 
 #### Scenario: Writer coordinates without owning state
 - **WHEN** chunk-index flush starts for pending archive entries
@@ -101,6 +105,11 @@ Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
 - **AND** it SHALL stream all rows for that prefix ordered by content hash from `chunk_index_entries`
 - **AND** it SHALL upload the resulting shard to the remote chunk index
 - **AND** dirty rows SHALL be marked `dirty = 0` only after all touched prefixes upload successfully
+
+#### Scenario: Prefix operations are serialized by prefix
+- **WHEN** two chunk-index operations need to hydrate, ingest, stream, or upload the same prefix
+- **THEN** those operations SHALL be serialized through a prefix-scoped gate
+- **AND** operations for different prefixes MAY proceed concurrently subject to bounded parallelism
 
 #### Scenario: Local store API stays storage-focused
 - **WHEN** chunk-index internals need to ensure a prefix is loaded from remote storage
@@ -124,12 +133,22 @@ Task<bool> HasDirtyRowsAsync(CancellationToken cancellationToken);
 - **THEN** rows with `dirty = 0` MAY be discarded
 - **AND** rows with `dirty = 1` SHALL be preserved or the operation SHALL fail clearly without treating the dirty rows as successfully discarded
 
+#### Scenario: Corrupt local SQLite cache can be rebuilt
+- **WHEN** chunk-index startup or lookup detects that the local SQLite cache is corrupt
+- **THEN** the implementation MAY move the corrupt database aside or recreate it
+- **AND** subsequent lookup SHALL rehydrate needed prefixes from remote chunk-index shards
+
+#### Scenario: Corrupt local SQLite during archive fails clearly
+- **WHEN** local SQLite corruption is detected during an active archive or flush
+- **THEN** the archive operation SHALL fail clearly
+- **AND** it SHALL NOT publish a snapshot for work whose dirty chunk-index rows were not successfully flushed
+
 ## MODIFIED Requirements
 
 ### Requirement: Explicit full chunk-index repair
 The system SHALL provide an explicit full chunk-index repair API and command that rebuilds all chunk-index shards from committed chunk blobs using the configured shard prefix length. Full repair SHALL use SQLite-backed local repair state instead of grouping all reconstructed entries in managed memory. Repair SHALL stream one metadata-aware chunk listing from `ListAsync("chunks/", includeMetadata: true, ...)`, reconstruct large and thin chunk-index entries, and upsert each reconstructed entry into disk-backed local repair state as it is discovered.
 
-Full repair SHALL write a repair-in-progress marker before clearing or rebuilding local chunk-index state. The repair marker SHALL live outside the purgeable local chunk-index cache and SHALL NOT be deleted by cache invalidation. Normal chunk-index operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL fail clearly while the marker exists. The explicit repair API SHALL be allowed to run when the marker already exists so an interrupted repair can be rerun.
+Full repair SHALL write a repair-in-progress marker before clearing or rebuilding local chunk-index state. The repair marker SHALL live outside the purgeable local chunk-index cache and SHALL NOT be deleted by cache invalidation. Repair SHALL move any existing local SQLite cache aside to a best-effort `.bak` file or otherwise replace it with a fresh local SQLite cache before staging reconstructed entries. Normal chunk-index operations that trust or mutate chunk-index state, including lookup, entry recording, and pending-entry flush, SHALL fail clearly while the marker exists. The explicit repair API SHALL be allowed to run when the marker already exists so an interrupted repair can be rerun.
 
 After reconstructed entries are staged locally, full repair SHALL stream each rebuilt prefix from SQLite ordered by content hash, serialize each remote shard using the existing shard wire format, upload every non-empty rebuilt shard to `chunk-index/<prefix>`, and delete stale remote shard blobs whose prefixes were not rebuilt. Full repair SHALL clear dirty repair state and the repair marker only after rebuilt shard upload and stale-shard deletion succeed. Full repair SHALL NOT publish snapshots.
 
@@ -140,6 +159,11 @@ Full repair remains explicit and idempotent. If full repair is interrupted while
 - **THEN** it SHALL reconstruct chunk-index entries for those chunks
 - **AND** it SHALL upsert each reconstructed entry into SQLite-backed local repair state
 - **AND** it SHALL NOT group all reconstructed entries by shard prefix in managed memory
+
+#### Scenario: Full repair replaces local SQLite cache
+- **WHEN** full chunk-index repair starts
+- **THEN** it SHALL write the repair-in-progress marker
+- **AND** it SHALL move aside or replace the existing local SQLite cache before staging rebuilt entries
 
 #### Scenario: Full repair streams rebuilt prefixes from SQLite
 - **WHEN** full chunk-index repair has staged reconstructed entries locally
