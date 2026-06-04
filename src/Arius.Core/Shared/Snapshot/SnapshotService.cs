@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -7,91 +6,6 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;
-
-/// <summary>
-/// Snapshot manifest: the root of a complete archive state.
-/// Stored (gzip + optional encrypt) at <c>snapshots/&lt;timestamp&gt;</c>.
-/// </summary>
-public sealed record SnapshotManifest
-{
-    /// <summary>UTC timestamp of snapshot creation (ISO-8601 round-trip format).</summary>
-    public required DateTimeOffset Timestamp   { get; init; }
-
-    /// <summary>Root tree hash (SHA-256 hex, 64 chars) produced by the tree builder.</summary>
-    public required FileTreeHash   RootHash    { get; init; }
-
-    /// <summary>Total number of files in this snapshot.</summary>
-    public required long           FileCount   { get; init; }
-
-    /// <summary>Sum of original (uncompressed) sizes of all files in bytes.</summary>
-    public required long           TotalSize   { get; init; }
-
-    /// <summary>Arius tool version that created this snapshot.</summary>
-    public required string         AriusVersion { get; init; }
-}
-
-internal sealed class FileTreeHashJsonConverter : JsonConverter<FileTreeHash>
-{
-    public override FileTreeHash Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => FileTreeHash.Parse(reader.GetString() ?? throw new JsonException("Expected file tree hash string."));
-
-    public override void Write(Utf8JsonWriter writer, FileTreeHash value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.ToString());
-}
-
-/// <summary>
-/// Serialization/deserialization for <see cref="SnapshotManifest"/>.
-/// On-disk (Azure) format: JSON → gzip → optional encrypt.
-/// </summary>
-public static class SnapshotSerializer
-{
-    private static readonly JsonSerializerOptions s_options = new()
-    {
-        WriteIndented          = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
-        Converters             = { new FileTreeHashJsonConverter() },
-    };
-
-    // ── Serialize ─────────────────────────────────────────────────────────────
-
-    public static async Task<byte[]> SerializeAsync(
-        SnapshotManifest  manifest,
-        IEncryptionService encryption,
-        CancellationToken  cancellationToken = default)
-    {
-        var json  = JsonSerializer.SerializeToUtf8Bytes(manifest, s_options);
-        var ms    = new MemoryStream();
-
-        // gzip first, then optional encrypt
-        await using (var encStream = encryption.WrapForEncryption(ms))
-        await using (var gzip     = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
-        {
-            await gzip.WriteAsync(json, cancellationToken);
-        }
-
-        return ms.ToArray();
-    }
-
-    // ── Deserialize ───────────────────────────────────────────────────────────
-
-    public static async Task<SnapshotManifest> DeserializeAsync(
-        byte[]             bytes,
-        IEncryptionService encryption,
-        CancellationToken  cancellationToken = default)
-    {
-        var ms = new MemoryStream(bytes);
-        await using var decStream = encryption.WrapForDecryption(ms);
-        await using var gzip      = new GZipStream(decStream, CompressionMode.Decompress);
-        var plain = new MemoryStream();
-        await gzip.CopyToAsync(plain, cancellationToken);
-        plain.Position = 0;
-
-        return JsonSerializer.Deserialize<SnapshotManifest>(plain.ToArray(), s_options)
-            ?? throw new InvalidDataException("Failed to deserialize snapshot manifest.");
-    }
-}
 
 /// <summary>
 /// Creates, lists, and resolves snapshots in blob storage, with a local plain-JSON disk cache.
@@ -117,7 +31,7 @@ public sealed class SnapshotService
     /// </summary>
     public const string TimestampFormat = "yyyy-MM-ddTHHmmss.fffZ";
 
-    private static readonly JsonSerializerOptions s_localJsonOptions = new()
+    private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented          = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -257,7 +171,7 @@ public sealed class SnapshotService
         if (_diskCacheFileSystem.FileExists(localPath))
         {
             var json = await _diskCacheFileSystem.ReadAllBytesAsync(localPath, cancellationToken);
-            return JsonSerializer.Deserialize<SnapshotManifest>(json, s_localJsonOptions)
+            return JsonSerializer.Deserialize<SnapshotManifest>(json, SerializerOptions)
                 ?? throw new InvalidDataException($"Failed to deserialize local snapshot: {localPath}");
         }
 
@@ -272,7 +186,7 @@ public sealed class SnapshotService
     private async Task WriteToDiskAsync(SnapshotManifest manifest, CancellationToken cancellationToken)
     {
         var path = RelativePath.Root / PathSegment.Parse(manifest.Timestamp.UtcDateTime.ToString(TimestampFormat));
-        var json = JsonSerializer.SerializeToUtf8Bytes(manifest, s_localJsonOptions);
+        var json = JsonSerializer.SerializeToUtf8Bytes(manifest, SerializerOptions);
         await _diskCacheFileSystem.WriteAllBytesAsync(path, json, cancellationToken);
     }
 
