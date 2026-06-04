@@ -53,9 +53,6 @@ public sealed class SnapshotService
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
     }
 
-    internal static RelativePath BlobPath(DateTimeOffset timestamp) =>
-        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
-
     public static DateTimeOffset ParseTimestamp(RelativePath blobName)
     {
         var name = GetSnapshotFileName(blobName);
@@ -93,7 +90,7 @@ public sealed class SnapshotService
 
         // Then Azure (gzip + optional encrypt)
         var bytes    = await SnapshotSerializer.SerializeAsync(manifest, _encryption, cancellationToken);
-        var blobName = BlobPath(ts);
+        var blobName = BlobPaths.SnapshotPath(ts);
 
         await _blobs.UploadAsync(
             blobName,
