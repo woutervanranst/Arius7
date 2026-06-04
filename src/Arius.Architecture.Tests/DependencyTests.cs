@@ -353,6 +353,17 @@ public class DependencyTests
         }
     }
 
+    [Test]
+    public void Only_ChunkIndexLocalStore_Should_Depend_On_Sqlite()
+    {
+        IArchRule rule = Classes().That().ResideInAssembly(CoreAssembly)
+            .And().DoNotHaveFullName(typeof(ChunkIndexLocalStore).FullName!)
+            .Should().NotDependOnAnyTypesThat().ResideInNamespace("Microsoft.Data.Sqlite");
+
+        rule.HasNoViolations(Architecture).ShouldBeTrue(
+            $"Only {typeof(ChunkIndexLocalStore).FullName} should know the local store uses SQLite. Violations: {DescribeViolations(rule)}");
+    }
+
     // Helper: produce a human-readable summary of rule violations for failure messages
     private static string DescribeViolations(IArchRule rule)
     {

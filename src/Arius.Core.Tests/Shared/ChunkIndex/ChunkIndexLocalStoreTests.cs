@@ -184,6 +184,40 @@ public class ChunkIndexLocalStoreTests
         version.ExecuteScalar().ShouldBe("1");
     }
 
+    [Test]
+    public void GetValueOrDefault_CorruptCleanSqlite_FailsWithDisposableCacheGuidance()
+    {
+        var repositoryKey = $"acct-local-store-corrupt-clean-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var fileSystem = new RelativeFileSystem(root);
+
+        SqliteConnection.ClearAllPools();
+        fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
+
+        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.GetValueOrDefault(FakeContentHash('a')));
+
+        ex.Message.ShouldContain("Delete the local chunk-index cache directory");
+    }
+
+    [Test]
+    public void UpsertDirty_CorruptSqliteWithDirtyMarker_FailsWithUnflushedEntryGuidance()
+    {
+        var repositoryKey = $"acct-local-store-corrupt-dirty-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var fileSystem = new RelativeFileSystem(root);
+        store.UpsertDirty(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+
+        SqliteConnection.ClearAllPools();
+        fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
+
+        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.UpsertDirty(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
+
+        ex.Message.ShouldContain("unflushed entries may exist");
+        ex.Message.ShouldContain("Rerun archive");
+    }
+
     private static SqliteConnection OpenConnection(LocalDirectory root)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
