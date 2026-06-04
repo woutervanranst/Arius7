@@ -3,6 +3,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
@@ -16,7 +17,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-merge");
-        var snapshotBlob = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        var snapshotBlob = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
         blobs.SeedBlob(snapshotBlob, [1], BlobTier.Cool);
 
         var cleanHash = FakeContentHash('a');
@@ -46,8 +47,8 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-refresh");
-        var firstSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        var secondSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
+        var firstSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        var secondSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
         blobs.SeedBlob(firstSnapshot, [1], BlobTier.Cool);
 
         var cleanHash = FakeContentHash('a');

@@ -53,12 +53,6 @@ public sealed class SnapshotService
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
     }
 
-    // ── Snapshot blob name ────────────────────────────────────────────────────
-
-    /// <summary>Returns the blob name for a snapshot with the given UTC timestamp.</summary>
-    public static RelativePath BlobName(DateTimeOffset timestamp) =>
-        BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
-
     internal static RelativePath BlobPath(DateTimeOffset timestamp) =>
         BlobPaths.SnapshotPath(timestamp.UtcDateTime.ToString(TimestampFormat));
 

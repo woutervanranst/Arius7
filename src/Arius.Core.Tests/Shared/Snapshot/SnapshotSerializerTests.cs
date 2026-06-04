@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Snapshot;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Snapshot;
 
@@ -85,7 +86,7 @@ public class SnapshotSerializerTests
     {
         // Spec example: "2026-03-22T150000.000Z"
         var ts   = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
-        var name = SnapshotService.BlobName(ts);
+        var name = BlobPaths.SnapshotPath(ts);
 
         name.ShouldBe(Arius.Core.Shared.FileSystem.RelativePath.Parse("snapshots/2026-03-22T150000.000Z"));
     }
@@ -94,7 +95,7 @@ public class SnapshotSerializerTests
     public void ParseTimestamp_RoundTrips()
     {
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
-        var blobName = SnapshotService.BlobName(ts);
+        var blobName = BlobPaths.SnapshotPath(ts);
         var parsed   = SnapshotService.ParseTimestamp(blobName);
 
         parsed.ShouldBe(ts);

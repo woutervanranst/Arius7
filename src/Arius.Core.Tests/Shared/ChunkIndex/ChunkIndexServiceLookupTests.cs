@@ -2,6 +2,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
 
@@ -146,7 +147,7 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-skip-revalidate");
-        var snapshotBlob = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        var snapshotBlob = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
         blobs.SeedBlob(snapshotBlob, [1], BlobTier.Cool);
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
@@ -169,8 +170,8 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-unchanged-identity");
-        var firstSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        var secondSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
+        var firstSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        var secondSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
         blobs.SeedBlob(firstSnapshot, [1], BlobTier.Cool);
         var contentHash = FakeContentHash('a');
         var prefix = Shard.PrefixOf(contentHash);
@@ -194,8 +195,8 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-changed-identity");
-        var firstSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        var secondSnapshot = SnapshotService.BlobName(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
+        var firstSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
+        var secondSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
         blobs.SeedBlob(firstSnapshot, [1], BlobTier.Cool);
         var cleanHash = FakeContentHash('a');
         var dirtyHash = ContentHash.Parse($"{cleanHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('d', 64 - ChunkIndexService.ShardPrefixLength)}");

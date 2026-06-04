@@ -3,6 +3,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 
@@ -613,7 +614,7 @@ public class FileTreeServiceTests
         snapshotsFileSystem.FileExists(localPath).ShouldBeTrue();
         var json = await snapshotsFileSystem.ReadAllTextAsync(localPath, CancellationToken.None);
         json.ShouldContain(rootHash.ToString());
-        blobs.UploadedBlobNames.ShouldContain(SnapshotService.BlobName(ts));
+        blobs.UploadedBlobNames.ShouldContain(BlobPaths.SnapshotPath(ts));
     }
 
     // ── 7.x  ValidateAsync — idempotent (called twice, no double slow-path) ───
