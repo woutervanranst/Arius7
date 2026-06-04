@@ -34,7 +34,7 @@ public sealed class RestoreCommandHandler
     private readonly ChunkIndexService              _index;
     private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService                _fileTreeService;
-    private readonly SnapshotService                _snapshotSvc;
+    private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<RestoreCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -45,7 +45,7 @@ public sealed class RestoreCommandHandler
         ChunkIndexService              index,
         IChunkStorageService           chunkStorage,
         FileTreeService                fileTreeService,
-        SnapshotService                snapshotSvc,
+        ISnapshotService               snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
         string                         accountName,

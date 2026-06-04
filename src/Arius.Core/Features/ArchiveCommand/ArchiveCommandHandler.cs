@@ -42,7 +42,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ChunkIndexService              _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService               _fileTreeService;
-    private readonly SnapshotService                _snapshotSvc;
+    private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -55,7 +55,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
         FileTreeService                 fileTreeService,
-        SnapshotService                 snapshotSvc,
+        ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
@@ -70,23 +70,23 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
         FileTreeService                 fileTreeService,
-        SnapshotService                 snapshotSvc,
+        ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
     {
-        _blobs           = blobs;
-        _encryption      = encryption;
-        _chunkIndex      = index;
-        _chunkStorage    = chunkStorage;
-        _fileTreeService = fileTreeService;
-        _snapshotSvc     = snapshotSvc;
-        _mediator        = mediator;
-        _logger          = logger;
-        _accountName     = accountName;
-        _containerName   = containerName;
+        _blobs              = blobs;
+        _encryption         = encryption;
+        _chunkIndex         = index;
+        _chunkStorage       = chunkStorage;
+        _fileTreeService    = fileTreeService;
+        _snapshotSvc        = snapshotSvc;
+        _mediator           = mediator;
+        _logger             = logger;
+        _accountName        = accountName;
+        _containerName      = containerName;
         _openStagingSession = openStagingSession;
     }
 

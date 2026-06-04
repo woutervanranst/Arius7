@@ -52,6 +52,7 @@ public static class ServiceCollectionExtensions
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 accountName,
                 containerName));
 
@@ -92,7 +93,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 accountName,
@@ -104,7 +105,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
@@ -121,7 +122,7 @@ public static class ServiceCollectionExtensions
             new ListQueryHandler(
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,
                 containerName));

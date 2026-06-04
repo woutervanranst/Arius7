@@ -44,7 +44,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
         var encryption = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
-        var index      = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var snapshot   = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var index      = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
@@ -53,7 +54,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             Index                        = index,
             ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
             FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
-            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
             SnapshotCacheDirectory       = snapshotCacheDirectory,
@@ -80,7 +81,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var index    = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
@@ -89,7 +91,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             Index                        = index,
             ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
             FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
-            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
             SnapshotCacheDirectory       = snapshotCacheDirectory,

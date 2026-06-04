@@ -383,9 +383,9 @@ public class ListQueryHandlerTests
     public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
     {
         var blobs = new ThrowOnCreateBlobContainerService("ls");
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
         var fileTreeService = new FileTreeService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
         var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshotSvc, "acct-ls-missing", "ctr-ls-missing");
         var logger = new FakeLogger<ListQueryHandler>();
         var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, "acct-ls-missing", "ctr-ls-missing");
 

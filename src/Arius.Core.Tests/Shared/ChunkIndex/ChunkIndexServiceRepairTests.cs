@@ -1,6 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
@@ -77,7 +78,7 @@ public class ChunkIndexServiceRepairTests
         staleStore.UpsertDirty(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
         staleStore.Dispose();
 
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -111,7 +112,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "100",
                 [BlobMetadataKeys.ChunkSize] = "3",
             });
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -136,7 +137,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "10",
                 [BlobMetadataKeys.CompressedSize] = "2",
             });
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await Should.ThrowAsync<ChunkIndexRepairException>(() => index.RepairAsync());
 
@@ -192,7 +193,7 @@ public class ChunkIndexServiceRepairTests
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
         store.UpsertDirty(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
         store.Dispose();
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -205,7 +206,7 @@ public class ChunkIndexServiceRepairTests
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);
-        return new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        return new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";

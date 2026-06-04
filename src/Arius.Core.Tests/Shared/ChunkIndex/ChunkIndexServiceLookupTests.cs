@@ -1,7 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Snapshot;
+using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
@@ -44,6 +44,7 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("local-corrupt");
+        var snapshot = new FakeSnapshotService();
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         var shard = CreateShard(entry);
@@ -55,7 +56,7 @@ public class ChunkIndexServiceLookupTests
         cache.CreateDirectory(RelativePath.Root);
         await cache.WriteAllBytesAsync(RelativePath.Root / Shard.PrefixOf(contentHash), [1, 2, 3], CancellationToken.None);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
 
         var actual = await index.LookupAsync(contentHash);
 
@@ -67,6 +68,7 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("remote-no-metadata");
+        var snapshot = new FakeSnapshotService();
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         var shard = CreateShard(entry);
@@ -74,7 +76,7 @@ public class ChunkIndexServiceLookupTests
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)),
             await ShardSerializer.SerializeAsync(shard, s_encryption),
             BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
 
         var actual = await index.LookupAsync(contentHash);
 
@@ -147,15 +149,14 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-skip-revalidate");
-        var snapshotBlob = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        blobs.SeedBlob(snapshotBlob, [1], BlobTier.Cool);
+        var snapshot = new FakeSnapshotService();
         var contentHash = FakeContentHash('a');
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)),
             await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption),
             BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
 
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
         blobs.RequestedBlobNames.Clear();
@@ -163,58 +164,6 @@ public class ChunkIndexServiceLookupTests
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
 
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)));
-    }
-
-    [Test]
-    public async Task LookupAsync_ChangedSnapshotButUnchangedRemoteIdentity_AdvancesValidationWithoutRedownload()
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var repositoryKey = UniqueRepositoryKey("lookup-unchanged-identity");
-        var firstSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        var secondSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
-        blobs.SeedBlob(firstSnapshot, [1], BlobTier.Cool);
-        var contentHash = FakeContentHash('a');
-        var prefix = Shard.PrefixOf(contentHash);
-        var shardBlobName = BlobPaths.ChunkIndexShardPath(prefix);
-        var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption), BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
-
-        (await index.LookupAsync(contentHash)).ShouldBe(entry);
-        blobs.SeedBlob(secondSnapshot, [2], BlobTier.Cool);
-        blobs.RequestedBlobNames.Clear();
-
-        (await index.LookupAsync(contentHash)).ShouldBe(entry);
-
-        blobs.RequestedBlobNames.ShouldContain(shardBlobName);
-        blobs.RequestedBlobNames.Count(name => name == shardBlobName).ShouldBe(1);
-    }
-
-    [Test]
-    public async Task LookupAsync_ChangedRemoteIdentity_ReplacesOnlyCleanRowsForPrefix()
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var repositoryKey = UniqueRepositoryKey("lookup-changed-identity");
-        var firstSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero));
-        var secondSnapshot = BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 23, 15, 0, 0, TimeSpan.Zero));
-        blobs.SeedBlob(firstSnapshot, [1], BlobTier.Cool);
-        var cleanHash = FakeContentHash('a');
-        var dirtyHash = ContentHash.Parse($"{cleanHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('d', 64 - ChunkIndexService.ShardPrefixLength)}");
-        var prefix = Shard.PrefixOf(cleanHash);
-        var shardBlobName = BlobPaths.ChunkIndexShardPath(prefix);
-        var originalRemote = new ShardEntry(cleanHash, FakeChunkHash('b'), 10, 5);
-        var updatedRemote = new ShardEntry(cleanHash, FakeChunkHash('c'), 20, 8);
-        var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('e'), 30, 12);
-        blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(originalRemote), s_encryption), BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
-
-        (await index.LookupAsync(cleanHash)).ShouldBe(originalRemote);
-        index.AddEntry(dirtyEntry);
-        blobs.SeedBlob(secondSnapshot, [2], BlobTier.Cool);
-        blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(updatedRemote), s_encryption), BlobTier.Cool);
-
-        (await index.LookupAsync(cleanHash)).ShouldBe(updatedRemote);
-        (await index.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
     }
 
     [Test]
@@ -230,7 +179,7 @@ public class ChunkIndexServiceLookupTests
         var otherEntry = new ShardEntry(otherHash, FakeChunkHash('3'), 30, 12);
         blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash)), await ShardSerializer.SerializeAsync(CreateShard(firstEntry, secondEntry), s_encryption), BlobTier.Cool);
         blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherHash)), await ShardSerializer.SerializeAsync(CreateShard(otherEntry), s_encryption), BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.LookupAsync([firstHash, secondHash, otherHash]);
 
@@ -242,7 +191,7 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
-    public async Task LookupAsync_CorruptCleanSqlite_RecreatesLocalStoreAndReloadsRemoteShard()
+    public async Task LookupAsync_CorruptCleanSqlite_FailsWithLocalStoreRecoveryGuidance()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-sqlite-recovery");
@@ -250,7 +199,7 @@ public class ChunkIndexServiceLookupTests
         var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         var shardBlobName = BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash));
         blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption), BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -258,8 +207,11 @@ public class ChunkIndexServiceLookupTests
         SqliteConnection.ClearAllPools();
         await cache.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None);
 
-        (await index.LookupAsync(contentHash)).ShouldBe(entry);
-        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeTrue();
+        var ex = await Should.ThrowAsync<ChunkIndexLocalStoreException>(() => index.LookupAsync(contentHash));
+
+        ex.Message.ShouldContain("Delete the local chunk-index cache directory");
+        ex.Message.ShouldContain("repair command");
+        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeFalse();
     }
 
     [Test]
@@ -277,7 +229,7 @@ public class ChunkIndexServiceLookupTests
         cache.CreateDirectory(RelativePath.Root);
         await cache.WriteAllBytesAsync(RelativePath.Root / Shard.PrefixOf(contentHash), [1, 2, 3], CancellationToken.None);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.LookupAsync(contentHash);
 
@@ -290,16 +242,17 @@ public class ChunkIndexServiceLookupTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("add-corrupt-dirty");
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var cache = new RelativeFileSystem(cacheRoot);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
         SqliteConnection.ClearAllPools();
         cache.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
-        var ex = Should.Throw<InvalidOperationException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
+        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
 
-        ex.Message.ShouldContain("delete the local .arius folder");
+        ex.Message.ShouldContain("unflushed entries may exist");
+        ex.Message.ShouldContain("Rerun archive");
     }
 
     [Test]
@@ -310,7 +263,7 @@ public class ChunkIndexServiceLookupTests
         var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
         repository.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var ex = await Should.ThrowAsync<ChunkIndexRepairIncompleteException>(() => index.LookupAsync(FakeContentHash('a')));
 
@@ -325,7 +278,7 @@ public class ChunkIndexServiceLookupTests
         var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
         repository.CreateDirectory(RelativePath.Root);
         repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None).GetAwaiter().GetResult();
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         Should.Throw<ChunkIndexRepairIncompleteException>(() => index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5)));
     }
@@ -338,7 +291,7 @@ public class ChunkIndexServiceLookupTests
         var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
         repository.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await Should.ThrowAsync<ChunkIndexRepairIncompleteException>(() => index.FlushAsync());
     }
@@ -354,7 +307,7 @@ public class ChunkIndexServiceLookupTests
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
         await cache.WriteAllBytesAsync(RelativePath.Root / PathSegment.Parse("aa"), [1], CancellationToken.None);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         index.InvalidateCaches();
 
@@ -365,7 +318,7 @@ public class ChunkIndexServiceLookupTests
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);
-        return new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        return new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
     }
 
     private static Shard CreateShard(params ShardEntry[] entries)
@@ -376,5 +329,4 @@ public class ChunkIndexServiceLookupTests
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
-
 }
