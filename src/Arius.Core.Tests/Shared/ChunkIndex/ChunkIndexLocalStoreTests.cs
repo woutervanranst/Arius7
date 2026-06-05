@@ -33,7 +33,8 @@ public class ChunkIndexLocalStoreTests
 
         store.UpsertDirty(entry);
 
-        store.GetValueOrDefault(entry.ContentHash).ShouldBe(entry);
+        store.FindEntry(entry.ContentHash).ShouldBe(entry);
+        store.FindDirtyEntry(entry.ContentHash).ShouldBe(entry);
         store.HasDirtyRows().ShouldBeTrue();
         store.GetDirtyPrefixes().ShouldBe([ChunkIndexRouter.GetLeafPrefix(entry.ContentHash)]);
 
@@ -60,7 +61,8 @@ public class ChunkIndexLocalStoreTests
 
         store.UpsertDirtyRange([first, second]);
 
-        store.GetValueOrDefault(contentHash).ShouldBe(second);
+        store.FindEntry(contentHash).ShouldBe(second);
+        store.FindDirtyEntry(contentHash).ShouldBe(second);
     }
 
     [Test]
@@ -78,7 +80,8 @@ public class ChunkIndexLocalStoreTests
             new LoadedPrefixState(ChunkIndexRouter.GetLeafPrefix(contentHash), true, "remote-1", "snap-1"),
             [cleanEntry]);
 
-        store.GetValueOrDefault(contentHash).ShouldBe(dirtyEntry);
+        store.FindEntry(contentHash).ShouldBe(dirtyEntry);
+        store.FindDirtyEntry(contentHash).ShouldBe(dirtyEntry);
     }
 
     [Test]
@@ -92,9 +95,8 @@ public class ChunkIndexLocalStoreTests
 
         store.IngestCleanPrefix(new LoadedPrefixState(prefix, true, "opaque-identity", "snapshot-1"), [entry]);
 
-        var row = store.GetRowOrDefault(entry.ContentHash);
-        row.ShouldNotBeNull();
-        row!.IsDirty.ShouldBeFalse();
+        store.FindEntry(entry.ContentHash).ShouldBe(entry);
+        store.FindDirtyEntry(entry.ContentHash).ShouldBeNull();
         store.GetLoadedPrefixState(prefix).ShouldBe(new LoadedPrefixState(prefix, true, "opaque-identity", "snapshot-1"));
     }
 
@@ -127,8 +129,10 @@ public class ChunkIndexLocalStoreTests
 
         store.ClearCleanCache();
 
-        store.GetValueOrDefault(dirty.ContentHash).ShouldBe(dirty);
-        store.GetValueOrDefault(clean.ContentHash).ShouldBeNull();
+        store.FindEntry(dirty.ContentHash).ShouldBe(dirty);
+        store.FindDirtyEntry(dirty.ContentHash).ShouldBe(dirty);
+        store.FindEntry(clean.ContentHash).ShouldBeNull();
+        store.FindDirtyEntry(clean.ContentHash).ShouldBeNull();
         store.GetLoadedPrefixState(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash)).ShouldBeNull();
     }
 
@@ -185,7 +189,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void GetValueOrDefault_CorruptCleanSqlite_FailsWithDisposableCacheGuidance()
+    public void FindEntry_CorruptCleanSqlite_FailsWithDisposableCacheGuidance()
     {
         var repositoryKey = $"acct-local-store-corrupt-clean-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -195,7 +199,7 @@ public class ChunkIndexLocalStoreTests
         SqliteConnection.ClearAllPools();
         fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
-        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.GetValueOrDefault(FakeContentHash('a')));
+        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.FindEntry(FakeContentHash('a')));
 
         ex.Message.ShouldContain("Delete the local chunk-index cache directory");
     }

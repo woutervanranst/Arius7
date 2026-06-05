@@ -16,12 +16,13 @@ public class ChunkIndexServiceLookupTests
     public async Task LookupAsync_MissingRemoteShard_ReturnsMiss()
     {
         var blobs = new FakeInMemoryBlobContainerService();
+        var contentHash = FakeContentHash('a');
         using var index = CreateIndex(blobs, "missing");
 
-        var actual = await index.LookupAsync(FakeContentHash('a'));
+        var actual = await index.LookupAsync(contentHash);
 
         actual.ShouldBeNull();
-        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunksPrefix);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash))]);
     }
 
     [Test]
