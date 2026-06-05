@@ -4,29 +4,17 @@ namespace Arius.Core.Shared.Storage;
 /// Thrown when an upload is attempted against a blob that already exists,
 /// and the caller used create-if-not-exists semantics (optimistic concurrency).
 /// </summary>
-public sealed class BlobAlreadyExistsException : IOException
+public sealed class BlobAlreadyExistsException(RelativePath blobName) : IOException($"Blob already exists: {blobName}")
 {
-    public RelativePath BlobName { get; }
-
-    public BlobAlreadyExistsException(RelativePath blobName)
-        : base($"Blob already exists: {blobName}")
-    {
-        BlobName = blobName;
-    }
+    public RelativePath BlobName { get; } = blobName;
 }
 
 /// <summary>
 /// Thrown when a blob download is attempted against a blob that does not exist.
 /// </summary>
-public sealed class BlobNotFoundException : FileNotFoundException
+public sealed class BlobNotFoundException(RelativePath blobName) : FileNotFoundException($"Blob not found: {blobName}")
 {
-    public RelativePath BlobName { get; }
-
-    public BlobNotFoundException(RelativePath blobName)
-        : base($"Blob not found: {blobName}")
-    {
-        BlobName = blobName;
-    }
+    public RelativePath BlobName { get; } = blobName;
 }
 
 /// <summary>
@@ -64,7 +52,7 @@ public sealed class UploadResult
 public sealed class BlobMetadata
 {
     public required bool                                Exists        { get; init; }
-    public          string?                             BlobIdentity  { get; init; } // TODO deprecate?
+    public          string?                             BlobIdentity  { get; init; }
     public          BlobTier?                           Tier          { get; init; }
     public          long?                               ContentLength { get; init; }
     public          bool                                IsRehydrating { get; init; }
