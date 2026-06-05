@@ -47,6 +47,14 @@ public static class ServiceCollectionExtensions
             : new PlaintextPassthroughService();
         services.AddSingleton(encryption);
 
+        // Snapshot service
+        services.AddSingleton<ISnapshotService>(sp =>
+            new SnapshotService(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IEncryptionService>(),
+                accountName,
+                containerName));
+
         // Chunk index
         services.AddSingleton(sp =>
             new ChunkIndexService(
@@ -65,14 +73,6 @@ public static class ServiceCollectionExtensions
         // File tree service
         services.AddSingleton(sp =>
             new FileTreeService(
-                sp.GetRequiredService<IBlobContainerService>(),
-                sp.GetRequiredService<IEncryptionService>(),
-                accountName,
-                containerName));
-
-        // Snapshot service
-        services.AddSingleton(sp =>
-            new SnapshotService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
