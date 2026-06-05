@@ -47,6 +47,16 @@ public sealed class UploadResult
 }
 
 /// <summary>
+/// Result returned by a blob download operation.
+/// </summary>
+public sealed class DownloadResult
+{
+    public required Stream Stream { get; init; }
+
+    public required string BlobIdentity { get; init; }
+}
+
+/// <summary>
 /// Metadata returned by a HEAD or download operation on a blob.
 /// </summary>
 public sealed class BlobMetadata
@@ -125,19 +135,21 @@ public interface IBlobContainerService
     // ── Download ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns a readable stream for the blob at <paramref name="blobName"/>.
-    /// The caller must dispose the stream when done.
+    /// Returns a readable stream for the blob at <paramref name="blobName"/> together with
+    /// the current blob identity.
+    /// The caller must dispose <see cref="DownloadResult.Stream"/> when done.
     /// Throws <see cref="BlobNotFoundException"/> when the blob does not exist.
     /// </summary>
-    Task<Stream> DownloadAsync(
+    Task<DownloadResult> DownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a readable stream for the blob at <paramref name="blobName"/>, or <c>null</c>
-    /// when the blob does not exist. The caller must dispose the stream when one is returned.
+    /// Returns a readable stream for the blob at <paramref name="blobName"/> together with the
+    /// current blob identity, or <c>null</c> when the blob does not exist.
+    /// The caller must dispose <see cref="DownloadResult.Stream"/> when one is returned.
     /// </summary>
-    Task<Stream?> TryDownloadAsync(
+    Task<DownloadResult?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 

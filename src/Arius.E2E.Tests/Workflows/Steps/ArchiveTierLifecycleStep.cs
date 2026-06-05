@@ -145,7 +145,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
                     continue;
 
                 var             chunkBlobName  = BlobPaths.ChunkPath(entry.ChunkHash);
-                await using var chunkStream    = await fixture.BlobContainer.DownloadAsync(chunkBlobName, cancellationToken);
+                var             download       = await fixture.BlobContainer.DownloadAsync(chunkBlobName, cancellationToken);
+                await using var chunkStream    = download.Stream;
                 using var       preservedChunk = new MemoryStream();
                 await chunkStream.CopyToAsync(preservedChunk, cancellationToken);
 

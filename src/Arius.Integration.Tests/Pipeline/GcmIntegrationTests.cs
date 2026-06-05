@@ -43,7 +43,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         meta.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeLarge);
 
         // Verify the blob was GCM-encrypted: first 6 bytes must be the ArGCM1 magic
-        await using (var blobStream = await fix.BlobContainer.DownloadAsync(blobs[0]))
+        var download = await fix.BlobContainer.DownloadAsync(blobs[0]);
+        await using (var blobStream = download.Stream)
         {
             var magic = new byte[6];
             await blobStream.ReadExactlyAsync(magic);
@@ -154,7 +155,8 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         {
             var blobName = item.Name;
             var header = new byte[8];
-            await using var s = await gcmFix.BlobContainer.DownloadAsync(blobName);
+            var download = await gcmFix.BlobContainer.DownloadAsync(blobName);
+            await using var s = download.Stream;
             _ = await s.ReadAsync(header);
 
             if (System.Text.Encoding.ASCII.GetString(header, 0, 8) == "Salted__") hasCbc = true;

@@ -248,7 +248,8 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
         metadata.Tier.ShouldBe(BlobTier.Cool);
 
-        await using var payload = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
+        var download = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
+        await using var payload = download.Stream;
         payload.Length.ShouldBe(0);
     }
 

@@ -184,7 +184,8 @@ public sealed class SnapshotService
     private async Task<SnapshotManifest> LoadFromAzureAsync(
         RelativePath blobName, CancellationToken cancellationToken)
     {
-        await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
+        var download = await _blobs.DownloadAsync(blobName, cancellationToken);
+        await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms, cancellationToken);
         return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, cancellationToken);

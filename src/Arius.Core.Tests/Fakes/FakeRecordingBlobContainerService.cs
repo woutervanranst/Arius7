@@ -26,11 +26,11 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<Stream>(new MemoryStream());
+    public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"recorded:{blobName}" });
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<Stream?>(new MemoryStream());
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"recorded:{blobName}" });
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {

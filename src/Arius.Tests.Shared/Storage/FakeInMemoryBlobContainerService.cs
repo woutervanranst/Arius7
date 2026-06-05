@@ -66,14 +66,18 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         }));
     }
 
-    public async Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => await TryDownloadAsync(blobName, cancellationToken) ?? throw new BlobNotFoundException(blobName);
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         _requestedBlobNames.Enqueue(blobName);
         return Task.FromResult(_blobs.TryGetValue(blobName, out var blob)
-            ? (Stream?)new MemoryStream(blob.Content, writable: false)
+            ? new DownloadResult
+            {
+                Stream = new MemoryStream(blob.Content, writable: false),
+                BlobIdentity = blob.BlobIdentity,
+            }
             : null);
     }
 

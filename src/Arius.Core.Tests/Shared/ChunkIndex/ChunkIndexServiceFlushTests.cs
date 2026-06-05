@@ -44,7 +44,8 @@ public class ChunkIndexServiceFlushTests
 
     private static async Task<Shard> ReadShardAsync(FakeInMemoryBlobContainerService blobs, PathSegment prefix)
     {
-        await using var stream = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
+        var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
+        await using var stream = download.Stream;
         return ShardSerializer.Deserialize(stream, s_encryption);
     }
 

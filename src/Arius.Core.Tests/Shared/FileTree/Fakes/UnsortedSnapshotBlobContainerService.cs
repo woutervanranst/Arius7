@@ -19,10 +19,10 @@ internal sealed class UnsortedSnapshotBlobContainerService(IReadOnlyList<Relativ
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+    public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>

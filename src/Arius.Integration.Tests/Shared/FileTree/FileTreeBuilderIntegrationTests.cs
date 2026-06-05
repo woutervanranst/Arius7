@@ -71,7 +71,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             meta.Exists.ShouldBeTrue();
 
             // Download and deserialize to verify content
-            await using var stream = await blobs.DownloadAsync(blobName);
+            var download = await blobs.DownloadAsync(blobName);
+            await using var stream = download.Stream;
             var entries = await ReadStoredTreeAsync(stream, s_enc);
 
             entries.Count.ShouldBe(1);

@@ -141,7 +141,8 @@ public sealed class FileTreeService
         async Task<IReadOnlyList<FileTreeEntry>> DownloadAndCacheAsync(FileTreeHash hash, RelativePath diskPath)
         {
             var             blobName = BlobPaths.FileTreePath(hash);
-            await using var stream   = await _blobs.DownloadAsync(blobName, CancellationToken.None);
+            var             download = await _blobs.DownloadAsync(blobName, CancellationToken.None);
+            await using var stream   = download.Stream;
             var             entries  = await DeserializeStorageAsync(stream, CancellationToken.None);
 
             var plaintext = FileTreeSerializer.Serialize(entries);

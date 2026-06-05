@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Arius.Core.Shared.FileSystem;
 using Azure;
 using Azure.Storage.Blobs.Models;
@@ -101,7 +102,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── Download ──────────────────────────────────────────────────────────────
 
-    public async Task<Stream> DownloadAsync(
+    public async Task<DownloadResult> DownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
@@ -115,7 +116,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
     }
 
-    public async Task<Stream?> TryDownloadAsync(
+    public async Task<DownloadResult?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
@@ -129,13 +130,20 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
     }
 
-    private async Task<Stream> DownloadCoreAsync(
+    private async Task<DownloadResult> DownloadCoreAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken)
     {
         var blobClient = _container.GetBlobClient(blobName.ToString());
         var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
-        return response.Value.Content;
+
+        Debug.Assert(!response.Value.ExpectTrailingDetails);
+        
+        return new DownloadResult
+        {
+            Stream = response.Value.Content,
+            BlobIdentity = response.Value.Details.ETag.ToString(),
+        };
     }
 
     // ── HEAD ──────────────────────────────────────────────────────────────────

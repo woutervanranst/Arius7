@@ -461,9 +461,9 @@ public class ArchiveRecoveryTests
 
         public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) => _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
-        public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DownloadAsync(blobName, cancellationToken);
+        public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DownloadAsync(blobName, cancellationToken);
 
-        public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.TryDownloadAsync(blobName, cancellationToken);
+        public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.TryDownloadAsync(blobName, cancellationToken);
 
         public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.GetMetadataAsync(blobName, cancellationToken);
 

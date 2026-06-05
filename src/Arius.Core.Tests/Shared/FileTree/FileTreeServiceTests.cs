@@ -361,7 +361,8 @@ public class FileTreeServiceTests
 
     private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, RelativePath blobName)
     {
-        await using var stream = await blobs.DownloadAsync(blobName);
+        var download = await blobs.DownloadAsync(blobName);
+        await using var stream = download.Stream;
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
         return ms.ToArray();
