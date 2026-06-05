@@ -30,7 +30,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── Upload ────────────────────────────────────────────────────────────────
 
-    public async Task<BlobMetadata> UploadAsync(
+    public async Task<UploadResult> UploadAsync(
         RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
@@ -59,13 +59,9 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         try
         {
             var result = await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
-            return new BlobMetadata
+            return new UploadResult
             {
-                Exists = true,
                 BlobIdentity = result.Value.ETag.ToString(),
-                Tier = tier,
-                ContentLength = content.CanSeek ? content.Length : null,
-                Metadata = new Dictionary<string, string>(metadata)
             };
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))

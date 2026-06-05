@@ -27,7 +27,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         await using var ms = new MemoryStream();
         await content.CopyToAsync(ms, cancellationToken);
@@ -38,13 +38,9 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
         var identity = NextIdentity(blobName);
         _blobs[blobName] = new StoredBlob(ms.ToArray(), new Dictionary<string, string>(metadata), tier, contentType, false, identity);
         _uploadedBlobNames.Enqueue(blobName);
-        return new BlobMetadata
+        return new UploadResult
         {
-            Exists = true,
             BlobIdentity = identity,
-            Tier = tier,
-            ContentLength = ms.Length,
-            Metadata = new Dictionary<string, string>(metadata)
         };
     }
 

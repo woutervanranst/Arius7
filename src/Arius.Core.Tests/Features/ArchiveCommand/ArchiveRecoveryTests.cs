@@ -454,7 +454,7 @@ public class ArchiveRecoveryTests
 
         public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => _inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
-        public Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+        public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
             => FailChunkIndexUploads && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
                 ? throw new InvalidOperationException("chunk-index upload failed")
                 : _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);

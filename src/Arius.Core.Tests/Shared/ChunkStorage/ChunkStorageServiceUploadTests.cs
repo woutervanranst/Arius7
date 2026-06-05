@@ -309,7 +309,7 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
 
-        var metadata = await blobs.UploadAsync(
+        var result = await blobs.UploadAsync(
             BlobPaths.ThinChunkPath(ThinContentHash),
             new MemoryStream(Array.Empty<byte>(), writable: false),
             new Dictionary<string, string>
@@ -323,8 +323,8 @@ public class ChunkStorageServiceUploadTests
             ContentTypes.Thin,
             cancellationToken: CancellationToken.None);
 
-        metadata.BlobIdentity.ShouldNotBeNull();
-        metadata.BlobIdentity.ShouldStartWith("fake:");
+        result.BlobIdentity.ShouldNotBeNull();
+        result.BlobIdentity.ShouldStartWith("fake:");
     }
 
 }

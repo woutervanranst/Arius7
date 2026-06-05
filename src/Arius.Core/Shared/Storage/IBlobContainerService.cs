@@ -51,17 +51,24 @@ public enum RehydratePriority
 }
 
 /// <summary>
+/// Result returned by a blob upload operation.
+/// </summary>
+public sealed class UploadResult
+{
+    public required string BlobIdentity { get; init; }
+}
+
+/// <summary>
 /// Metadata returned by a HEAD or download operation on a blob.
 /// </summary>
 public sealed class BlobMetadata
 {
-    public required bool         Exists           { get; init; }
-    public          string?      BlobIdentity     { get; init; }
-    public          BlobTier?    Tier             { get; init; }
-    public          long?        ContentLength    { get; init; }
-    public          bool         IsRehydrating    { get; init; }
-    public          IReadOnlyDictionary<string, string> Metadata { get; init; }
-        = new Dictionary<string, string>();
+    public required bool                                Exists        { get; init; }
+    public          string?                             BlobIdentity  { get; init; } // TODO deprecate?
+    public          BlobTier?                           Tier          { get; init; }
+    public          long?                               ContentLength { get; init; }
+    public          bool                                IsRehydrating { get; init; }
+    public          IReadOnlyDictionary<string, string> Metadata      { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>
@@ -103,7 +110,7 @@ public interface IBlobContainerService
     /// throws <see cref="BlobAlreadyExistsException"/>.
     /// </para>
     /// </summary>
-    Task<BlobMetadata> UploadAsync(
+    Task<UploadResult> UploadAsync(
         RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,

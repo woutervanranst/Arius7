@@ -17,10 +17,10 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task<BlobMetadata> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         Uploaded.Add(blobName);
-        return Task.FromResult(new BlobMetadata { Exists = true, Tier = tier, Metadata = new Dictionary<string, string>(metadata) });
+        return Task.FromResult(new UploadResult { BlobIdentity = $"recorded:{blobName}" });
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>

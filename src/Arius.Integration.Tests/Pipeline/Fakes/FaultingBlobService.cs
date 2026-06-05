@@ -17,7 +17,7 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
-    public async Task<BlobMetadata> UploadAsync(
+    public async Task<UploadResult> UploadAsync(
         RelativePath blobName,
         Stream content,
         IReadOnlyDictionary<string, string> metadata,
