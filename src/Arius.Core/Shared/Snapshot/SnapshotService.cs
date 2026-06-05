@@ -7,6 +7,34 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.Snapshot;
 
+public interface ISnapshotService
+{
+    /// <summary>
+    /// Creates a new snapshot: writes plain JSON to disk first (write-through),
+    /// then uploads (gzip + optional encrypt) to Azure.
+    /// Returns the created manifest.
+    /// </summary>
+    Task<SnapshotManifest> CreateAsync(
+        FileTreeHash      rootHash,
+        long              fileCount,
+        long              totalSize,
+        DateTimeOffset?   timestamp         = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists all snapshot blob names sorted by timestamp (oldest → newest).
+    /// </summary>
+    Task<IReadOnlyList<RelativePath>> ListBlobNamesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a snapshot: disk-first (reads plain JSON if cached locally), falls back to Azure.
+    /// Returns the latest if <paramref name="version"/> is <c>null</c>,
+    /// otherwise returns the snapshot whose timestamp starts with the given version string.
+    /// Returns <c>null</c> if no matching snapshot exists.
+    /// </summary>
+    Task<SnapshotManifest?> ResolveAsync(string? version = null, CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// Creates, lists, and resolves snapshots in blob storage, with a local plain-JSON disk cache.
 ///
@@ -18,7 +46,7 @@ namespace Arius.Core.Shared.Snapshot;
 ///   <item><see cref="ResolveAsync"/>: check disk first; fall back to Azure and cache locally.</item>
 /// </list>
 /// </summary>
-public sealed class SnapshotService
+public sealed class SnapshotService : ISnapshotService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
