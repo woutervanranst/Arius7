@@ -1,4 +1,4 @@
-namespace Arius.Azure.Benchmarks;
+namespace Arius.AzureBlob.Benchmarks;
 
 public sealed record AzureBlobContainerServiceBenchmarkOptions(
     string AccountName,
