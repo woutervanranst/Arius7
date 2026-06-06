@@ -280,7 +280,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Records a known-clean entry, typically during explicit repair from remote chunk blobs.
     /// </summary>
-    public void UpsertClean(ShardEntry entry)
+    public void UpsertClean(ShardEntry entry)make i
     {
         try
         {
