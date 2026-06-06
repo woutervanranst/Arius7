@@ -50,7 +50,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void UpsertPendingFlushRange_DuplicateContentHash_LastWriterWins()
+    public void UpsertPendingFlush_DuplicateContentHash_LastWriterWins()
     {
         var repositoryKey = $"acct-local-store-duplicate-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -59,7 +59,8 @@ public class ChunkIndexLocalStoreTests
         var first = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         var second = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8);
 
-        store.UpsertPendingFlushRange([first, second]);
+        store.UpsertPendingFlush(first);
+        store.UpsertPendingFlush(second);
 
         store.FindEntry(contentHash).ShouldBe(second);
         store.FindPendingFlushEntry(contentHash).ShouldBe(second);
@@ -152,7 +153,8 @@ public class ChunkIndexLocalStoreTests
         var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
         var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
         var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
-        store.UpsertPendingFlushRange([firstEntry, secondEntry]);
+        store.UpsertPendingFlush(firstEntry);
+        store.UpsertPendingFlush(secondEntry);
 
         store.MarkPendingFlushesSynchronized([(firstPrefix, "remote-1"), (secondPrefix, "remote-2")], snapshotVersion);
 

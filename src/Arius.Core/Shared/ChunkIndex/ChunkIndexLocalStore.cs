@@ -236,33 +236,20 @@ internal sealed class ChunkIndexLocalStore
     /// <summary>
     /// Records a newly discovered entry as pending local flush until it is uploaded to the remote chunk index.
     /// </summary>
-    public void UpsertPendingFlush(ShardEntry entry) => UpsertPendingFlushRange([entry]);
-
-    /// <summary>
-    /// Records newly discovered entries as pending local flush until they are uploaded to the remote chunk index.
-    /// </summary>
-    public void UpsertPendingFlushRange(IEnumerable<ShardEntry> entries)
+    public void UpsertPendingFlush(ShardEntry entry)
     {
         try
         {
-            var materialized = entries.ToArray();
-            if (materialized.Length == 0)
-                return;
-
             lock (_localStateGate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
-                var rowsAffected = 0;
-                foreach (var entry in materialized)
-                {
-                    BindEntry(command, entry);
-                    rowsAffected += command.ExecuteNonQuery();
-                }
+                BindEntry(command, entry);
+                var rowsAffected = command.ExecuteNonQuery();
 
                 transaction.Commit();
-                _logger.LogDebug("[chunk-index-local] UpsertPendingFlushRange: entries={Entries} rowsAffected={RowsAffected}", materialized.Length, rowsAffected);
+                _logger.LogDebug("[chunk-index-local] UpsertPendingFlush: contentHash={ContentHash} rowsAffected={RowsAffected}", entry.ContentHash.Short8, rowsAffected);
             }
         }
         catch (SqliteException ex)
