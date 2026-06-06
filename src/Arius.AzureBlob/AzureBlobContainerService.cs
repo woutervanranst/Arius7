@@ -141,7 +141,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         
         return new DownloadResult
         {
-            Stream = response.Value.Content,
+            Stream       = response.Value.Content,
             BlobIdentity = response.Value.Details.ETag.ToString(),
         };
     }
