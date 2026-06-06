@@ -75,7 +75,7 @@ public class ChunkIndexServiceRepairTests
             });
 
         var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
-        staleStore.UpsertDirty(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
+        staleStore.UpsertPendingFlush(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
 
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
@@ -190,8 +190,7 @@ public class ChunkIndexServiceRepairTests
         repository.CreateDirectory(RelativePath.Root);
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        store.UpsertDirty(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
-        store.Dispose();
+        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// SQLite-backed local chunk-index cache for clean remote shard data and unflushed dirty entries.
+/// SQLite-backed local chunk-index cache for remote-backed shard data and pending local flush entries.
 /// </summary>
 internal sealed class ChunkIndexLocalStore
 {
@@ -60,32 +60,32 @@ internal sealed class ChunkIndexLocalStore
     // -- FIND ---------------------------------------------------------------
 
     /// <summary>
-    /// Returns the locally stored entry for <paramref name="contentHash"/> regardless of whether that entry is clean or dirty.
-    /// Use this only when the caller has already handled remote-validation requirements for clean cached data,
+    /// Returns the locally stored entry for <paramref name="contentHash"/> regardless of whether that entry is remote-backed or pending flush.
+    /// Use this only when the caller has already handled remote-validation requirements for remote-backed cached data,
     /// or when the caller intentionally accepts either state.
     /// </summary>
-    public ShardEntry? FindEntry(ContentHash contentHash) => FindEntryCore(contentHash, dirtyOnly: false);
+    public ShardEntry? FindEntry(ContentHash contentHash) => FindEntryCore(contentHash, pendingFlushOnly: false);
 
     /// <summary>
-    /// Returns the locally stored entry for <paramref name="contentHash"/> only when that entry is still dirty.
-    /// Use this before remote validation when dirty entries must win immediately over remote shard state.
-    /// Returns <c>null</c> for missing entries and for clean cached entries.
+    /// Returns the locally stored entry for <paramref name="contentHash"/> only when that entry is still pending local flush.
+    /// Use this before remote validation when pending flush entries must win immediately over remote shard state.
+    /// Returns <c>null</c> for missing entries and for remote-backed cached entries.
     /// </summary>
-    public ShardEntry? FindDirtyEntry(ContentHash contentHash) => FindEntryCore(contentHash, dirtyOnly: true);
+    public ShardEntry? FindPendingFlushEntry(ContentHash contentHash) => FindEntryCore(contentHash, pendingFlushOnly: true);
 
-    private ShardEntry? FindEntryCore(ContentHash contentHash, bool dirtyOnly)
+    private ShardEntry? FindEntryCore(ContentHash contentHash, bool pendingFlushOnly)
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = dirtyOnly
-                ? "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash AND dirty = 1;"
+            command.CommandText = pendingFlushOnly
+                ? "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash AND pending_flush = 1;"
                 : "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash;";
             command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
             using var reader = command.ExecuteReader();
             var entry = reader.Read() ? ReadEntry(reader) : null;
-            _logger.LogDebug("[chunk-index-local] FindEntry: contentHash={ContentHash} dirtyOnly={DirtyOnly} found={Found}", contentHash.Short8, dirtyOnly, entry is not null);
+            _logger.LogDebug("[chunk-index-local] FindEntry: contentHash={ContentHash} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHash.Short8, pendingFlushOnly, entry is not null);
             return entry;
         }
         catch (SqliteException ex)
@@ -117,7 +117,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix already has a locally cached clean copy for the specified remote blob identity.
+    /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote blob identity.
     /// </summary>
     public bool IsPrefixAtETag(PathSegment prefix, string etag)
     {
@@ -139,21 +139,21 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns prefixes that contain dirty entries which still need to be flushed to remote shard blobs.
+    /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
     /// </summary>
-    public IReadOnlyList<PathSegment> GetDirtyPrefixes()
+    public IReadOnlyList<PathSegment> GetPrefixesWithPendingFlushes()
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries WHERE dirty = 1 ORDER BY prefix;";
+            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY prefix;";
             using var reader = command.ExecuteReader();
             var prefixes = new List<PathSegment>();
             while (reader.Read())
                 prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
-            _logger.LogDebug("[chunk-index-local] GetDirtyPrefixes: count={Count}", prefixes.Count);
+            _logger.LogDebug("[chunk-index-local] GetPrefixesWithPendingFlushes: count={Count}", prefixes.Count);
             return prefixes;
         }
         catch (SqliteException ex)
@@ -214,16 +214,16 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the local store currently contains unflushed dirty entries.
+    /// Returns whether the local store currently contains entries pending local flush.
     /// </summary>
-    public bool HasDirtyRows()
+    public bool HasPendingFlushEntries()
     {
         try
         {
             using var connection = OpenConnection();
-            var hasDirtyRows = HasDirtyRows(connection);
-            _logger.LogDebug("[chunk-index-local] HasDirtyRows: value={HasDirtyRows}", hasDirtyRows);
-            return hasDirtyRows;
+            var hasPendingFlushEntries = HasPendingFlushEntries(connection);
+            _logger.LogDebug("[chunk-index-local] HasPendingFlushEntries: value={HasPendingFlushEntries}", hasPendingFlushEntries);
+            return hasPendingFlushEntries;
         }
         catch (SqliteException ex)
         {
@@ -231,17 +231,17 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-    // -- DIRTY WRITES ---------------------------------------------------------
+    // -- PENDING FLUSH WRITES -------------------------------------------------
 
     /// <summary>
-    /// Records a newly discovered entry as dirty until it is flushed to the remote chunk index.
+    /// Records a newly discovered entry as pending local flush until it is uploaded to the remote chunk index.
     /// </summary>
-    public void UpsertDirty(ShardEntry entry) => UpsertDirtyRange([entry]);
+    public void UpsertPendingFlush(ShardEntry entry) => UpsertPendingFlushRange([entry]);
 
     /// <summary>
-    /// Records newly discovered entries as dirty until they are flushed to the remote chunk index.
+    /// Records newly discovered entries as pending local flush until they are uploaded to the remote chunk index.
     /// </summary>
-    public void UpsertDirtyRange(IEnumerable<ShardEntry> entries)
+    public void UpsertPendingFlushRange(IEnumerable<ShardEntry> entries)
     {
         try
         {
@@ -253,7 +253,7 @@ internal sealed class ChunkIndexLocalStore
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
-                using var command = CreateUpsertCommand(connection, transaction, dirty: true, preserveDirtyRows: false);
+                using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
                 var rowsAffected = 0;
                 foreach (var entry in materialized)
                 {
@@ -262,7 +262,7 @@ internal sealed class ChunkIndexLocalStore
                 }
 
                 transaction.Commit();
-                _logger.LogDebug("[chunk-index-local] UpsertDirtyRange: entries={Entries} rowsAffected={RowsAffected}", materialized.Length, rowsAffected);
+                _logger.LogDebug("[chunk-index-local] UpsertPendingFlushRange: entries={Entries} rowsAffected={RowsAffected}", materialized.Length, rowsAffected);
             }
         }
         catch (SqliteException ex)
@@ -271,22 +271,22 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-    // -- CLEAN CACHE ----------------------------------------------------------
+    // -- REMOTE-BACKED CACHE --------------------------------------------------
 
     /// <summary>
-    /// Records a known-clean entry, typically during explicit repair from remote chunk blobs.
+    /// Records a known remote-backed entry, typically during explicit repair from remote chunk blobs.
     /// </summary>
-    public void UpsertClean(ShardEntry entry)
+    public void UpsertRemoteBacked(ShardEntry entry)
     {
         try
         {
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: false);
+            using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: false);
             BindEntry(command, entry);
             var rowsAffected = command.ExecuteNonQuery();
             transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] UpsertClean: contentHash={ContentHash} rowsAffected={RowsAffected}", entry.ContentHash.Short8, rowsAffected);
+            _logger.LogDebug("[chunk-index-local] UpsertRemoteBacked: contentHash={ContentHash} rowsAffected={RowsAffected}", entry.ContentHash.Short8, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -295,7 +295,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Replaces local clean rows for a prefix while preserving any dirty rows for the same content hashes.
+    /// Replaces local remote-backed rows for a prefix while preserving any pending flush rows for the same content hashes.
     /// </summary>
     public void UpdatePrefix(PathSegment prefix, string etag, string snapshotVersion, IEnumerable<ShardEntry> entries)
     {
@@ -306,11 +306,11 @@ internal sealed class ChunkIndexLocalStore
             using var transaction = connection.BeginTransaction();
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0;";
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND pending_flush = 0;";
             deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
             var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
-            using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: true);
+            using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
             var entryRowsAffected = 0;
             foreach (var entry in materialized)
             {
@@ -329,7 +329,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Deletes clean cached rows for <paramref name="prefix"/> while preserving dirty rows and marks the prefix validated as missing on remote.
+    /// Deletes remote-backed cached rows for <paramref name="prefix"/> while preserving pending flush rows and marks the prefix validated as missing on remote.
     /// </summary>
     public void AddEmptyPrefix(PathSegment prefix, string snapshotVersion)
     {
@@ -339,7 +339,7 @@ internal sealed class ChunkIndexLocalStore
             using var transaction = connection.BeginTransaction();
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0;";
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND pending_flush = 0;";
             deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
             var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
@@ -354,7 +354,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks the prefix validated for the specified snapshot without changing clean cached rows.
+    /// Marks the prefix validated for the specified snapshot without changing remote-backed cached rows.
     /// </summary>
     public void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion)
     {
@@ -373,9 +373,9 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks flushed shard state synchronized by clearing dirty rows and validating uploaded prefixes for the specified snapshot.
+    /// Marks pending flush shard state synchronized by clearing pending flush rows and validating uploaded prefixes for the specified snapshot.
     /// </summary>
-    public void MarkSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion)
+    public void MarkPendingFlushesSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion)
     {
         try
         {
@@ -387,8 +387,8 @@ internal sealed class ChunkIndexLocalStore
 
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
-                command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE dirty = 1;";
-                var cleanedRowsAffected = command.ExecuteNonQuery();
+                command.CommandText = "UPDATE chunk_index_entries SET pending_flush = 0 WHERE pending_flush = 1;";
+                var synchronizedRowsAffected = command.ExecuteNonQuery();
 
                 var validatedRowsAffected = 0;
                 foreach (var state in materialized)
@@ -396,7 +396,7 @@ internal sealed class ChunkIndexLocalStore
 
                 transaction.Commit();
 
-                _logger.LogDebug("[chunk-index-local] MarkSynchronized: prefixes={Prefixes} cleanedRowsAffected={CleanedRowsAffected} validatedRowsAffected={ValidatedRowsAffected}", materialized.Length, cleanedRowsAffected, validatedRowsAffected);
+                _logger.LogDebug("[chunk-index-local] MarkPendingFlushesSynchronized: prefixes={Prefixes} synchronizedRowsAffected={SynchronizedRowsAffected} validatedRowsAffected={ValidatedRowsAffected}", materialized.Length, synchronizedRowsAffected, validatedRowsAffected);
             }
         }
         catch (SqliteException ex)
@@ -406,9 +406,9 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Clears all disposable clean cache state while preserving unflushed dirty rows.
+    /// Clears all disposable remote-backed cache state while preserving pending flush rows.
     /// </summary>
-    public void ClearCleanCache()
+    public void ClearRemoteBackedCache()
     {
         try
         {
@@ -416,7 +416,7 @@ internal sealed class ChunkIndexLocalStore
             using var transaction = connection.BeginTransaction();
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE dirty = 0;";
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0;";
             var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
             using var deletePrefixes = connection.CreateCommand();
@@ -426,7 +426,7 @@ internal sealed class ChunkIndexLocalStore
             transaction.Commit();
 
             DeleteLegacyShardCacheFiles();
-            _logger.LogDebug("[chunk-index-local] ClearCleanCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
+            _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
         }
         catch (SqliteException ex)
         {
@@ -512,7 +512,7 @@ internal sealed class ChunkIndexLocalStore
                 original_size   INTEGER NOT NULL CHECK (original_size >= 0),
                 compressed_size INTEGER NOT NULL CHECK (compressed_size >= 0),
                 prefix          TEXT NOT NULL,
-                dirty           INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
+                pending_flush   INTEGER NOT NULL DEFAULT 0 CHECK (pending_flush IN (0, 1)),
                 CHECK (length(content_hash) = 32),
                 CHECK (length(chunk_hash) = 32),
                 CHECK (length(prefix) > 0)
@@ -521,8 +521,8 @@ internal sealed class ChunkIndexLocalStore
             CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_prefix
                 ON chunk_index_entries(prefix, content_hash);
 
-            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_dirty_prefix
-                ON chunk_index_entries(dirty, prefix);
+            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_pending_flush_prefix
+                ON chunk_index_entries(pending_flush, prefix);
 
             CREATE TABLE IF NOT EXISTS loaded_prefixes (
                 prefix                      TEXT NOT NULL PRIMARY KEY,
@@ -548,38 +548,38 @@ internal sealed class ChunkIndexLocalStore
         return connection;
     }
 
-    private static bool HasDirtyRows(SqliteConnection connection)
+    private static bool HasPendingFlushEntries(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT EXISTS(SELECT 1 FROM chunk_index_entries WHERE dirty = 1 LIMIT 1);";
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM chunk_index_entries WHERE pending_flush = 1 LIMIT 1);";
         return command.ExecuteScalar() is long count && count != 0;
     }
 
-    private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool dirty, bool preserveDirtyRows)
+    private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool pendingFlush, bool preservePendingFlushRows)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = preserveDirtyRows
+        command.CommandText = preservePendingFlushRows
             ? """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, prefix, dirty)
-                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $prefix, $dirty)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, prefix, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $prefix, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
                     compressed_size = excluded.compressed_size,
                     prefix = excluded.prefix,
-                    dirty = excluded.dirty
-                WHERE chunk_index_entries.dirty = 0;
+                    pending_flush = excluded.pending_flush
+                WHERE chunk_index_entries.pending_flush = 0;
                 """
             : """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, prefix, dirty)
-                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $prefix, $dirty)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, prefix, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $prefix, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
                     compressed_size = excluded.compressed_size,
                     prefix = excluded.prefix,
-                    dirty = excluded.dirty;
+                    pending_flush = excluded.pending_flush;
                 """;
 
         command.Parameters.Add("$contentHash", SqliteType.Blob);
@@ -587,7 +587,7 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters.Add("$originalSize", SqliteType.Integer);
         command.Parameters.Add("$compressedSize", SqliteType.Integer);
         command.Parameters.Add("$prefix", SqliteType.Text);
-        command.Parameters.Add("$dirty", SqliteType.Integer).Value = dirty ? 1 : 0;
+        command.Parameters.Add("$pendingFlush", SqliteType.Integer).Value = pendingFlush ? 1 : 0;
         return command;
     }
 

@@ -82,10 +82,10 @@ public sealed class ChunkIndexService : IDisposable
             var hashesNeedingValidation = new List<ContentHash>();
             foreach (var contentHash in prefixGroup)
             {
-                var dirtyEntry = _localStore.FindDirtyEntry(contentHash);
-                if (dirtyEntry is not null)
+                var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
+                if (pendingFlushEntry is not null)
                 {
-                    result[contentHash] = dirtyEntry;
+                    result[contentHash] = pendingFlushEntry;
                     continue;
                 }
 
@@ -126,9 +126,9 @@ public sealed class ChunkIndexService : IDisposable
     {
         ThrowIfRepairIncomplete();
 
-        var dirtyEntry = _localStore.FindDirtyEntry(contentHash);
-        if (dirtyEntry is not null)
-            return dirtyEntry;
+        var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
+        if (pendingFlushEntry is not null)
+            return pendingFlushEntry;
 
         var latestSnapshot = await _latestSnapshotName;
         await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
@@ -194,7 +194,7 @@ public sealed class ChunkIndexService : IDisposable
     // -- AddEntry ------------------------------------------------------------
 
     /// <summary>
-    /// Records a newly discovered or uploaded chunk-index entry as dirty local state.
+    /// Records a newly discovered or uploaded chunk-index entry as pending local flush state.
     /// </summary>
     /// <param name="entry">The entry to record.</param>
     public void AddEntry(ShardEntry entry)
@@ -203,13 +203,13 @@ public sealed class ChunkIndexService : IDisposable
         if (Volatile.Read(ref _acceptingEntries) == 0)
             throw new InvalidOperationException("Cannot record chunk-index entries after flush has started.");
 
-        _localStore.UpsertDirty(entry);
+        _localStore.UpsertPendingFlush(entry);
     }
 
     // -- Flush & Upload ---------------------------------------------------------------
 
     /// <summary>
-    /// Uploads dirty local shard state and marks the flushed prefixes as clean.
+    /// Uploads pending local shard state and marks the flushed prefixes as synchronized remote-backed cache.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for the flush.</param>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
@@ -219,15 +219,15 @@ public sealed class ChunkIndexService : IDisposable
         if (Interlocked.Exchange(ref _acceptingEntries, 0) == 0)
             throw new InvalidOperationException("Chunk-index flush has already started.");
 
-        var dirtyPrefixes = _localStore.GetDirtyPrefixes();
-        if (dirtyPrefixes.Count == 0)
+        var prefixesWithPendingFlushes = _localStore.GetPrefixesWithPendingFlushes();
+        if (prefixesWithPendingFlushes.Count == 0)
             return; // no shards need to be written to blob
 
         var latestSnapshotVersion = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
         await Parallel.ForEachAsync(
-            dirtyPrefixes,
+            prefixesWithPendingFlushes,
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
             async (prefix, ct) =>
             {
@@ -242,7 +242,7 @@ public sealed class ChunkIndexService : IDisposable
                 uploadedStates[prefix] = result.ETag;
             });
 
-        _localStore.MarkSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
+        _localStore.MarkPendingFlushesSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
     }
 
     /// <summary>
@@ -280,11 +280,11 @@ public sealed class ChunkIndexService : IDisposable
     // -- Cache ---------------------------------------------------------------
 
     /// <summary>
-    /// Drops the clean local cache so later lookups revalidate prefixes from remote state.
+    /// Drops the remote-backed local cache so later lookups revalidate prefixes from remote state.
     /// </summary>
     public void InvalidateCaches()
     {
-        _localStore.ClearCleanCache();
+        _localStore.ClearRemoteBackedCache();
     }
 
     // -- Repair --------------------------------------------------------------
@@ -311,7 +311,7 @@ public sealed class ChunkIndexService : IDisposable
             if (entry is null)
                 continue;
 
-            _localStore.UpsertClean(entry);
+            _localStore.UpsertRemoteBacked(entry);
             rebuiltEntryCount++;
         }
 
