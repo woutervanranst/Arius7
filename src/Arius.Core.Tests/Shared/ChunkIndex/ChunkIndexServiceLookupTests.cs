@@ -302,8 +302,8 @@ public class ChunkIndexServiceLookupTests
 
         var ex = Should.Throw<ChunkIndexLocalStoreException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
 
-        ex.Message.ShouldContain("unflushed entries may exist");
-        ex.Message.ShouldContain("Rerun archive");
+        ex.Message.ShouldContain("Delete the local chunk-index cache directory");
+        ex.Message.ShouldContain("repair command");
     }
 
     [Test]

@@ -16,7 +16,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
+        version.ExecuteScalar().ShouldBe("1");
 
         using var journalMode = connection.CreateCommand();
         journalMode.CommandText = "PRAGMA journal_mode;";
@@ -142,7 +142,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void MarkSynchronized_CleansDirtyRows_RemovesDirtyMarker_AndValidatesUploadedPrefixes()
+    public void MarkSynchronized_CleansDirtyRows_AndValidatesUploadedPrefixes()
     {
         var repositoryKey = $"acct-local-store-mark-synchronized-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -154,8 +154,6 @@ public class ChunkIndexLocalStoreTests
         var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
         store.UpsertDirtyRange([firstEntry, secondEntry]);
 
-        store.HasDirtyMarker().ShouldBeTrue();
-
         store.MarkSynchronized([(firstPrefix, "remote-1"), (secondPrefix, "remote-2")], snapshotVersion);
 
         store.FindEntry(firstEntry.ContentHash).ShouldBe(firstEntry);
@@ -163,7 +161,6 @@ public class ChunkIndexLocalStoreTests
         store.FindDirtyEntry(firstEntry.ContentHash).ShouldBeNull();
         store.FindDirtyEntry(secondEntry.ContentHash).ShouldBeNull();
         store.HasDirtyRows().ShouldBeFalse();
-        store.HasDirtyMarker().ShouldBeFalse();
         store.IsPrefixAtSnapshotVersion(firstPrefix, snapshotVersion).ShouldBeTrue();
         store.IsPrefixAtSnapshotVersion(secondPrefix, snapshotVersion).ShouldBeTrue();
         store.CanReuseRemotePrefix(firstPrefix, "remote-1").ShouldBeTrue();
@@ -217,55 +214,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
-    }
-
-    [Test]
-    public void Initialize_UnsupportedSchemaVersion_RecreatesDisposableCache()
-    {
-        var repositoryKey = $"acct-local-store-schema-reset-{Guid.NewGuid():N}";
-        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
-        var fileSystem = new RelativeFileSystem(root);
-        fileSystem.CreateDirectory(RelativePath.Root);
-
-        using (var connection = OpenConnection(root))
-        {
-            using var create = connection.CreateCommand();
-            create.CommandText = """
-                CREATE TABLE metadata (
-                    key   TEXT NOT NULL PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-
-                INSERT INTO metadata(key, value) VALUES ('schema_version', '1');
-
-                CREATE TABLE loaded_prefixes (
-                    prefix                      TEXT NOT NULL PRIMARY KEY,
-                    remote_exists               INTEGER NOT NULL,
-                    remote_blob_identity        TEXT,
-                    validated_snapshot_identity TEXT NOT NULL
-                );
-
-                INSERT INTO loaded_prefixes(prefix, remote_exists, remote_blob_identity, validated_snapshot_identity)
-                VALUES ('aa', 1, 'remote-1', 'snapshot-1');
-                """;
-            create.ExecuteNonQuery();
-        }
-
-        _ = new ChunkIndexLocalStore(root);
-
-        using var upgradedConnection = OpenConnection(root);
-        using var version = upgradedConnection.CreateCommand();
-        version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
-
-        using var columnCheck = upgradedConnection.CreateCommand();
-        columnCheck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('loaded_prefixes') WHERE name = 'snapshot_version';";
-        columnCheck.ExecuteScalar().ShouldBe(1L);
-
-        using var rowCount = upgradedConnection.CreateCommand();
-        rowCount.CommandText = "SELECT COUNT(*) FROM loaded_prefixes;";
-        rowCount.ExecuteScalar().ShouldBe(0L);
+        version.ExecuteScalar().ShouldBe("1");
     }
 
     [Test]
@@ -285,7 +234,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void UpsertDirty_CorruptSqliteWithDirtyMarker_FailsWithUnflushedEntryGuidance()
+    public void UpsertDirty_CorruptSqlite_FailsWithDisposableCacheGuidance()
     {
         var repositoryKey = $"acct-local-store-corrupt-dirty-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -298,8 +247,7 @@ public class ChunkIndexLocalStoreTests
 
         var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.UpsertDirty(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
 
-        ex.Message.ShouldContain("unflushed entries may exist");
-        ex.Message.ShouldContain("Rerun archive");
+        ex.Message.ShouldContain("Delete the local chunk-index cache directory");
     }
 
     private static SqliteConnection OpenConnection(LocalDirectory root)
