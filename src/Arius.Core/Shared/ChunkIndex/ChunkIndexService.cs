@@ -130,8 +130,8 @@ public sealed class ChunkIndexService : IDisposable
         if (dirtyEntry is not null)
             return dirtyEntry;
 
-        var latestSnapshotIdentity = await _latestSnapshot;
-        await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshotIdentity, cancellationToken);
+        var latestSnapshot = await _latestSnapshot;
+        await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
         return _localStore.FindEntry(contentHash);
     }
 
