@@ -16,7 +16,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("1");
+        version.ExecuteScalar().ShouldBe("2");
 
         using var journalMode = connection.CreateCommand();
         journalMode.CommandText = "PRAGMA journal_mode;";
@@ -95,7 +95,7 @@ public class ChunkIndexLocalStoreTests
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindDirtyEntry(entry.ContentHash).ShouldBeNull();
-        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-1").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(prefix, "snapshot-1").ShouldBeTrue();
         store.CanReuseRemotePrefix(prefix, "opaque-identity").ShouldBeTrue();
     }
 
@@ -117,49 +117,55 @@ public class ChunkIndexLocalStoreTests
         store.FindDirtyEntry(cleanEntry.ContentHash).ShouldBeNull();
         store.FindEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
         store.FindDirtyEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
-        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-2").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(prefix, "snapshot-2").ShouldBeTrue();
         store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeFalse();
     }
 
     [Test]
-    public void MarkPrefixValidated_UpdatesValidationStateWithoutReingest()
+    public void SetPrefixSnapshotVersion_UpdatesSnapshotVersionWithoutReingest()
     {
         var repositoryKey = $"acct-local-store-mark-validated-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
         var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
-        store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [entry]);
+        var originalSnapshotVersion = "snapshot-1";
+        var latestSnapshotVersion = "snapshot-2";
+        store.UpdatePrefix(prefix, "remote-1", originalSnapshotVersion, [entry]);
 
-        store.MarkPrefixValidated(prefix, "remote-1", "snapshot-2");
+        store.SetPrefixSnapshotVersion(prefix, "remote-1", latestSnapshotVersion);
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
-        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-1").ShouldBeFalse();
-        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-2").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(prefix, originalSnapshotVersion).ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion).ShouldBeTrue();
         store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeTrue();
     }
 
     [Test]
-    public void MarkPrefixesValidated_UpdatesValidationStateForAllPrefixes()
+    public void MarkSynchronized_CleansDirtyRows_RemovesDirtyMarker_AndValidatesUploadedPrefixes()
     {
-        var repositoryKey = $"acct-local-store-mark-validated-range-{Guid.NewGuid():N}";
+        var repositoryKey = $"acct-local-store-mark-synchronized-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
+        var snapshotVersion = "snapshot-2";
         var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
         var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
         var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
         var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
-        store.UpdatePrefix(firstPrefix, "remote-1", "snapshot-1", [firstEntry]);
-        store.UpdatePrefix(secondPrefix, "remote-2", "snapshot-1", [secondEntry]);
+        store.UpsertDirtyRange([firstEntry, secondEntry]);
 
-        store.MarkPrefixesValidated([(firstPrefix, "remote-1"), (secondPrefix, "remote-2")], "snapshot-2");
+        store.HasDirtyMarker().ShouldBeTrue();
+
+        store.MarkSynchronized([(firstPrefix, "remote-1"), (secondPrefix, "remote-2")], snapshotVersion);
 
         store.FindEntry(firstEntry.ContentHash).ShouldBe(firstEntry);
         store.FindEntry(secondEntry.ContentHash).ShouldBe(secondEntry);
-        store.IsPrefixValidatedForSnapshot(firstPrefix, "snapshot-1").ShouldBeFalse();
-        store.IsPrefixValidatedForSnapshot(secondPrefix, "snapshot-1").ShouldBeFalse();
-        store.IsPrefixValidatedForSnapshot(firstPrefix, "snapshot-2").ShouldBeTrue();
-        store.IsPrefixValidatedForSnapshot(secondPrefix, "snapshot-2").ShouldBeTrue();
+        store.FindDirtyEntry(firstEntry.ContentHash).ShouldBeNull();
+        store.FindDirtyEntry(secondEntry.ContentHash).ShouldBeNull();
+        store.HasDirtyRows().ShouldBeFalse();
+        store.HasDirtyMarker().ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(firstPrefix, snapshotVersion).ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(secondPrefix, snapshotVersion).ShouldBeTrue();
         store.CanReuseRemotePrefix(firstPrefix, "remote-1").ShouldBeTrue();
         store.CanReuseRemotePrefix(secondPrefix, "remote-2").ShouldBeTrue();
     }
@@ -181,27 +187,7 @@ public class ChunkIndexLocalStoreTests
         store.FindDirtyEntry(dirty.ContentHash).ShouldBe(dirty);
         store.FindEntry(clean.ContentHash).ShouldBeNull();
         store.FindDirtyEntry(clean.ContentHash).ShouldBeNull();
-        store.IsPrefixValidatedForSnapshot(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash), "snap-1").ShouldBeFalse();
-    }
-
-    [Test]
-    public void MarkAllDirtyClean_RemovesDirtyMarkerAndCleansAllDirtyRows()
-    {
-        var repositoryKey = $"acct-local-store-marker-{Guid.NewGuid():N}";
-        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
-        var store = new ChunkIndexLocalStore(root);
-        var first = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
-        var second = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6);
-        store.UpsertDirtyRange([first, second]);
-
-        store.HasDirtyMarker().ShouldBeTrue();
-
-        store.MarkAllDirtyClean();
-
-        store.HasDirtyRows().ShouldBeFalse();
-        store.HasDirtyMarker().ShouldBeFalse();
-        store.FindDirtyEntry(first.ContentHash).ShouldBeNull();
-        store.FindDirtyEntry(second.ContentHash).ShouldBeNull();
+        store.IsPrefixAtSnapshotVersion(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash), "snap-1").ShouldBeFalse();
     }
 
     [Test]
@@ -231,7 +217,55 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("1");
+        version.ExecuteScalar().ShouldBe("2");
+    }
+
+    [Test]
+    public void Initialize_UnsupportedSchemaVersion_RecreatesDisposableCache()
+    {
+        var repositoryKey = $"acct-local-store-schema-reset-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var fileSystem = new RelativeFileSystem(root);
+        fileSystem.CreateDirectory(RelativePath.Root);
+
+        using (var connection = OpenConnection(root))
+        {
+            using var create = connection.CreateCommand();
+            create.CommandText = """
+                CREATE TABLE metadata (
+                    key   TEXT NOT NULL PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
+                INSERT INTO metadata(key, value) VALUES ('schema_version', '1');
+
+                CREATE TABLE loaded_prefixes (
+                    prefix                      TEXT NOT NULL PRIMARY KEY,
+                    remote_exists               INTEGER NOT NULL,
+                    remote_blob_identity        TEXT,
+                    validated_snapshot_identity TEXT NOT NULL
+                );
+
+                INSERT INTO loaded_prefixes(prefix, remote_exists, remote_blob_identity, validated_snapshot_identity)
+                VALUES ('aa', 1, 'remote-1', 'snapshot-1');
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        _ = new ChunkIndexLocalStore(root);
+
+        using var upgradedConnection = OpenConnection(root);
+        using var version = upgradedConnection.CreateCommand();
+        version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
+        version.ExecuteScalar().ShouldBe("2");
+
+        using var columnCheck = upgradedConnection.CreateCommand();
+        columnCheck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('loaded_prefixes') WHERE name = 'snapshot_version';";
+        columnCheck.ExecuteScalar().ShouldBe(1L);
+
+        using var rowCount = upgradedConnection.CreateCommand();
+        rowCount.CommandText = "SELECT COUNT(*) FROM loaded_prefixes;";
+        rowCount.ExecuteScalar().ShouldBe(0L);
     }
 
     [Test]

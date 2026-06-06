@@ -138,19 +138,19 @@ public sealed class ChunkIndexService : IDisposable
     // -- Synchronization -----------------------------------------------------
 
     /// <summary>
-    /// Ensures the specified prefix is loaded into the local cache and validated against the latest snapshot identity.
+    /// Ensures the specified prefix is loaded into the local cache and recorded against the latest snapshot version.
     /// </summary>
     /// <param name="prefix">The shard prefix to synchronize.</param>
-    /// <param name="latestSnapshotName">The snapshot identity that the local cache must be validated against.</param>
+    /// <param name="latestSnapshotVersion">The snapshot version that the local cache must be recorded against.</param>
     /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
-    private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotName, CancellationToken cancellationToken)
+    private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
     {
         var gate = _prefixGates.GetOrAdd(prefix, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
             // do we have a locally up to date version with the snapshot version
-            if (_localStore.IsPrefixValidatedForSnapshot(prefix, latestSnapshotName))
+            if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
                 return;
 
             // we need to get it from remote
@@ -159,7 +159,7 @@ public sealed class ChunkIndexService : IDisposable
             if (remoteShard is null)
             {
                 // it doesnt exist on remote -> it s a new shard
-                _localStore.ClearPrefix(prefix, latestSnapshotName);
+                _localStore.ClearPrefix(prefix, latestSnapshotVersion);
                 return;
             }
 
@@ -167,7 +167,7 @@ public sealed class ChunkIndexService : IDisposable
             if (_localStore.CanReuseRemotePrefix(prefix, remoteShard.BlobIdentity))
             {
                 // our local copy was up to date
-                _localStore.MarkPrefixValidated(prefix, remoteShard.BlobIdentity, latestSnapshotName);
+                _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.BlobIdentity, latestSnapshotVersion);
                 return;
             }
 
@@ -183,7 +183,7 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotName, shard.Entries);
+            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotVersion, shard.Entries);
         }
         finally
         {
@@ -223,7 +223,7 @@ public sealed class ChunkIndexService : IDisposable
         if (dirtyPrefixes.Count == 0)
             return; // no shards need to be written to blob
 
-        var latestSnapshot = await _latestSnapshotName;
+        var latestSnapshotVersion = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
         await Parallel.ForEachAsync(
@@ -232,7 +232,7 @@ public sealed class ChunkIndexService : IDisposable
             async (prefix, ct) =>
             {
                 // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
-                await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshot, ct);
+                await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshotVersion, ct);
 
                 var shard = BuildShard(prefix);
                 if (shard.Count == 0)
@@ -242,8 +242,7 @@ public sealed class ChunkIndexService : IDisposable
                 uploadedStates[prefix] = result.BlobIdentity;
             });
 
-        _localStore.MarkAllDirtyClean();
-        _localStore.MarkPrefixesValidated(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshot);
+        _localStore.MarkSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
     }
 
     /// <summary>
