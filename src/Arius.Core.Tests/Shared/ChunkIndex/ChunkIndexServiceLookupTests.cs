@@ -168,6 +168,30 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
+    public async Task LookupAsync_MissingRemoteShard_ClearsStaleCleanEntries_AndSkipsRepeatedValidation()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("lookup-missing-reset");
+        var snapshot = new FakeSnapshotService();
+        var contentHash = FakeContentHash('a');
+        var prefix = Shard.PrefixOf(contentHash);
+        var staleEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        using (var store = new ChunkIndexLocalStore(cacheRoot))
+            store.IngestCleanPrefix(new LoadedPrefixState(prefix, true, "remote-1", "snapshot-old"), [staleEntry]);
+
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
+
+        (await index.LookupAsync(contentHash)).ShouldBeNull();
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkIndexShardPath(prefix)]);
+        blobs.RequestedBlobNames.Clear();
+
+        (await index.LookupAsync(contentHash)).ShouldBeNull();
+
+        blobs.RequestedBlobNames.ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task LookupAsync_NewSnapshotWithSameRemoteIdentity_SkipsReingest()
     {
         var blobs = new FakeInMemoryBlobContainerService();

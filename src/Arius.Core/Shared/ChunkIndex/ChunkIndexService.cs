@@ -160,8 +160,7 @@ public sealed class ChunkIndexService : IDisposable
             if (download is null)
             {
                 // it doesnt exist on remote -> it s a new shard
-                _localStore.DeleteCleanPrefix(prefix);
-                _localStore.UpdateLoadedPrefixState(new LoadedPrefixState(prefix, false, null, latestSnapshotIdentity));
+                _localStore.ClearPrefix(new LoadedPrefixState(prefix, false, null, latestSnapshotIdentity));
                 return;
             }
 

@@ -101,6 +101,27 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    public void ClearPrefix_PreservesDirtyRows_AndUpdatesLoadedPrefixState()
+    {
+        var repositoryKey = $"acct-local-store-reset-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var cleanEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var dirtyEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
+        var prefix = ChunkIndexRouter.GetLeafPrefix(cleanEntry.ContentHash);
+        store.IngestCleanPrefix(new LoadedPrefixState(prefix, true, "remote-1", "snapshot-1"), [cleanEntry]);
+        store.UpsertDirty(dirtyEntry);
+
+        store.ClearPrefix(new LoadedPrefixState(prefix, false, null, "snapshot-2"));
+
+        store.FindEntry(cleanEntry.ContentHash).ShouldBeNull();
+        store.FindDirtyEntry(cleanEntry.ContentHash).ShouldBeNull();
+        store.FindEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
+        store.FindDirtyEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
+        store.GetLoadedPrefixState(prefix).ShouldBe(new LoadedPrefixState(prefix, false, null, "snapshot-2"));
+    }
+
+    [Test]
     public void ReadPrefixEntries_ReturnsEntriesOrderedByContentHash()
     {
         var repositoryKey = $"acct-local-store-order-{Guid.NewGuid():N}";

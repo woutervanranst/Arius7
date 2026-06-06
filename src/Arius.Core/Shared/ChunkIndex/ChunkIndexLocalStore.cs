@@ -385,6 +385,31 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
+    /// Replaces local clean rows and validation state for a prefix in one transaction while preserving dirty rows.
+    /// </summary>
+    public void ClearPrefix(LoadedPrefixState loadedPrefix)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            using var deleteEntries = connection.CreateCommand();
+            deleteEntries.Transaction = transaction;
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0;";
+            deleteEntries.Parameters.AddWithValue("$prefix", loadedPrefix.Prefix.ToString());
+            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
+
+            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            transaction.Commit();
+            _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", loadedPrefix.Prefix, deletedEntryRows, loadedPrefixRowsAffected);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
     /// Updates the cached remote-validation state for a prefix.
     /// </summary>
     public void UpdateLoadedPrefixState(LoadedPrefixState loadedPrefix)
