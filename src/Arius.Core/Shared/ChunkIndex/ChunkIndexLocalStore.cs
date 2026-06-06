@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.Core.Shared.ChunkIndex;
 
@@ -10,6 +12,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     private const string SchemaVersion = "1";
 
     private readonly RelativeFileSystem _fileSystem;
+    private readonly ILogger<ChunkIndexLocalStore> _logger;
     private readonly LocalDirectory     _rootDirectory;
     private readonly RelativePath       _databasePath    = RelativePath.Root / PathSegment.Parse("cache.sqlite");
     private readonly RelativePath       _dirtyMarkerPath = RelativePath.Root / PathSegment.Parse("dirty.marker");
@@ -21,10 +24,11 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Opens the local store rooted at <paramref name="root"/> and ensures the SQLite schema exists.
     /// </summary>
-    public ChunkIndexLocalStore(LocalDirectory root)
+    public ChunkIndexLocalStore(LocalDirectory root, ILogger<ChunkIndexLocalStore>? logger = null)
     {
         _rootDirectory = root;
         _fileSystem    = new RelativeFileSystem(root);
+        _logger        = logger ?? NullLogger<ChunkIndexLocalStore>.Instance;
         _fileSystem.CreateDirectory(RelativePath.Root);
         _connectionString = new SqliteConnectionStringBuilder
         {
@@ -43,6 +47,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         try
         {
             CreateOrUpgradeSchema();
+            _logger.LogDebug("[chunk-index-local] Initialize: database={DatabasePath}", _rootDirectory.Resolve(_databasePath));
         }
         catch (SqliteException ex)
         {
@@ -84,7 +89,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 : "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash;";
             command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
             using var reader = command.ExecuteReader();
-            return reader.Read() ? ReadEntry(reader) : null;
+            var entry = reader.Read() ? ReadEntry(reader) : null;
+            _logger.LogDebug("[chunk-index-local] FindEntry: contentHash={ContentHash} dirtyOnly={DirtyOnly} found={Found}", contentHash.Short8, dirtyOnly, entry is not null);
+            return entry;
         }
         catch (SqliteException ex)
         {
@@ -105,13 +112,18 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
             using var reader = command.ExecuteReader();
             if (!reader.Read())
+            {
+                _logger.LogDebug("[chunk-index-local] GetLoadedPrefixState: prefix={Prefix} found=false", prefix);
                 return null;
+            }
 
-            return new LoadedPrefixState(
+            var state = new LoadedPrefixState(
                 prefix,
                 reader.GetInt64(0) != 0,
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.GetString(2));
+            _logger.LogDebug("[chunk-index-local] GetLoadedPrefixState: prefix={Prefix} found=true remoteExists={RemoteExists}", prefix, state.RemoteExists);
+            return state;
         }
         catch (SqliteException ex)
         {
@@ -134,6 +146,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             while (reader.Read())
                 prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
+            _logger.LogDebug("[chunk-index-local] GetDirtyPrefixes: count={Count}", prefixes.Count);
             return prefixes;
         }
         catch (SqliteException ex)
@@ -157,6 +170,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             while (reader.Read())
                 prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
+            _logger.LogDebug("[chunk-index-local] GetStoredPrefixes: count={Count}", prefixes.Count);
             return prefixes;
         }
         catch (SqliteException ex)
@@ -177,8 +191,14 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE prefix = $prefix ORDER BY content_hash;";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
             using var reader = command.ExecuteReader();
+            var count = 0;
             while (reader.Read())
+            {
                 consume(ReadEntry(reader));
+                count++;
+            }
+
+            _logger.LogDebug("[chunk-index-local] ReadPrefixEntries: prefix={Prefix} count={Count}", prefix, count);
         }
         catch (SqliteException ex)
         {
@@ -194,7 +214,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         try
         {
             using var connection = OpenConnection();
-            return HasDirtyRows(connection);
+            var hasDirtyRows = HasDirtyRows(connection);
+            _logger.LogDebug("[chunk-index-local] HasDirtyRows: value={HasDirtyRows}", hasDirtyRows);
+            return hasDirtyRows;
         }
         catch (SqliteException ex)
         {
@@ -205,7 +227,12 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Returns whether the crash-safety marker indicates that dirty rows may exist.
     /// </summary>
-    public bool HasDirtyMarker() => _fileSystem.FileExists(_dirtyMarkerPath);
+    public bool HasDirtyMarker()
+    {
+        var hasDirtyMarker = _fileSystem.FileExists(_dirtyMarkerPath);
+        _logger.LogDebug("[chunk-index-local] HasDirtyMarker: value={HasDirtyMarker}", hasDirtyMarker);
+        return hasDirtyMarker;
+    }
 
     // -- DIRTY WRITES ---------------------------------------------------------
 
@@ -230,14 +257,16 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, dirty: true, preserveDirtyRows: false);
+                var rowsAffected = 0;
                 foreach (var entry in materialized)
                 {
                     BindEntry(command, entry);
-                    command.ExecuteNonQuery();
+                    rowsAffected += command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
-                WriteDirtyMarker();
+                var dirtyMarkerWritten = WriteDirtyMarker();
+                _logger.LogDebug("[chunk-index-local] UpsertDirtyRange: entries={Entries} rowsAffected={RowsAffected} dirtyMarkerWritten={DirtyMarkerWritten}", materialized.Length, rowsAffected, dirtyMarkerWritten);
             }
         }
         catch (SqliteException ex)
@@ -264,16 +293,18 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 command.Transaction = transaction;
                 command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE prefix = $prefix AND dirty = 1;";
                 var prefixParameter = command.Parameters.Add("$prefix", SqliteType.Text);
+                var rowsAffected = 0;
                 foreach (var prefix in prefixes)
                 {
                     prefixParameter.Value = prefix.ToString();
-                    command.ExecuteNonQuery();
+                    rowsAffected += command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
 
-                if (!HasDirtyRows(connection))
-                    DeleteDirtyMarker();
+                var hasDirtyRows = HasDirtyRows(connection);
+                var dirtyMarkerDeleted = !hasDirtyRows && DeleteDirtyMarker();
+                _logger.LogDebug("[chunk-index-local] MarkDirtyPrefixesClean: prefixes={Prefixes} rowsAffected={RowsAffected} hasDirtyRows={HasDirtyRows} dirtyMarkerDeleted={DirtyMarkerDeleted}", prefixes.Count, rowsAffected, hasDirtyRows, dirtyMarkerDeleted);
             }
         }
         catch (SqliteException ex)
@@ -295,8 +326,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             using var transaction = connection.BeginTransaction();
             using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: false);
             BindEntry(command, entry);
-            command.ExecuteNonQuery();
+            var rowsAffected = command.ExecuteNonQuery();
             transaction.Commit();
+            _logger.LogDebug("[chunk-index-local] UpsertClean: contentHash={ContentHash} rowsAffected={RowsAffected}", entry.ContentHash.Short8, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -315,14 +347,16 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
             using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: true);
+            var entryRowsAffected = 0;
             foreach (var entry in materialized)
             {
                 BindEntry(command, entry);
-                command.ExecuteNonQuery();
+                entryRowsAffected += command.ExecuteNonQuery();
             }
 
-            UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
             transaction.Commit();
+            _logger.LogDebug("[chunk-index-local] IngestCleanPrefix: prefix={Prefix} entries={Entries} entryRowsAffected={EntryRowsAffected} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", loadedPrefix.Prefix, materialized.Length, entryRowsAffected, loadedPrefixRowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -341,7 +375,8 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0; DELETE FROM loaded_prefixes WHERE prefix = $prefix;";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
-            var x = command.ExecuteNonQuery();
+            var rowsAffected = command.ExecuteNonQuery();
+            _logger.LogDebug("[chunk-index-local] DeleteCleanPrefix: prefix={Prefix} rowsAffected={RowsAffected}", prefix, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -358,8 +393,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         {
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            var rowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
             transaction.Commit();
+            _logger.LogDebug("[chunk-index-local] UpdateLoadedPrefixState: prefix={Prefix} rowsAffected={RowsAffected}", loadedPrefix.Prefix, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -379,15 +415,16 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
             deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE dirty = 0;";
-            deleteEntries.ExecuteNonQuery();
+            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
             using var deletePrefixes = connection.CreateCommand();
             deletePrefixes.Transaction = transaction;
             deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
-            deletePrefixes.ExecuteNonQuery();
+            var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
             transaction.Commit();
 
             DeleteLegacyShardCacheFiles();
+            _logger.LogDebug("[chunk-index-local] ClearCleanCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
         }
         catch (SqliteException ex)
         {
@@ -407,6 +444,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             lock (_localStateGate)
             {
                 SqliteConnection.ClearAllPools();
+                var replacedFiles = 0;
                 foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
                 {
                     var path = backupExisting
@@ -415,6 +453,8 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                     var current = RelativePath.Parse($"cache.sqlite{suffix}");
                     if (!_fileSystem.FileExists(current))
                         continue;
+
+                    replacedFiles++;
 
                     if (backupExisting)
                     {
@@ -428,8 +468,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                     }
                 }
 
-                DeleteDirtyMarker();
+                var dirtyMarkerDeleted = DeleteDirtyMarker();
                 CreateOrUpgradeSchema();
+                _logger.LogDebug("[chunk-index-local] RecreateDatabase: backupExisting={BackupExisting} replacedFiles={ReplacedFiles} dirtyMarkerDeleted={DirtyMarkerDeleted}", backupExisting, replacedFiles, dirtyMarkerDeleted);
             }
         }
         catch (SqliteException ex)
@@ -516,7 +557,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         return command.ExecuteScalar() is long count && count != 0;
     }
 
-    private SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool dirty, bool preserveDirtyRows)
+    private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool dirty, bool preserveDirtyRows)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -561,7 +602,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         command.Parameters["$prefix"].Value = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash).ToString();
     }
 
-    private static void UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, LoadedPrefixState loadedPrefix)
+    private static int UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, LoadedPrefixState loadedPrefix)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -577,7 +618,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         command.Parameters.Add("$remoteExists", SqliteType.Integer).Value = loadedPrefix.RemoteExists ? 1 : 0;
         command.Parameters.Add("$remoteBlobIdentity", SqliteType.Text).Value = (object?)loadedPrefix.RemoteBlobIdentity ?? DBNull.Value;
         command.Parameters.AddWithValue("$validatedSnapshotIdentity", loadedPrefix.ValidatedSnapshotIdentity);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery();
     }
 
     private static ShardEntry ReadEntry(SqliteDataReader reader)
@@ -592,16 +633,26 @@ internal sealed class ChunkIndexLocalStore : IDisposable
 
     // -- FILE MARKERS ---------------------------------------------------------
 
-    private void WriteDirtyMarker()
+    private bool WriteDirtyMarker()
     {
         if (!_fileSystem.FileExists(_dirtyMarkerPath))
+        {
             _fileSystem.WriteAllBytesAsync(_dirtyMarkerPath, [], CancellationToken.None).GetAwaiter().GetResult();
+            return true;
+        }
+
+        return false;
     }
 
-    private void DeleteDirtyMarker()
+    private bool DeleteDirtyMarker()
     {
         if (_fileSystem.FileExists(_dirtyMarkerPath))
+        {
             _fileSystem.DeleteFile(_dirtyMarkerPath);
+            return true;
+        }
+
+        return false;
     }
 
     private void DeleteLegacyShardCacheFiles()

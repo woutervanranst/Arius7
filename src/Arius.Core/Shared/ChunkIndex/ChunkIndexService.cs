@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Shared.ChunkIndex;
 
@@ -37,7 +38,8 @@ public sealed class ChunkIndexService : IDisposable
         IEncryptionService encryption,
         ISnapshotService snapshotService,
         string accountName,
-        string containerName)
+        string containerName,
+        ILoggerFactory? loggerFactory = null)
     {
         _blobs      = blobs;
         _encryption = encryption;
@@ -47,7 +49,7 @@ public sealed class ChunkIndexService : IDisposable
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
 
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
-        _localStore = new ChunkIndexLocalStore(cacheRoot);
+        _localStore = new ChunkIndexLocalStore(cacheRoot, loggerFactory?.CreateLogger<ChunkIndexLocalStore>());
         _latestSnapshot = new AsyncLazy<string>(async () =>
         {
             var snapshots = await snapshotService.ListBlobNamesAsync();

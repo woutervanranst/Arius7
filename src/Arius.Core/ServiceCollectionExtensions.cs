@@ -62,7 +62,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 accountName,
-                containerName));
+                containerName,
+                sp.GetRequiredService<ILoggerFactory>()));
 
         services.AddSingleton<ChunkStorageService>(sp =>
             new ChunkStorageService(
