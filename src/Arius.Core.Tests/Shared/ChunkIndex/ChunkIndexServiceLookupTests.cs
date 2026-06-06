@@ -65,7 +65,7 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
-    public async Task LookupAsync_RemoteShard_ValidatesPrefixBeforeDownload()
+    public async Task LookupAsync_RemoteShard_LoadsPrefixViaTryDownload()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("remote-no-metadata");
@@ -140,13 +140,13 @@ public class ChunkIndexServiceLookupTests
         actual[otherPrefixHash].ShouldBe(otherPrefixEntry);
         actual[inFlightHash].ShouldBe(inFlightEntry);
         actual.ShouldNotContainKey(missingHash);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(2);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(2);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(1);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherPrefixHash))).ShouldBe(1);
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(inFlightHash)));
     }
 
     [Test]
-    public async Task LookupAsync_LoadedPrefixForCurrentSnapshot_SkipsRepeatedMetadataValidation()
+    public async Task LookupAsync_LoadedPrefixForCurrentSnapshot_SkipsRepeatedTryDownloadValidation()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-skip-revalidate");
@@ -165,6 +165,32 @@ public class ChunkIndexServiceLookupTests
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
 
         blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)));
+    }
+
+    [Test]
+    public async Task LookupAsync_NewSnapshotWithSameRemoteIdentity_SkipsReingest()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("lookup-same-identity");
+        var contentHash = FakeContentHash('a');
+        var prefix = Shard.PrefixOf(contentHash);
+        var shardBlobName = BlobPaths.ChunkIndexShardPath(prefix);
+        var originalEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(originalEntry), s_encryption), BlobTier.Cool);
+        var initialIdentity = (await blobs.GetMetadataAsync(shardBlobName)).BlobIdentity;
+        var firstSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow.AddMinutes(-1):yyyy-MM-ddTHHmmss.fffZ}");
+        var secondSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow:yyyy-MM-ddTHHmmss.fffZ}");
+        using (var firstIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([firstSnapshot]), repositoryKey, repositoryKey))
+            (await firstIndex.LookupAsync(contentHash)).ShouldBe(originalEntry);
+
+        var replacementEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 6);
+        blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(replacementEntry), s_encryption), BlobTier.Cool);
+        blobs.SetBlobIdentity(shardBlobName, initialIdentity!);
+        using var secondIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([firstSnapshot, secondSnapshot]), repositoryKey, repositoryKey);
+
+        var result = await secondIndex.LookupAsync(contentHash);
+
+        result.ShouldBe(originalEntry);
     }
 
     [Test]
@@ -187,8 +213,8 @@ public class ChunkIndexServiceLookupTests
         result[firstHash].ShouldBe(firstEntry);
         result[secondHash].ShouldBe(secondEntry);
         result[otherHash].ShouldBe(otherEntry);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(2);
-        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherHash))).ShouldBe(2);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(firstHash))).ShouldBe(1);
+        blobs.RequestedBlobNames.Count(name => name == BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(otherHash))).ShouldBe(1);
     }
 
     [Test]
