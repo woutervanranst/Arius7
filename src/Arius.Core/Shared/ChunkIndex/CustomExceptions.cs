@@ -16,3 +16,8 @@ public sealed class ChunkIndexRepairException(RelativePath chunkBlobName, string
 {
     public RelativePath ChunkBlobName { get; } = chunkBlobName;
 }
+
+public sealed class ChunkIndexLocalStoreException(string message, Exception innerException)
+    : InvalidOperationException(message, innerException)
+{
+}
