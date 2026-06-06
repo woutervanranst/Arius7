@@ -43,7 +43,7 @@ public enum RehydratePriority
 /// </summary>
 public sealed record UploadResult
 {
-    public required string BlobIdentity { get; init; }
+    public required string ETag { get; init; }
 }
 
 /// <summary>
@@ -53,7 +53,7 @@ public sealed record DownloadResult
 {
     public required Stream Stream { get; init; }
 
-    public required string BlobIdentity { get; init; }
+    public required string ETag { get; init; }
 }
 
 /// <summary>
@@ -62,7 +62,7 @@ public sealed record DownloadResult
 public sealed record BlobMetadata
 {
     public required bool                                Exists        { get; init; }
-    public          string?                             BlobIdentity  { get; init; }
+    public          string?                             ETag          { get; init; }
     public          BlobTier?                           Tier          { get; init; }
     public          long?                               ContentLength { get; init; }
     public          bool                                IsRehydrating { get; init; }
@@ -76,7 +76,7 @@ public sealed record BlobListItem
 {
     public required RelativePath Name { get; init; }
 
-    public string? BlobIdentity { get; init; }
+    public string? ETag { get; init; }
 
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
@@ -136,7 +136,7 @@ public interface IBlobContainerService
 
     /// <summary>
     /// Returns a readable stream for the blob at <paramref name="blobName"/> together with
-    /// the current blob identity.
+    /// the current ETag.
     /// The caller must dispose <see cref="DownloadResult.Stream"/> when done.
     /// Throws <see cref="BlobNotFoundException"/> when the blob does not exist.
     /// </summary>
@@ -146,7 +146,7 @@ public interface IBlobContainerService
 
     /// <summary>
     /// Returns a readable stream for the blob at <paramref name="blobName"/> together with the
-    /// current blob identity, or <c>null</c> when the blob does not exist.
+    /// current ETag, or <c>null</c> when the blob does not exist.
     /// The caller must dispose <see cref="DownloadResult.Stream"/> when one is returned.
     /// </summary>
     Task<DownloadResult?> TryDownloadAsync(

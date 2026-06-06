@@ -40,6 +40,6 @@ public class FakeInMemoryBlobContainerServiceTests
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
-        download.BlobIdentity.ShouldStartWith("fake:");
+        download.ETag.ShouldStartWith("fake:");
     }
 }

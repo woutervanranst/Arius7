@@ -53,7 +53,7 @@ public class AzureBlobContainerServiceBenchmarks
 
         await using var stream = download.Stream;
         await stream.CopyToAsync(Stream.Null, CancellationToken.None);
-        return download.BlobIdentity;
+        return download.ETag;
     }
 
     [Benchmark]
@@ -68,7 +68,7 @@ public class AzureBlobContainerServiceBenchmarks
         var             download = await _service.DownloadAsync(_blobName, CancellationToken.None);
         await using var stream   = download.Stream;
         await stream.CopyToAsync(Stream.Null, CancellationToken.None);
-        return download.BlobIdentity;
+        return download.ETag;
     }
 
     void EnsureInitialized()

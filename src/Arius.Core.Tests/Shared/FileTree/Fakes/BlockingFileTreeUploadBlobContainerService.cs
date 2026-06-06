@@ -28,17 +28,17 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
         }
 
         Uploaded.TryAdd(blobName, 0);
-        return new UploadResult { BlobIdentity = $"blocking:{blobName}" };
+        return new UploadResult { ETag = $"blocking:{blobName}" };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
     public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"blocking:{blobName}" });
+        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), ETag = $"blocking:{blobName}" });
 
     public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"blocking:{blobName}" });
+        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), ETag = $"blocking:{blobName}" });
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });

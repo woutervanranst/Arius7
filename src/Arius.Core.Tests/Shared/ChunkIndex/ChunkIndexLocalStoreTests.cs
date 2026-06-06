@@ -96,7 +96,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindDirtyEntry(entry.ContentHash).ShouldBeNull();
         store.IsPrefixAtSnapshotVersion(prefix, "snapshot-1").ShouldBeTrue();
-        store.CanReuseRemotePrefix(prefix, "opaque-identity").ShouldBeTrue();
+        store.IsPrefixAtETag(prefix, "opaque-identity").ShouldBeTrue();
     }
 
     [Test]
@@ -118,7 +118,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
         store.FindDirtyEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
         store.IsPrefixAtSnapshotVersion(prefix, "snapshot-2").ShouldBeTrue();
-        store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeFalse();
+        store.IsPrefixAtETag(prefix, "remote-1").ShouldBeFalse();
     }
 
     [Test]
@@ -138,7 +138,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.IsPrefixAtSnapshotVersion(prefix, originalSnapshotVersion).ShouldBeFalse();
         store.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion).ShouldBeTrue();
-        store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeTrue();
+        store.IsPrefixAtETag(prefix, "remote-1").ShouldBeTrue();
     }
 
     [Test]
@@ -163,8 +163,8 @@ public class ChunkIndexLocalStoreTests
         store.HasDirtyRows().ShouldBeFalse();
         store.IsPrefixAtSnapshotVersion(firstPrefix, snapshotVersion).ShouldBeTrue();
         store.IsPrefixAtSnapshotVersion(secondPrefix, snapshotVersion).ShouldBeTrue();
-        store.CanReuseRemotePrefix(firstPrefix, "remote-1").ShouldBeTrue();
-        store.CanReuseRemotePrefix(secondPrefix, "remote-2").ShouldBeTrue();
+        store.IsPrefixAtETag(firstPrefix, "remote-1").ShouldBeTrue();
+        store.IsPrefixAtETag(secondPrefix, "remote-2").ShouldBeTrue();
     }
 
     [Test]

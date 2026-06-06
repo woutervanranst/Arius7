@@ -20,17 +20,17 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         Uploaded.Add(blobName);
-        return Task.FromResult(new UploadResult { BlobIdentity = $"recorded:{blobName}" });
+        return Task.FromResult(new UploadResult { ETag = $"recorded:{blobName}" });
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
     public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"recorded:{blobName}" });
+        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), ETag = $"recorded:{blobName}" });
 
     public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"recorded:{blobName}" });
+        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), ETag = $"recorded:{blobName}" });
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {

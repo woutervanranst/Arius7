@@ -74,9 +74,8 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.ChunkSize] = "3",
             });
 
-        using var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
         staleStore.UpsertDirty(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
-        staleStore.Dispose();
 
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 

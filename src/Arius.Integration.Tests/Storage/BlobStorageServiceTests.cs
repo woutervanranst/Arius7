@@ -30,7 +30,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
-        download.BlobIdentity.ShouldNotBeNullOrWhiteSpace();
+        download.ETag.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Test]
@@ -70,7 +70,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
-        download.BlobIdentity.ShouldNotBeNullOrWhiteSpace();
+        download.ETag.ShouldNotBeNullOrWhiteSpace();
     }
 
     // ── HEAD: exists + metadata ───────────────────────────────────────────────

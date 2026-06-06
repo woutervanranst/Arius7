@@ -209,7 +209,7 @@ public class AzureBlobServiceTests
             BlobTier.Cool,
             cancellationToken: CancellationToken.None);
 
-        result.BlobIdentity.ShouldBe("\"etag-upload\"");
+        result.ETag.ShouldBe("\"etag-upload\"");
     }
 
     [Test]
@@ -232,7 +232,7 @@ public class AzureBlobServiceTests
         var result = await containerService.GetMetadataAsync(RelativePath.Parse("chunks/identity-head"), CancellationToken.None);
 
         result.Exists.ShouldBeTrue();
-        result.BlobIdentity.ShouldBe("\"etag-head\"");
+        result.ETag.ShouldBe("\"etag-head\"");
     }
 
     [Test]
@@ -259,7 +259,7 @@ public class AzureBlobServiceTests
         }
 
         results.ShouldHaveSingleItem();
-        results[0].BlobIdentity.ShouldBe("\"etag-list\"");
+        results[0].ETag.ShouldBe("\"etag-list\"");
     }
 
     private sealed class FakeBlobServiceClient(IReadOnlyList<FakeContainer> containers) : BlobServiceClient

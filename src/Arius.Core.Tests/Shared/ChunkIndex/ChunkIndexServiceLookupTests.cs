@@ -170,15 +170,15 @@ public class ChunkIndexServiceLookupTests
     [Test]
     public async Task LookupAsync_MissingRemoteShard_ClearsStaleCleanEntries_AndSkipsRepeatedValidation()
     {
-        var blobs = new FakeInMemoryBlobContainerService();
+        var blobs         = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("lookup-missing-reset");
-        var snapshot = new FakeSnapshotService();
-        var contentHash = FakeContentHash('a');
-        var prefix = Shard.PrefixOf(contentHash);
-        var staleEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
-        using (var store = new ChunkIndexLocalStore(cacheRoot))
-            store.UpdatePrefix(prefix, "remote-1", "snapshot-old", [staleEntry]);
+        var snapshot      = new FakeSnapshotService();
+        var contentHash   = FakeContentHash('a');
+        var prefix        = Shard.PrefixOf(contentHash);
+        var staleEntry    = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        var cacheRoot     = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store         = new ChunkIndexLocalStore(cacheRoot);
+        store.UpdatePrefix(prefix, "remote-1", "snapshot-old", [staleEntry]);
 
         using var index = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
 
@@ -201,7 +201,7 @@ public class ChunkIndexServiceLookupTests
         var shardBlobName = BlobPaths.ChunkIndexShardPath(prefix);
         var originalEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
         blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(originalEntry), s_encryption), BlobTier.Cool);
-        var initialIdentity = (await blobs.GetMetadataAsync(shardBlobName)).BlobIdentity;
+        var initialETag = (await blobs.GetMetadataAsync(shardBlobName)).ETag;
         var firstSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow.AddMinutes(-1):yyyy-MM-ddTHHmmss.fffZ}");
         var secondSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow:yyyy-MM-ddTHHmmss.fffZ}");
         using (var firstIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([firstSnapshot]), repositoryKey, repositoryKey))
@@ -209,7 +209,7 @@ public class ChunkIndexServiceLookupTests
 
         var replacementEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 6);
         blobs.SeedBlob(shardBlobName, await ShardSerializer.SerializeAsync(CreateShard(replacementEntry), s_encryption), BlobTier.Cool);
-        blobs.SetBlobIdentity(shardBlobName, initialIdentity!);
+        blobs.SetETag(shardBlobName, initialETag!);
         using var secondIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([firstSnapshot, secondSnapshot]), repositoryKey, repositoryKey);
 
         var result = await secondIndex.LookupAsync(contentHash);

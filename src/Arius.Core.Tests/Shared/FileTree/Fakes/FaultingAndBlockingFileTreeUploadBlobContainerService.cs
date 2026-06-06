@@ -15,23 +15,23 @@ internal sealed class FaultingAndBlockingFileTreeUploadBlobContainerService : IB
     public async Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         if (!blobName.StartsWith(BlobPaths.FileTreesPrefix))
-            return new UploadResult { BlobIdentity = $"faulting:{blobName}" };
+            return new UploadResult { ETag = $"faulting:{blobName}" };
 
         if (Interlocked.Increment(ref _fileTreeUploads) == 1)
             throw new InvalidOperationException("Simulated filetree upload failure.");
 
         await _blockedUploads.Task.WaitAsync(cancellationToken);
-        return new UploadResult { BlobIdentity = $"faulting:{blobName}" };
+        return new UploadResult { ETag = $"faulting:{blobName}" };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
     public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"faulting:{blobName}" });
+        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), ETag = $"faulting:{blobName}" });
 
     public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), BlobIdentity = $"faulting:{blobName}" });
+        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), ETag = $"faulting:{blobName}" });
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });

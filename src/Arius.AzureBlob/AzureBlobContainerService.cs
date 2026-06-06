@@ -62,7 +62,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             var result = await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
             return new UploadResult
             {
-                BlobIdentity = result.Value.ETag.ToString(),
+                ETag = result.Value.ETag.ToString(),
             };
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
@@ -141,8 +141,8 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         
         return new DownloadResult
         {
-            Stream       = response.Value.Content,
-            BlobIdentity = response.Value.Details.ETag.ToString(),
+            Stream = response.Value.Content,
+            ETag   = response.Value.Details.ETag.ToString(),
         };
     }
 
@@ -161,7 +161,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             return new BlobMetadata
             {
                 Exists        = true,
-                BlobIdentity  = p.ETag.ToString(),
+                ETag          = p.ETag.ToString(),
                 Tier          = FromAzureTier(p.AccessTier),
                 ContentLength = p.ContentLength,
                 IsRehydrating = p.ArchiveStatus is "rehydrate-pending-to-hot" or "rehydrate-pending-to-cool" or "rehydrate-pending-to-cold",
@@ -190,7 +190,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             yield return new BlobListItem
             {
                 Name = RelativePath.Parse(item.Name),
-                BlobIdentity = item.Properties.ETag?.ToString(),
+                ETag = item.Properties.ETag?.ToString(),
                 Metadata = includeMetadata && item.Metadata is not null
                     ? new Dictionary<string, string>(item.Metadata)
                     : null,

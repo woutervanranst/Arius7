@@ -164,10 +164,10 @@ public sealed class ChunkIndexService : IDisposable
             }
 
             // get it from remote
-            if (_localStore.CanReuseRemotePrefix(prefix, remoteShard.BlobIdentity))
+            if (_localStore.IsPrefixAtETag(prefix, remoteShard.ETag))
             {
                 // our local copy was up to date
-                _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.BlobIdentity, latestSnapshotVersion);
+                _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
                 return;
             }
 
@@ -183,7 +183,7 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotVersion, shard.Entries);
+            _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
         }
         finally
         {
@@ -239,7 +239,7 @@ public sealed class ChunkIndexService : IDisposable
                     return;
 
                 var result = await UploadShardAsync(prefix, shard, ct);
-                uploadedStates[prefix] = result.BlobIdentity;
+                uploadedStates[prefix] = result.ETag;
             });
 
         _localStore.MarkSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
@@ -422,6 +422,5 @@ public sealed class ChunkIndexService : IDisposable
     /// </summary>
     public void Dispose()
     {
-        _localStore.Dispose();
     }
 }

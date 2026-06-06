@@ -7,16 +7,16 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// <summary>
 /// SQLite-backed local chunk-index cache for clean remote shard data and unflushed dirty entries.
 /// </summary>
-internal sealed class ChunkIndexLocalStore : IDisposable
+internal sealed class ChunkIndexLocalStore
 {
     private const string SchemaVersion = "1";
 
-    private readonly RelativeFileSystem _fileSystem;
+    private readonly RelativeFileSystem            _fileSystem;
     private readonly ILogger<ChunkIndexLocalStore> _logger;
-    private readonly LocalDirectory     _rootDirectory;
-    private readonly RelativePath       _databasePath    = RelativePath.Root / PathSegment.Parse("cache.sqlite");
-    private readonly string             _connectionString;
-    private readonly Lock               _localStateGate = new();
+    private readonly LocalDirectory                _rootDirectory;
+    private readonly RelativePath                  _databasePath = RelativePath.Root / PathSegment.Parse("cache.sqlite");
+    private readonly string                        _connectionString;
+    private readonly Lock                          _localStateGate = new();
 
     // -- LIFECYCLE ------------------------------------------------------------
 
@@ -26,22 +26,25 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     public ChunkIndexLocalStore(LocalDirectory root, ILogger<ChunkIndexLocalStore>? logger = null)
     {
         _rootDirectory = root;
-        _fileSystem    = new RelativeFileSystem(root);
         _logger        = logger ?? NullLogger<ChunkIndexLocalStore>.Instance;
+
+        _fileSystem = new RelativeFileSystem(root);
         _fileSystem.CreateDirectory(RelativePath.Root);
+
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = root.Resolve(_databasePath),
             Mode       = SqliteOpenMode.ReadWriteCreate,
             Pooling    = true,
         }.ToString();
+
         Initialize();
     }
 
     /// <summary>
     /// Applies SQLite pragmas and creates or upgrades the local-store schema.
     /// </summary>
-    public void Initialize()
+    private void Initialize()
     {
         try
         {
@@ -54,14 +57,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         }
     }
 
-    /// <summary>
-    /// Releases resources held by the store.
-    /// </summary>
-    public void Dispose()
-    {
-    }
-
-    // -- LOOKUP ---------------------------------------------------------------
+    // -- FIND ---------------------------------------------------------------
 
     /// <summary>
     /// Returns the locally stored entry for <paramref name="contentHash"/> regardless of whether that entry is clean or dirty.
@@ -123,7 +119,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Returns whether the prefix already has a locally cached clean copy for the specified remote blob identity.
     /// </summary>
-    public bool CanReuseRemotePrefix(PathSegment prefix, string etag)
+    public bool IsPrefixAtETag(PathSegment prefix, string etag)
     {
         try
         {
@@ -132,9 +128,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             command.CommandText = "SELECT EXISTS(SELECT 1 FROM loaded_prefixes WHERE prefix = $prefix AND remote_exists = 1 AND remote_blob_identity = $etag LIMIT 1);";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
             command.Parameters.AddWithValue("$etag", etag);
-            var canReuse = command.ExecuteScalar() is long value && value != 0;
-            _logger.LogDebug("[chunk-index-local] CanReuseRemotePrefix: prefix={Prefix} etag={Etag} value={CanReuse}", prefix, etag, canReuse);
-            return canReuse;
+            var isAtETag = command.ExecuteScalar() is long value && value != 0;
+            _logger.LogDebug("[chunk-index-local] IsPrefixAtETag: prefix={Prefix} etag={Etag} value={IsAtETag}", prefix, etag, isAtETag);
+            return isAtETag;
         }
         catch (SqliteException ex)
         {
@@ -280,7 +276,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Records a known-clean entry, typically during explicit repair from remote chunk blobs.
     /// </summary>
-    public void UpsertClean(ShardEntry entry)make i
+    public void UpsertClean(ShardEntry entry)
     {
         try
         {

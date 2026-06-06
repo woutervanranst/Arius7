@@ -31,7 +31,7 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
         return Task.FromResult<DownloadResult?>(new DownloadResult
         {
             Stream = new MemoryStream(content, writable: false),
-            BlobIdentity = $"seeded:{blobName}",
+            ETag = $"seeded:{blobName}",
         });
     }
 

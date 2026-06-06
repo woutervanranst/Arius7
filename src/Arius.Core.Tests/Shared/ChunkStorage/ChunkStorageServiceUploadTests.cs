@@ -324,8 +324,8 @@ public class ChunkStorageServiceUploadTests
             ContentTypes.Thin,
             cancellationToken: CancellationToken.None);
 
-        result.BlobIdentity.ShouldNotBeNull();
-        result.BlobIdentity.ShouldStartWith("fake:");
+        result.ETag.ShouldNotBeNull();
+        result.ETag.ShouldStartWith("fake:");
     }
 
 }
