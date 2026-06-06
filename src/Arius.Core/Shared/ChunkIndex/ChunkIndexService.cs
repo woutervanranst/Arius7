@@ -20,7 +20,7 @@ public sealed class ChunkIndexService : IDisposable
     private readonly RelativeFileSystem                               _repositoryFileSystem;
     private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
-    private readonly AsyncLazy<string>                                _latestSnapshot;
+    private readonly AsyncLazy<string>                                _latestSnapshotName;
     private          int                                              _acceptingEntries = 1;
 
     // -- Construction --------------------------------------------------------
@@ -50,7 +50,7 @@ public sealed class ChunkIndexService : IDisposable
 
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _localStore = new ChunkIndexLocalStore(cacheRoot, loggerFactory?.CreateLogger<ChunkIndexLocalStore>());
-        _latestSnapshot = new AsyncLazy<string>(async () =>
+        _latestSnapshotName = new AsyncLazy<string>(async () =>
         {
             var snapshots = await snapshotService.ListBlobNamesAsync();
             return snapshots.Count == 0
@@ -101,10 +101,10 @@ public sealed class ChunkIndexService : IDisposable
         if (validationWork.Count == 0)
             return result;
 
-        var latestSnapshotIdentity = await _latestSnapshot;
+        var latestSnapshotName = await _latestSnapshotName;
         foreach (var item in validationWork)
         {
-            await EnsurePrefixLoadedAndValidatedAsync(item.Prefix, latestSnapshotIdentity, cancellationToken);
+            await EnsurePrefixLoadedAndValidatedAsync(item.Prefix, latestSnapshotName, cancellationToken);
             foreach (var contentHash in item.Hashes)
             {
                 var entry = _localStore.FindEntry(contentHash);
@@ -130,7 +130,7 @@ public sealed class ChunkIndexService : IDisposable
         if (dirtyEntry is not null)
             return dirtyEntry;
 
-        var latestSnapshot = await _latestSnapshot;
+        var latestSnapshot = await _latestSnapshotName;
         await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
         return _localStore.FindEntry(contentHash);
     }
@@ -141,16 +141,16 @@ public sealed class ChunkIndexService : IDisposable
     /// Ensures the specified prefix is loaded into the local cache and validated against the latest snapshot identity.
     /// </summary>
     /// <param name="prefix">The shard prefix to synchronize.</param>
-    /// <param name="latestSnapshotIdentity">The snapshot identity that the local cache must be validated against.</param>
+    /// <param name="latestSnapshotName">The snapshot identity that the local cache must be validated against.</param>
     /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
-    private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotIdentity, CancellationToken cancellationToken)
+    private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotName, CancellationToken cancellationToken)
     {
         var gate = _prefixGates.GetOrAdd(prefix, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
             // do we have a locally up to date version with the snapshot version
-            if (_localStore.IsPrefixValidatedForSnapshot(prefix, latestSnapshotIdentity))
+            if (_localStore.IsPrefixValidatedForSnapshot(prefix, latestSnapshotName))
                 return;
 
             // we need to get it from remote
@@ -159,7 +159,7 @@ public sealed class ChunkIndexService : IDisposable
             if (remoteShard is null)
             {
                 // it doesnt exist on remote -> it s a new shard
-                _localStore.ClearPrefix(prefix, latestSnapshotIdentity);
+                _localStore.ClearPrefix(prefix, latestSnapshotName);
                 return;
             }
 
@@ -167,7 +167,7 @@ public sealed class ChunkIndexService : IDisposable
             if (_localStore.CanReuseRemotePrefix(prefix, remoteShard.BlobIdentity))
             {
                 // our local copy was up to date
-                _localStore.MarkPrefixValidated(prefix, remoteShard.BlobIdentity, latestSnapshotIdentity);
+                _localStore.MarkPrefixValidated(prefix, remoteShard.BlobIdentity, latestSnapshotName);
                 return;
             }
 
@@ -183,7 +183,7 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotIdentity, shard.Entries);
+            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotName, shard.Entries);
         }
         finally
         {
@@ -223,7 +223,7 @@ public sealed class ChunkIndexService : IDisposable
         if (dirtyPrefixes.Count == 0)
             return; // no shards need to be written to blob
 
-        var latestSnapshot = await _latestSnapshot;
+        var latestSnapshot = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
         await Parallel.ForEachAsync(
@@ -243,8 +243,7 @@ public sealed class ChunkIndexService : IDisposable
             });
 
         _localStore.MarkAllDirtyClean();
-        foreach (var item in uploadedStates)
-            _localStore.MarkPrefixValidated(item.Key, item.Value, latestSnapshot);
+        _localStore.MarkPrefixesValidated(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshot);
     }
 
     /// <summary>

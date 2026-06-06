@@ -140,6 +140,31 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    public void MarkPrefixesValidated_UpdatesValidationStateForAllPrefixes()
+    {
+        var repositoryKey = $"acct-local-store-mark-validated-range-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
+        var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
+        var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
+        store.UpdatePrefix(firstPrefix, "remote-1", "snapshot-1", [firstEntry]);
+        store.UpdatePrefix(secondPrefix, "remote-2", "snapshot-1", [secondEntry]);
+
+        store.MarkPrefixesValidated([(firstPrefix, "remote-1"), (secondPrefix, "remote-2")], "snapshot-2");
+
+        store.FindEntry(firstEntry.ContentHash).ShouldBe(firstEntry);
+        store.FindEntry(secondEntry.ContentHash).ShouldBe(secondEntry);
+        store.IsPrefixValidatedForSnapshot(firstPrefix, "snapshot-1").ShouldBeFalse();
+        store.IsPrefixValidatedForSnapshot(secondPrefix, "snapshot-1").ShouldBeFalse();
+        store.IsPrefixValidatedForSnapshot(firstPrefix, "snapshot-2").ShouldBeTrue();
+        store.IsPrefixValidatedForSnapshot(secondPrefix, "snapshot-2").ShouldBeTrue();
+        store.CanReuseRemotePrefix(firstPrefix, "remote-1").ShouldBeTrue();
+        store.CanReuseRemotePrefix(secondPrefix, "remote-2").ShouldBeTrue();
+    }
+
+    [Test]
     public void ClearCleanCache_PreservesDirtyRows_AndClearsLoadedPrefixes()
     {
         var repositoryKey = $"acct-local-store-clear-{Guid.NewGuid():N}";
