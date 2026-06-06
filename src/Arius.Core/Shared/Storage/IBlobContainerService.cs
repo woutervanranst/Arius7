@@ -41,7 +41,7 @@ public enum RehydratePriority
 /// <summary>
 /// Result returned by a blob upload operation.
 /// </summary>
-public sealed class UploadResult
+public sealed record UploadResult
 {
     public required string BlobIdentity { get; init; }
 }
@@ -49,7 +49,7 @@ public sealed class UploadResult
 /// <summary>
 /// Result returned by a blob download operation.
 /// </summary>
-public sealed class DownloadResult
+public sealed record DownloadResult
 {
     public required Stream Stream { get; init; }
 
@@ -59,7 +59,7 @@ public sealed class DownloadResult
 /// <summary>
 /// Metadata returned by a HEAD or download operation on a blob.
 /// </summary>
-public sealed class BlobMetadata
+public sealed record BlobMetadata
 {
     public required bool                                Exists        { get; init; }
     public          string?                             BlobIdentity  { get; init; }
