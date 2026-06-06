@@ -162,8 +162,8 @@ public sealed class ChunkStorageService : IChunkStorageService
     private async Task<Stream> DownloadCoreAsync(ChunkHash chunkHash, IProgress<long>? progress, CancellationToken cancellationToken)
     {
         var blobName = await SelectReadableChunkBlobAsync(chunkHash, cancellationToken);
-        var downloadStream = await _blobs.DownloadAsync(blobName, cancellationToken);
-        var progressOrRawStream = progress is null ? downloadStream : new ProgressStream(downloadStream, progress);
+        var download = await _blobs.DownloadAsync(blobName, cancellationToken);
+        var progressOrRawStream = progress is null ? download.Stream : new ProgressStream(download.Stream, progress);
         var decryptStream = _encryption.WrapForDecryption(progressOrRawStream);
         var gzipStream = new GZipStream(decryptStream, CompressionMode.Decompress);
         return new ChunkDownloadStream(gzipStream);

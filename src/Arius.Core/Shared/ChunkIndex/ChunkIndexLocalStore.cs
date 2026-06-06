@@ -40,6 +40,418 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// </summary>
     public void Initialize()
     {
+        try
+        {
+            CreateOrUpgradeSchema();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Releases resources held by the store.
+    /// </summary>
+    public void Dispose()
+    {
+    }
+
+    // -- LOOKUP ---------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the locally stored entry for <paramref name="contentHash"/> regardless of whether that entry is clean or dirty.
+    /// Use this only when the caller has already handled remote-validation requirements for clean cached data,
+    /// or when the caller intentionally accepts either state.
+    /// </summary>
+    public ShardEntry? FindEntry(ContentHash contentHash) => FindEntryCore(contentHash, dirtyOnly: false);
+
+    /// <summary>
+    /// Returns the locally stored entry for <paramref name="contentHash"/> only when that entry is still dirty.
+    /// Use this before remote validation when dirty entries must win immediately over remote shard state.
+    /// Returns <c>null</c> for missing entries and for clean cached entries.
+    /// </summary>
+    public ShardEntry? FindDirtyEntry(ContentHash contentHash) => FindEntryCore(contentHash, dirtyOnly: true);
+
+    private ShardEntry? FindEntryCore(ContentHash contentHash, bool dirtyOnly)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = dirtyOnly
+                ? "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash AND dirty = 1;"
+                : "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE content_hash = $contentHash;";
+            command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
+            using var reader = command.ExecuteReader();
+            return reader.Read() ? ReadEntry(reader) : null;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns the cached remote-validation state for <paramref name="prefix"/>, if it is known locally.
+    /// </summary>
+    public LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT remote_exists, remote_blob_identity, validated_snapshot_identity FROM loaded_prefixes WHERE prefix = $prefix;";
+            command.Parameters.AddWithValue("$prefix", prefix.ToString());
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+                return null;
+
+            return new LoadedPrefixState(
+                prefix,
+                reader.GetInt64(0) != 0,
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.GetString(2));
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns prefixes that contain dirty entries which still need to be flushed to remote shard blobs.
+    /// </summary>
+    public IReadOnlyList<PathSegment> GetDirtyPrefixes()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries WHERE dirty = 1 ORDER BY prefix;";
+            using var reader = command.ExecuteReader();
+            var prefixes = new List<PathSegment>();
+            while (reader.Read())
+                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
+
+            return prefixes;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns prefixes represented by any local chunk-index row.
+    /// </summary>
+    public IReadOnlyList<PathSegment> GetStoredPrefixes()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries ORDER BY prefix;";
+            using var reader = command.ExecuteReader();
+            var prefixes = new List<PathSegment>();
+            while (reader.Read())
+                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
+
+            return prefixes;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Streams all entries for <paramref name="prefix"/> in deterministic content-hash order.
+    /// </summary>
+    public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE prefix = $prefix ORDER BY content_hash;";
+            command.Parameters.AddWithValue("$prefix", prefix.ToString());
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                consume(ReadEntry(reader));
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns whether the local store currently contains unflushed dirty entries.
+    /// </summary>
+    public bool HasDirtyRows()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            return HasDirtyRows(connection);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns whether the crash-safety marker indicates that dirty rows may exist.
+    /// </summary>
+    public bool HasDirtyMarker() => _fileSystem.FileExists(_dirtyMarkerPath);
+
+    // -- DIRTY WRITES ---------------------------------------------------------
+
+    /// <summary>
+    /// Records a newly discovered entry as dirty until it is flushed to the remote chunk index.
+    /// </summary>
+    public void UpsertDirty(ShardEntry entry) => UpsertDirtyRange([entry]);
+
+    /// <summary>
+    /// Records newly discovered entries as dirty until they are flushed to the remote chunk index.
+    /// </summary>
+    public void UpsertDirtyRange(IEnumerable<ShardEntry> entries)
+    {
+        try
+        {
+            var materialized = entries.ToArray();
+            if (materialized.Length == 0)
+                return;
+
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var command = CreateUpsertCommand(connection, transaction, dirty: true, preserveDirtyRows: false);
+                foreach (var entry in materialized)
+                {
+                    BindEntry(command, entry);
+                    command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                WriteDirtyMarker();
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Marks dirty rows in the provided prefixes as clean after their shards have been uploaded.
+    /// </summary>
+    public void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes)
+    {
+        try
+        {
+            if (prefixes.Count == 0)
+                return;
+
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE prefix = $prefix AND dirty = 1;";
+                var prefixParameter = command.Parameters.Add("$prefix", SqliteType.Text);
+                foreach (var prefix in prefixes)
+                {
+                    prefixParameter.Value = prefix.ToString();
+                    command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+
+                if (!HasDirtyRows(connection))
+                    DeleteDirtyMarker();
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    // -- CLEAN CACHE ----------------------------------------------------------
+
+    /// <summary>
+    /// Records a known-clean entry, typically during explicit repair from remote chunk blobs.
+    /// </summary>
+    public void UpsertClean(ShardEntry entry)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: false);
+            BindEntry(command, entry);
+            command.ExecuteNonQuery();
+            transaction.Commit();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Replaces local clean rows for a loaded prefix while preserving any dirty rows for the same content hashes.
+    /// </summary>
+    public void IngestCleanPrefix(LoadedPrefixState loadedPrefix, IEnumerable<ShardEntry> entries)
+    {
+        try
+        {
+            var materialized = entries.ToArray();
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: true);
+            foreach (var entry in materialized)
+            {
+                BindEntry(command, entry);
+                command.ExecuteNonQuery();
+            }
+
+            UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            transaction.Commit();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Deletes clean cached rows and validation state for <paramref name="prefix"/> while preserving dirty rows.
+    /// </summary>
+    public void DeleteCleanPrefix(PathSegment prefix)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0; DELETE FROM loaded_prefixes WHERE prefix = $prefix;";
+            command.Parameters.AddWithValue("$prefix", prefix.ToString());
+            var x = command.ExecuteNonQuery();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Updates the cached remote-validation state for a prefix.
+    /// </summary>
+    public void UpdateLoadedPrefixState(LoadedPrefixState loadedPrefix)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            transaction.Commit();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Clears all disposable clean cache state while preserving unflushed dirty rows.
+    /// </summary>
+    public void ClearCleanCache()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            using var deleteEntries = connection.CreateCommand();
+            deleteEntries.Transaction = transaction;
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE dirty = 0;";
+            deleteEntries.ExecuteNonQuery();
+
+            using var deletePrefixes = connection.CreateCommand();
+            deletePrefixes.Transaction = transaction;
+            deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
+            deletePrefixes.ExecuteNonQuery();
+            transaction.Commit();
+
+            DeleteLegacyShardCacheFiles();
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    // -- RECOVERY -------------------------------------------------------------
+
+    /// <summary>
+    /// Recreates the SQLite database after local-store corruption, optionally keeping backup files for inspection.
+    /// </summary>
+    public void RecreateDatabase(bool backupExisting)
+    {
+        try
+        {
+            lock (_localStateGate)
+            {
+                SqliteConnection.ClearAllPools();
+                foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
+                {
+                    var path = backupExisting
+                        ? RelativePath.Parse($"cache.sqlite{suffix}.bak")
+                        : default;
+                    var current = RelativePath.Parse($"cache.sqlite{suffix}");
+                    if (!_fileSystem.FileExists(current))
+                        continue;
+
+                    if (backupExisting)
+                    {
+                        if (_fileSystem.FileExists(path))
+                            _fileSystem.DeleteFile(path);
+                        File.Move(_rootDirectory.Resolve(current), _rootDirectory.Resolve(path), overwrite: true);
+                    }
+                    else
+                    {
+                        _fileSystem.DeleteFile(current);
+                    }
+                }
+
+                DeleteDirtyMarker();
+                CreateOrUpgradeSchema();
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    private ChunkIndexLocalStoreException CreateLocalStoreException(SqliteException ex)
+    {
+        var path = _rootDirectory.Resolve(_databasePath);
+        var message = HasDirtyMarker()
+            ? $"Local chunk-index cache '{path}' is unreadable while unflushed entries may exist. Rerun archive to finish flushing the chunk index, or run the explicit chunk-index repair command if archive cannot recover."
+            : $"Local chunk-index cache '{path}' is unreadable. Delete the local chunk-index cache directory '{_rootDirectory}' and retry, or run the explicit chunk-index repair command if the problem persists.";
+
+        return new ChunkIndexLocalStoreException(message, ex);
+    }
+
+    // -- SQLITE HELPERS -------------------------------------------------------
+
+    private void CreateOrUpgradeSchema()
+    {
         using var connection = OpenConnection();
         using var pragma = connection.CreateCommand();
         pragma.CommandText = "PRAGMA journal_mode = wal; PRAGMA synchronous = normal;";
@@ -89,294 +501,6 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         version.Parameters.AddWithValue("$value", SchemaVersion);
         version.ExecuteNonQuery();
     }
-
-    /// <summary>
-    /// Releases resources held by the store.
-    /// </summary>
-    public void Dispose()
-    {
-    }
-
-    // -- LOOKUP ---------------------------------------------------------------
-
-    /// <summary>
-    /// Returns the chunk-index entry for <paramref name="contentHash"/>, ignoring whether it is dirty.
-    /// </summary>
-    public ShardEntry? GetValueOrDefault(ContentHash contentHash)
-    {
-        var row = GetRowOrDefault(contentHash);
-        return row?.Entry;
-    }
-
-    /// <summary>
-    /// Returns the local row for <paramref name="contentHash"/>, including its dirty state.
-    /// </summary>
-    public LocalStoreRow? GetRowOrDefault(ContentHash contentHash)
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size, dirty FROM chunk_index_entries WHERE content_hash = $contentHash;";
-        command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
-        using var reader = command.ExecuteReader();
-        return reader.Read() ? ReadRow(reader) : null;
-    }
-
-    /// <summary>
-    /// Returns the cached remote-validation state for <paramref name="prefix"/>, if it is known locally.
-    /// </summary>
-    public LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix)
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT remote_exists, remote_blob_identity, validated_snapshot_identity FROM loaded_prefixes WHERE prefix = $prefix;";
-        command.Parameters.AddWithValue("$prefix", prefix.ToString());
-        using var reader = command.ExecuteReader();
-        if (!reader.Read())
-            return null;
-
-        return new LoadedPrefixState(
-            prefix,
-            reader.GetInt64(0) != 0,
-            reader.IsDBNull(1) ? null : reader.GetString(1),
-            reader.GetString(2));
-    }
-
-    /// <summary>
-    /// Returns prefixes that contain dirty entries which still need to be flushed to remote shard blobs.
-    /// </summary>
-    public IReadOnlyList<PathSegment> GetDirtyPrefixes()
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries WHERE dirty = 1 ORDER BY prefix;";
-        using var reader = command.ExecuteReader();
-        var prefixes = new List<PathSegment>();
-        while (reader.Read())
-            prefixes.Add(PathSegment.Parse(reader.GetString(0)));
-
-        return prefixes;
-    }
-
-    /// <summary>
-    /// Returns prefixes represented by any local chunk-index row.
-    /// </summary>
-    public IReadOnlyList<PathSegment> GetStoredPrefixes()
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries ORDER BY prefix;";
-        using var reader = command.ExecuteReader();
-        var prefixes = new List<PathSegment>();
-        while (reader.Read())
-            prefixes.Add(PathSegment.Parse(reader.GetString(0)));
-
-        return prefixes;
-    }
-
-    /// <summary>
-    /// Streams all entries for <paramref name="prefix"/> in deterministic content-hash order.
-    /// </summary>
-    public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE prefix = $prefix ORDER BY content_hash;";
-        command.Parameters.AddWithValue("$prefix", prefix.ToString());
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            consume(ReadEntry(reader));
-    }
-
-    /// <summary>
-    /// Returns whether the local store currently contains unflushed dirty entries.
-    /// </summary>
-    public bool HasDirtyRows()
-    {
-        using var connection = OpenConnection();
-        return HasDirtyRows(connection);
-    }
-
-    /// <summary>
-    /// Returns whether the crash-safety marker indicates that dirty rows may exist.
-    /// </summary>
-    public bool HasDirtyMarker() => _fileSystem.FileExists(_dirtyMarkerPath);
-
-    // -- DIRTY WRITES ---------------------------------------------------------
-
-    /// <summary>
-    /// Records a newly discovered entry as dirty until it is flushed to the remote chunk index.
-    /// </summary>
-    public void UpsertDirty(ShardEntry entry) => UpsertDirtyRange([entry]);
-
-    /// <summary>
-    /// Records newly discovered entries as dirty until they are flushed to the remote chunk index.
-    /// </summary>
-    public void UpsertDirtyRange(IEnumerable<ShardEntry> entries)
-    {
-        var materialized = entries.ToArray();
-        if (materialized.Length == 0)
-            return;
-
-        lock (_localStateGate)
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var command = CreateUpsertCommand(connection, transaction, dirty: true, preserveDirtyRows: false);
-            foreach (var entry in materialized)
-            {
-                BindEntry(command, entry);
-                command.ExecuteNonQuery();
-            }
-
-            transaction.Commit();
-            WriteDirtyMarker();
-        }
-    }
-
-    /// <summary>
-    /// Marks dirty rows in the provided prefixes as clean after their shards have been uploaded.
-    /// </summary>
-    public void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes)
-    {
-        if (prefixes.Count == 0)
-            return;
-
-        lock (_localStateGate)
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE prefix = $prefix AND dirty = 1;";
-            var prefixParameter = command.Parameters.Add("$prefix", SqliteType.Text);
-            foreach (var prefix in prefixes)
-            {
-                prefixParameter.Value = prefix.ToString();
-                command.ExecuteNonQuery();
-            }
-
-            transaction.Commit();
-
-            if (!HasDirtyRows(connection))
-                DeleteDirtyMarker();
-        }
-    }
-
-    // -- CLEAN CACHE ----------------------------------------------------------
-
-    /// <summary>
-    /// Records a known-clean entry, typically during explicit repair from remote chunk blobs.
-    /// </summary>
-    public void UpsertClean(ShardEntry entry)
-    {
-        using var connection = OpenConnection();
-        using var transaction = connection.BeginTransaction();
-        using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: false);
-        BindEntry(command, entry);
-        command.ExecuteNonQuery();
-        transaction.Commit();
-    }
-
-    /// <summary>
-    /// Replaces local clean rows for a loaded prefix while preserving any dirty rows for the same content hashes.
-    /// </summary>
-    public void IngestCleanPrefix(LoadedPrefixState loadedPrefix, IEnumerable<ShardEntry> entries)
-    {
-        var materialized = entries.ToArray();
-        using var connection = OpenConnection();
-        using var transaction = connection.BeginTransaction();
-        using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: true);
-        foreach (var entry in materialized)
-        {
-            BindEntry(command, entry);
-            command.ExecuteNonQuery();
-        }
-
-        UpsertLoadedPrefix(connection, transaction, loadedPrefix);
-        transaction.Commit();
-    }
-
-    /// <summary>
-    /// Deletes clean cached rows and validation state for <paramref name="prefix"/> while preserving dirty rows.
-    /// </summary>
-    public void DeleteCleanPrefix(PathSegment prefix)
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0; DELETE FROM loaded_prefixes WHERE prefix = $prefix;";
-        command.Parameters.AddWithValue("$prefix", prefix.ToString());
-        command.ExecuteNonQuery();
-    }
-
-    /// <summary>
-    /// Updates the cached remote-validation state for a prefix.
-    /// </summary>
-    public void UpdateLoadedPrefixState(LoadedPrefixState loadedPrefix)
-    {
-        using var connection = OpenConnection();
-        using var transaction = connection.BeginTransaction();
-        UpsertLoadedPrefix(connection, transaction, loadedPrefix);
-        transaction.Commit();
-    }
-
-    /// <summary>
-    /// Clears all disposable clean cache state while preserving unflushed dirty rows.
-    /// </summary>
-    public void ClearCleanCache()
-    {
-        using var connection = OpenConnection();
-        using var transaction = connection.BeginTransaction();
-        using var deleteEntries = connection.CreateCommand();
-        deleteEntries.Transaction = transaction;
-        deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE dirty = 0;";
-        deleteEntries.ExecuteNonQuery();
-
-        using var deletePrefixes = connection.CreateCommand();
-        deletePrefixes.Transaction = transaction;
-        deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
-        deletePrefixes.ExecuteNonQuery();
-        transaction.Commit();
-
-        DeleteLegacyShardCacheFiles();
-    }
-
-    // -- RECOVERY -------------------------------------------------------------
-
-    /// <summary>
-    /// Recreates the SQLite database after local-store corruption, optionally keeping backup files for inspection.
-    /// </summary>
-    public void RecreateDatabase(bool backupExisting)
-    {
-        lock (_localStateGate)
-        {
-            SqliteConnection.ClearAllPools();
-            foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
-            {
-                var path = backupExisting
-                    ? RelativePath.Parse($"cache.sqlite{suffix}.bak")
-                    : default;
-                var current = RelativePath.Parse($"cache.sqlite{suffix}");
-                if (!_fileSystem.FileExists(current))
-                    continue;
-
-                if (backupExisting)
-                {
-                    if (_fileSystem.FileExists(path))
-                        _fileSystem.DeleteFile(path);
-                    File.Move(_rootDirectory.Resolve(current), _rootDirectory.Resolve(path), overwrite: true);
-                }
-                else
-                {
-                    _fileSystem.DeleteFile(current);
-                }
-            }
-
-            DeleteDirtyMarker();
-            Initialize();
-        }
-    }
-
-    // -- SQLITE HELPERS -------------------------------------------------------
 
     private SqliteConnection OpenConnection()
     {
@@ -463,9 +587,6 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             reader.GetInt64(2),
             reader.GetInt64(3));
 
-    private static LocalStoreRow ReadRow(SqliteDataReader reader)
-        => new(ReadEntry(reader), reader.GetInt64(4) != 0);
-
     private static byte[] ParseHashBytes(string value)
         => Convert.FromHexString(value);
 
@@ -497,6 +618,4 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         var value = fileName.ToString();
         return value.Length == 2 && value.All(Uri.IsHexDigit);
     }
-
-    internal sealed record LocalStoreRow(ShardEntry Entry, bool IsDirty);
 }

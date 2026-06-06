@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Microsoft.Data.Sqlite;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.ChunkIndex;
@@ -11,7 +11,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 public sealed class ChunkIndexService : IDisposable
 {
     internal const           int          ShardPrefixLength          = 2;
-    internal const           int          FlushWorkers               = 8;
+    internal const           int          FlushWorkers               = 1; // TODO 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
@@ -19,22 +19,32 @@ public sealed class ChunkIndexService : IDisposable
     private readonly RelativeFileSystem                               _repositoryFileSystem;
     private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
+    private readonly AsyncLazy<string>                                _latestSnapshot;
     private          int                                              _flushInProgress;
 
     public ChunkIndexService(
         IBlobContainerService blobs, 
-        IEncryptionService encryption, 
+        IEncryptionService encryption,
+        ISnapshotService snapshotService,
         string accountName, 
         string containerName)
     {
         _blobs      = blobs;
         _encryption = encryption;
+
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
-        var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
 
-        _localStore     = new ChunkIndexLocalStore(l2Root);
+        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
+        _localStore = new ChunkIndexLocalStore(cacheRoot);
+        _latestSnapshot = new AsyncLazy<string>(async () =>
+        {
+            var snapshots= await snapshotService.ListBlobNamesAsync();
+            return snapshots.Count == 0
+                ? "<none>"
+                : snapshots[^1].Name.ToString();
+        });
     }
 
     // ── Lookup ─────────────────────────────────────────
@@ -43,68 +53,62 @@ public sealed class ChunkIndexService : IDisposable
     {
         ThrowIfRepairIncomplete();
 
-        return await WithLocalStoreRecoveryAsync(async () =>
+        var hashes = contentHashes.Distinct().ToArray();
+        var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
+        if (hashes.Length == 0)
+            return result;
+
+        var validationWork = new List<(PathSegment Prefix, List<ContentHash> Hashes)>();
+        foreach (var prefixGroup in hashes.GroupBy(ChunkIndexRouter.GetLeafPrefix))
         {
-            var hashes = contentHashes.Distinct().ToArray();
-            var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
-            if (hashes.Length == 0)
-                return result;
-
-            var validationWork = new List<(PathSegment Prefix, List<ContentHash> Hashes)>();
-            foreach (var prefixGroup in hashes.GroupBy(ChunkIndexRouter.GetLeafPrefix))
+            var hashesNeedingValidation = new List<ContentHash>();
+            foreach (var contentHash in prefixGroup)
             {
-                var hashesNeedingValidation = new List<ContentHash>();
-                foreach (var contentHash in prefixGroup)
+                var dirtyEntry = _localStore.FindDirtyEntry(contentHash);
+                if (dirtyEntry is not null)
                 {
-                    var localRow = _localStore.GetRowOrDefault(contentHash);
-                    if (localRow is { IsDirty: true })
-                    {
-                        result[contentHash] = localRow.Entry;
-                        continue;
-                    }
-
-                    hashesNeedingValidation.Add(contentHash);
-                }
-
-                if (hashesNeedingValidation.Count == 0)
+                    result[contentHash] = dirtyEntry;
                     continue;
-
-                validationWork.Add((prefixGroup.Key, hashesNeedingValidation));
-            }
-
-            if (validationWork.Count == 0)
-                return result;
-
-            var latestSnapshotIdentity = await GetLatestSnapshotIdentityAsync(cancellationToken);
-            foreach (var item in validationWork)
-            {
-                await EnsurePrefixLoadedAndValidatedAsync(item.Prefix, latestSnapshotIdentity, cancellationToken);
-                foreach (var contentHash in item.Hashes)
-                {
-                    var entry = _localStore.GetValueOrDefault(contentHash);
-                    if (entry is not null)
-                        result[contentHash] = entry;
                 }
+
+                hashesNeedingValidation.Add(contentHash);
             }
 
-            return (IReadOnlyDictionary<ContentHash, ShardEntry>)result;
-        });
+            if (hashesNeedingValidation.Count == 0)
+                continue;
+
+            validationWork.Add((prefixGroup.Key, hashesNeedingValidation));
+        }
+
+        if (validationWork.Count == 0)
+            return result;
+
+        var latestSnapshotIdentity = await _latestSnapshot;
+        foreach (var item in validationWork)
+        {
+            await EnsurePrefixLoadedAndValidatedAsync(item.Prefix, latestSnapshotIdentity, cancellationToken);
+            foreach (var contentHash in item.Hashes)
+            {
+                var entry = _localStore.FindEntry(contentHash);
+                if (entry is not null)
+                    result[contentHash] = entry;
+            }
+        }
+
+        return result;
     }
 
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
 
-        return await WithLocalStoreRecoveryAsync(async () =>
-        {
-            var localRow = _localStore.GetRowOrDefault(contentHash);
-            if (localRow is { IsDirty: true })
-                return localRow.Entry;
+        var dirtyEntry = _localStore.FindDirtyEntry(contentHash);
+        if (dirtyEntry is not null)
+            return dirtyEntry;
 
-            var latestSnapshotIdentity = await GetLatestSnapshotIdentityAsync(cancellationToken);
-            await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshotIdentity, cancellationToken);
-            return _localStore.GetValueOrDefault(contentHash);
-        });
+        var latestSnapshotIdentity = await _latestSnapshot;
+        await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshotIdentity, cancellationToken);
+        return _localStore.FindEntry(contentHash);
     }
 
     // ── Record new entry ──────────────────────────────────────────────────────
@@ -115,10 +119,7 @@ public sealed class ChunkIndexService : IDisposable
         if (Volatile.Read(ref _flushInProgress) != 0)
             throw new InvalidOperationException("Cannot record chunk-index entries while a flush is in progress.");
 
-        WithLocalStoreRecovery(() =>
-        {
-            _localStore.UpsertDirty(entry);
-        });
+        _localStore.UpsertDirty(entry);
     }
 
     // ── Flush (upload shards at end of run) ───────────────────────────────────
@@ -132,33 +133,32 @@ public sealed class ChunkIndexService : IDisposable
 
         try
         {
-            await WithLocalStoreRecoveryAsync(async () =>
-            {
-                var dirtyPrefixes = _localStore.GetDirtyPrefixes();
-                if (dirtyPrefixes.Count == 0)
-                    return;
+            var dirtyPrefixes = _localStore.GetDirtyPrefixes();
+            if (dirtyPrefixes.Count == 0)
+                return; // no shards need to be written to blob
 
-                var latestSnapshotIdentity = await GetLatestSnapshotIdentityAsync(cancellationToken);
-                var uploadedStates = new ConcurrentDictionary<PathSegment, LoadedPrefixState>();
+            var latestSnapshot = await _latestSnapshot;
+            var uploadedStates = new ConcurrentDictionary<PathSegment, LoadedPrefixState>();
 
-                await Parallel.ForEachAsync(
-                    dirtyPrefixes,
-                    new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-                    async (prefix, ct) =>
-                    {
-                        await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshotIdentity, ct);
-                        var shard = BuildShard(prefix);
-                        if (shard.Count == 0)
-                            return;
+            await Parallel.ForEachAsync(
+                dirtyPrefixes,
+                new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+                async (prefix, ct) =>
+                {
+                    // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
+                    await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshot, ct);
 
-                        var metadata = await UploadShardAsync(prefix, shard, ct);
-                        uploadedStates[prefix] = new LoadedPrefixState(prefix, true, metadata.BlobIdentity, latestSnapshotIdentity);
-                    });
+                    var shard = BuildShard(prefix);
+                    if (shard.Count == 0)
+                        return;
 
-                _localStore.MarkDirtyPrefixesClean(dirtyPrefixes);
-                foreach (var state in uploadedStates.Values)
-                    _localStore.UpdateLoadedPrefixState(state);
-            });
+                    var result = await UploadShardAsync(prefix, shard, ct);
+                    uploadedStates[prefix] = new LoadedPrefixState(prefix, true, result.BlobIdentity, latestSnapshot);
+                });
+
+            _localStore.MarkDirtyPrefixesClean(dirtyPrefixes);
+            foreach (var state in uploadedStates.Values)
+                _localStore.UpdateLoadedPrefixState(state);
         }
         finally
         {
@@ -173,7 +173,7 @@ public sealed class ChunkIndexService : IDisposable
 
     public void InvalidateCaches()
     {
-        WithLocalStoreRecovery(() => _localStore.ClearCleanCache());
+        _localStore.ClearCleanCache();
     }
 
     // -- Repair
@@ -248,54 +248,42 @@ public sealed class ChunkIndexService : IDisposable
             BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
             _                          => null,
         };
+
+
+        static ShardEntry CreateLargeRepairEntry(BlobListItem item)
+        {
+            var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
+            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            var compressedSize = ReadChunkSize(item);
+            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
+        }
+
+        static ShardEntry CreateThinRepairEntry(BlobListItem item)
+        {
+            var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+            if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+                throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+
+            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
+        }
+
+        static long ReadChunkSize(BlobListItem item)
+            => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+                ? size
+                : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
+
+        static long ReadRequiredLongMetadata(BlobListItem item, string key)
+            => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+                ? parsed
+                : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
     }
-
-    private static ShardEntry CreateLargeRepairEntry(BlobListItem item)
-    {
-        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        var compressedSize = ReadChunkSize(item);
-        return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
-    }
-
-    private static ShardEntry CreateThinRepairEntry(BlobListItem item)
-    {
-        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-        return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
-    }
-
-    private static long ReadChunkSize(BlobListItem item)
-        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-            ? size
-            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
-
-    private static long ReadRequiredLongMetadata(BlobListItem item, string key)
-        => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
-            ? parsed
-            : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 
     private void ThrowIfRepairIncomplete()
     {
         if (IsRepairMarker())
             throw new ChunkIndexRepairIncompleteException();
-    }
-
-    private async Task<string> GetLatestSnapshotIdentityAsync(CancellationToken cancellationToken)
-    {
-        PathSegment? latest = null;
-        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: cancellationToken))
-        {
-            var current = item.Name.Name;
-            if (latest is null || current.Compare(latest.Value, StringComparer.Ordinal) > 0)
-                latest = current;
-        }
-
-        return latest?.ToString() ?? "<none>";
     }
 
     private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotIdentity, CancellationToken cancellationToken)
@@ -304,28 +292,33 @@ public sealed class ChunkIndexService : IDisposable
         await gate.WaitAsync(cancellationToken);
         try
         {
+            // do we have a locally up to date version with the snapshot version
             var loadedPrefix = _localStore.GetLoadedPrefixState(prefix);
             if (loadedPrefix is not null && string.Equals(loadedPrefix.ValidatedSnapshotIdentity, latestSnapshotIdentity, StringComparison.Ordinal))
                 return;
 
+            // we need to get it from remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-            var remoteMetadata = await _blobs.GetMetadataAsync(blobName, cancellationToken);
-            if (loadedPrefix is not null &&
-                loadedPrefix.RemoteExists == remoteMetadata.Exists &&
-                string.Equals(loadedPrefix.RemoteBlobIdentity, remoteMetadata.BlobIdentity, StringComparison.Ordinal))
+            var download = await _blobs.TryDownloadAsync(blobName, cancellationToken);
+            if (download is null)
             {
-                _localStore.UpdateLoadedPrefixState(new LoadedPrefixState(prefix, remoteMetadata.Exists, remoteMetadata.BlobIdentity, latestSnapshotIdentity));
+                // it doesnt exist on remote -> it s a new shard
+                _localStore.DeleteCleanPrefix(prefix);
+                _localStore.UpdateLoadedPrefixState(new LoadedPrefixState(prefix, false, null, latestSnapshotIdentity));
                 return;
             }
 
+            // get it from remote
+            await using var stream = download.Stream;
+            if (loadedPrefix is not null && loadedPrefix.RemoteExists && string.Equals(loadedPrefix.RemoteBlobIdentity, download.BlobIdentity, StringComparison.Ordinal))
+            {
+                // our local copy was up to date
+                _localStore.UpdateLoadedPrefixState(new LoadedPrefixState(prefix, true, download.BlobIdentity, latestSnapshotIdentity));
+                return;
+            }
+
+            // remote has a more up to date version
             _localStore.DeleteCleanPrefix(prefix);
-            if (!remoteMetadata.Exists)
-            {
-                _localStore.IngestCleanPrefix(new LoadedPrefixState(prefix, false, null, latestSnapshotIdentity), []);
-                return;
-            }
-
-            await using var stream = await _blobs.DownloadAsync(blobName, cancellationToken);
             Shard shard;
             try
             {
@@ -336,12 +329,14 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.IngestCleanPrefix(new LoadedPrefixState(prefix, true, remoteMetadata.BlobIdentity, latestSnapshotIdentity), shard.Entries);
+            _localStore.IngestCleanPrefix(new LoadedPrefixState(prefix, true, download.BlobIdentity, latestSnapshotIdentity), shard.Entries);
         }
         finally
         {
             gate.Release();
         }
+
+
     }
 
     private Shard BuildShard(PathSegment prefix)
@@ -351,7 +346,7 @@ public sealed class ChunkIndexService : IDisposable
         return shard;
     }
 
-    private async Task<BlobMetadata> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
+    private async Task<UploadResult> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
     {
         var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, cancellationToken);
         return await _blobs.UploadAsync(
@@ -362,53 +357,6 @@ public sealed class ChunkIndexService : IDisposable
             _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
             overwrite: true,
             cancellationToken: cancellationToken);
-    }
-
-    private void WithLocalStoreRecovery(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (SqliteException ex)
-        {
-            RecoverLocalStore(ex);
-            action();
-        }
-    }
-
-    private async Task<T> WithLocalStoreRecoveryAsync<T>(Func<Task<T>> action)
-    {
-        try
-        {
-            return await action();
-        }
-        catch (SqliteException ex)
-        {
-            RecoverLocalStore(ex);
-            return await action();
-        }
-    }
-
-    private async Task WithLocalStoreRecoveryAsync(Func<Task> action)
-    {
-        try
-        {
-            await action();
-        }
-        catch (SqliteException ex)
-        {
-            RecoverLocalStore(ex);
-            await action();
-        }
-    }
-
-    private void RecoverLocalStore(SqliteException ex)
-    {
-        if (_localStore.HasDirtyMarker())
-            throw new InvalidOperationException("Local chunk-index cache is corrupt while dirty rows may exist. Rerun archive or delete the local .arius folder.", ex);
-
-        _localStore.RecreateDatabase(backupExisting: true);
     }
 
     private       bool IsRepairMarker()     => _repositoryFileSystem.FileExists(RepairInProgressMarkerPath);
