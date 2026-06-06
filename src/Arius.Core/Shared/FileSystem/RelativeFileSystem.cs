@@ -5,27 +5,20 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists so features can perform file IO with <see cref="RelativePath"/> values instead of raw strings,
 /// with responsibility for containment-safe enumeration, reads, writes, and directory creation.
 /// </summary>
-internal sealed class RelativeFileSystem
+internal sealed class RelativeFileSystem(LocalDirectory root)
 {
-    private readonly LocalDirectory _root;
-
-    public RelativeFileSystem(LocalDirectory root)
-    {
-        _root = root;
-    }
-
     // --- FILE EXIST
 
     public bool FileExists(RelativePath path) 
-        => File.Exists(_root.Resolve(path));
+        => File.Exists(root.Resolve(path));
 
     // --- DIRECTORY EXIST
 
     public bool DirectoryExists(RelativePath path) 
-        => DirectoryExists(_root, path);
+        => DirectoryExists(root, path);
 
     public bool DirectoryExists(LocalDirectory directory) 
-        => DirectoryExists(_root, directory);
+        => DirectoryExists(root, directory);
 
     public static bool DirectoryExists(LocalDirectory root, RelativePath path)
         => Directory.Exists(root.Resolve(path));
@@ -39,10 +32,10 @@ internal sealed class RelativeFileSystem
     // -- DIRECTORY CREATE
 
     public void CreateDirectory(RelativePath path)
-        => CreateDirectory(_root, path);
+        => CreateDirectory(root, path);
 
     public void CreateDirectory(LocalDirectory directory)
-        => CreateDirectory(_root, directory);
+        => CreateDirectory(root, directory);
 
     public static void CreateDirectory(LocalDirectory root, RelativePath path)
         => Directory.CreateDirectory(root.Resolve(path));
@@ -57,15 +50,15 @@ internal sealed class RelativeFileSystem
 
     // --- FILE DELETE
 
-    public void DeleteFile(RelativePath path) => File.Delete(_root.Resolve(path));
+    public void DeleteFile(RelativePath path) => File.Delete(root.Resolve(path));
 
     // --- DIRECTORY DELETE
 
     public void DeleteDirectory(RelativePath path, bool recursive)
-        => DeleteDirectory(_root, path, recursive);
+        => DeleteDirectory(root, path, recursive);
 
     public void DeleteDirectory(LocalDirectory directory, bool recursive)
-        => DeleteDirectory(_root, directory, recursive);
+        => DeleteDirectory(root, directory, recursive);
 
     public static void DeleteDirectory(LocalDirectory root, RelativePath path, bool recursive) 
         => Directory.Delete(root.Resolve(path), recursive);
@@ -87,7 +80,7 @@ internal sealed class RelativeFileSystem
     public void DeleteDirectoryIfExists(LocalDirectory directory, bool recursive)
     {
         if (DirectoryExists(directory))
-            DeleteDirectory(_root, directory, recursive);
+            DeleteDirectory(root, directory, recursive);
     }
 
     public static void DeleteDirectoryIfExists(LocalDirectory root, RelativePath path, bool recursive)
@@ -110,7 +103,7 @@ internal sealed class RelativeFileSystem
     /// <param name="path"></param>
     public void ClearDirectory(RelativePath path)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         if (!Directory.Exists(fullPath))
             return;
 
@@ -126,9 +119,9 @@ internal sealed class RelativeFileSystem
     /// </summary>
     public IEnumerable<LocalDirectoryEntry> EnumerateDirectories(RelativePath path)
     {
-        foreach (var directoryPath in Directory.EnumerateDirectories(_root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
+        foreach (var directoryPath in Directory.EnumerateDirectories(root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
         {
-            if (!_root.TryGetRelativePath(directoryPath, out var relativePath))
+            if (!root.TryGetRelativePath(directoryPath, out var relativePath))
                 continue;
 
             yield return new LocalDirectoryEntry { Path = relativePath };
@@ -145,9 +138,9 @@ internal sealed class RelativeFileSystem
     /// </summary>
     public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path, SearchOption searchOption)
     {
-        foreach (var filePath in Directory.EnumerateFiles(_root.Resolve(path), "*", searchOption))
+        foreach (var filePath in Directory.EnumerateFiles(root.Resolve(path), "*", searchOption))
         {
-            if (!_root.TryGetRelativePath(filePath, out var relativePath))
+            if (!root.TryGetRelativePath(filePath, out var relativePath))
                 continue;
 
             yield return new LocalFileEntry
@@ -159,7 +152,7 @@ internal sealed class RelativeFileSystem
 
     public IEnumerable<PathSegment> EnumerateFileNames(RelativePath path)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         if (!Directory.Exists(fullPath))
             yield break;
 
@@ -179,7 +172,7 @@ internal sealed class RelativeFileSystem
     /// </summary>
     public Stream CreateFile(RelativePath path)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         CreateDirectory(path.Parent ?? RelativePath.Root);
         return new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
     }
@@ -187,49 +180,49 @@ internal sealed class RelativeFileSystem
     /// <summary>
     /// Opens a file for reading within the rooted directory.
     /// </summary>
-    public Stream OpenRead(RelativePath path) => File.OpenRead(_root.Resolve(path));
+    public Stream OpenRead(RelativePath path) => File.OpenRead(root.Resolve(path));
 
     public FileStream OpenOrCreateFile(RelativePath path, FileAccess access, FileShare share, int bufferSize = 4096, bool useAsync = true)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         CreateDirectory(path.Parent ?? RelativePath.Root);
         return new FileStream(fullPath, FileMode.OpenOrCreate, access, share, bufferSize, useAsync);
     }
 
-    public string ReadAllText(RelativePath path) => File.ReadAllText(_root.Resolve(path));
+    public string ReadAllText(RelativePath path) => File.ReadAllText(root.Resolve(path));
 
-    public byte[] ReadAllBytes(RelativePath path) => File.ReadAllBytes(_root.Resolve(path));
+    public byte[] ReadAllBytes(RelativePath path) => File.ReadAllBytes(root.Resolve(path));
 
     public Task<string> ReadAllTextAsync(RelativePath path, CancellationToken cancellationToken) =>
-        File.ReadAllTextAsync(_root.Resolve(path), cancellationToken);
+        File.ReadAllTextAsync(root.Resolve(path), cancellationToken);
 
     public Task<byte[]> ReadAllBytesAsync(RelativePath path, CancellationToken cancellationToken) =>
-        File.ReadAllBytesAsync(_root.Resolve(path), cancellationToken);
+        File.ReadAllBytesAsync(root.Resolve(path), cancellationToken);
 
     public async IAsyncEnumerable<string> ReadLinesAsync(RelativePath path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var line in File.ReadLinesAsync(_root.Resolve(path), cancellationToken))
+        await foreach (var line in File.ReadLinesAsync(root.Resolve(path), cancellationToken))
             yield return line;
     }
 
     public async Task WriteAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         CreateDirectory(path.Parent ?? RelativePath.Root);
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
     }
 
     public async Task WriteAllBytesAsync(RelativePath path, byte[] content, CancellationToken cancellationToken)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         CreateDirectory(path.Parent ?? RelativePath.Root);
         await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
     }
 
     public void ReplaceFileAtomically(RelativePath source, RelativePath destination)
     {
-        var sourcePath = _root.Resolve(source);
-        var destinationPath = _root.Resolve(destination);
+        var sourcePath = root.Resolve(source);
+        var destinationPath = root.Resolve(destination);
         CreateDirectory(destination.Parent ?? RelativePath.Root);
 
         if (OperatingSystem.IsWindows() && File.Exists(destinationPath))
@@ -243,19 +236,19 @@ internal sealed class RelativeFileSystem
     /// </summary>
     public void CopyFile(RelativePath source, RelativePath destination, bool overwrite)
     {
-        var destinationPath = _root.Resolve(destination);
+        var destinationPath = root.Resolve(destination);
         CreateDirectory(destination.Parent ?? RelativePath.Root);
-        File.Copy(_root.Resolve(source), destinationPath, overwrite);
+        File.Copy(root.Resolve(source), destinationPath, overwrite);
     }
 
-    public long GetFileSize(RelativePath path) => new FileInfo(_root.Resolve(path)).Length;
+    public long GetFileSize(RelativePath path) => new FileInfo(root.Resolve(path)).Length;
 
     /// <summary>
     /// Reads creation and last-write timestamps for a file within the rooted directory.
     /// </summary>
     public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
         return (
@@ -268,7 +261,7 @@ internal sealed class RelativeFileSystem
     /// </summary>
     public void SetTimestamps(RelativePath path, DateTimeOffset created, DateTimeOffset modified)
     {
-        var fullPath = _root.Resolve(path);
+        var fullPath = root.Resolve(path);
         using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         File.SetCreationTimeUtc(handle, created.UtcDateTime);
         File.SetLastWriteTimeUtc(handle, modified.UtcDateTime);
