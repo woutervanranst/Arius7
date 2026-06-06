@@ -21,7 +21,7 @@ public sealed class ChunkIndexService : IDisposable
     private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
     private readonly AsyncLazy<string>                                _latestSnapshot;
-    private          int                                              _flushInProgress;
+    private          int                                              _acceptingEntries = 1;
 
     // -- Construction --------------------------------------------------------
 
@@ -200,8 +200,8 @@ public sealed class ChunkIndexService : IDisposable
     public void AddEntry(ShardEntry entry)
     {
         ThrowIfRepairIncomplete();
-        if (Volatile.Read(ref _flushInProgress) != 0)
-            throw new InvalidOperationException("Cannot record chunk-index entries while a flush is in progress.");
+        if (Volatile.Read(ref _acceptingEntries) == 0)
+            throw new InvalidOperationException("Cannot record chunk-index entries after flush has started.");
 
         _localStore.UpsertDirty(entry);
     }
@@ -216,42 +216,35 @@ public sealed class ChunkIndexService : IDisposable
     {
         ThrowIfRepairIncomplete();
 
-        if (Interlocked.Exchange(ref _flushInProgress, 1) != 0)
-            throw new InvalidOperationException("Chunk-index flush is already in progress.");
+        if (Interlocked.Exchange(ref _acceptingEntries, 0) == 0)
+            throw new InvalidOperationException("Chunk-index flush has already started.");
 
-        try
-        {
-            var dirtyPrefixes = _localStore.GetDirtyPrefixes();
-            if (dirtyPrefixes.Count == 0)
-                return; // no shards need to be written to blob
+        var dirtyPrefixes = _localStore.GetDirtyPrefixes();
+        if (dirtyPrefixes.Count == 0)
+            return; // no shards need to be written to blob
 
-            var latestSnapshot = await _latestSnapshot;
-            var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
+        var latestSnapshot = await _latestSnapshot;
+        var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
-            await Parallel.ForEachAsync(
-                dirtyPrefixes,
-                new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-                async (prefix, ct) =>
-                {
-                    // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
-                    await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshot, ct);
+        await Parallel.ForEachAsync(
+            dirtyPrefixes,
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (prefix, ct) =>
+            {
+                // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
+                await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshot, ct);
 
-                    var shard = BuildShard(prefix);
-                    if (shard.Count == 0)
-                        return;
+                var shard = BuildShard(prefix);
+                if (shard.Count == 0)
+                    return;
 
-                    var result = await UploadShardAsync(prefix, shard, ct);
-                    uploadedStates[prefix] = result.BlobIdentity;
-                });
+                var result = await UploadShardAsync(prefix, shard, ct);
+                uploadedStates[prefix] = result.BlobIdentity;
+            });
 
-            _localStore.MarkDirtyPrefixesClean(dirtyPrefixes);
-            foreach (var item in uploadedStates)
-                _localStore.MarkPrefixValidated(item.Key, item.Value, latestSnapshot);
-        }
-        finally
-        {
-            Volatile.Write(ref _flushInProgress, 0);
-        }
+        _localStore.MarkAllDirtyClean();
+        foreach (var item in uploadedStates)
+            _localStore.MarkPrefixValidated(item.Key, item.Value, latestSnapshot);
     }
 
     /// <summary>

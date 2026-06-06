@@ -288,35 +288,26 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Marks dirty rows in the provided prefixes as clean after their shards have been uploaded.
+    /// Marks all dirty rows clean after the service has completed its one allowed flush.
     /// </summary>
-    public void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes)
+    public void MarkAllDirtyClean()
     {
         try
         {
-            if (prefixes.Count == 0)
-                return;
-
             lock (_localStateGate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
-                command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE prefix = $prefix AND dirty = 1;";
-                var prefixParameter = command.Parameters.Add("$prefix", SqliteType.Text);
-                var rowsAffected = 0;
-                foreach (var prefix in prefixes)
-                {
-                    prefixParameter.Value = prefix.ToString();
-                    rowsAffected += command.ExecuteNonQuery();
-                }
+                command.CommandText = "UPDATE chunk_index_entries SET dirty = 0 WHERE dirty = 1;";
+                var rowsAffected = command.ExecuteNonQuery();
 
                 transaction.Commit();
 
                 var hasDirtyRows = HasDirtyRows(connection);
                 var dirtyMarkerDeleted = !hasDirtyRows && DeleteDirtyMarker();
-                _logger.LogDebug("[chunk-index-local] MarkDirtyPrefixesClean: prefixes={Prefixes} rowsAffected={RowsAffected} hasDirtyRows={HasDirtyRows} dirtyMarkerDeleted={DirtyMarkerDeleted}", prefixes.Count, rowsAffected, hasDirtyRows, dirtyMarkerDeleted);
+                _logger.LogDebug("[chunk-index-local] MarkAllDirtyClean: rowsAffected={RowsAffected} hasDirtyRows={HasDirtyRows} dirtyMarkerDeleted={DirtyMarkerDeleted}", rowsAffected, hasDirtyRows, dirtyMarkerDeleted);
             }
         }
         catch (SqliteException ex)

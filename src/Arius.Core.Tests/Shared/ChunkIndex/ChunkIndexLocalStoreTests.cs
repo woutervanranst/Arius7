@@ -176,7 +176,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void MarkDirtyPrefixesClean_RemovesDirtyMarkerOnlyWhenNoDirtyRowsRemain()
+    public void MarkAllDirtyClean_RemovesDirtyMarkerAndCleansAllDirtyRows()
     {
         var repositoryKey = $"acct-local-store-marker-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -187,14 +187,12 @@ public class ChunkIndexLocalStoreTests
 
         store.HasDirtyMarker().ShouldBeTrue();
 
-        store.MarkDirtyPrefixesClean([ChunkIndexRouter.GetLeafPrefix(first.ContentHash)]);
-
-        store.HasDirtyMarker().ShouldBeTrue();
-
-        store.MarkDirtyPrefixesClean([ChunkIndexRouter.GetLeafPrefix(second.ContentHash)]);
+        store.MarkAllDirtyClean();
 
         store.HasDirtyRows().ShouldBeFalse();
         store.HasDirtyMarker().ShouldBeFalse();
+        store.FindDirtyEntry(first.ContentHash).ShouldBeNull();
+        store.FindDirtyEntry(second.ContentHash).ShouldBeNull();
     }
 
     [Test]

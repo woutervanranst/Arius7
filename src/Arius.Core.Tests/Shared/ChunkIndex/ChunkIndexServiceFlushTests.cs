@@ -42,6 +42,33 @@ public class ChunkIndexServiceFlushTests
         (await index.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
     }
 
+    [Test]
+    public async Task AddEntry_AfterFlushAsyncCompleted_Throws()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("flush-closed");
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+
+        await index.FlushAsync();
+
+        var ex = Should.Throw<InvalidOperationException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
+        ex.Message.ShouldContain("after flush has started");
+    }
+
+    [Test]
+    public async Task FlushAsync_WhenCalledTwice_Throws()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("flush-once");
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+
+        await index.FlushAsync();
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => index.FlushAsync());
+        ex.Message.ShouldContain("already started");
+    }
+
     private static async Task<Shard> ReadShardAsync(FakeInMemoryBlobContainerService blobs, PathSegment prefix)
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
