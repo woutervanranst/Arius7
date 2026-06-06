@@ -192,7 +192,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Streams all entries for <paramref name="prefix"/> in deterministic content-hash order.
+    /// Streams all entries currently stored for <paramref name="prefix"/>.
     /// </summary>
     public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
     {
@@ -200,7 +200,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE prefix = $prefix ORDER BY content_hash;";
+            command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size FROM chunk_index_entries WHERE prefix = $prefix;";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
             using var reader = command.ExecuteReader();
             var count = 0;
@@ -528,7 +528,6 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 compressed_size INTEGER NOT NULL CHECK (compressed_size >= 0),
                 prefix          TEXT NOT NULL,
                 dirty           INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
-                recorded_order  INTEGER,
                 CHECK (length(content_hash) = 32),
                 CHECK (length(chunk_hash) = 32),
                 CHECK (length(prefix) > 0)

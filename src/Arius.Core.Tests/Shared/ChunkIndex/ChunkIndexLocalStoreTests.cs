@@ -140,22 +140,6 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void ReadPrefixEntries_ReturnsEntriesOrderedByContentHash()
-    {
-        var repositoryKey = $"acct-local-store-order-{Guid.NewGuid():N}";
-        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
-        var store = new ChunkIndexLocalStore(root);
-        var first = new ShardEntry(ContentHash.Parse($"aa{new string('1', 62)}"), FakeChunkHash('b'), 10, 5);
-        var second = new ShardEntry(ContentHash.Parse($"aa{new string('2', 62)}"), FakeChunkHash('c'), 11, 6);
-        store.UpsertDirtyRange([second, first]);
-
-        var entries = new List<ShardEntry>();
-        store.ReadPrefixEntries(PathSegment.Parse("aa"), entries.Add);
-
-        entries.ShouldBe([first, second]);
-    }
-
-    [Test]
     public void ClearCleanCache_PreservesDirtyRows_AndClearsLoadedPrefixes()
     {
         var repositoryKey = $"acct-local-store-clear-{Guid.NewGuid():N}";
