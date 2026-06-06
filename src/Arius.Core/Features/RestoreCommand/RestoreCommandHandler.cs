@@ -196,7 +196,7 @@ public sealed class RestoreCommandHandler
                     }
 
                     if (!filesByChunkHash.TryGetValue(entry.ChunkHash, out var list))
-                        filesByChunkHash[entry.ChunkHash] = list = new List<FileToRestore>();
+                        filesByChunkHash[entry.ChunkHash] = list = [];
                     list.Add(file);
                 }
 
