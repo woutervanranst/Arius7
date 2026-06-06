@@ -216,7 +216,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
+        version.ExecuteScalar().ShouldBe("1");
     }
 
     [Test]
