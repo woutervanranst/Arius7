@@ -155,8 +155,8 @@ public sealed class ChunkIndexService : IDisposable
 
             // we need to get it from remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-            var download = await _blobs.TryDownloadAsync(blobName, cancellationToken);
-            if (download is null)
+            var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
+            if (remoteShard is null)
             {
                 // it doesnt exist on remote -> it s a new shard
                 _localStore.ClearPrefix(prefix, latestSnapshotIdentity);
@@ -164,11 +164,10 @@ public sealed class ChunkIndexService : IDisposable
             }
 
             // get it from remote
-            await using var stream = download.Stream;
-            if (_localStore.CanReuseRemotePrefix(prefix, download.BlobIdentity))
+            if (_localStore.CanReuseRemotePrefix(prefix, remoteShard.BlobIdentity))
             {
                 // our local copy was up to date
-                _localStore.MarkPrefixValidated(prefix, download.BlobIdentity, latestSnapshotIdentity);
+                _localStore.MarkPrefixValidated(prefix, remoteShard.BlobIdentity, latestSnapshotIdentity);
                 return;
             }
 
@@ -176,6 +175,7 @@ public sealed class ChunkIndexService : IDisposable
             Shard shard;
             try
             {
+                await using var stream = remoteShard.Stream;
                 shard = ShardSerializer.Deserialize(stream, _encryption);
             }
             catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
@@ -183,7 +183,7 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.UpdatePrefix(prefix, download.BlobIdentity, latestSnapshotIdentity, shard.Entries);
+            _localStore.UpdatePrefix(prefix, remoteShard.BlobIdentity, latestSnapshotIdentity, shard.Entries);
         }
         finally
         {
