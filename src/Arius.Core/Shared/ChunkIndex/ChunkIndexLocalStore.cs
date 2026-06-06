@@ -100,30 +100,42 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Returns the cached remote-validation state for <paramref name="prefix"/>, if it is known locally.
+    /// Returns whether the prefix is already validated against the specified snapshot identity.
     /// </summary>
-    public LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix)
+    public bool IsPrefixValidatedForSnapshot(PathSegment prefix, string snapshotIdentity)
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT remote_exists, remote_blob_identity, validated_snapshot_identity FROM loaded_prefixes WHERE prefix = $prefix;";
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM loaded_prefixes WHERE prefix = $prefix AND validated_snapshot_identity = $validatedSnapshotIdentity LIMIT 1);";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
-            using var reader = command.ExecuteReader();
-            if (!reader.Read())
-            {
-                _logger.LogDebug("[chunk-index-local] GetLoadedPrefixState: prefix={Prefix} found=false", prefix);
-                return null;
-            }
+            command.Parameters.AddWithValue("$validatedSnapshotIdentity", snapshotIdentity);
+            var isValidated = command.ExecuteScalar() is long value && value != 0;
+            _logger.LogDebug("[chunk-index-local] IsPrefixValidatedForSnapshot: prefix={Prefix} snapshot={SnapshotIdentity} value={IsValidated}", prefix, snapshotIdentity, isValidated);
+            return isValidated;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
 
-            var state = new LoadedPrefixState(
-                prefix,
-                reader.GetInt64(0) != 0,
-                reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.GetString(2));
-            _logger.LogDebug("[chunk-index-local] GetLoadedPrefixState: prefix={Prefix} found=true remoteExists={RemoteExists}", prefix, state.RemoteExists);
-            return state;
+    /// <summary>
+    /// Returns whether the prefix already has a locally cached clean copy for the specified remote blob identity.
+    /// </summary>
+    public bool CanReuseRemotePrefix(PathSegment prefix, string remoteBlobIdentity)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM loaded_prefixes WHERE prefix = $prefix AND remote_exists = 1 AND remote_blob_identity = $remoteBlobIdentity LIMIT 1);";
+            command.Parameters.AddWithValue("$prefix", prefix.ToString());
+            command.Parameters.AddWithValue("$remoteBlobIdentity", remoteBlobIdentity);
+            var canReuse = command.ExecuteScalar() is long value && value != 0;
+            _logger.LogDebug("[chunk-index-local] CanReuseRemotePrefix: prefix={Prefix} remoteBlobIdentity={RemoteBlobIdentity} value={CanReuse}", prefix, remoteBlobIdentity, canReuse);
+            return canReuse;
         }
         catch (SqliteException ex)
         {
@@ -158,7 +170,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     /// <summary>
     /// Returns prefixes represented by any local chunk-index row.
     /// </summary>
-    public IReadOnlyList<PathSegment> GetStoredPrefixes()
+    public IEnumerable<PathSegment> GetStoredPrefixes()
     {
         try
         {
@@ -337,15 +349,21 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Replaces local clean rows for a loaded prefix while preserving any dirty rows for the same content hashes.
+    /// Replaces local clean rows for a prefix while preserving any dirty rows for the same content hashes.
     /// </summary>
-    public void IngestCleanPrefix(LoadedPrefixState loadedPrefix, IEnumerable<ShardEntry> entries)
+    public void UpdatePrefix(PathSegment prefix, string remoteBlobIdentity, string snapshotIdentity, IEnumerable<ShardEntry> entries)
     {
         try
         {
             var materialized = entries.ToArray();
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            using var deleteEntries = connection.CreateCommand();
+            deleteEntries.Transaction = transaction;
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0;";
+            deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
+            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
+
             using var command = CreateUpsertCommand(connection, transaction, dirty: false, preserveDirtyRows: true);
             var entryRowsAffected = 0;
             foreach (var entry in materialized)
@@ -354,9 +372,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 entryRowsAffected += command.ExecuteNonQuery();
             }
 
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, remoteBlobIdentity, snapshotIdentity);
             transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] IngestCleanPrefix: prefix={Prefix} entries={Entries} entryRowsAffected={EntryRowsAffected} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", loadedPrefix.Prefix, materialized.Length, entryRowsAffected, loadedPrefixRowsAffected);
+            _logger.LogDebug("[chunk-index-local] UpdatePrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} entries={Entries} entryRowsAffected={EntryRowsAffected} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, materialized.Length, entryRowsAffected, loadedPrefixRowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -365,29 +383,9 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Deletes clean cached rows and validation state for <paramref name="prefix"/> while preserving dirty rows.
+    /// Deletes clean cached rows for <paramref name="prefix"/> while preserving dirty rows and marks the prefix validated as missing on remote.
     /// </summary>
-    public void DeleteCleanPrefix(PathSegment prefix)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0; DELETE FROM loaded_prefixes WHERE prefix = $prefix;";
-            command.Parameters.AddWithValue("$prefix", prefix.ToString());
-            var rowsAffected = command.ExecuteNonQuery();
-            _logger.LogDebug("[chunk-index-local] DeleteCleanPrefix: prefix={Prefix} rowsAffected={RowsAffected}", prefix, rowsAffected);
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Replaces local clean rows and validation state for a prefix in one transaction while preserving dirty rows.
-    /// </summary>
-    public void ClearPrefix(LoadedPrefixState loadedPrefix)
+    public void ClearPrefix(PathSegment prefix, string snapshotIdentity)
     {
         try
         {
@@ -396,12 +394,12 @@ internal sealed class ChunkIndexLocalStore : IDisposable
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
             deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND dirty = 0;";
-            deleteEntries.Parameters.AddWithValue("$prefix", loadedPrefix.Prefix.ToString());
+            deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
             var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, remoteBlobIdentity: null, snapshotIdentity);
             transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", loadedPrefix.Prefix, deletedEntryRows, loadedPrefixRowsAffected);
+            _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, loadedPrefixRowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -410,17 +408,17 @@ internal sealed class ChunkIndexLocalStore : IDisposable
     }
 
     /// <summary>
-    /// Updates the cached remote-validation state for a prefix.
+    /// Marks the prefix validated for the specified snapshot without changing clean cached rows.
     /// </summary>
-    public void UpdateLoadedPrefixState(LoadedPrefixState loadedPrefix)
+    public void MarkPrefixValidated(PathSegment prefix, string remoteBlobIdentity, string snapshotIdentity)
     {
         try
         {
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            var rowsAffected = UpsertLoadedPrefix(connection, transaction, loadedPrefix);
+            var rowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, remoteBlobIdentity, snapshotIdentity);
             transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] UpdateLoadedPrefixState: prefix={Prefix} rowsAffected={RowsAffected}", loadedPrefix.Prefix, rowsAffected);
+            _logger.LogDebug("[chunk-index-local] MarkPrefixValidated: prefix={Prefix} rowsAffected={RowsAffected}", prefix, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -627,7 +625,7 @@ internal sealed class ChunkIndexLocalStore : IDisposable
         command.Parameters["$prefix"].Value = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash).ToString();
     }
 
-    private static int UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, LoadedPrefixState loadedPrefix)
+    private static int UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix, bool remoteExists, string? remoteBlobIdentity, string snapshotIdentity)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -639,10 +637,10 @@ internal sealed class ChunkIndexLocalStore : IDisposable
                 remote_blob_identity = excluded.remote_blob_identity,
                 validated_snapshot_identity = excluded.validated_snapshot_identity;
             """;
-        command.Parameters.AddWithValue("$prefix", loadedPrefix.Prefix.ToString());
-        command.Parameters.Add("$remoteExists", SqliteType.Integer).Value = loadedPrefix.RemoteExists ? 1 : 0;
-        command.Parameters.Add("$remoteBlobIdentity", SqliteType.Text).Value = (object?)loadedPrefix.RemoteBlobIdentity ?? DBNull.Value;
-        command.Parameters.AddWithValue("$validatedSnapshotIdentity", loadedPrefix.ValidatedSnapshotIdentity);
+        command.Parameters.AddWithValue("$prefix", prefix.ToString());
+        command.Parameters.Add("$remoteExists", SqliteType.Integer).Value = remoteExists ? 1 : 0;
+        command.Parameters.Add("$remoteBlobIdentity", SqliteType.Text).Value = (object?)remoteBlobIdentity ?? DBNull.Value;
+        command.Parameters.AddWithValue("$validatedSnapshotIdentity", snapshotIdentity);
         return command.ExecuteNonQuery();
     }
 

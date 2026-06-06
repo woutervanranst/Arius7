@@ -76,16 +76,14 @@ public class ChunkIndexLocalStoreTests
         var cleanEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8);
         store.UpsertDirty(dirtyEntry);
 
-        store.IngestCleanPrefix(
-            new LoadedPrefixState(ChunkIndexRouter.GetLeafPrefix(contentHash), true, "remote-1", "snap-1"),
-            [cleanEntry]);
+        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(contentHash), "remote-1", "snap-1", [cleanEntry]);
 
         store.FindEntry(contentHash).ShouldBe(dirtyEntry);
         store.FindDirtyEntry(contentHash).ShouldBe(dirtyEntry);
     }
 
     [Test]
-    public void IngestCleanPrefix_WritesCleanRowAndLoadedPrefixStateInSameStore()
+    public void UpdatePrefix_WritesCleanRowAndValidationStateInSameStore()
     {
         var repositoryKey = $"acct-local-store-clean-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -93,15 +91,16 @@ public class ChunkIndexLocalStoreTests
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
         var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
 
-        store.IngestCleanPrefix(new LoadedPrefixState(prefix, true, "opaque-identity", "snapshot-1"), [entry]);
+        store.UpdatePrefix(prefix, "opaque-identity", "snapshot-1", [entry]);
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindDirtyEntry(entry.ContentHash).ShouldBeNull();
-        store.GetLoadedPrefixState(prefix).ShouldBe(new LoadedPrefixState(prefix, true, "opaque-identity", "snapshot-1"));
+        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-1").ShouldBeTrue();
+        store.CanReuseRemotePrefix(prefix, "opaque-identity").ShouldBeTrue();
     }
 
     [Test]
-    public void ClearPrefix_PreservesDirtyRows_AndUpdatesLoadedPrefixState()
+    public void ClearPrefix_PreservesDirtyRows_AndMarksRemoteMissing()
     {
         var repositoryKey = $"acct-local-store-reset-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -109,16 +108,35 @@ public class ChunkIndexLocalStoreTests
         var cleanEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
         var dirtyEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
         var prefix = ChunkIndexRouter.GetLeafPrefix(cleanEntry.ContentHash);
-        store.IngestCleanPrefix(new LoadedPrefixState(prefix, true, "remote-1", "snapshot-1"), [cleanEntry]);
+        store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [cleanEntry]);
         store.UpsertDirty(dirtyEntry);
 
-        store.ClearPrefix(new LoadedPrefixState(prefix, false, null, "snapshot-2"));
+        store.ClearPrefix(prefix, "snapshot-2");
 
         store.FindEntry(cleanEntry.ContentHash).ShouldBeNull();
         store.FindDirtyEntry(cleanEntry.ContentHash).ShouldBeNull();
         store.FindEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
         store.FindDirtyEntry(dirtyEntry.ContentHash).ShouldBe(dirtyEntry);
-        store.GetLoadedPrefixState(prefix).ShouldBe(new LoadedPrefixState(prefix, false, null, "snapshot-2"));
+        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-2").ShouldBeTrue();
+        store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeFalse();
+    }
+
+    [Test]
+    public void MarkPrefixValidated_UpdatesValidationStateWithoutReingest()
+    {
+        var repositoryKey = $"acct-local-store-mark-validated-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
+        store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [entry]);
+
+        store.MarkPrefixValidated(prefix, "remote-1", "snapshot-2");
+
+        store.FindEntry(entry.ContentHash).ShouldBe(entry);
+        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-1").ShouldBeFalse();
+        store.IsPrefixValidatedForSnapshot(prefix, "snapshot-2").ShouldBeTrue();
+        store.CanReuseRemotePrefix(prefix, "remote-1").ShouldBeTrue();
     }
 
     [Test]
@@ -146,7 +164,7 @@ public class ChunkIndexLocalStoreTests
         var dirty = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
         var clean = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6);
         store.UpsertDirty(dirty);
-        store.IngestCleanPrefix(new LoadedPrefixState(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash), true, "remote-1", "snap-1"), [clean]);
+        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash), "remote-1", "snap-1", [clean]);
 
         store.ClearCleanCache();
 
@@ -154,7 +172,7 @@ public class ChunkIndexLocalStoreTests
         store.FindDirtyEntry(dirty.ContentHash).ShouldBe(dirty);
         store.FindEntry(clean.ContentHash).ShouldBeNull();
         store.FindDirtyEntry(clean.ContentHash).ShouldBeNull();
-        store.GetLoadedPrefixState(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash)).ShouldBeNull();
+        store.IsPrefixValidatedForSnapshot(ChunkIndexRouter.GetLeafPrefix(clean.ContentHash), "snap-1").ShouldBeFalse();
     }
 
     [Test]

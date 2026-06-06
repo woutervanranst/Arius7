@@ -150,8 +150,7 @@ public sealed class ChunkIndexService : IDisposable
         try
         {
             // do we have a locally up to date version with the snapshot version
-            var loadedPrefix = _localStore.GetLoadedPrefixState(prefix);
-            if (loadedPrefix is not null && string.Equals(loadedPrefix.ValidatedSnapshotIdentity, latestSnapshotIdentity, StringComparison.Ordinal))
+            if (_localStore.IsPrefixValidatedForSnapshot(prefix, latestSnapshotIdentity))
                 return;
 
             // we need to get it from remote
@@ -160,21 +159,20 @@ public sealed class ChunkIndexService : IDisposable
             if (download is null)
             {
                 // it doesnt exist on remote -> it s a new shard
-                _localStore.ClearPrefix(new LoadedPrefixState(prefix, false, null, latestSnapshotIdentity));
+                _localStore.ClearPrefix(prefix, latestSnapshotIdentity);
                 return;
             }
 
             // get it from remote
             await using var stream = download.Stream;
-            if (loadedPrefix is not null && loadedPrefix.RemoteExists && string.Equals(loadedPrefix.RemoteBlobIdentity, download.BlobIdentity, StringComparison.Ordinal))
+            if (_localStore.CanReuseRemotePrefix(prefix, download.BlobIdentity))
             {
                 // our local copy was up to date
-                _localStore.UpdateLoadedPrefixState(new LoadedPrefixState(prefix, true, download.BlobIdentity, latestSnapshotIdentity));
+                _localStore.MarkPrefixValidated(prefix, download.BlobIdentity, latestSnapshotIdentity);
                 return;
             }
 
             // remote has a more up to date version
-            _localStore.DeleteCleanPrefix(prefix);
             Shard shard;
             try
             {
@@ -185,7 +183,7 @@ public sealed class ChunkIndexService : IDisposable
                 throw new ChunkIndexCorruptException(blobName, ex);
             }
 
-            _localStore.IngestCleanPrefix(new LoadedPrefixState(prefix, true, download.BlobIdentity, latestSnapshotIdentity), shard.Entries);
+            _localStore.UpdatePrefix(prefix, download.BlobIdentity, latestSnapshotIdentity, shard.Entries);
         }
         finally
         {
@@ -208,7 +206,7 @@ public sealed class ChunkIndexService : IDisposable
         _localStore.UpsertDirty(entry);
     }
 
-    // -- Flush ---------------------------------------------------------------
+    // -- Flush & Upload ---------------------------------------------------------------
 
     /// <summary>
     /// Uploads dirty local shard state and marks the flushed prefixes as clean.
@@ -228,7 +226,7 @@ public sealed class ChunkIndexService : IDisposable
                 return; // no shards need to be written to blob
 
             var latestSnapshot = await _latestSnapshot;
-            var uploadedStates = new ConcurrentDictionary<PathSegment, LoadedPrefixState>();
+            var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
             await Parallel.ForEachAsync(
                 dirtyPrefixes,
@@ -243,20 +241,18 @@ public sealed class ChunkIndexService : IDisposable
                         return;
 
                     var result = await UploadShardAsync(prefix, shard, ct);
-                    uploadedStates[prefix] = new LoadedPrefixState(prefix, true, result.BlobIdentity, latestSnapshot);
+                    uploadedStates[prefix] = result.BlobIdentity;
                 });
 
             _localStore.MarkDirtyPrefixesClean(dirtyPrefixes);
-            foreach (var state in uploadedStates.Values)
-                _localStore.UpdateLoadedPrefixState(state);
+            foreach (var item in uploadedStates)
+                _localStore.MarkPrefixValidated(item.Key, item.Value, latestSnapshot);
         }
         finally
         {
             Volatile.Write(ref _flushInProgress, 0);
         }
     }
-
-    // -- Shard Serialization -------------------------------------------------
 
     /// <summary>
     /// Builds the current shard payload for one prefix from local store state.

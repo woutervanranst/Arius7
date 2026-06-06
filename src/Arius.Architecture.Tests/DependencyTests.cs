@@ -335,7 +335,6 @@ public class DependencyTests
         {
             typeof(ChunkIndexLocalStore),
             typeof(ChunkIndexRouter),
-            typeof(LoadedPrefixState),
         };
 
         typeof(ChunkIndexService).IsPublic.ShouldBeTrue("ChunkIndexService remains the public chunk-index facade for this split.");
