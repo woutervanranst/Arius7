@@ -191,13 +191,17 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
 
     public string ReadAllText(RelativePath path) => File.ReadAllText(root.Resolve(path));
 
+    public Task<string> ReadAllTextAsync(RelativePath path, CancellationToken cancellationToken) => File.ReadAllTextAsync(root.Resolve(path), cancellationToken);
+
     public byte[] ReadAllBytes(RelativePath path) => File.ReadAllBytes(root.Resolve(path));
 
-    public Task<string> ReadAllTextAsync(RelativePath path, CancellationToken cancellationToken) =>
-        File.ReadAllTextAsync(root.Resolve(path), cancellationToken);
+    public Task<byte[]> ReadAllBytesAsync(RelativePath path, CancellationToken cancellationToken) => File.ReadAllBytesAsync(root.Resolve(path), cancellationToken);
 
-    public Task<byte[]> ReadAllBytesAsync(RelativePath path, CancellationToken cancellationToken) =>
-        File.ReadAllBytesAsync(root.Resolve(path), cancellationToken);
+    public IEnumerable<string> ReadLines(RelativePath path)
+    {
+        foreach (var line in File.ReadLines(root.Resolve(path)))
+            yield return line;
+    }
 
     public async IAsyncEnumerable<string> ReadLinesAsync(RelativePath path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -205,11 +209,25 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
             yield return line;
     }
 
+    public void WriteAllText(RelativePath path, string content)
+    {
+        var fullPath = root.Resolve(path);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
+        File.WriteAllText(fullPath, content);
+    }
+
     public async Task WriteAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = root.Resolve(path);
         CreateDirectory(path.Parent ?? RelativePath.Root);
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
+    }
+
+    public void WriteAllBytes(RelativePath path, byte[] content)
+    {
+        var fullPath = root.Resolve(path);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
+        File.WriteAllBytes(fullPath, content);
     }
 
     public async Task WriteAllBytesAsync(RelativePath path, byte[] content, CancellationToken cancellationToken)
