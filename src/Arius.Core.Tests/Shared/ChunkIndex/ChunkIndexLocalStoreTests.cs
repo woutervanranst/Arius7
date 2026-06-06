@@ -100,7 +100,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void ClearPrefix_PreservesDirtyRows_AndMarksRemoteMissing()
+    public void AddEmptyPrefix_PreservesDirtyRows_AndMarksRemoteMissing()
     {
         var repositoryKey = $"acct-local-store-reset-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -111,7 +111,7 @@ public class ChunkIndexLocalStoreTests
         store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [cleanEntry]);
         store.UpsertDirty(dirtyEntry);
 
-        store.ClearPrefix(prefix, "snapshot-2");
+        store.AddEmptyPrefix(prefix, "snapshot-2");
 
         store.FindEntry(cleanEntry.ContentHash).ShouldBeNull();
         store.FindDirtyEntry(cleanEntry.ContentHash).ShouldBeNull();

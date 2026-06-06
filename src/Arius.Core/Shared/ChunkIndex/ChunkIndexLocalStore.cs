@@ -331,7 +331,7 @@ internal sealed class ChunkIndexLocalStore
     /// <summary>
     /// Deletes clean cached rows for <paramref name="prefix"/> while preserving dirty rows and marks the prefix validated as missing on remote.
     /// </summary>
-    public void ClearPrefix(PathSegment prefix, string snapshotVersion)
+    public void AddEmptyPrefix(PathSegment prefix, string snapshotVersion)
     {
         try
         {

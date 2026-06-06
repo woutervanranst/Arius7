@@ -149,29 +149,29 @@ public sealed class ChunkIndexService : IDisposable
         await gate.WaitAsync(cancellationToken);
         try
         {
-            // do we have a locally up to date version with the snapshot version
+            // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
             if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
                 return;
 
-            // we need to get it from remote
+            // let's check remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
             var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
             if (remoteShard is null)
             {
                 // it doesnt exist on remote -> it s a new shard
-                _localStore.ClearPrefix(prefix, latestSnapshotVersion);
+                _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
                 return;
             }
 
-            // get it from remote
+            // it exists at remote - is remote on the same version?
             if (_localStore.IsPrefixAtETag(prefix, remoteShard.ETag))
             {
-                // our local copy was up to date
+                // our local copy is on the same version, update the snapshot version
                 _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
                 return;
             }
 
-            // remote has a more up to date version
+            // remote has a more recent version version
             Shard shard;
             try
             {
