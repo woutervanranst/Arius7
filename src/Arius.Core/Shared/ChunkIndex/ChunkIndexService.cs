@@ -72,6 +72,8 @@ public sealed class ChunkIndexService : IDisposable
         ThrowIfRepairIncomplete();
         ThrowIfFlushed();
 
+        // NOTE: this method needs to be battle tested during list/restore optimization
+
         var hashes = contentHashes.Distinct().ToArray();
         var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
         if (hashes.Length == 0)
