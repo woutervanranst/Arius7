@@ -14,7 +14,6 @@ This follow-up moves normal chunk-index work to bounded-memory disk-backed opera
 - Rebuild full repair through disk-backed local state instead of grouping all reconstructed entries in memory.
 - Keep dynamic chunk-prefix splitting out of scope, while introducing internal seams (`ChunkIndexRouter`) so a later change can replace fixed-prefix routing with longest-prefix routing and route-manifest interpretation behind `ChunkIndexService`.
 - After a successful archive flush, promote loaded-prefix snapshot version to the newly published snapshot so prefixes validated during the run stay trusted under the new snapshot without re-probing remote.
-- Keep restore and list chunk-index lookup behind `ChunkIndexService` with no SQLite leakage: restore resolves a plan's content hashes and fails unresolved hashes with explicit repair guidance; `ls` resolves file sizes one directory at a time so it preserves progressive streaming output.
 - Use synchronous SQLite ADO.NET APIs inside chunk-index internals because `Microsoft.Data.Sqlite` async APIs execute synchronously.
 - Use bounded batching for SQLite writes and remote shard hydration so ingestion does not become per-row overhead or an unbounded in-memory queue.
 - Keep `ChunkIndexService` as the public operational facade; SQLite and the local-store implementation remain internal implementation details.
@@ -29,8 +28,8 @@ None.
 
 - `chunk-index-service`: Change chunk-index local cache, archive write-session, flush, and repair behavior to use bounded-memory disk-backed local state while preserving current remote shard compatibility and source-of-truth semantics.
 - `blob-storage`: Expand blob metadata returned by storage operations with an opaque remote blob identity so chunk-index prefixes can be validated lazily without downloading unchanged shard bodies.
-- `restore-pipeline`: Keep restore chunk resolution behind `ChunkIndexService` (SQLite hidden), failing unresolved or corrupt-index lookups with explicit repair guidance.
-- `list-query`: Resolve list size lookups through `ChunkIndexService` one directory at a time, preserving progressive streaming output.
+
+Restore and list are unchanged consumers of `ChunkIndexService.LookupAsync` and required no code changes for this work, so they carry no capability delta. The SQLite implementation stays hidden behind the `chunk-index-service` facade; that boundary is asserted by the architecture tests rather than by restore/list requirements.
 
 ## Impact
 
