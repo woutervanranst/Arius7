@@ -190,10 +190,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
             // Channels between stages (task 8.2)
+            // The hashed/large/small channels carry metadata only (path + content hash; the
+            // file is re-opened at upload time), so they are unbounded: this lets the hash
+            // stage run fully ahead instead of being throttled by the slow upload stage via
+            // backpressure. sealedTarChannel stays bounded because it holds actual tar bytes.
             var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-            var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
-            var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-            var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var hashedChannel     = Channel.CreateUnbounded<HashedFilePair>();
+            var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
+            var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
             var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
             var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
 
