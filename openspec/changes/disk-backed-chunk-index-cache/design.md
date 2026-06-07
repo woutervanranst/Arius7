@@ -106,26 +106,24 @@ The source-of-truth model remains:
 
 If local SQLite is lost, lookup rehydrates from remote shards. If remote shards are corrupt or missing entries referenced by a snapshot, normal operations fail clearly and explicit repair rebuilds from committed chunks.
 
-### Merge disk storage into one local-store component, keep write-session behavior separate only as policy
+### One local-store state owner, with lookup/write/remote orchestration on the service
 
-Do not keep `ChunkIndexLocalStore` and `ChunkIndexWriteSession` as two independent state owners. The local SQLite store should own all disk-backed tables and transactions for:
+`ChunkIndexLocalStore` is the single owner of all disk-backed tables and transactions for:
 
 - loaded shard rows
 - loaded-prefix freshness state, including the snapshot identity and remote shard identity used when the prefix was last validated
-- pending archive entries
-- repair staging rows or repair run state
+- pending (unflushed) archive entries
+- repair staging rows (staged as remote-backed rows during a repair run)
 
-However, keep archive-session semantics visible as a small policy layer if it remains useful. The important distinction is ownership:
+The implementation does not split reader, writer, and remote-store responsibilities into separate classes. The separate `ChunkIndexReader`/`ChunkIndexWriteSession`/`ChunkIndexRemoteStore` boundaries considered earlier collapsed into pass-throughs, so they were not created. The as-built shape is:
 
 ```text
-ChunkIndexService
-  ├─ ChunkIndexReader        // groups lookups, asks local store/remote store
-  ├─ ChunkIndexWriteSession  // optional thin policy: AddEntry/Flush semantics, no in-memory dictionary
-  ├─ ChunkIndexLocalStore    // SQLite tables and transactions
-  └─ ChunkIndexRemoteStore   // remote shard download/upload serialization
+ChunkIndexService            // lookup grouping, AddEntry/Flush semantics, prefix-load orchestration, remote shard download/upload
+  ├─ ChunkIndexLocalStore    // SQLite tables and transactions (the only local-state owner)
+  └─ ChunkIndexRouter        // content-hash -> leaf prefix routing seam
 ```
 
-`ChunkIndexWriteSession` should not own a collection. It can remain as a behavior boundary that enforces flush-in-progress rules and calls `ChunkIndexLocalStore` for dirty-row persistence. If that layer becomes a pass-through after implementation, remove it and keep the behavior on `ChunkIndexService` or a focused writer component. The design preference is: one owner for local state, separate names only where they clarify behavior.
+`ChunkIndexService` directly enforces flush-in-progress rules (`_acceptingEntries` guard), groups lookups by prefix, coordinates per-prefix hydration through `EnsurePrefixLoadedAndSynchronizedAsync`, serializes and uploads remote shards, and delegates every local-state read/mutation to `ChunkIndexLocalStore`. There is no in-memory pending-entry collection anywhere: `AddEntry` writes straight to the local store as a `pending_flush = 1` row.
 
 Rationale: two disk-backed components that both know about unflushed archive entries would split transaction ownership and make partial-flush recovery harder. A single local store can make dirty-row writes, prefix selection, and dirty cleanup transactional.
 

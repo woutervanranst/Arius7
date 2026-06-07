@@ -8,7 +8,7 @@
 ## 2. Storage Blob Identity Contract
 
 - [x] 2.1 Add failing storage-boundary tests proving `BlobMetadata` exposes an opaque remote blob identity for HEAD, metadata listing, and successful upload results.
-- [x] 2.2 Change `IBlobContainerService.UploadAsync` to return `BlobMetadata`, update all Core, Azure, Explorer, fake, and test call sites, and preserve existing upload semantics.
+- [x] 2.2 Change `IBlobContainerService.UploadAsync` to return `UploadResult` (carrying the resulting `ETag`), update all Core, Azure, Explorer, fake, and test call sites, and preserve existing upload semantics.
 - [x] 2.3 Implement blob identity propagation in Azure storage from ETags for `UploadAsync`, `GetMetadataAsync`, and `ListAsync(includeMetadata: true)`.
 - [x] 2.4 Update fake and test blob services so tests can model missing, unchanged, and changed remote shard identities without depending on Azure-specific ETag syntax.
 - [x] 2.5 Add or update tests proving Core compares blob identities opaquely and `OpenWriteAsync` callers fetch metadata after a successful stream upload when they need the resulting identity.

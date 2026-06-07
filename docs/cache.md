@@ -126,12 +126,15 @@ flowchart TD
     B -->|no| D[Group hashes by shard prefix]
     D --> E{Prefix already validated for current snapshot?}
     E -->|yes| F[Read requested rows from local SQLite]
-    E -->|no| G[HEAD chunk-index/prefix]
-    G --> H{Remote identity changed?}
-    H -->|no| I[Advance validated snapshot identity]
+    E -->|no| G[TryDownloadAsync chunk-index/prefix]
+    G --> H{Remote shard exists?}
+    H -->|no| H2[AddEmptyPrefix: drop clean rows, mark loaded-empty]
+    H2 --> F
+    H -->|yes| H3{DownloadResult.ETag matches stored identity?}
+    H3 -->|yes| I[Advance validated snapshot identity, discard body]
     I --> F
-    H -->|yes| J[Delete clean rows for prefix only]
-    J --> K[Download and deserialize remote shard or empty prefix]
+    H3 -->|no| J[Delete clean rows for prefix only]
+    J --> K[Deserialize downloaded shard body]
     K --> L[Ingest clean rows into local SQLite]
     L --> F
     F --> M{Entry found?}
@@ -147,12 +150,13 @@ flowchart TD
     W --> X[Mark dirty rows clean and store new blob identity]
 ```
 
-Dirty rows and clean rows are separate states in the same local database:
+Dirty rows and clean rows are separate states in the same local database,
+distinguished by the `pending_flush` column on `chunk_index_entries`:
 
-- `dirty = 1` means current-run or retryable archive state that must not be
-  discarded silently.
-- `dirty = 0` means discardable hydrated cache state that can be cleared and
-  later rehydrated from remote shard blobs.
+- `pending_flush = 1` (dirty) means current-run or retryable archive state that
+  must not be discarded silently.
+- `pending_flush = 0` (clean) means discardable hydrated cache state that can be
+  cleared and later rehydrated from remote shard blobs.
 
 Routine snapshot changes do not force a repository-wide purge. The service
 revalidates only touched prefixes lazily by comparing the stored remote blob
