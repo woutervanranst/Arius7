@@ -295,8 +295,6 @@ public class ChunkIndexServiceArchiveScenarioTests
     {
         // Arrange — the realistic mirror image of 3b: machine B has "aa" cached, then a newer snapshot appears
         //   whose archive touched a DIFFERENT prefix, so "aa"'s shard (and its ETag) is left untouched.
-        //   (In real Azure the ETag changes on every write, so the only realistic way to reach P3a is for the
-        //    prefix's shard to genuinely not be rewritten across a snapshot bump — exactly what we set up here.)
         //   (1) Machine A archived → REMOTE "aa" = {h1,h2} @ etag A1, "bb" = {h3} @ B1, snapshot "s1".
         var blobs    = new FakeInMemoryBlobContainerService();
         var machineA = UniqueRepositoryKey("s4-machineA");
@@ -466,7 +464,7 @@ public class ChunkIndexServiceArchiveScenarioTests
     private static int ChunkIndexUploads(FakeInMemoryBlobContainerService blobs)
         => blobs.UploadedBlobNames.Count(n => n.StartsWith(BlobPaths.ChunkIndexPrefix));
 
-    private static async Task<Shard> ReadRemoteShardAsync(FakeInMemoryBlobContainerService blobs, PathSegment prefix)
+    private static async Task<Shard> ReadRemoteShardAsync(IBlobContainerService blobs, PathSegment prefix)
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
         await using var stream = download.Stream;
