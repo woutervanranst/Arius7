@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
@@ -118,7 +119,7 @@ public class ArchiveRecoveryTests
     [Test]
     public async Task Archive_WhenChunkIndexFlushFails_DoesNotPublishSnapshotAndKeepsSessionEntries()
     {
-        var blobs = new ThrowOnChunkIndexUploadBlobContainerService();
+        var blobs = new FaultingChunkIndexUploadBlobContainerService(new FakeInMemoryBlobContainerService());
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(
             blobs,
             "test-account",
@@ -472,38 +473,6 @@ public class ArchiveRecoveryTests
         }
 
         return ChunkHash.Parse(fixture.Encryption.ComputeHash(tarStream.ToArray()));
-    }
-
-    private sealed class ThrowOnChunkIndexUploadBlobContainerService : IBlobContainerService
-    {
-        private readonly FakeInMemoryBlobContainerService _inner = new();
-
-        public bool FailChunkIndexUploads { get; set; } = true;
-
-        public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => _inner.CreateContainerIfNotExistsAsync(cancellationToken);
-
-        public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
-            => FailChunkIndexUploads && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
-                ? throw new InvalidOperationException("chunk-index upload failed")
-                : _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
-
-        public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) => _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
-
-        public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DownloadAsync(blobName, cancellationToken);
-
-        public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.TryDownloadAsync(blobName, cancellationToken);
-
-        public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.GetMetadataAsync(blobName, cancellationToken);
-
-        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) => _inner.ListAsync(prefix, includeMetadata, cancellationToken);
-
-        public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => _inner.SetMetadataAsync(blobName, metadata, cancellationToken);
-
-        public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) => _inner.SetTierAsync(blobName, tier, cancellationToken);
-
-        public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => _inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);
-
-        public Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default) => _inner.DeleteAsync(blobName, cancellationToken);
     }
 
     private sealed class RecordingChunkStorageService(
