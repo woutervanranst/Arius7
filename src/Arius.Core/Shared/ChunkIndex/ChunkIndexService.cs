@@ -171,7 +171,7 @@ public sealed class ChunkIndexService : IDisposable
                 return;
             }
 
-            // remote has a more recent version version
+            // remote has a more recent version
             Shard shard;
             try
             {

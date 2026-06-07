@@ -324,6 +324,7 @@ internal sealed class ChunkIndexLocalStore
         {
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+
             using var deleteEntries = connection.CreateCommand();
             deleteEntries.Transaction = transaction;
             deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND pending_flush = 0;";
