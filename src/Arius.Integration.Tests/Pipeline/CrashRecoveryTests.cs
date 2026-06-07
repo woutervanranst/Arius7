@@ -61,7 +61,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Large uploads run in parallel, so the fault can leave multiple chunk bodies
         // present before any metadata write becomes visible.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, new SnapshotService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions
@@ -113,7 +113,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Crash after the tar chunk upload completes but before thin chunks are written.
         // Completed upload #1 = tar chunk metadata write; then the next completed upload faults.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, new SnapshotService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions
@@ -157,7 +157,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         //   completed upload #2 = UploadAsync for small.txt thin chunk
         //   completed upload #3 = UploadAsync for the index shard  ← crash here
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 2);
-        var faultingIndex   = new ChunkIndexService(fix.BlobContainer, fix.Encryption, new SnapshotService(fix.BlobContainer, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions
