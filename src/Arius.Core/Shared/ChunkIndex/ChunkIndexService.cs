@@ -169,7 +169,7 @@ public sealed class ChunkIndexService : IDisposable
         {
             // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
             if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
-                return;
+                return; //Path 1
 
             // let's check remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
@@ -178,7 +178,7 @@ public sealed class ChunkIndexService : IDisposable
             {
                 // it doesnt exist on remote -> it s a new shard
                 _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
-                return;
+                return; //Path 2
             }
 
             // it exists at remote - is remote on the same version?
@@ -186,10 +186,10 @@ public sealed class ChunkIndexService : IDisposable
             {
                 // our local copy is on the same version, update the snapshot version
                 _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
-                return;
+                return; //Path 3a
             }
 
-            // remote has a more recent version
+            // remote has a more recent version - Path 3b
             Shard shard;
             try
             {
