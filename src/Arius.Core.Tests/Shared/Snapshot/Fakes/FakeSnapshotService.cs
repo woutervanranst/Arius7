@@ -1,6 +1,6 @@
 using Arius.Core.Shared.Snapshot;
 
-namespace Arius.Core.Tests.Shared.ChunkIndex.Fakes;
+namespace Arius.Core.Tests.Shared.Snapshot.Fakes;
 
 internal sealed class FakeSnapshotService : ISnapshotService
 {

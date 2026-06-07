@@ -2,8 +2,8 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
 using Arius.Core.Tests.Fakes;
+using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;

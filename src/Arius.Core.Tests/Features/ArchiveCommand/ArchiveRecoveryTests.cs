@@ -1,18 +1,16 @@
-using System.Collections.Concurrent;
-using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Storage;
-using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
+using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 

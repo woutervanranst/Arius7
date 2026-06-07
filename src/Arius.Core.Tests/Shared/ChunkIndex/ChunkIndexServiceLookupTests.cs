@@ -1,8 +1,6 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Encryption;
-using Arius.Core.Tests.Shared.ChunkIndex.Fakes;
-using Arius.Tests.Shared;
+using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
 
