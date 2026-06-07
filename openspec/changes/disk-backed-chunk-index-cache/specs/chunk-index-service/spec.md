@@ -5,7 +5,7 @@ The chunk-index implementation SHALL store hydrated shard rows, loaded-prefix st
 
 The local store SHALL replace the previous in-memory L1 shard-page cache and plaintext per-prefix L2 shard-file cache. The implementation SHALL NOT keep a separate in-memory LRU of materialized `Shard` pages, SHALL NOT keep plaintext per-prefix local shard files as the normal local chunk-index cache, and SHALL NOT use `--dedup-cache-mb` as a managed shard-cache budget after this change.
 
-The local store SHALL represent hydrated remote entries and unflushed archive entries in one `chunk_index_entries` table keyed by content hash. Rows with `dirty = 0` SHALL be treated as discardable hydrated cache rows. Rows with `dirty = 1` SHALL be treated as protected unflushed archive operational state and SHALL NOT be silently lost during cache invalidation or local corruption handling.
+The local store SHALL represent hydrated remote entries and unflushed archive entries in one `chunk_index_entries` table keyed by content hash. Rows with `pending_flush = 0` SHALL be treated as discardable hydrated cache rows. Rows with `pending_flush = 1` SHALL be treated as protected unflushed archive operational state and SHALL NOT be silently lost during cache invalidation or local corruption handling.
 
 Dirty rows SHALL be retryable across process restarts only because they are recorded after the referenced large chunk or thin chunk has been durably uploaded. Chunk-index entry recording SHALL NOT write a dirty row before the referenced chunk storage artifact is committed. A dirty row preserved after a failed archive-tail flush MAY be flushed by a later operation without requiring the failed archive run to have published a snapshot.
 
@@ -17,80 +17,76 @@ The local store SHALL use synchronous `Microsoft.Data.Sqlite` ADO.NET APIs for S
 
 The local store SHALL build SQLite connection strings with `SqliteConnectionStringBuilder`. The local store SHALL enable write-ahead logging for the local cache database and SHALL avoid SQLite shared-cache mode with WAL. SQLite writes SHALL be serialized by the local store. Prefix hydration and prefix flush/upload coordination SHALL be serialized per prefix so concurrent operations cannot download, ingest, stream, or upload the same prefix at the same time.
 
-Local SQLite corruption SHALL be treated as local cache corruption only when the database is known not to contain protected dirty rows. The implementation MAY move a clean corrupt database aside to a `.bak` file or delete and recreate it. If corruption is detected during an active archive or flush before a snapshot is published, or if corruption may have affected dirty rows from a failed previous archive, the operation SHALL fail clearly and SHALL NOT continue as if dirty rows were flushed or safely discarded. The error SHALL instruct the user to rerun archive or delete the local `.arius` folder. Deleting local `.arius` state SHALL remain a valid emergency restore recovery path because restore can rehydrate clean rows from remote shard blobs.
+Local SQLite failures SHALL surface as a single clear `ChunkIndexLocalStoreException` whose message instructs the user to delete the local chunk-index cache directory and retry, or to run explicit chunk-index repair. The operation SHALL fail rather than silently discard unflushed (`pending_flush = 1`) rows. Deleting the local `.arius` state SHALL remain a valid emergency restore recovery path because restore can rehydrate remote-backed rows from remote shard blobs.
 
-The implementation SHALL keep dirty rows, corrupt local SQLite state, and corrupt remote chunk-index shards as separate states. Dirty rows are valid unflushed archive state. Corrupt local SQLite without dirty rows is local cache corruption and MAY be deleted or recreated. Corrupt local SQLite with possible dirty rows is local operational-state corruption and SHALL fail with rerun/delete-local-state guidance. Corrupt remote chunk-index shards are repository metadata corruption and SHALL be handled by failing normal operations with repair guidance and by explicit full repair from committed chunks.
+The implementation SHALL keep three failure states separate. Unflushed `pending_flush = 1` rows are valid archive operational state, not corruption. Local SQLite failure is local cache corruption that fails clearly with delete-local-state guidance. Corrupt remote chunk-index shards are repository metadata corruption that fails normal operations with repair guidance and is rebuilt by explicit full repair from committed chunks.
 
-The local SQLite schema SHALL use a single entry table with a dirty flag equivalent to:
+Recreating the local SQLite cache — closing connections, calling `SqliteConnection.ClearAllPools()`, moving the `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` family aside to `.bak`, and creating a fresh database — SHALL occur at the start of explicit chunk-index repair.
+
+The local SQLite schema SHALL use a single entry table with a `pending_flush` flag distinguishing discardable remote-backed rows (`pending_flush = 0`) from protected unflushed archive rows (`pending_flush = 1`). The schema is:
 
 ```sql
-CREATE TABLE chunk_index_entries (
+CREATE TABLE IF NOT EXISTS metadata (
+    key   TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL,
+    CHECK (length(key) > 0),
+    CHECK (length(value) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS chunk_index_entries (
     content_hash    BLOB NOT NULL PRIMARY KEY,
     chunk_hash      BLOB NOT NULL,
     original_size   INTEGER NOT NULL CHECK (original_size >= 0),
     compressed_size INTEGER NOT NULL CHECK (compressed_size >= 0),
     prefix          TEXT NOT NULL,
-    dirty           INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
-    recorded_order  INTEGER,
+    pending_flush   INTEGER NOT NULL DEFAULT 0 CHECK (pending_flush IN (0, 1)),
     CHECK (length(content_hash) = 32),
     CHECK (length(chunk_hash) = 32),
     CHECK (length(prefix) > 0)
 );
 
-CREATE INDEX ix_chunk_index_entries_prefix
+CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_prefix
     ON chunk_index_entries(prefix, content_hash);
 
-CREATE INDEX ix_chunk_index_entries_dirty_prefix
-    ON chunk_index_entries(dirty, prefix);
+CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_pending_flush_prefix
+    ON chunk_index_entries(pending_flush, prefix);
 
-CREATE TABLE loaded_prefixes (
-    prefix                      TEXT NOT NULL PRIMARY KEY,
-    remote_exists               INTEGER NOT NULL CHECK (remote_exists IN (0, 1)),
-    remote_blob_identity        TEXT,
-    validated_snapshot_identity TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS loaded_prefixes (
+    prefix               TEXT NOT NULL PRIMARY KEY,
+    remote_exists        INTEGER NOT NULL CHECK (remote_exists IN (0, 1)),
+    remote_blob_identity TEXT,
+    snapshot_version     TEXT NOT NULL,
     CHECK (length(prefix) > 0),
-    CHECK (length(validated_snapshot_identity) > 0)
-);
-
-CREATE TABLE metadata (
-    key             TEXT NOT NULL PRIMARY KEY,
-    value           TEXT NOT NULL,
-    CHECK (length(key) > 0),
-    CHECK (length(value) > 0)
+    CHECK (length(snapshot_version) > 0)
 );
 ```
 
-The local store SHALL expose a domain-specific API for local chunk-index facts and mutations. The API SHALL provide operations equivalent to:
+`content_hash` primary-key upsert provides last-writer-wins semantics. `loaded_prefixes.snapshot_version` stores the latest snapshot blob name, or the sentinel `"<none>"` when no snapshot exists yet. Schema creation applies the `journal_mode = wal` and `synchronous = normal` pragmas.
+
+The local store SHALL expose a domain-specific API for local chunk-index facts and mutations. The constructor creates or upgrades the schema. The API is:
 
 ```csharp
-void Initialize();
+ShardEntry? FindEntry(ContentHash contentHash);            // any stored row
+ShardEntry? FindPendingFlushEntry(ContentHash contentHash); // pending-flush rows only
+bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion);
+bool IsPrefixAtETag(PathSegment prefix, string etag);
+IReadOnlyList<PathSegment> GetPrefixesWithPendingFlushes();
+IEnumerable<PathSegment> GetStoredPrefixes();
+void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume);
+bool HasPendingFlushEntries();
 
-ShardEntry? GetValueOrDefault(ContentHash contentHash);
-
-void UpsertDirty(ShardEntry entry);
-
-void UpsertDirtyRange(IEnumerable<ShardEntry> entries);
-
-void IngestCleanPrefix(
-    LoadedPrefixState loadedPrefix,
-    IEnumerable<ShardEntry> entries);
-
-LoadedPrefixState? GetLoadedPrefixState(PathSegment prefix);
-
-IEnumerable<PathSegment> GetDirtyPrefixes();
-
-void ReadPrefixEntries(
-    PathSegment prefix,
-    Action<ShardEntry> consume);
-
-void MarkDirtyPrefixesClean(IReadOnlyCollection<PathSegment> prefixes);
-
-void ClearCleanCache();
-
-bool HasDirtyRows();
+void UpsertPendingFlush(ShardEntry entry);
+void UpsertRemoteBacked(ShardEntry entry);
+void UpdatePrefix(PathSegment prefix, string etag, string snapshotVersion, IEnumerable<ShardEntry> entries);
+void AddEmptyPrefix(PathSegment prefix, string snapshotVersion);
+void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion);
+void PromoteToSnapshotVersion(string oldSnapshotVersion, string newSnapshotVersion);
+void MarkPendingFlushesSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion);
+void ClearRemoteBackedCache();
+void RecreateDatabase(bool backupExisting);
 ```
 
-`IngestCleanPrefix` SHALL ingest rows loaded from a remote shard with `dirty = 0`, SHALL NOT overwrite a local row whose current value has `dirty = 1`, and SHALL mark the prefix loaded in the same SQLite transaction as the clean-row ingestion. The caller SHALL pass explicit loaded-prefix state including the prefix, whether the remote shard existed, the remote shard opaque blob identity when available, and the current latest snapshot identity used for validation. `IngestCleanPrefix` and `UpsertDirtyRange` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior. The command SHALL be assigned to the active transaction, and its parameter objects SHALL be created once and assigned new values per row. Hash, size, prefix, and dirty-flag parameters SHOULD use explicit SQLite types. Prefix-loading behavior SHALL be coordinated outside the local store because it requires remote shard metadata lookup, remote shard download, and wire deserialization, but the spec does not require a dedicated prefix-loader class. The implementation MAY keep that coordination inside the reader/writer path or extract a focused internal helper when both lookup and flush share enough behavior to justify it.
+`UpdatePrefix` SHALL ingest rows loaded from a remote shard with `pending_flush = 0`, SHALL NOT overwrite a local row whose current value has `pending_flush = 1`, and SHALL record loaded-prefix state (prefix, remote existence, remote blob identity/ETag, snapshot version) in the same SQLite transaction as the row ingestion. `AddEmptyPrefix` SHALL record a loaded-prefix row with `remote_exists = 0` for a missing remote shard while preserving pending-flush rows. `UpdatePrefix` SHALL use one transaction and a reused parameterized command for bulk insert/update behavior; the command SHALL be assigned to the active transaction, its parameter objects SHALL be created once and assigned new values per row, and hash, size, prefix, and pending-flush parameters use explicit SQLite types. Prefix-loading SHALL be coordinated by `ChunkIndexService.EnsurePrefixLoadedAndSynchronizedAsync` because it requires remote shard download and wire deserialization; the local store is not responsible for remote I/O. Loaded-prefix freshness SHALL be queried through the boolean probes `IsPrefixAtSnapshotVersion` and `IsPrefixAtETag`. Callers record entries through `UpsertPendingFlush` per entry or `UpdatePrefix` for a whole prefix.
 
 Chunk-index lookup and flush SHALL validate loaded prefixes lazily against the current latest snapshot identity. When a loaded prefix was validated under the same latest snapshot identity, the implementation MAY trust local clean rows without probing the remote shard. When a loaded prefix is missing or was validated under a different latest snapshot identity, the implementation SHALL revalidate only that touched prefix against the current remote shard identity before trusting clean rows. Remote shard identity SHALL be represented as remote existence plus the opaque blob identity exposed by the storage boundary. If the remote identity matches the stored identity, the implementation SHALL update the prefix's validated snapshot identity without deleting clean rows. If the remote identity differs, the implementation SHALL delete clean rows for that prefix only, preserve dirty rows for that prefix, download and ingest the current remote shard as clean rows, or ingest an empty prefix when the remote shard is missing.
 
@@ -98,11 +94,11 @@ Routine snapshot changes SHALL NOT require a repository-wide purge of all clean 
 
 `ReadPrefixEntries` SHALL keep SQLite connection and reader lifetime owned by the local store. It SHALL consume rows through a synchronous callback or equivalent local-store-owned iteration pattern rather than returning a deferred sequence whose database resources can escape the local store boundary. Chunk-index serialization MAY materialize one prefix at a time into a `Shard` and serialized byte array for remote upload. This is accepted bounded memory when limited to one prefix per bounded worker and when materialized shard objects are not cached after the operation.
 
-The local store SHALL track `schema_version = 1` in the `metadata` table. If the local SQLite schema version is incompatible, the local store MAY recreate the database because it is cache state.
+The local store SHALL track `schema_version = 1` in the `metadata` table.
 
 #### Scenario: Local store owns pending state
 - **WHEN** archive workers record new chunk-index entries during an archive run
-- **THEN** the entries SHALL be upserted to the SQLite-backed local store with `dirty = 1`
+- **THEN** the entries SHALL be upserted to the SQLite-backed local store with `pending_flush = 1`
 - **AND** no write-session component SHALL keep an independent content-hash-keyed pending-entry collection in managed memory
 
 #### Scenario: SQLite replaces L1 and plaintext L2 shard caches
@@ -123,15 +119,15 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 
 #### Scenario: Remote rows are ingested as clean cache rows
 - **WHEN** chunk-index code downloads and deserializes a remote shard for a prefix
-- **THEN** it SHALL ingest the remote shard entries through `IngestCleanPrefix`
-- **AND** the ingested rows SHALL be stored with `dirty = 0`
+- **THEN** it SHALL ingest the remote shard entries through `UpdatePrefix`
+- **AND** the ingested rows SHALL be stored with `pending_flush = 0`
 - **AND** the prefix SHALL be marked loaded in the same SQLite transaction as row ingestion
 - **AND** the loaded-prefix row SHALL record the current latest snapshot identity and remote shard opaque blob identity used for validation
 - **AND** any existing local dirty row for the same content hash SHALL remain protected and SHALL NOT be overwritten by clean remote ingestion
 
 #### Scenario: Missing remote shard marks empty prefix loaded
 - **WHEN** chunk-index lookup or flush ensures a prefix is loaded and the remote shard blob does not exist
-- **THEN** it SHALL ingest an empty clean prefix through `IngestCleanPrefix`
+- **THEN** it SHALL mark the prefix empty through `AddEmptyPrefix`
 - **AND** the prefix SHALL be marked loaded in SQLite in the same transaction
 - **AND** the loaded-prefix row SHALL record that the remote shard did not exist
 - **AND** later misses for that prefix SHALL NOT repeatedly download or probe the missing remote shard during the same local cache epoch
@@ -165,6 +161,12 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 - **THEN** normal lookup and flush SHALL validate only prefixes touched by the current operation
 - **AND** they SHALL NOT list or HEAD every remote chunk-index shard as the required freshness path
 
+#### Scenario: Loaded prefixes are promoted to the published snapshot
+- **WHEN** an archive run finishes flushing and publishes a new snapshot
+- **THEN** `ChunkIndexService.PromoteToSnapshotVersionAsync(newSnapshotVersion)` SHALL rewrite `loaded_prefixes.snapshot_version` from the snapshot identity resolved at the start of the run to the newly published snapshot identity
+- **AND** prefixes validated during the run SHALL remain trusted under the new epoch without re-probing remote
+- **AND** promotion SHALL be a no-op when the resolved and published snapshot identities are equal
+
 #### Scenario: SQLite work uses synchronous APIs
 - **WHEN** chunk-index local-store code executes SQLite commands or reads SQLite rows
 - **THEN** it SHALL use synchronous Microsoft.Data.Sqlite APIs
@@ -182,15 +184,16 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 - **AND** the command SHALL be assigned to the active transaction
 - **AND** command parameters SHALL be created once and assigned new values per row
 
-#### Scenario: Async-to-sync ingestion uses bounded channels
+#### Scenario: Async-to-sync ingestion is bounded by one materialized shard
 - **WHEN** remote shard download or deserialization feeds entries into synchronous SQLite ingestion
-- **THEN** the bridge between asynchronous remote I/O and synchronous SQLite writes SHALL be bounded
-- **AND** it SHALL NOT buffer an unbounded number of shard entries in managed memory
+- **THEN** the implementation SHALL deserialize one remote shard at a time into a single `Shard` and pass its entries to `UpdatePrefix` in one transaction
+- **AND** the number of concurrently materialized shards SHALL be bounded by the configured flush/repair worker count
+- **AND** it SHALL NOT buffer an unbounded number of shard entries across multiple prefixes in managed memory
 
 #### Scenario: Writer coordinates without owning state
 - **WHEN** chunk-index flush starts for pending archive entries
 - **THEN** an internal writer or `ChunkIndexService` SHALL enforce flush-in-progress and concurrent-flush policy
-- **AND** it SHALL ask the local store for prefixes with `dirty = 1`
+- **AND** it SHALL ask the local store for prefixes with `pending_flush = 1`
 - **AND** it SHALL NOT bypass the local store's transactions for dirty-row state changes
 
 #### Scenario: Flush streams dirty prefixes
@@ -199,7 +202,7 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 - **AND** stale clean rows for that prefix MAY be refreshed while preserving dirty rows recorded by the current archive run
 - **AND** it SHALL stream all rows for that prefix ordered by content hash from `chunk_index_entries`
 - **AND** it SHALL upload the resulting shard to the remote chunk index
-- **AND** dirty rows SHALL be marked `dirty = 0` only after all touched prefixes upload successfully
+- **AND** dirty rows SHALL be marked `pending_flush = 0` only after all touched prefixes upload successfully
 
 #### Scenario: Dirty rows survive prefix refresh before flush
 - **WHEN** archive-tail flush refreshes a touched prefix because the stored remote identity is stale after an earlier lookup, a direct `AddEntry`, or a failed previous flush left dirty rows locally
@@ -240,11 +243,6 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 - **THEN** the local store SHALL own and dispose the SQLite connection and reader used for that stream
 - **AND** the local store SHALL NOT return a deferred sequence that lets SQLite reader lifetime escape the local-store boundary
 
-#### Scenario: Local schema version mismatch recreates cache
-- **WHEN** the local SQLite metadata schema version is missing or incompatible
-- **THEN** the local store MAY recreate the local SQLite cache
-- **AND** subsequent lookup SHALL rehydrate needed prefixes from remote chunk-index shards
-
 #### Scenario: SQLite cache file family is moved or deleted together
 - **WHEN** chunk-index code moves aside, deletes, or recreates the local SQLite cache
 - **THEN** it SHALL first close local-store SQLite connections
@@ -259,22 +257,15 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 
 #### Scenario: Cache invalidation preserves dirty rows
 - **WHEN** chunk-index cache invalidation clears local cache state
-- **THEN** rows with `dirty = 0` SHALL be discarded
+- **THEN** rows with `pending_flush = 0` SHALL be discarded
 - **AND** loaded-prefix state SHALL be cleared
-- **AND** rows with `dirty = 1` SHALL be preserved or the operation SHALL fail clearly without treating the dirty rows as successfully discarded
+- **AND** rows with `pending_flush = 1` SHALL be preserved or the operation SHALL fail clearly without treating the dirty rows as successfully discarded
 - **AND** a preserved dirty row SHALL NOT by itself mean that its prefix is fully loaded
 
-#### Scenario: Clean corrupt local SQLite cache can be rebuilt
-- **WHEN** chunk-index startup or lookup detects that the local SQLite cache is corrupt
-- **AND** the local cache is known not to contain dirty rows
-- **THEN** the implementation MAY move the corrupt database aside or recreate it
-- **AND** subsequent lookup SHALL rehydrate needed prefixes from remote chunk-index shards
-
-#### Scenario: Corrupt local SQLite with possible dirty rows fails clearly
-- **WHEN** chunk-index startup or lookup detects that the local SQLite cache is corrupt
-- **AND** the local cache may contain dirty rows from a failed previous archive
-- **THEN** the operation SHALL fail clearly
-- **AND** the error SHALL instruct the user to rerun archive or delete the local `.arius` folder
+#### Scenario: Corrupt local SQLite cache fails clearly
+- **WHEN** a chunk-index operation hits a local SQLite failure
+- **THEN** it SHALL raise a clear `ChunkIndexLocalStoreException`
+- **AND** the error SHALL instruct the user to delete the local chunk-index cache directory and retry, or run explicit chunk-index repair
 - **AND** deleting the local `.arius` folder SHALL remain sufficient to unblock emergency restore from remote chunk-index shards
 
 #### Scenario: Corrupt local SQLite during archive fails clearly
@@ -284,8 +275,8 @@ The local store SHALL track `schema_version = 1` in the `metadata` table. If the
 
 #### Scenario: Uploaded shard identity updates loaded-prefix state
 - **WHEN** chunk-index flush uploads a touched remote shard successfully
-- **THEN** the implementation SHALL record the uploaded shard's resulting opaque blob identity in loaded-prefix state
-- **AND** it SHALL obtain that identity from upload result metadata when available or from a follow-up `GetMetadataAsync` call after upload completion
+- **THEN** the implementation SHALL record the uploaded shard's resulting ETag in loaded-prefix state
+- **AND** it SHALL obtain that ETag from the `UploadResult` returned by the shard upload
 
 #### Scenario: Corrupt remote shard remains repair condition
 - **WHEN** normal chunk-index lookup downloads a remote shard blob that cannot be deserialized

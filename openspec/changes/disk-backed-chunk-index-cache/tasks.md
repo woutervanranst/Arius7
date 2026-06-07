@@ -18,10 +18,10 @@
 - [x] 3.1 Add failing local-store tests for initialization, schema version `1`, WAL mode, binary hash storage, loaded-prefix rows, dirty rows, and clean rows.
 - [x] 3.2 Add `Microsoft.Data.Sqlite` to the appropriate project using the .NET CLI and keep the dependency isolated to chunk-index internals; do not introduce EF Core.
 - [x] 3.3 Implement internal `ChunkIndexLocalStore` under `src/Arius.Core/Shared/ChunkIndex/` with SQLite schema ownership, `SqliteConnectionStringBuilder`, short-lived connections, and serialized writes.
-- [x] 3.4 Add failing tests for `UpsertDirty`, `UpsertDirtyRange`, `GetValueOrDefault`, `GetDirtyPrefixes`, `HasDirtyRows`, and duplicate dirty content-hash last-writer behavior.
+- [x] 3.4 Add failing tests for `UpsertPendingFlush`, `FindEntry`, `FindPendingFlushEntry`, `GetPrefixesWithPendingFlushes`, `HasPendingFlushEntries`, and duplicate content-hash last-writer behavior.
 - [x] 3.5 Implement dirty-row persistence with bounded transaction batches, reused parameterized commands, explicit transactions, and no independent in-memory pending-entry collection.
-- [x] 3.6 Add failing tests for `IngestCleanPrefix` proving clean rows are stored with `dirty = 0`, loaded-prefix state is written in the same transaction, and existing dirty rows are not overwritten.
-- [x] 3.7 Implement clean-prefix ingestion and loaded-prefix state APIs with dirty-row preservation.
+- [x] 3.6 Add failing tests for `UpdatePrefix`/`AddEmptyPrefix` proving remote-backed rows are stored with `pending_flush = 0`, loaded-prefix state is written in the same transaction, and existing pending-flush rows are not overwritten.
+- [x] 3.7 Implement clean-prefix ingestion (`UpdatePrefix`/`AddEmptyPrefix`) and loaded-prefix state APIs with pending-flush-row preservation.
 - [x] 3.8 Add failing tests for `ReadPrefixEntries` proving rows are returned ordered by content hash and SQLite reader lifetime does not escape the local store.
 - [x] 3.9 Implement prefix row streaming through a local-store-owned synchronous callback or equivalent owned iteration pattern.
 - [x] 3.10 Add static or architecture coverage proving chunk-index SQLite code uses synchronous Microsoft.Data.Sqlite command and reader APIs, avoids async SQLite overloads, and does not use `Cache=Shared` with WAL.
@@ -53,16 +53,16 @@
 - [x] 6.4 Add failing flush tests proving dirty prefixes come from SQLite, each dirty prefix is fully loaded and validated before upload, and uploaded shards include existing clean rows plus dirty rows.
 - [x] 6.5 Implement flush streaming from SQLite ordered by content hash, one prefix per bounded worker, preserving the existing remote shard serializer and remote blob names.
 - [x] 6.6 Add failing tests proving dirty rows are marked clean only after all touched prefixes upload successfully, and partial prefix upload failure fails the archive without publishing a snapshot.
-- [x] 6.7 Update flush completion to record the uploaded shard's resulting opaque blob identity in loaded-prefix state using upload result metadata or a follow-up HEAD after stream upload.
+- [x] 6.7 Update flush completion to record the uploaded shard's resulting ETag in loaded-prefix state from the `UploadResult` returned by the shard upload.
 - [x] 6.8 Add failing tests proving stale clean rows can be refreshed during flush while current-run or retryable dirty rows survive and are included in the uploaded shard.
 
 ## 7. Local Corruption, Cache Invalidation, And Repair Marker Safety
 
-- [x] 7.1 Add failing tests proving `ClearCleanCache` and snapshot-mismatch invalidation delete clean rows and loaded-prefix state while preserving dirty rows or failing clearly.
+- [x] 7.1 Add failing tests proving `ClearRemoteBackedCache` and snapshot-mismatch invalidation delete remote-backed rows and loaded-prefix state while preserving pending-flush rows or failing clearly.
 - [x] 7.2 Implement cache invalidation against SQLite clean cache state and remove obsolete L1-specific invalidation behavior.
 - [x] 7.3 Add failing tests proving a clean corrupt SQLite cache can be moved aside or recreated, including `cache.sqlite`, `cache.sqlite-wal`, and `cache.sqlite-shm` handling after connections are closed and `SqliteConnection.ClearAllPools()` is called.
-- [x] 7.4 Implement clean local SQLite corruption recovery with best-effort `.bak` handling and on-demand prefix rehydration after recreation.
-- [x] 7.5 Add failing tests proving local SQLite corruption with possible dirty rows, or corruption during active archive or flush, fails clearly with rerun/delete-local-state guidance and does not publish a snapshot.
+- [x] 7.4 Implement local SQLite cache recreation via `RecreateDatabase(backupExisting)` — `ClearAllPools()`, move the `cache.sqlite`/`-wal`/`-shm` family to `.bak`, create a fresh database — and invoke it at the start of explicit repair so rebuilt prefixes rehydrate on demand.
+- [x] 7.5 Add failing tests proving a local SQLite failure, including during an active archive or flush, raises a clear `ChunkIndexLocalStoreException` with delete-local-state/repair guidance and does not publish a snapshot.
 - [x] 7.6 Add failing tests proving normal lookup, entry recording, and flush fail clearly while the repair-in-progress marker exists, while explicit repair can rerun with the marker present.
 
 ## 8. Disk-backed Full Repair
@@ -75,13 +75,12 @@
 - [x] 8.6 Implement bounded repair prefix upload and stale-shard deletion, clearing the repair marker only after upload and deletion succeed.
 - [x] 8.7 Add failing tests proving interrupted repair can be rerun, purges partial local repair state, reconstructs from committed chunks again, and does not publish snapshots.
 
-## 9. Bounded Restore And List Lookup
+## 9. Restore And List Lookup Through The Facade
 
-- [x] 9.1 Add failing restore tests proving chunk resolution uses `ChunkIndexService` through bounded batches or streaming lookup instead of materializing all distinct content hashes and all lookup results at once solely for chunk-index lookup.
-- [x] 9.2 Add or adapt `ChunkIndexService` lookup APIs so restore can consume content hashes in bounded batches or streams while SQLite remains hidden behind the facade.
-- [x] 9.3 Update restore chunk resolution to use the bounded lookup flow, keep large-file and tar-bundled grouping behavior, and fail unresolved snapshot-referenced hashes with explicit repair guidance.
-- [x] 9.4 Add failing list-query tests proving file-size lookup uses bounded batches or streaming lookup, preserves progressive output, maps missing chunk-index entries to `OriginalSize = null`, and fails corrupt index states with repair guidance.
-- [x] 9.5 Update list size lookup to use only `ChunkIndexService` APIs and avoid direct references to SQLite or chunk-index local-store internals.
+- [x] 9.1 Add restore tests proving chunk resolution goes through `ChunkIndexService`, keeps large-file and tar-bundled grouping, and fails unresolved snapshot-referenced hashes with explicit repair guidance.
+- [x] 9.2 Update restore chunk resolution to resolve a plan's content hashes through `ChunkIndexService` and fail unresolved or corrupt-index lookups with explicit repair guidance.
+- [x] 9.3 Add list-query tests proving file-size lookup resolves through `ChunkIndexService` one directory at a time, preserves progressive output, maps missing chunk-index entries to `OriginalSize = null`, and fails corrupt index states with repair guidance.
+- [x] 9.4 Update list size lookup to use only `ChunkIndexService` APIs and avoid direct references to SQLite or chunk-index local-store internals.
 
 ## 10. Boundary, Documentation, And Cleanup
 
