@@ -153,6 +153,11 @@ This is an evidence-first artifact update workflow. The goal is not to prove the
    - Keep requirements behavioral and externally observable. Do not encode incidental private implementation details unless they are architectural constraints the project treats as requirements.
    - If behavior belongs to an existing capability, update that capability delta spec. If no suitable capability exists, ask before creating a new capability spec.
 
+   Capability-level (whole delta file) rules:
+
+   - **Delete a capability delta spec when its capability was not actually modified by this change.** If `specs/<capability>/spec.md` prescribes ADDED/MODIFIED/REMOVED requirements but the implementation evidence shows that capability's code and externally observable behavior were unchanged by this change — for example it only consumes another capability's facade, or its diff against the baseline is incidental (DI wiring, refactor, cosmetic) — remove the entire `specs/<capability>/` delta directory. A capability delta must correspond to a real modification of that capability; do not keep a delta that documents a non-change. Also remove that capability from any "Modified/Added Capabilities" list in `proposal.md`.
+   - **Add a capability delta spec when implemented behavior changed a capability that has no delta.** If the implementation modified a capability's observable behavior or contract and no `specs/<capability>/spec.md` captures it, create the delta spec with the correct ADDED/MODIFIED/REMOVED sections and add it to the proposal's capabilities list. If you are unsure which capability owns the behavior, or whether a new capability is warranted, ask before creating it (per step 10).
+
 7. **Update design**
 
    If `design.md` exists, update it to match the implemented design.
