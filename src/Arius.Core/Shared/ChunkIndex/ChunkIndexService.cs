@@ -104,7 +104,7 @@ public sealed class ChunkIndexService : IDisposable
         var latestSnapshotName = await _latestSnapshotName;
         foreach (var item in validationWork)
         {
-            await EnsurePrefixLoadedAndValidatedAsync(item.Prefix, latestSnapshotName, cancellationToken);
+            await EnsurePrefixLoadedAndSynchronizedAsync(item.Prefix, latestSnapshotName, cancellationToken);
             foreach (var contentHash in item.Hashes)
             {
                 var entry = _localStore.FindEntry(contentHash);
@@ -131,7 +131,7 @@ public sealed class ChunkIndexService : IDisposable
             return pendingFlushEntry;
 
         var latestSnapshot = await _latestSnapshotName;
-        await EnsurePrefixLoadedAndValidatedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
+        await EnsurePrefixLoadedAndSynchronizedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
         return _localStore.FindEntry(contentHash);
     }
 
@@ -143,7 +143,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <param name="prefix">The shard prefix to synchronize.</param>
     /// <param name="latestSnapshotVersion">The snapshot version that the local cache must be recorded against.</param>
     /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
-    private async Task EnsurePrefixLoadedAndValidatedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
+    private async Task EnsurePrefixLoadedAndSynchronizedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
     {
         var gate = _prefixGates.GetOrAdd(prefix, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
@@ -232,7 +232,7 @@ public sealed class ChunkIndexService : IDisposable
             async (prefix, ct) =>
             {
                 // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
-                await EnsurePrefixLoadedAndValidatedAsync(prefix, latestSnapshotVersion, ct);
+                await EnsurePrefixLoadedAndSynchronizedAsync(prefix, latestSnapshotVersion, ct);
 
                 var shard = BuildShard(prefix);
                 if (shard.Count == 0)
