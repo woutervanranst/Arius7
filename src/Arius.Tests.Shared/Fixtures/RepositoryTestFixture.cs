@@ -28,6 +28,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
+    private readonly List<ChunkIndexService>          _ownedIndexes  = [];
 
     /// <summary>
     /// Creates a fixture around a caller-provided blob container using normal passphrase encryption.
@@ -209,18 +210,25 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
     public ArchiveCommandHandler CreateArchiveHandler()
-        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
 
     internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
-        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
-        => new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
+        => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
     public ListQueryHandler CreateListQueryHandler()
-        => new(Index, FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+
+    private ChunkIndexService CreateChunkIndexService()
+    {
+        var index = new ChunkIndexService(BlobContainer, Encryption, Snapshot, AccountName, ContainerName);
+        _ownedIndexes.Add(index);
+        return index;
+    }
 
 
     // --- OTHER HELPERS ---
@@ -250,6 +258,9 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Index.Dispose();
+        foreach (var index in _ownedIndexes)
+            index.Dispose();
+
         SqliteConnection.ClearAllPools();
 
         return ValueTask.CompletedTask;

@@ -147,15 +147,16 @@ public class ChunkIndexServiceRepairTests
     public async Task RepairAsync_ClearsPendingAndInFlightEntries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-clears-memory");
         var staleContentHash = FakeContentHash('a');
         var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2);
-        using var index = CreateIndex(blobs, "repair-clears-memory");
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(staleEntry);
 
         await index.RepairAsync();
         await index.FlushAsync();
 
-        using var resumedIndex = CreateIndex(blobs, "repair-clears-memory-resumed");
+        using var resumedIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
         (await resumedIndex.LookupAsync(staleContentHash)).ShouldBeNull();
         blobs.UploadedBlobNames.ShouldBeEmpty();
     }

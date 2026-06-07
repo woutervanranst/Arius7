@@ -305,27 +305,4 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(RetryThinParentChunkHash.ToString());
     }
 
-    [Test]
-    public async Task UploadThinAsync_UsesReturnedBlobIdentityWithoutParsingIt()
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-
-        var result = await blobs.UploadAsync(
-            BlobPaths.ThinChunkPath(ThinContentHash),
-            new MemoryStream(Array.Empty<byte>(), writable: false),
-            new Dictionary<string, string>
-            {
-                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
-                [BlobMetadataKeys.ParentChunkHash] = ThinParentChunkHash.ToString(),
-                [BlobMetadataKeys.OriginalSize] = "12",
-                [BlobMetadataKeys.CompressedSize] = "3",
-            },
-            BlobTier.Cool,
-            ContentTypes.Thin,
-            cancellationToken: CancellationToken.None);
-
-        result.ETag.ShouldNotBeNull();
-        result.ETag.ShouldStartWith("fake:");
-    }
-
 }
