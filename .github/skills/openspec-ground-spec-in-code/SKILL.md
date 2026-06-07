@@ -12,7 +12,7 @@ Ground an active OpenSpec change in the implementation that actually exists.
 
 Use this after `/opsx-apply` and any manual code edits, before `/opsx-verify`, `/opsx-sync`, or `/opsx-archive`.
 
-This is an evidence-first artifact update workflow. The goal is not to prove the implementation is correct; that is `/opsx-verify`. The goal is to make the active change artifacts accurately describe the implemented behavior, including deliberate deviations discovered during implementation.
+This is an evidence-first artifact update workflow. The goal is not to prove the implementation is correct; that is `/opsx-verify`. The goal is to make the active change artifacts accurately describe the implemented behavior as the intended design, with no deviation or history framing.
 
 **Input**: Optionally specify a change name. Optionally specify a base ref in plain text, for example `since abc123` or `base main`. If the change name is omitted, check if it can be inferred from context. If vague or ambiguous, prompt for available active changes.
 
@@ -165,7 +165,7 @@ This is an evidence-first artifact update workflow. The goal is not to prove the
    Capture:
 
    - final architecture and responsibility boundaries
-   - important deviations from the original design
+   - how the implemented behavior and design should be stated as intended from the start
    - decisions made during implementation
    - tradeoffs that now matter for maintainers
    - rejected alternatives only when implementation evidence or user decisions make them relevant
