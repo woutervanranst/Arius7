@@ -181,6 +181,8 @@ public sealed class ChunkIndexService : IDisposable
                 return; //Path 2
             }
 
+            await using var stream = remoteShard.Stream; // ensure the stream is disposed if we go through path 3a
+
             // it exists at remote - is remote on the same version?
             if (_localStore.IsPrefixAtETag(prefix, remoteShard.ETag))
             {
@@ -193,7 +195,6 @@ public sealed class ChunkIndexService : IDisposable
             Shard shard;
             try
             {
-                await using var stream = remoteShard.Stream;
                 shard = ShardSerializer.Deserialize(stream, _encryption);
             }
             catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
