@@ -218,6 +218,29 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
+    public async Task PromoteToSnapshotVersion_AfterFlush_PromotesCacheForNextServiceInstance()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("promote-same-instance");
+        var previousSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow.AddMinutes(-1):yyyy-MM-ddTHHmmss.fffZ}");
+        var currentSnapshot = RelativePath.Parse($"snapshots/{DateTimeOffset.UtcNow:yyyy-MM-ddTHHmmss.fffZ}");
+        var contentHash = FakeContentHash('a');
+        var entry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
+        using (var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([previousSnapshot]), repositoryKey, repositoryKey))
+        {
+            index.AddEntry(entry);
+            await index.FlushAsync();
+            await index.PromoteToSnapshotVersionAsync(currentSnapshot.Name.ToString());
+        }
+
+        using var resumedIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService([previousSnapshot, currentSnapshot]), repositoryKey, repositoryKey);
+        blobs.RequestedBlobNames.Clear();
+
+        (await resumedIndex.LookupAsync(contentHash)).ShouldBe(entry);
+        blobs.RequestedBlobNames.ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task LookupAsync_BatchedHashes_LoadEachTouchedPrefixOnce()
     {
         var blobs = new FakeInMemoryBlobContainerService();

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
@@ -33,7 +34,8 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]
@@ -53,7 +55,8 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]
@@ -92,6 +95,27 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_AfterSnapshotCreation_FreshInstanceLookupUsesPromotedCacheWithoutRevalidation()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        var content = await WriteRandomFileAsync(fixture, relativePath, 2 * 1024 * 1024);
+        var contentHash = fixture.Encryption.ComputeHash(content);
+        var shardBlobName = BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash));
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, smallFileThreshold: 0);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        blobs.RequestedBlobNames.Clear();
+
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
+        blobs.RequestedBlobNames.ShouldNotContain(shardBlobName);
+    }
+
+    [Test]
     public async Task Archive_WhenChunkIndexFlushFails_DoesNotPublishSnapshotAndKeepsSessionEntries()
     {
         var blobs = new ThrowOnChunkIndexUploadBlobContainerService();
@@ -108,11 +132,13 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeFalse();
         (await fixture.Snapshot.ResolveAsync()).ShouldBeNull();
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
 
         blobs.FailChunkIndexUploads = false;
-        await fixture.Index.FlushAsync();
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
+        await resumedIndex.FlushAsync();
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => resumedIndex.LookupAsync(contentHash));
+        ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
     }
 
     [Test]
@@ -156,7 +182,8 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         observedMissingDuringUpload.ShouldBeTrue();
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]
@@ -206,7 +233,8 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         observedMissingDuringThinUpload.ShouldBeTrue();
-        (await fixture.Index.LookupAsync(contentHash)).ShouldNotBeNull();
+        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
     [Test]

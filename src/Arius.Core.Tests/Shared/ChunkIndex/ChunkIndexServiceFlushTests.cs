@@ -38,8 +38,10 @@ public class ChunkIndexServiceFlushTests
         var flushed = await ReadShardAsync(blobs, prefix);
         flushed.Entries.ShouldContain(entry => entry.ContentHash == cleanHash);
         flushed.Entries.ShouldContain(entry => entry.ContentHash == dirtyHash);
-        (await index.LookupAsync(cleanHash)).ShouldBe(cleanEntry);
-        (await index.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
+
+        using var resumedIndex = new ChunkIndexService(blobs, s_encryption, snapshot, repositoryKey, repositoryKey);
+        (await resumedIndex.LookupAsync(cleanHash)).ShouldBe(cleanEntry);
+        (await resumedIndex.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
     }
 
     [Test]
@@ -53,7 +55,7 @@ public class ChunkIndexServiceFlushTests
         await index.FlushAsync();
 
         var ex = Should.Throw<InvalidOperationException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
-        ex.Message.ShouldContain("after flush has started");
+        ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
     }
 
     [Test]
@@ -66,7 +68,21 @@ public class ChunkIndexServiceFlushTests
         await index.FlushAsync();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(() => index.FlushAsync());
-        ex.Message.ShouldContain("already started");
+        ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
+    }
+
+    [Test]
+    public async Task LookupAsync_AfterFlush_Throws()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("flush-lookup-closed");
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+
+        await index.FlushAsync();
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(() => index.LookupAsync(FakeContentHash('a')));
+        ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
     }
 
     private static async Task<Shard> ReadShardAsync(FakeInMemoryBlobContainerService blobs, PathSegment prefix)

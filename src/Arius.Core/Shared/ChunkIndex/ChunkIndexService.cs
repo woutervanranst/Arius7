@@ -70,6 +70,7 @@ public sealed class ChunkIndexService : IDisposable
     public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
 
         var hashes = contentHashes.Distinct().ToArray();
         var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
@@ -125,6 +126,7 @@ public sealed class ChunkIndexService : IDisposable
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
 
         var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
         if (pendingFlushEntry is not null)
@@ -133,6 +135,20 @@ public sealed class ChunkIndexService : IDisposable
         var latestSnapshot = await _latestSnapshotName;
         await EnsurePrefixLoadedAndSynchronizedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
         return _localStore.FindEntry(contentHash);
+    }
+
+    /// <summary>
+    /// Promotes all loaded prefixes validated against the current snapshot version to the specified snapshot version.
+    /// </summary>
+    public async Task PromoteToSnapshotVersionAsync(string newSnapshotVersion)
+    {
+        ThrowIfRepairIncomplete();
+
+        var oldSnapshotVersion = await _latestSnapshotName;
+        if (StringComparer.Ordinal.Equals(oldSnapshotVersion, newSnapshotVersion))
+            return;
+
+        _localStore.PromoteToSnapshotVersion(oldSnapshotVersion, newSnapshotVersion);
     }
 
     // -- Synchronization -----------------------------------------------------
@@ -200,8 +216,7 @@ public sealed class ChunkIndexService : IDisposable
     public void AddEntry(ShardEntry entry)
     {
         ThrowIfRepairIncomplete();
-        if (Volatile.Read(ref _acceptingEntries) == 0)
-            throw new InvalidOperationException("Cannot record chunk-index entries after flush has started.");
+        ThrowIfFlushed();
 
         _localStore.UpsertPendingFlush(entry);
     }
@@ -217,7 +232,7 @@ public sealed class ChunkIndexService : IDisposable
         ThrowIfRepairIncomplete();
 
         if (Interlocked.Exchange(ref _acceptingEntries, 0) == 0)
-            throw new InvalidOperationException("Chunk-index flush has already started.");
+            throw new InvalidOperationException("Chunk-index service cannot be used after flush has started.");
 
         var prefixesWithPendingFlushes = _localStore.GetPrefixesWithPendingFlushes();
         if (prefixesWithPendingFlushes.Count == 0)
@@ -284,6 +299,7 @@ public sealed class ChunkIndexService : IDisposable
     /// </summary>
     public void InvalidateCaches()
     {
+        ThrowIfFlushed();
         _localStore.ClearRemoteBackedCache();
     }
 
@@ -296,6 +312,7 @@ public sealed class ChunkIndexService : IDisposable
     /// <returns>A summary of the repair work that was performed.</returns>
     public async Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfFlushed();
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
@@ -409,6 +426,12 @@ public sealed class ChunkIndexService : IDisposable
     {
         if (IsRepairMarker())
             throw new ChunkIndexRepairIncompleteException();
+    }
+
+    private void ThrowIfFlushed()
+    {
+        if (Volatile.Read(ref _acceptingEntries) == 0)
+            throw new InvalidOperationException("Chunk-index service cannot be used after flush has started.");
     }
 
     private bool IsRepairMarker()     => _repositoryFileSystem.FileExists(RepairInProgressMarkerPath);

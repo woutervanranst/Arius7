@@ -156,7 +156,8 @@ public class ChunkIndexServiceRepairTests
         await index.RepairAsync();
         await index.FlushAsync();
 
-        (await index.LookupAsync(staleContentHash)).ShouldBeNull();
+        using var resumedIndex = CreateIndex(blobs, "repair-clears-memory-resumed");
+        (await resumedIndex.LookupAsync(staleContentHash)).ShouldBeNull();
         blobs.UploadedBlobNames.ShouldBeEmpty();
     }
 

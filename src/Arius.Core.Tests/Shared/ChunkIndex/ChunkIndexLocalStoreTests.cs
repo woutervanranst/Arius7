@@ -143,6 +143,35 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    public void PromoteToSnapshotVersion_UpdatesMatchingPrefixes_AndPreservesRemoteState()
+    {
+        var repositoryKey = $"acct-local-store-promote-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var fromSnapshot = "snapshot-1";
+        var toSnapshot = "snapshot-2";
+        var remoteEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var remotePrefix = ChunkIndexRouter.GetLeafPrefix(remoteEntry.ContentHash);
+        var emptyPrefix = PathSegment.Parse("ff");
+        var untouchedPrefix = PathSegment.Parse("ee");
+
+        store.UpdatePrefix(remotePrefix, "remote-1", fromSnapshot, [remoteEntry]);
+        store.AddEmptyPrefix(emptyPrefix, fromSnapshot);
+        store.AddEmptyPrefix(untouchedPrefix, "snapshot-older");
+
+        store.PromoteToSnapshotVersion(fromSnapshot, toSnapshot);
+
+        store.FindEntry(remoteEntry.ContentHash).ShouldBe(remoteEntry);
+        store.IsPrefixAtSnapshotVersion(remotePrefix, fromSnapshot).ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(emptyPrefix, fromSnapshot).ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(remotePrefix, toSnapshot).ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(emptyPrefix, toSnapshot).ShouldBeTrue();
+        store.IsPrefixAtETag(remotePrefix, "remote-1").ShouldBeTrue();
+        store.IsPrefixAtETag(emptyPrefix, "remote-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(untouchedPrefix, "snapshot-older").ShouldBeTrue();
+    }
+
+    [Test]
     public void MarkPendingFlushesSynchronized_ClearsPendingFlushRows_AndValidatesUploadedPrefixes()
     {
         var repositoryKey = $"acct-local-store-mark-synchronized-{Guid.NewGuid():N}";

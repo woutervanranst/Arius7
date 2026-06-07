@@ -361,6 +361,30 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
+    /// Promotes loaded prefixes from one snapshot version to another while preserving recorded remote state.
+    /// </summary>
+    public void PromoteToSnapshotVersion(string oldSnapshotVersion, string newSnapshotVersion)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE loaded_prefixes SET snapshot_version = $newSnapshotVersion WHERE snapshot_version = $oldSnapshotVersion;";
+            command.Parameters.AddWithValue("$oldSnapshotVersion", oldSnapshotVersion);
+            command.Parameters.AddWithValue("$newSnapshotVersion", newSnapshotVersion);
+            var rowsAffected = command.ExecuteNonQuery();
+            transaction.Commit();
+            _logger.LogDebug("[chunk-index-local] PromoteToSnapshotVersion: from={OldSnapshotVersion} to={NewSnapshotVersion} rowsAffected={RowsAffected}", oldSnapshotVersion, newSnapshotVersion, rowsAffected);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
     /// Marks pending flush shard state synchronized by clearing pending flush rows and validating uploaded prefixes for the specified snapshot.
     /// </summary>
     public void MarkPendingFlushesSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion)
