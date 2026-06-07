@@ -180,7 +180,8 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// <summary>
     /// Opens a file for reading within the rooted directory.
     /// </summary>
-    public Stream OpenRead(RelativePath path) => File.OpenRead(root.Resolve(path));
+    public Stream OpenRead(RelativePath path) =>
+        new FileStream(root.Resolve(path), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
 
     public FileStream OpenOrCreateFile(RelativePath path, FileAccess access, FileShare share, int bufferSize = 4096, bool useAsync = true)
     {
