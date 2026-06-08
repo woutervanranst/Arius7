@@ -23,8 +23,8 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// <remarks>
     /// Detection uses <see cref="FileSystemInfo.LinkTarget"/> (lstat semantics, does not follow the
     /// link) so a broken link is recognised rather than mistaken for a missing file. Note that
-    /// <see cref="File.Exists(string)"/> returns true for a dangling symlink, so it is not a usable
-    /// substitute here.
+    /// <see cref="File.Exists(string)"/> returns false for a dangling symlink, so
+    /// <see cref="FileSystemInfo.LinkTarget"/> is required to detect broken links here.
     /// </remarks>
     public bool IsValidSymlink(RelativePath path)
     {
