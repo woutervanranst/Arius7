@@ -7,6 +7,7 @@ using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using System.Collections.Concurrent;
@@ -167,6 +168,7 @@ public class ArchiveRecoveryTests
             fixture.Snapshot,
             fixture.Mediator,
             new FakeLogger<ArchiveCommandHandler>(),
+            NullLoggerFactory.Instance,
             fixture.AccountName,
             fixture.ContainerName);
 
@@ -218,6 +220,7 @@ public class ArchiveRecoveryTests
             fixture.Snapshot,
             fixture.Mediator,
             new FakeLogger<ArchiveCommandHandler>(),
+            NullLoggerFactory.Instance,
             fixture.AccountName,
             fixture.ContainerName);
 
@@ -390,6 +393,54 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeFalse();
         result.ErrorMessage.ShouldBe("staging setup failed");
+    }
+
+    // ── Hang regression: a single unreadable file must never deadlock the pipeline ──
+
+    [Test]
+    public async Task Archive_TreeWithBrokenSymlinkAndManyFiles_CompletesAndSkipsLink()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // creating symlinks requires elevation on Windows
+
+        await using var fixture = await CreateArchiveFixtureAsync();
+
+        const int fileCount = 70; // > ChannelCapacity (64): fills the bounded enumerate→hash channel
+        for (var i = 0; i < fileCount; i++)
+            await WriteRandomFileAsync(fixture, RelativePath.Parse($"files/file-{i:D3}.bin"), 256);
+
+        // Dangling symlink: enumerated by the OS, FileInfo.Length reports the link text, OpenRead throws.
+        var brokenLink = Path.Combine(fixture.LocalDirectory.ToString(), "files", "broken.bin");
+        File.CreateSymbolicLink(brokenLink, "/nonexistent/target");
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool).WaitAsync(TimeSpan.FromSeconds(120));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.FilesScanned.ShouldBe(fileCount); // broken link filtered out during enumeration
+        result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_WhenHashStageThrowsForOneFile_CompletesWithoutHanging()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+
+        const int fileCount = 70; // > ChannelCapacity (64): a faulting hash worker would block the producer
+        for (var i = 0; i < fileCount; i++)
+            await WriteRandomFileAsync(fixture, RelativePath.Parse($"f/file-{i:D3}.bin"), 256);
+
+        var poison = RelativePath.Parse("f/file-000.bin");
+        fixture.Mediator
+            .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo =>
+            {
+                if (callInfo.ArgAt<INotification>(0) is FileHashingEvent e && e.RelativePath.Equals(poison))
+                    throw new IOException("simulated unreadable file");
+            });
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool).WaitAsync(TimeSpan.FromSeconds(120));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
     }
 
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()

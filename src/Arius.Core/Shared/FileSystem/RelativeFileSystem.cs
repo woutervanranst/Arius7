@@ -10,8 +10,39 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
 {
     // --- FILE EXIST
 
-    public bool FileExists(RelativePath path) 
+    public bool FileExists(RelativePath path)
         => File.Exists(root.Resolve(path));
+
+    // --- SYMLINK VALIDITY
+
+    /// <summary>
+    /// Returns true when the path resolves to existing content: a regular file, or a symbolic
+    /// link whose final target (following the whole chain) exists. Returns false only for a
+    /// dangling symlink — a reparse point whose target is missing or unresolvable.
+    /// </summary>
+    /// <remarks>
+    /// Detection uses <see cref="FileSystemInfo.LinkTarget"/> (lstat semantics, does not follow the
+    /// link) so a broken link is recognised rather than mistaken for a missing file. Note that
+    /// <see cref="File.Exists(string)"/> returns true for a dangling symlink, so it is not a usable
+    /// substitute here.
+    /// </remarks>
+    public bool IsValidSymlink(RelativePath path)
+    {
+        var fullPath = root.Resolve(path);
+        try
+        {
+            var info = new FileInfo(fullPath);
+            if (info.LinkTarget is null)
+                return true; // not a link → resolvable as-is
+
+            var target = info.ResolveLinkTarget(returnFinalTarget: true);
+            return target is not null && target.Exists;
+        }
+        catch
+        {
+            return false; // unresolvable chain (cyclic / too many levels / missing) → treat as broken
+        }
+    }
 
     // --- DIRECTORY EXIST
 

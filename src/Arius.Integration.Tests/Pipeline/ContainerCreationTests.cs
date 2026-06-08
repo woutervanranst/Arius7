@@ -10,6 +10,7 @@ using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Mediator;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -49,6 +50,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
             svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, Account, containerName),
             snapshot, mediator,
             logger,
+            NullLoggerFactory.Instance,
             Account, containerName);
 
         var tempRoot = TestTempRoots.CreateDirectory("cc");

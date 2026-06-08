@@ -97,6 +97,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
+                sp.GetRequiredService<ILoggerFactory>(),
                 accountName,
                 containerName));
 

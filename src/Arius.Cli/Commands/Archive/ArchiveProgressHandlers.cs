@@ -54,6 +54,21 @@ public sealed class FileHashedHandler(ProgressState state) : INotificationHandle
     }
 }
 
+// ── FileSkippedHandler ────────────────────────────────────────────────────────
+
+/// <summary>
+/// Removes the <see cref="TrackedFile"/> row for a file the pipeline skipped (unreadable /
+/// broken link / deleted mid-run), so it does not linger at 0% in the display.
+/// </summary>
+public sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
+{
+    public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
+    {
+        state.RemoveFile(notification.RelativePath);
+        return ValueTask.CompletedTask;
+    }
+}
+
 // ── TarBundleStartedHandler ───────────────────────────────────────────────────
 
 /// <summary>Creates a new <see cref="TrackedTar"/> with the next bundle number and State=Accumulating.</summary>

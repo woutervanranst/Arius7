@@ -22,6 +22,10 @@ public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) 
 /// <summary>A file finished hashing.</summary>
 public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash) : INotification;
 
+/// <summary>A file was skipped because it could not be read/opened during the pipeline.</summary>
+/// <param name="RelativePath">Relative path of the skipped file; used to clear its progress row.</param>
+public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification;
+
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;
 

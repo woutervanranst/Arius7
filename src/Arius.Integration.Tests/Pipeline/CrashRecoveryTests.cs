@@ -8,6 +8,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
 using Arius.Tests.Shared.Fixtures;
 using Mediator;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -41,6 +42,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         return new ArchiveCommandHandler(
             blobService, encryption, index, new ChunkStorageService(blobService, encryption), new FileTreeService(blobService, encryption, Account, containerName), snapshot, mediator,
             logger,
+            NullLoggerFactory.Instance,
             Account, containerName);
     }
 
