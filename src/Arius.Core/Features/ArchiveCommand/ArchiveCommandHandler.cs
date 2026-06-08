@@ -32,6 +32,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private const int HashWorkers      = 4;
     private const int UploadWorkers    = 4;
     private const int TarUploadWorkers = 1;
+    private const int ThinEntryWorkers = 32;
     private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
@@ -479,23 +480,26 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         ? (double)compressedSize / sealedTar.UncompressedSize
                         : 1.0;
 
-                    // Create thin chunks for each entry
-                    foreach (var entry in sealedTar.Entries)
-                    {
-                        var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                        await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, ct);
+                    // Parallel thin chunk creation for each entry
+                    await Parallel.ForEachAsync(
+                        sealedTar.Entries,
+                        new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
+                        async (entry, entryCt) =>
+                        {
+                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
+                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                        _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
-                        await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), ct);
+                            _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
+                            await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
 
-                        await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, ct);
+                            await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, entryCt);
 
-                        if (!opts.NoPointers)
-                            pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
+                            if (!opts.NoPointers)
+                                pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
 
-                        if (opts.RemoveLocal)
-                            pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
-                    }
+                            if (opts.RemoveLocal)
+                                pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
+                        });
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
                     _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
