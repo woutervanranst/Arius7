@@ -241,16 +241,18 @@ internal static class ArchiveVerb
         {
             var filesHashed  = state.FilesHashed;
             var filesScanned = state.FilesScanned;
+            var filesSkipped = state.FilesSkippedHashing;
             var filesUnique  = state.FilesUnique;
             var queueDepth   = state.HashQueueDepth?.Invoke() ?? 0;
 
-            var countPart  = filesScanned > 0 ? $"{filesHashed:N0} / {filesScanned:N0} files" : $"{filesHashed:N0} files";
-            var uniquePart = filesUnique  > 0 ? $" ({filesUnique:N0} unique)" : string.Empty;
-            var queuePart  = queueDepth   > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
+            var countPart   = filesScanned > 0 ? $"{filesHashed:N0} / {filesScanned:N0} files" : $"{filesHashed:N0} files";
+            var uniquePart  = filesUnique  > 0 ? $" ({filesUnique:N0} unique)" : string.Empty;
+            var skippedPart = filesSkipped > 0 ? $" ({filesSkipped:N0} skipped)" : string.Empty;
+            var queuePart   = queueDepth   > 0 ? $"  [dim][[{queueDepth} pending]][/]" : string.Empty;
 
-            var done   = state.ScanComplete && filesHashed >= filesScanned && filesScanned > 0;
+            var done   = state.ScanComplete && filesHashed + filesSkipped >= filesScanned && filesScanned > 0;
             var symbol = done ? "[green]●[/]" : "[yellow]○[/]";
-            lines.Add(new Markup($"  {symbol} Hashing    [dim]{countPart}{uniquePart}[/]{queuePart}"));
+            lines.Add(new Markup($"  {symbol} Hashing    [dim]{countPart}{uniquePart}{skippedPart}[/]{queuePart}"));
         }
 
         // ── Uploading header ──────────────────────────────────────────────────

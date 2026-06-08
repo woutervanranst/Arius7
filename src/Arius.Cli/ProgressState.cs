@@ -307,6 +307,16 @@ public sealed class ProgressState
     public void RemoveFile(RelativePath relativePath) =>
         TrackedFiles.TryRemove(relativePath, out _);
 
+    /// <summary>
+    /// Removes the tracked row for a file skipped during hashing (unreadable / broken link / deleted
+    /// mid-run) and counts it toward hashing completion, since it was scanned but will never be hashed.
+    /// </summary>
+    public void SkipFileDuringHashing(RelativePath relativePath)
+    {
+        TrackedFiles.TryRemove(relativePath, out _);
+        Interlocked.Increment(ref _filesSkippedHashing);
+    }
+
     // ── Archive: TAR bundle tracking ─────────────────────────────────────────
 
     /// <summary>TAR bundles currently tracked, keyed by bundle number.</summary>
@@ -366,6 +376,14 @@ public sealed class ProgressState
     /// <summary>Number of files for which hashing has completed.</summary>
     public long FilesHashed => Interlocked.Read(ref _filesHashed);
     private long _filesHashed;
+
+    /// <summary>
+    /// Number of files skipped during hashing (unreadable / broken link / deleted mid-run).
+    /// These were scanned but will never be hashed; counted toward hashing completion so the
+    /// headline reaches "done" instead of stalling one short of the scanned total.
+    /// </summary>
+    public long FilesSkippedHashing => Interlocked.Read(ref _filesSkippedHashing);
+    private long _filesSkippedHashing;
 
     /// <summary>Number of files confirmed unique (not deduped); incremented per upload routed.</summary>
     public long FilesUnique => Interlocked.Read(ref _filesUnique);

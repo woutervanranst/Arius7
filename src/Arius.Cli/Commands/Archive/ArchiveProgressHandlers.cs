@@ -64,7 +64,7 @@ public sealed class FileSkippedHandler(ProgressState state) : INotificationHandl
 {
     public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
     {
-        state.RemoveFile(notification.RelativePath);
+        state.SkipFileDuringHashing(notification.RelativePath);
         return ValueTask.CompletedTask;
     }
 }

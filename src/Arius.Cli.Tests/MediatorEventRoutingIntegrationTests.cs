@@ -74,6 +74,9 @@ public class MediatorEventRoutingIntegrationTests
         state.TotalFiles.ShouldBe(1L);
         state.ScanComplete.ShouldBeTrue();
         state.FilesHashed.ShouldBe(2L);          // a.bin + large.bin
+        // The skipped file is counted toward hashing completion so the headline can reach "done"
+        // (hashed + skipped >= scanned) instead of stalling one short of the scanned total.
+        state.FilesSkippedHashing.ShouldBe(1L);  // skipped.bin
         state.TarsUploaded.ShouldBe(1L);
         state.ChunksUploaded.ShouldBe(2L);       // large-file chunk + tar bundle
         state.BytesUploaded.ShouldBe(230L);      // 150 (large file) + 80 (tar bundle)
