@@ -5,7 +5,8 @@ namespace Arius.Core.Shared.Streaming;
 /// Delegates all writes to the inner stream without buffering.
 /// <see cref="BytesWritten"/> remains readable after the stream is disposed.
 /// </summary>
-public sealed class CountingStream : Stream
+[SharedWithinAssembly]
+internal sealed class CountingStream : Stream
 {
     private readonly Stream _inner;
 
