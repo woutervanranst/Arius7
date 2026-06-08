@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines the blob storage abstraction layer, container layout, and rehydration strategy for Arius. Arius.Core depends only on the `IBlobContainerService` interface; the Azure implementation lives in Arius.AzureBlob.
-
 ## Requirements
-
 ### Requirement: Blob storage abstraction
 The system SHALL define an `IBlobContainerService` interface in Arius.Core that abstracts all blob storage operations, including container creation. Arius.Core SHALL NOT reference Azure.Storage.Blobs or any Azure-specific types. The Azure implementation (`Arius.AzureBlob`) SHALL implement this interface. The interface SHALL include a `CreateContainerIfNotExistsAsync` method that ensures the blob container exists before any blob operations are performed.
 
@@ -51,45 +49,40 @@ The Azure implementation SHALL map both HTTP 412 ConditionNotMet (real Azure, `I
 - **THEN** the service SHALL overwrite unconditionally and SHALL NOT throw `BlobAlreadyExistsException`
 
 ### Requirement: Chunk blob operations
-The `IBlobContainerService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata), list blobs by prefix, optionally include metadata in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload and copy operations SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
+The `IBlobContainerService` SHALL support: upload blob (streaming, with metadata and tier), download blob (streaming), HEAD check (exists + metadata + opaque blob identity), list blobs by prefix, optionally include metadata and opaque blob identity in blob listing results, set blob metadata, copy blob (for rehydration), and open a writable stream for streaming upload. Upload and copy operations SHALL support setting the access tier (Hot, Cool, Cold, Archive). The `OpenWriteAsync` method SHALL return a writable `Stream` for the specified blob path with the specified content type. `OpenWriteAsync` SHALL use `IfNoneMatch=*` (create-if-not-exists) semantics: if a blob already exists at the target path, it SHALL throw `BlobAlreadyExistsException` immediately before any data is written.
 
-`ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default)` SHALL return blob list items containing at least the blob name. When `includeMetadata` is false, implementations SHALL leave metadata unset and MAY omit content properties. When `includeMetadata` is true, implementations SHALL populate metadata and available content information from the listing operation where the backend supports it.
+The opaque blob identity SHALL be exposed as a string property named `ETag` on the result records that carry it (`UploadResult`, `DownloadResult`, `BlobMetadata`, `BlobListItem`). It SHALL be suitable for detecting whether a blob body changed between two observations. Azure implementations SHALL populate this value from the blob ETag. `GetMetadataAsync` SHALL populate `BlobMetadata.ETag` for existing blobs when the backend provides one. `ListAsync(prefix, includeMetadata: true, ...)` SHALL populate `BlobListItem.ETag` for listed blobs when the backend listing returns it. `DownloadAsync`/`TryDownloadAsync` SHALL populate `DownloadResult.ETag`. Core callers SHALL treat the identity as an opaque string (string equality only) and SHALL NOT parse Azure-specific ETag syntax.
 
-Thin chunk metadata SHALL include `parent_chunk_hash` to identify the parent tar chunk hash for that content hash. Metadata-aware listing SHALL expose this metadata when the backend provides blob metadata in listing results.
+`UploadAsync` SHALL return an `UploadResult` exposing the resulting `ETag` for the uploaded blob, so callers that need the new blob identity can update local validation state without an extra HEAD request. When a blob is uploaded through `OpenWriteAsync`, callers that need the resulting blob identity SHALL call `GetMetadataAsync` after the returned write stream has been closed successfully. Chunk-index flush uses `UploadAsync` and reads the identity directly from `UploadResult.ETag`; chunk-index prefix validation reads `DownloadResult.ETag` from `TryDownloadAsync` rather than issuing a separate HEAD.
 
-#### Scenario: Upload large chunk
-- **WHEN** uploading a gzip+encrypted stream to `chunks/<hash>`
-- **THEN** the service SHALL upload the stream with specified metadata and tier
+#### Scenario: Upload returns blob identity
+- **WHEN** `UploadAsync` uploads a blob successfully
+- **THEN** it SHALL return an `UploadResult` for the uploaded blob
+- **AND** the result SHALL include the opaque `ETag` identity when the backend provides one
 
-#### Scenario: HEAD check for crash recovery
-- **WHEN** checking if `chunks/<hash>` exists
-- **THEN** the service SHALL return existence, blob metadata (including `arius_type`), and blob tier
+#### Scenario: OpenWrite callers fetch resulting identity
+- **WHEN** a caller uploads a blob through `OpenWriteAsync`
+- **AND** the caller needs the uploaded blob identity
+- **THEN** the caller SHALL close the returned write stream successfully
+- **AND** it SHALL call `GetMetadataAsync` for the uploaded blob
 
-#### Scenario: Download for restore
-- **WHEN** downloading `chunks/<hash>` or `chunks-rehydrated/<hash>`
-- **THEN** the service SHALL return a readable stream
+#### Scenario: HEAD returns blob identity
+- **WHEN** `GetMetadataAsync` checks an existing blob
+- **THEN** the returned `BlobMetadata` SHALL include an opaque `ETag` identity when the backend provides one
+- **AND** Azure-backed metadata SHALL use the blob ETag as that identity
 
-#### Scenario: List names only
-- **WHEN** `ListAsync(prefix, includeMetadata: false)` is called
-- **THEN** each returned item SHALL include the blob name
-- **AND** callers SHALL NOT require metadata to be populated
+#### Scenario: Download returns blob identity
+- **WHEN** `DownloadAsync` or `TryDownloadAsync` returns a blob stream
+- **THEN** the returned `DownloadResult` SHALL include the opaque `ETag` identity when the backend provides one
 
-#### Scenario: List with metadata
-- **WHEN** `ListAsync(prefix, includeMetadata: true)` is called
-- **THEN** each returned item SHALL include the blob name and available metadata from the listing operation
-- **AND** repair workflows SHALL be able to inspect `arius_type` and thin chunk `parent_chunk_hash` without issuing a separate HEAD request per listed blob when the backend supports metadata listing
+#### Scenario: Metadata listing returns blob identity
+- **WHEN** `ListAsync(prefix, includeMetadata: true)` returns blob items
+- **THEN** each returned item SHALL include an opaque `ETag` identity when the backend listing provides one
 
-#### Scenario: Thin chunk parent metadata listed
-- **WHEN** `ListAsync(ChunkPrefix, includeMetadata: true)` returns a thin chunk blob
-- **THEN** the listed blob item SHALL expose `parent_chunk_hash` metadata when the backend listing provides metadata
-
-#### Scenario: OpenWriteAsync returns writable stream
-- **WHEN** `OpenWriteAsync("chunks/<hash>", contentType)` is called
-- **THEN** the service SHALL return a writable `Stream` that uploads data to Azure as it is written, using `BlockBlobClient.OpenWriteAsync()` in the Azure implementation
-
-#### Scenario: OpenWriteAsync throws BlobAlreadyExistsException
-- **WHEN** `OpenWriteAsync(blobName, …)` is called and a blob already exists at that path
-- **THEN** the service SHALL throw `BlobAlreadyExistsException` immediately (before any data is written)
+#### Scenario: Core treats blob identity as opaque
+- **WHEN** Core compares two observations of the same blob
+- **THEN** it SHALL compare the blob identity as an opaque string
+- **AND** it SHALL NOT parse Azure-specific ETag syntax
 
 ### Requirement: Chunk types with blob metadata
 Each chunk blob SHALL carry metadata distinguishing its type. The `arius_type` metadata field SHALL be one of: `large`, `tar`, `thin`. Additional metadata: `original_size` (for large and thin), `chunk_size` (compressed blob size for large and tar), `compressed_size` (for thin: proportional estimate within tar), and `parent_chunk_hash` (for thin). The `arius_complete` metadata key SHALL NOT be used. The presence of `arius_type` SHALL serve as the sole signal that an upload completed successfully.
@@ -167,3 +160,4 @@ For restore, archive-tier chunks SHALL be rehydrated by copying to `chunks-rehyd
 #### Scenario: Already rehydrated
 - **WHEN** `chunks-rehydrated/abc123` already exists
 - **THEN** the system SHALL skip rehydration and use the existing copy
+
