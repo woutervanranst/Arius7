@@ -241,54 +241,63 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
             _logger.LogInformation("[phase] hash");
-            var hashTask = Parallel.ForEachAsync(
-                    filePairChannel.Reader.ReadAllAsync(cancellationToken),
-                    new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
-                    async (pair, ct) =>
-                    {
-                        try
+            var hashTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await Parallel.ForEachAsync(
+                        filePairChannel.Reader.ReadAllAsync(cancellationToken),
+                        new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
+                        async (pair, ct) =>
                         {
-                            var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
+                            try
+                            {
+                                var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
 
-                            await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
+                                await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
-                            ContentHash contentHash;
-                            if (pair is { Binary: null, Pointer: { Hash: not null } })
-                            {
-                                // Pointer-only: use pointer hash directly (no re-hash)
-                                contentHash = pair.Pointer.Hash.Value;
+                                ContentHash contentHash;
+                                if (pair is { Binary: null, Pointer: { Hash: not null } })
+                                {
+                                    // Pointer-only: use pointer hash directly (no re-hash)
+                                    contentHash = pair.Pointer.Hash.Value;
+                                }
+                                else if (pair.Binary is not null)
+                                {
+                                    await using var s  = fs.OpenRead(pair.RelativePath);
+                                    var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                                    await using var ps = new ProgressStream(s, p);
+                                    contentHash = await _encryption.ComputeHashAsync(ps, ct);
+                                }
+                                else
+                                {
+                                    // No binary and no pointer hash → skip
+                                    _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
+                                    await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
+                                    return;
+                                }
+
+                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
+
+                                _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
+
+                                await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
                             }
-                            else if (pair.Binary is not null)
+                            catch (Exception ex) when (!ct.IsCancellationRequested)
                             {
-                                await using var s  = fs.OpenRead(pair.RelativePath);
-                                var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
-                                await using var ps = new ProgressStream(s, p);
-                                contentHash = await _encryption.ComputeHashAsync(ps, ct);
-                            }
-                            else
-                            {
-                                // No binary and no pointer hash → skip
-                                _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
+                                // A single unreadable file (broken link, permission denied, deleted mid-run)
+                                // must never fault this stage — that would stop draining filePairChannel and
+                                // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
+                                _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
                                 await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
-                                return;
                             }
-
-                            await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
-
-                            _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
-
-                            await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
-                        }
-                        catch (Exception ex) when (!ct.IsCancellationRequested)
-                        {
-                            // A single unreadable file (broken link, permission denied, deleted mid-run)
-                            // must never fault this stage — that would stop draining filePairChannel and
-                            // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
-                            _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
-                            await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
-                        }
-                    })
-                .ContinueWith(_ => hashedChannel.Writer.Complete(), CancellationToken.None);
+                        });
+                }
+                finally
+                {
+                    hashedChannel.Writer.Complete();
+                }
+            }, cancellationToken);
 
             // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
             _logger.LogInformation("[phase] dedup-route");
@@ -513,6 +522,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await tarUploadTask;
             indexEntryChannel.Writer.Complete();
             await dedupTask;
+            await hashTask;
             await enumTask;
 
             // ── End-of-pipeline ───────────────────────────────────────────────
