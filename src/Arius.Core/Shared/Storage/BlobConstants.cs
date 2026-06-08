@@ -92,5 +92,6 @@ public static class BlobPaths
     public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / PathSegment.Parse(name);
+    public static RelativePath SnapshotPath(DateTimeOffset timestamp)  => SnapshotPath(timestamp.UtcDateTime.ToString(Arius.Core.Shared.Snapshot.SnapshotService.TimestampFormat));
     public static RelativePath ChunkIndexShardPath(PathSegment prefix) => ChunkIndexPrefix / prefix;
 }

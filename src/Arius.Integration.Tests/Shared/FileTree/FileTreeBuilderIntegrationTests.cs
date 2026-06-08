@@ -4,6 +4,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -24,7 +25,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         out FileTreeService fileTreeService)
     {
-        var index = new ChunkIndexService(blobs, s_enc, Account, containerName);
+        var snapshot = new SnapshotService(blobs, s_enc, Account, containerName);
+        var index = new ChunkIndexService(blobs, s_enc, snapshot, Account, containerName);
         fileTreeService = new FileTreeService(blobs, s_enc, Account, containerName);
         return new FileTreeBuilder(s_enc, fileTreeService);
     }
@@ -69,7 +71,8 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             meta.Exists.ShouldBeTrue();
 
             // Download and deserialize to verify content
-            await using var stream = await blobs.DownloadAsync(blobName);
+            var download = await blobs.DownloadAsync(blobName);
+            await using var stream = download.Stream;
             var entries = await ReadStoredTreeAsync(stream, s_enc);
 
             entries.Count.ShouldBe(1);

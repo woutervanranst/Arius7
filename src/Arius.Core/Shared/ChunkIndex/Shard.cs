@@ -62,6 +62,8 @@ public sealed class Shard
 
     public int Count => _entries.Count;
 
+    public IEnumerable<ShardEntry> Entries => _entries.Values;
+
     // ── Lookup ─────────────────────────────────────────────────────────────────
 
     public bool TryLookup(ContentHash contentHash, out ShardEntry? entry) => _entries.TryGetValue(contentHash, out entry);

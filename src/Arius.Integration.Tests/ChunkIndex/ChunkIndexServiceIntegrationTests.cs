@@ -1,8 +1,10 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Data.Sqlite;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 
@@ -26,8 +28,9 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,
         // but for tests we patch via a subclass or just use a very distinct repoId)
-        var svc = new ChunkIndexService(blobs, new PassphraseEncryptionService(Passphrase),
-            Account, containerName);
+        var encryption = new PassphraseEncryptionService(Passphrase);
+        var snapshot = new SnapshotService(blobs, encryption, Account, containerName);
+        var svc = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
         return (svc, tempDir);
     }
 
@@ -53,7 +56,8 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var encryption = new PassphraseEncryptionService(Passphrase);
         var containerName = container.Name;
 
-        var svc1 = new ChunkIndexService(blobs, encryption, Account, containerName);
+        var snapshot = new SnapshotService(blobs, encryption, Account, containerName);
+        var svc1 = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
 
         var contentHash = FakeContentHash('1');
         var chunkHash   = FakeChunkHash('a');
@@ -62,7 +66,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         await svc1.FlushAsync();
 
         // New service instance (L1 cold, L2 may have data)
-        var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
+        var svc2   = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
         var result = await svc2.LookupAsync(contentHash);
 
         result.ShouldNotBeNull();
@@ -87,39 +91,43 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         result.ChunkHash.ShouldBe(chunkHash);
     }
 
-    // ── Stale L2 file (old encrypted bytes) → cache miss → L3 fallthrough ───────
+    // ── Corrupt local SQLite store → fail with recovery guidance ───────────────
 
     [Test]
-    public async Task StaleL2File_IsTreatedAsCacheMiss_AndRefetchedFromL3()
+    public async Task CorruptLocalStore_FailsWithRecoveryGuidance()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
         var encryption    = new PassphraseEncryptionService(Passphrase);
         var containerName = container.Name;
 
         // Step 1: record + flush a real entry so the shard exists in L3
-        var svc1        = new ChunkIndexService(blobs, encryption, Account, containerName);
+        var snapshot = new SnapshotService(blobs, encryption, Account, containerName);
+        var svc1        = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
         var contentHash = FakeContentHash('3');
         var chunkHash   = FakeChunkHash('c');
         var entry       = new ShardEntry(contentHash, chunkHash, 800, 400);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
-        // Step 2: overwrite the L2 cache file with garbage (simulates old encrypted bytes)
-        var prefix = Shard.PrefixOf(contentHash);
-        var l2Path = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName).Resolve(RelativePath.Parse(prefix.ToString()));
-        await File.WriteAllBytesAsync(l2Path, [0x53, 0x61, 0x6C, 0x74, 0x65, 0x64, 0x5F, 0x5F, 0xFF, 0xFE]); // "Salted__" + garbage
+        // Step 2: create a new service instance with cold local state.
+        var svc2 = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
 
-        // Step 3: new service instance with cold L1 — L2 hit fails, must fall through to L3
-        var svc2   = new ChunkIndexService(blobs, encryption, Account, containerName);
-        var result = await svc2.LookupAsync(contentHash);
+        // Step 3: corrupt the local SQLite cache so the next lookup must recover and refill it.
+        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName);
+        var databasePath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite"));
+        var walPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-wal"));
+        var shmPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-shm"));
+        SqliteConnection.ClearAllPools();
+        if (File.Exists(walPath))
+            File.Delete(walPath);
+        if (File.Exists(shmPath))
+            File.Delete(shmPath);
 
-        // The entry must still be found (came from L3)
-        result.ShouldNotBeNull();
-        result.ChunkHash.ShouldBe(chunkHash);
+        await File.WriteAllBytesAsync(databasePath, [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62]); // "not-a-db"
 
-        // And L2 must now be in plaintext format (re-cached by the service)
-        File.Exists(l2Path).ShouldBeTrue();
-        var text = await File.ReadAllTextAsync(l2Path);
-        text.ShouldContain(contentHash.ToString());
+        var ex = await Should.ThrowAsync<ChunkIndexLocalStoreException>(() => svc2.LookupAsync(contentHash));
+
+        ex.Message.ShouldContain("Delete the local chunk-index cache directory");
+        ex.Message.ShouldContain("repair command");
     }
 }

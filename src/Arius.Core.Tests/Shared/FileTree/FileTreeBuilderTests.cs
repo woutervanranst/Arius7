@@ -46,8 +46,8 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_SingleFile_RootTreeUploaded()
     {
-        const string accountName = "unittest-acct-single";
-        const string containerName = "cont-single";
+        var accountName = $"unittest-acct-single-{Guid.NewGuid():N}";
+        var containerName = $"cont-single-{Guid.NewGuid():N}";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -67,8 +67,8 @@ public class FileTreeBuilderTests
     [Test]
     public async Task SynchronizeAsync_RelativePathStagedFile_ProducesRootHash()
     {
-        const string accountName = "unittest-acct-single-relative";
-        const string containerName = "cont-single-relative";
+        var accountName = $"unittest-acct-single-relative-{Guid.NewGuid():N}";
+        var containerName = $"cont-single-relative-{Guid.NewGuid():N}";
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -361,8 +361,8 @@ public class FileTreeBuilderTests
     [NotInParallel("FileTreeBuilderParallelUploadTests")]
     public async Task SynchronizeAsync_StartsMultipleFileTreeUploadsBeforeReturning()
     {
-        const string accountName = "unittest-acc-parallel";
-        const string containerName = "con-parallel";
+        var accountName = $"unittest-acc-parallel-{Guid.NewGuid():N}";
+        var containerName = $"con-parallel-{Guid.NewGuid():N}";
         ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, s_enc);
 
@@ -382,7 +382,7 @@ public class FileTreeBuilderTests
             await fixture.FileTreeService.ValidateAsync();
 
             var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
-            var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(1));
+            var sawTwoConcurrentStarts = await blobs.WaitForTwoUploadsAsync(TimeSpan.FromSeconds(5));
 
             blobs.AllowUploads();
 

@@ -42,7 +42,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ChunkIndexService              _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService               _fileTreeService;
-    private readonly SnapshotService                _snapshotSvc;
+    private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -55,7 +55,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
         FileTreeService                 fileTreeService,
-        SnapshotService                 snapshotSvc,
+        ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
@@ -70,23 +70,23 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ChunkIndexService               index,
         IChunkStorageService            chunkStorage,
         FileTreeService                 fileTreeService,
-        SnapshotService                 snapshotSvc,
+        ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
         string                          accountName,
         string                          containerName,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
     {
-        _blobs           = blobs;
-        _encryption      = encryption;
-        _chunkIndex      = index;
-        _chunkStorage    = chunkStorage;
-        _fileTreeService = fileTreeService;
-        _snapshotSvc     = snapshotSvc;
-        _mediator        = mediator;
-        _logger          = logger;
-        _accountName     = accountName;
-        _containerName   = containerName;
+        _blobs              = blobs;
+        _encryption         = encryption;
+        _chunkIndex         = index;
+        _chunkStorage       = chunkStorage;
+        _fileTreeService    = fileTreeService;
+        _snapshotSvc        = snapshotSvc;
+        _mediator           = mediator;
+        _logger             = logger;
+        _accountName        = accountName;
+        _containerName      = containerName;
         _openStagingSession = openStagingSession;
     }
 
@@ -190,10 +190,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
             // Channels between stages (task 8.2)
+            // The hashed/large/small channels carry metadata only (path + content hash; the
+            // file is re-opened at upload time), so they are unbounded: this lets the hash
+            // stage run fully ahead instead of being throttled by the slow upload stage via
+            // backpressure. sealedTarChannel stays bounded because it holds actual tar bytes.
             var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-            var hashedChannel     = Channel.CreateBounded<HashedFilePair>(ChannelCapacity);
-            var largeChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
-            var smallChannel      = Channel.CreateBounded<FileToUpload>(ChannelCapacity);
+            var hashedChannel     = Channel.CreateUnbounded<HashedFilePair>();
+            var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
+            var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
             var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
             var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
 
@@ -545,6 +549,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var snapshot = await _snapshotSvc.CreateAsync(rootHash.Value, filesScanned, totalSize, cancellationToken: cancellationToken);
                     snapshotRootHash = snapshot.RootHash;
                     snapshotTime     = snapshot.Timestamp;
+                    await _chunkIndex.PromoteToSnapshotVersionAsync(BlobPaths.SnapshotPath(snapshot.Timestamp).Name.ToString());
                     _logger.LogInformation("[snapshot] Created: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
 
                     await _mediator.Publish(new SnapshotCreatedEvent(rootHash.Value, snapshot.Timestamp, snapshot.FileCount), cancellationToken);

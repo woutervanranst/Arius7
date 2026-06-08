@@ -71,13 +71,14 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
     private static RestoreCommandHandler MakeRestoreHandler(RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
-        var index = new ChunkIndexService(sim, fix.Encryption, Account, fix.Container.Name);
+        var snapshot = new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name);
+        var index = new ChunkIndexService(sim, fix.Encryption, snapshot, Account, fix.Container.Name);
         var logger = new FakeLogger<RestoreCommandHandler>();
         return new(fix.Encryption,
             index,
             new ChunkStorageService(sim, fix.Encryption),
             new FileTreeService(sim, fix.Encryption, Account, fix.Container.Name),
-            new SnapshotService(sim, fix.Encryption, Account, fix.Container.Name),
+            snapshot,
             Substitute.For<IMediator>(),
             logger,
             Account, fix.Container.Name);
@@ -158,7 +159,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // Sideload: copy the real blob content to chunks-rehydrated/<hash>
         // (simulating what Azure does after rehydration completes)
-        await using var srcStream = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+        var download = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+        await using var srcStream = download.Stream;
         using var ms = new MemoryStream();
         await srcStream.CopyToAsync(ms);
         ms.Position = 0;
@@ -213,7 +215,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         firstResult.FilesRestored.ShouldBe(1);
 
         // Sideload a rehydrated blob (simulating a completed rehydration from a previous run)
-        await using (var srcStream = await fix.BlobContainer.DownloadAsync(chunkBlobName))
+        var download = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+        await using (var srcStream = download.Stream)
         {
             using var ms = new MemoryStream();
             await srcStream.CopyToAsync(ms);
@@ -267,7 +270,8 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         var rehydratedBlobName = BlobPaths.ChunkRehydratedPath(chunkHash);
 
         // Sideload: copy the real chunk blob to chunks-rehydrated/ (simulating completed rehydration)
-        await using (var srcStream = await fix.BlobContainer.DownloadAsync(chunkBlobName))
+        var download = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+        await using (var srcStream = download.Stream)
         {
             using var ms = new MemoryStream();
             await srcStream.CopyToAsync(ms);

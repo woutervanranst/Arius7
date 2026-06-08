@@ -14,7 +14,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 {
     private readonly ChunkIndexService _index;
     private readonly FileTreeService _fileTreeService;
-    private readonly SnapshotService _snapshotSvc;
+    private readonly ISnapshotService _snapshotSvc;
     private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
@@ -22,7 +22,7 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     public ListQueryHandler(
         ChunkIndexService index,
         FileTreeService fileTreeService,
-        SnapshotService snapshotSvc,
+        ISnapshotService snapshotSvc,
         ILogger<ListQueryHandler> logger,
         string accountName,
         string containerName)

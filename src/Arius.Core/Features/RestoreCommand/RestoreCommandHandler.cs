@@ -34,7 +34,7 @@ public sealed class RestoreCommandHandler
     private readonly ChunkIndexService              _index;
     private readonly IChunkStorageService           _chunkStorage;
     private readonly FileTreeService                _fileTreeService;
-    private readonly SnapshotService                _snapshotSvc;
+    private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<RestoreCommandHandler> _logger;
     private readonly string                         _accountName;
@@ -45,7 +45,7 @@ public sealed class RestoreCommandHandler
         ChunkIndexService              index,
         IChunkStorageService           chunkStorage,
         FileTreeService                fileTreeService,
-        SnapshotService                snapshotSvc,
+        ISnapshotService               snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,
         string                         accountName,
@@ -180,7 +180,7 @@ public sealed class RestoreCommandHandler
                 var contentHashes = toRestore
                     .Select(file => file.ContentHash)
                     .Distinct()
-                    .ToList();
+                    .ToList(); // TODO this is a bottleneck --> make it streaming
                 var indexEntries = await _index.LookupAsync(contentHashes, cancellationToken);
 
                 // Group files by chunk hash
@@ -196,7 +196,7 @@ public sealed class RestoreCommandHandler
                     }
 
                     if (!filesByChunkHash.TryGetValue(entry.ChunkHash, out var list))
-                        filesByChunkHash[entry.ChunkHash] = list = new List<FileToRestore>();
+                        filesByChunkHash[entry.ChunkHash] = list = [];
                     list.Add(file);
                 }
 

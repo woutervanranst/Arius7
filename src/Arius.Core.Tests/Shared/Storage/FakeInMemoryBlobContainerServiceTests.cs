@@ -33,11 +33,13 @@ public class FakeInMemoryBlobContainerServiceTests
         var content = "fake try-download"u8.ToArray();
         blobs.SeedBlob(blobName, content);
 
-        await using var stream = await blobs.TryDownloadAsync(blobName);
-        stream.ShouldNotBeNull();
+        var download = await blobs.TryDownloadAsync(blobName);
+        download.ShouldNotBeNull();
+        await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
+        download.ETag.ShouldStartWith("fake:");
     }
 }

@@ -11,6 +11,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -27,6 +28,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     private readonly FakeLogger<ArchiveCommandHandler> _archiveLogger = new();
     private readonly FakeLogger<RestoreCommandHandler> _restoreLogger = new();
     private readonly FakeLogger<ListQueryHandler>      _listLogger    = new();
+    private readonly List<ChunkIndexService>          _ownedIndexes  = [];
 
     /// <summary>
     /// Creates a fixture around a caller-provided blob container using normal passphrase encryption.
@@ -43,7 +45,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
         var encryption = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
-        var index      = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var snapshot   = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var index      = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
@@ -52,7 +55,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             Index                        = index,
             ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
             FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
-            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
             SnapshotCacheDirectory       = snapshotCacheDirectory,
@@ -79,7 +82,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var index = new ChunkIndexService(blobContainer, encryption, accountName, containerName);
+        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
+        var index    = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
@@ -88,7 +92,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             Index                        = index,
             ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
             FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
-            Snapshot                     = new SnapshotService(blobContainer, encryption, accountName, containerName),
+            Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
             SnapshotCacheDirectory       = snapshotCacheDirectory,
@@ -206,18 +210,25 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
     public ArchiveCommandHandler CreateArchiveHandler()
-        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
 
     internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
-        => new(BlobContainer, Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
-        => new(Encryption, Index, ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
+        => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
     public ListQueryHandler CreateListQueryHandler()
-        => new(Index, FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+
+    private ChunkIndexService CreateChunkIndexService()
+    {
+        var index = new ChunkIndexService(BlobContainer, Encryption, Snapshot, AccountName, ContainerName);
+        _ownedIndexes.Add(index);
+        return index;
+    }
 
 
     // --- OTHER HELPERS ---
@@ -228,6 +239,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
+        SqliteConnection.ClearAllPools();
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -246,6 +258,10 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Index.Dispose();
+        foreach (var index in _ownedIndexes)
+            index.Dispose();
+
+        SqliteConnection.ClearAllPools();
 
         return ValueTask.CompletedTask;
     }

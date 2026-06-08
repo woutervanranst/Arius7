@@ -1,170 +1,326 @@
+using System.Collections.Concurrent;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Three-tier chunk index cache.
-///
-/// L1: In-memory LRU for materialized shard pages (configurable byte budget, default 512 MB).
-/// L2: Local disk at <c>~/.arius/{accountName}-{containerName}/chunk-index/</c>.
-/// L3: Remote blob storage (download on miss, save to L2, promote to L1).
-///
-/// Dedup lookups are batched by shard prefix to amortize downloads.
-/// Session entries make newly uploaded chunks visible to lookups before they are flushed to shards.
+/// Disk-backed chunk index cache.
 /// </summary>
 public sealed class ChunkIndexService : IDisposable
 {
-    // ── Configuration ─────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Default byte budget for L1 materialized shard pages.
-    /// This does not bound the session write buffer or pending flush entries.
-    /// </summary>
-    public const long DefaultL1CacheBudgetBytes = 512L * 1024 * 1024; // 512 MB
-
-    internal const int ShardPrefixLength = 2;
-    internal const int FlushWorkers = 8;
+    internal const           int          ShardPrefixLength          = 2;
+    internal const           int          FlushWorkers               = 1; // TODO 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
-    // ── Dependencies ──────────────────────────────────────────────────────────
+    private readonly IBlobContainerService                            _blobs;
+    private readonly IEncryptionService                               _encryption;
+    private readonly RelativeFileSystem                               _repositoryFileSystem;
+    private readonly ChunkIndexLocalStore                             _localStore;
+    private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
+    private readonly AsyncLazy<string>                                _latestSnapshotName;
+    private          int                                              _acceptingEntries = 1;
 
-    private readonly IBlobContainerService  _blobs;
-    private readonly RelativeFileSystem     _repositoryFileSystem;
-    private readonly ChunkIndexShardCache   _shardCache;
-    private readonly ChunkIndexReader       _reader;
-    private readonly ChunkIndexWriteSession _writeSession;
+    // -- Construction --------------------------------------------------------
 
     /// <summary>
-    /// Initializes a ChunkIndexService and prepares the tiered chunk index cache state.
+    /// Creates a chunk-index service for one repository and its local cache state.
     /// </summary>
-    /// <param name="blobs">Blob storage backend.</param>
-    /// <param name="encryption">Encryption/hashing service.</param>
-    /// <param name="accountName">Account name used to derive the on-disk L2 cache directory under the user's profile.</param>
-    /// <param name="containerName">Container name used to derive the on-disk L2 cache directory under the user's profile.</param>
-    /// <param name="l1CacheBudgetBytes">Approximate byte budget for in-memory L1 shard pages.</param>
-    /// <remarks>
-    /// The constructor also ensures the L2 directory (derived from accountName and containerName) exists on disk.
-    /// </remarks>
+    /// <param name="blobs">Blob storage used for chunk-index shard reads and writes.</param>
+    /// <param name="encryption">Encryption used when serializing and deserializing shards.</param>
+    /// <param name="snapshotService">Snapshot service used to validate local cache state against the latest snapshot.</param>
+    /// <param name="accountName">Storage account name used to derive local repository state paths.</param>
+    /// <param name="containerName">Container name used to derive local repository state paths.</param>
     public ChunkIndexService(
-        IBlobContainerService blobs, 
-        IEncryptionService encryption, 
-        string accountName, 
-        string containerName, 
-        long l1CacheBudgetBytes = DefaultL1CacheBudgetBytes)
+        IBlobContainerService blobs,
+        IEncryptionService encryption,
+        ISnapshotService snapshotService,
+        string accountName,
+        string containerName,
+        ILoggerFactory? loggerFactory = null)
     {
-        _blobs         = blobs;
+        _blobs      = blobs;
+        _encryption = encryption;
+
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
-        var l2Root         = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
-        
-        var l2FileSystem = new RelativeFileSystem(l2Root);
-        l2FileSystem.CreateDirectory(RelativePath.Root);
 
-        _shardCache   = new ChunkIndexShardCache(blobs, encryption, l2FileSystem, l1CacheBudgetBytes);
-        _reader       = new ChunkIndexReader(_shardCache);
-        _writeSession = new ChunkIndexWriteSession();
+        var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
+        _localStore = new ChunkIndexLocalStore(cacheRoot, loggerFactory?.CreateLogger<ChunkIndexLocalStore>());
+        _latestSnapshotName = new AsyncLazy<string>(async () =>
+        {
+            var snapshots = await snapshotService.ListBlobNamesAsync();
+            return snapshots.Count == 0
+                ? "<none>"
+                : snapshots[^1].Name.ToString();
+        });
     }
 
-    // ── Lookup ─────────────────────────────────────────
+    // -- Lookup --------------------------------------------------------------
 
     /// <summary>
-    /// Batched dedup lookup: given a collection of content-hashes, returns the set
-    /// that are already known (either from the tiered cache or session entries).
-    /// Shards are resolved through the shared L1/L2/L3 cache.
-    /// Misses are omitted from the returned dictionary; an all-miss lookup returns
-    /// an empty dictionary, not <c>null</c>.
+    /// Resolves chunk-index entries for the specified content hashes.
     /// </summary>
+    /// <param name="contentHashes">Content hashes to resolve.</param>
+    /// <param name="cancellationToken">Cancellation token for the lookup.</param>
+    /// <returns>A dictionary containing the entries that exist for the requested content hashes.</returns>
     public async Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
 
-        var result = new Dictionary<ContentHash, ShardEntry>();
-        var sessionMisses = new List<ContentHash>();
+        // NOTE: this method needs to be battle tested during list/restore optimization
 
-        foreach (var hash in contentHashes)
-        {
-            // Was it added in this session?
-            if (_writeSession.TryLookup(hash, out var sessionShard))
-            {
-                result[hash] = sessionShard;
-                continue;
-            }
-
-            sessionMisses.Add(hash);
-        }
-
-        if (sessionMisses.Count == 0)
+        var hashes = contentHashes.Distinct().ToArray();
+        var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
+        if (hashes.Length == 0)
             return result;
 
-        // Lookup in the cache
-        var cacheLookups = await _reader.LookupAsync(sessionMisses, cancellationToken);
+        var validationWork = new List<(PathSegment Prefix, List<ContentHash> Hashes)>();
+        foreach (var prefixGroup in hashes.GroupBy(ChunkIndexRouter.GetLeafPrefix))
+        {
+            var hashesNeedingValidation = new List<ContentHash>();
+            foreach (var contentHash in prefixGroup)
+            {
+                var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
+                if (pendingFlushEntry is not null)
+                {
+                    result[contentHash] = pendingFlushEntry;
+                    continue;
+                }
 
-        return result.Concat(cacheLookups).ToDictionary();
+                hashesNeedingValidation.Add(contentHash);
+            }
+
+            if (hashesNeedingValidation.Count == 0)
+                continue;
+
+            validationWork.Add((prefixGroup.Key, hashesNeedingValidation));
+        }
+
+        if (validationWork.Count == 0)
+            return result;
+
+        var latestSnapshotName = await _latestSnapshotName;
+        foreach (var item in validationWork)
+        {
+            await EnsurePrefixLoadedAndSynchronizedAsync(item.Prefix, latestSnapshotName, cancellationToken);
+            foreach (var contentHash in item.Hashes)
+            {
+                var entry = _localStore.FindEntry(contentHash);
+                if (entry is not null)
+                    result[contentHash] = entry;
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
-    /// Looks up a single content hash and returns <c>null</c> when the hash is not
-    /// known in either session entries or the persisted chunk-index shard.
+    /// Resolves the chunk-index entry for a single content hash.
     /// </summary>
+    /// <param name="contentHash">The content hash to resolve.</param>
+    /// <param name="cancellationToken">Cancellation token for the lookup.</param>
+    /// <returns>The matching entry when present; otherwise <see langword="null"/>.</returns>
     public async Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
 
-        if (_writeSession.TryLookup(contentHash, out var sessionEntry))
-            return sessionEntry;
+        var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
+        if (pendingFlushEntry is not null)
+            return pendingFlushEntry;
 
-        return await _reader.LookupAsync(contentHash, cancellationToken);
+        var latestSnapshot = await _latestSnapshotName;
+        await EnsurePrefixLoadedAndSynchronizedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
+        return _localStore.FindEntry(contentHash);
     }
 
-    // ── Record new entry ──────────────────────────────────────────────────────
-
     /// <summary>
-    /// Records a newly uploaded chunk entry in the current archive session.
-    /// At end-of-run, call <see cref="FlushAsync"/> to persist recorded entries.
+    /// Promotes all loaded prefixes validated against the current snapshot version to the specified snapshot version.
     /// </summary>
-    public void AddEntry(ShardEntry entry)
+    public async Task PromoteToSnapshotVersionAsync(string newSnapshotVersion)
     {
         ThrowIfRepairIncomplete();
 
-        _writeSession.AddEntry(entry);
+        var oldSnapshotVersion = await _latestSnapshotName;
+        if (StringComparer.Ordinal.Equals(oldSnapshotVersion, newSnapshotVersion))
+            return;
+
+        _localStore.PromoteToSnapshotVersion(oldSnapshotVersion, newSnapshotVersion);
     }
 
-    // ── Flush (upload shards at end of run) ───────────────────────────────────
+    // -- Synchronization -----------------------------------------------------
 
     /// <summary>
-    /// Merges all pending entries into existing shards and uploads changed shards.
-    /// Should be called once at the end of an archive run.
+    /// Ensures the specified prefix is loaded into the local cache and recorded against the latest snapshot version.
     /// </summary>
+    /// <param name="prefix">The shard prefix to synchronize.</param>
+    /// <param name="latestSnapshotVersion">The snapshot version that the local cache must be recorded against.</param>
+    /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
+    private async Task EnsurePrefixLoadedAndSynchronizedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
+    {
+        var gate = _prefixGates.GetOrAdd(prefix, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
+            if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
+                return; //Path 1
+
+            // let's check remote
+            var blobName = BlobPaths.ChunkIndexShardPath(prefix);
+            var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
+            if (remoteShard is null)
+            {
+                // it doesnt exist on remote -> it s a new shard
+                _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
+                return; //Path 2
+            }
+
+            await using var stream = remoteShard.Stream; // ensure the stream is disposed if we go through path 3a
+
+            // it exists at remote - is remote on the same version?
+            if (_localStore.IsPrefixAtETag(prefix, remoteShard.ETag))
+            {
+                // our local copy is on the same version, update the snapshot version
+                _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
+                return; //Path 3a
+            }
+
+            // remote has a more recent version - Path 3b
+            Shard shard;
+            try
+            {
+                shard = ShardSerializer.Deserialize(stream, _encryption);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
+            {
+                throw new ChunkIndexCorruptException(blobName, ex);
+            }
+
+            _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    // -- AddEntry ------------------------------------------------------------
+
+    /// <summary>
+    /// Records a newly discovered or uploaded chunk-index entry as pending local flush state.
+    /// </summary>
+    /// <param name="entry">The entry to record.</param>
+    public void AddEntry(ShardEntry entry)
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        _localStore.UpsertPendingFlush(entry);
+    }
+
+    // -- Flush & Upload ---------------------------------------------------------------
+
+    /// <summary>
+    /// Uploads pending local shard state and marks the flushed prefixes as synchronized remote-backed cache.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the flush.</param>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfRepairIncomplete();
 
-        await _writeSession.FlushAsync(_shardCache, cancellationToken);
+        if (Interlocked.Exchange(ref _acceptingEntries, 0) == 0)
+            throw new InvalidOperationException("Chunk-index service cannot be used after flush has started.");
+
+        var prefixesWithPendingFlushes = _localStore.GetPrefixesWithPendingFlushes();
+        if (prefixesWithPendingFlushes.Count == 0)
+            return; // no shards need to be written to blob
+
+        var latestSnapshotVersion = await _latestSnapshotName;
+        var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
+
+        await Parallel.ForEachAsync(
+            prefixesWithPendingFlushes,
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (prefix, ct) =>
+            {
+                // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
+                await EnsurePrefixLoadedAndSynchronizedAsync(prefix, latestSnapshotVersion, ct);
+
+                var shard = BuildShard(prefix);
+                if (shard.Count == 0)
+                    return;
+
+                var result = await UploadShardAsync(prefix, shard, ct);
+                uploadedStates[prefix] = result.ETag;
+            });
+
+        _localStore.MarkPendingFlushesSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Builds the current shard payload for one prefix from local store state.
+    /// </summary>
+    /// <param name="prefix">The shard prefix to materialize.</param>
+    /// <returns>A shard containing all currently stored entries for the prefix.</returns>
+    private Shard BuildShard(PathSegment prefix)
     {
-        /* future: flush in-progress state */
+        var shard = new Shard();
+        _localStore.ReadPrefixEntries(prefix, shard.AddOrUpdate);
+        return shard;
     }
 
+    /// <summary>
+    /// Serializes and uploads a shard to its remote chunk-index blob.
+    /// </summary>
+    /// <param name="prefix">The shard prefix being uploaded.</param>
+    /// <param name="shard">The shard payload to upload.</param>
+    /// <param name="cancellationToken">Cancellation token for the upload.</param>
+    /// <returns>The upload result returned by blob storage.</returns>
+    private async Task<UploadResult> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
+    {
+        var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, cancellationToken);
+        return await _blobs.UploadAsync(
+            BlobPaths.ChunkIndexShardPath(prefix),
+            new MemoryStream(bytes),
+            new Dictionary<string, string>(),
+            BlobTier.Cool,
+            _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
+            overwrite: true,
+            cancellationToken: cancellationToken);
+    }
+
+    // -- Cache ---------------------------------------------------------------
+
+    /// <summary>
+    /// Drops the remote-backed local cache so later lookups revalidate prefixes from remote state.
+    /// </summary>
     public void InvalidateCaches()
     {
-        _shardCache.InvalidateCaches();
+        ThrowIfFlushed();
+        _localStore.ClearRemoteBackedCache();
     }
 
-    // -- Repair
+    // -- Repair --------------------------------------------------------------
 
+    /// <summary>
+    /// Rebuilds the chunk index from chunk blobs and republishes the shard set.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the repair.</param>
+    /// <returns>A summary of the repair work that was performed.</returns>
     public async Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default)
     {
-        _shardCache.InvalidateL1();
-        await AddRepairMarker();
-        _shardCache.InvalidateCaches();
+        ThrowIfFlushed();
+        AddRepairMarker();
+        _localStore.RecreateDatabase(backupExisting: true);
 
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
-        var entriesByPrefix = new Dictionary<PathSegment, List<ShardEntry>>();
 
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
@@ -175,28 +331,23 @@ public sealed class ChunkIndexService : IDisposable
             if (entry is null)
                 continue;
 
-            var prefix = Shard.PrefixOf(entry.ContentHash);
-            if (!entriesByPrefix.TryGetValue(prefix, out var entries))
-            {
-                // Initialize empty shardentry list
-                entries = [];
-                entriesByPrefix[prefix] = entries;
-            }
-
-            entries.Add(entry);
+            _localStore.UpsertRemoteBacked(entry);
             rebuiltEntryCount++;
         }
 
-        var rebuiltPrefixes = entriesByPrefix.Keys.ToHashSet(); // TODO this doesnt scale well
+        var rebuiltPrefixes = _localStore.GetStoredPrefixes().ToHashSet();
 
-        // Rebuild on disk & upload
         var uploadedShardCount = 0;
         await Parallel.ForEachAsync(
-            entriesByPrefix,
+            rebuiltPrefixes,
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (group, ct) =>
+            async (prefix, ct) =>
             {
-                await _shardCache.RebuildShardAsync(group.Key, group.Value, ct);
+                var shard = BuildShard(prefix);
+                if (shard.Count == 0)
+                    return;
+
+                await UploadShardAsync(prefix, shard, ct);
                 Interlocked.Increment(ref uploadedShardCount);
             });
 
@@ -214,14 +365,17 @@ public sealed class ChunkIndexService : IDisposable
 
                 Interlocked.Increment(ref deletedStaleShardCount);
             });
-        
 
         DeleteRepairMarker();
-        _writeSession.Clear();
 
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }
 
+    /// <summary>
+    /// Converts a chunk blob listing item into a rebuildable shard entry when that blob contributes to the chunk index.
+    /// </summary>
+    /// <param name="item">The listed chunk blob.</param>
+    /// <returns>The rebuilt shard entry, or <see langword="null"/> when the blob should not appear in the chunk index.</returns>
     private static ShardEntry? CreateRepairEntry(BlobListItem item)
     {
         var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
@@ -235,44 +389,64 @@ public sealed class ChunkIndexService : IDisposable
             BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
             _                          => null,
         };
+
+        static ShardEntry CreateLargeRepairEntry(BlobListItem item)
+        {
+            var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
+            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            var compressedSize = ReadChunkSize(item);
+            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
+        }
+
+        static ShardEntry CreateThinRepairEntry(BlobListItem item)
+        {
+            var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+            if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+                throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+
+            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
+        }
+
+        static long ReadChunkSize(BlobListItem item)
+            => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+                ? size
+                : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
+
+        static long ReadRequiredLongMetadata(BlobListItem item, string key)
+            => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+                ? parsed
+                : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
     }
 
-    private static ShardEntry CreateLargeRepairEntry(BlobListItem item)
-    {
-        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        var compressedSize = ReadChunkSize(item);
-        return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
-    }
+    // -- Local Repair Marker -------------------------------------------------
 
-    private static ShardEntry CreateThinRepairEntry(BlobListItem item)
-    {
-        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-        return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
-    }
-
-    private static long ReadChunkSize(BlobListItem item)
-        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-            ? size
-            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
-
-    private static long ReadRequiredLongMetadata(BlobListItem item, string key)
-        => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
-            ? parsed
-            : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
-
+    /// <summary>
+    /// Fails fast when a previous repair did not complete and the local index cannot be trusted.
+    /// </summary>
     private void ThrowIfRepairIncomplete()
     {
         if (IsRepairMarker())
             throw new ChunkIndexRepairIncompleteException();
     }
 
-    private       bool IsRepairMarker()  => _repositoryFileSystem.FileExists(RepairInProgressMarkerPath);
-    private async Task AddRepairMarker() => await _repositoryFileSystem.WriteAllBytesAsync(RepairInProgressMarkerPath, [], CancellationToken.None);
-    private       void DeleteRepairMarker() => _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
+    private void ThrowIfFlushed()
+    {
+        if (Volatile.Read(ref _acceptingEntries) == 0)
+            throw new InvalidOperationException("Chunk-index service cannot be used after flush has started.");
+    }
+
+    private bool IsRepairMarker()     => _repositoryFileSystem.FileExists(RepairInProgressMarkerPath);
+    private void AddRepairMarker()    => _repositoryFileSystem.WriteAllBytes(RepairInProgressMarkerPath, []);
+    private void DeleteRepairMarker() => _repositoryFileSystem.DeleteFile(RepairInProgressMarkerPath);
+
+    // -- Lifetime ------------------------------------------------------------
+
+    /// <summary>
+    /// Disposes the local chunk-index store.
+    /// </summary>
+    public void Dispose()
+    {
+    }
 }

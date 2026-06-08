@@ -129,7 +129,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download the raw CBC-encrypted+gzipped blob
             {
-                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+                var download = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+                await using var downloadStream = download.Stream;
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -185,7 +186,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download the raw encrypted+gzipped blob
             {
-                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+                var download = await fix.BlobContainer.DownloadAsync(chunkBlobName);
+                await using var downloadStream = download.Stream;
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -248,7 +250,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download raw blob
             {
-                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
+                var download = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
+                await using var downloadStream = download.Stream;
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }
@@ -332,7 +335,8 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
         {
             // Download raw blob
             {
-                await using var downloadStream = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
+                var download = await fix.BlobContainer.DownloadAsync(chunkBlobs[0]);
+                await using var downloadStream = download.Stream;
                 await using var fileStream     = File.Create(encryptedFile);
                 await downloadStream.CopyToAsync(fileStream);
             }

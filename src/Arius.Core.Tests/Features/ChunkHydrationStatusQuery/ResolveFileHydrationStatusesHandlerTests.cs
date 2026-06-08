@@ -3,6 +3,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Tests.Fakes;
+using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
@@ -33,7 +34,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         var blobs = new FakeMetadataOnlyBlobContainerService();
         testCase.ConfigureChunk(blobs, resolvedChunkHash, chunkType);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, $"acct-hydration-{key}", $"ctr-hydration-{key}", l1CacheBudgetBytes: 1024 * 1024);
+        var snapshot = new FakeSnapshotService();
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, $"acct-hydration-{key}", $"ctr-hydration-{key}");
         var entry = chunkType switch
         {
             BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
@@ -83,7 +85,8 @@ public class ResolveFileHydrationStatusesHandlerTests
         };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(tarChunkHash)] = new BlobMetadata { Exists = false };
 
-        using var index = new ChunkIndexService(blobs, s_encryption, "acct-hydration-thin-special", "ctr-hydration-thin-special", l1CacheBudgetBytes: 1024 * 1024);
+        var snapshot = new FakeSnapshotService();
+        using var index = new ChunkIndexService(blobs, s_encryption, snapshot, "acct-hydration-thin-special", "ctr-hydration-thin-special");
         index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
         index.AddEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
 

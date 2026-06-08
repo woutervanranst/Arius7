@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Arius.Core.Shared.FileSystem;
 using Azure;
 using Azure.Storage.Blobs.Models;
@@ -30,7 +31,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── Upload ────────────────────────────────────────────────────────────────
 
-    public async Task UploadAsync(
+    public async Task<UploadResult> UploadAsync(
         RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
@@ -58,7 +59,11 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
         try
         {
-            await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+            var result = await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+            return new UploadResult
+            {
+                ETag = result.Value.ETag.ToString(),
+            };
         }
         catch (RequestFailedException ex) when (IsAlreadyExistsError(ex))
         {
@@ -97,7 +102,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     // ── Download ──────────────────────────────────────────────────────────────
 
-    public async Task<Stream> DownloadAsync(
+    public async Task<DownloadResult> DownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
@@ -111,7 +116,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
     }
 
-    public async Task<Stream?> TryDownloadAsync(
+    public async Task<DownloadResult?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default)
     {
@@ -125,13 +130,20 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
     }
 
-    private async Task<Stream> DownloadCoreAsync(
+    private async Task<DownloadResult> DownloadCoreAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken)
     {
         var blobClient = _container.GetBlobClient(blobName.ToString());
         var response   = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
-        return response.Value.Content;
+
+        Debug.Assert(!response.Value.ExpectTrailingDetails);
+        
+        return new DownloadResult
+        {
+            Stream = response.Value.Content,
+            ETag   = response.Value.Details.ETag.ToString(),
+        };
     }
 
     // ── HEAD ──────────────────────────────────────────────────────────────────
@@ -149,6 +161,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             return new BlobMetadata
             {
                 Exists        = true,
+                ETag          = p.ETag.ToString(),
                 Tier          = FromAzureTier(p.AccessTier),
                 ContentLength = p.ContentLength,
                 IsRehydrating = p.ArchiveStatus is "rehydrate-pending-to-hot" or "rehydrate-pending-to-cool" or "rehydrate-pending-to-cold",
@@ -177,6 +190,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
             yield return new BlobListItem
             {
                 Name = RelativePath.Parse(item.Name),
+                ETag = item.Properties.ETag?.ToString(),
                 Metadata = includeMetadata && item.Metadata is not null
                     ? new Dictionary<string, string>(item.Metadata)
                     : null,

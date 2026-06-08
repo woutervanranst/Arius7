@@ -162,6 +162,26 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
+    public async Task UploadLargeAsync_OpenWriteConflict_FetchesMetadataAfterSuccessfulStreamUpload()
+    {
+        var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService());
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: RetryChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        blobs.MetadataRequests.ShouldContain(BlobPaths.ChunkPath(RetryChunkHash));
+    }
+
+    [Test]
     public async Task UploadLargeAsync_RetryAfterMetadataConflict_ReportsSingleProgressSequence()
     {
         var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
@@ -228,7 +248,8 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
         metadata.Tier.ShouldBe(BlobTier.Cool);
 
-        await using var payload = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
+        var download = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
+        await using var payload = download.Stream;
         payload.Length.ShouldBe(0);
     }
 

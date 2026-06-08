@@ -17,7 +17,7 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
     public Task CreateContainerIfNotExistsAsync(CancellationToken ct = default)
         => inner.CreateContainerIfNotExistsAsync(ct);
 
-    public Task UploadAsync(RelativePath blobName, Stream content,
+    public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content,
         IReadOnlyDictionary<string, string> metadata, BlobTier tier,
         string? contentType = null, bool overwrite = false, CancellationToken ct = default)
         => inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, ct);
@@ -26,10 +26,10 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         CancellationToken ct = default)
         => inner.OpenWriteAsync(blobName, contentType, ct);
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
+    public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.DownloadAsync(blobName, ct);
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken ct = default)
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken ct = default)
         => inner.TryDownloadAsync(blobName, ct);
 
     public async Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken ct = default)

@@ -31,8 +31,7 @@ public class MediatorEventRoutingIntegrationTests
             blobContainer:      Substitute.For<IBlobContainerService>(),
             passphrase:       null,
             accountName:      "test",
-            containerName:    "test",
-            l1CacheBudgetBytes: 0);
+            containerName:    "test");
 
         return services.BuildServiceProvider();
     }

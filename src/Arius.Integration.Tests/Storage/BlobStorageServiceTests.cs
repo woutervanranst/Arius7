@@ -24,11 +24,13 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
 
         await svc.UploadAsync(BlobPaths.ChunkPath(chunkHash), new MemoryStream(content), meta, BlobTier.Hot);
 
-        await using var stream = await svc.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
+        var download = await svc.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
+        await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
+        download.ETag.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Test]
@@ -61,12 +63,14 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
 
         await svc.UploadAsync(blobName, new MemoryStream(content), new Dictionary<string, string>(), BlobTier.Hot);
 
-        await using var stream = await svc.TryDownloadAsync(blobName);
-        stream.ShouldNotBeNull();
+        var download = await svc.TryDownloadAsync(blobName);
+        download.ShouldNotBeNull();
+        await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
 
         ms.ToArray().ShouldBe(content);
+        download.ETag.ShouldNotBeNullOrWhiteSpace();
     }
 
     // ── HEAD: exists + metadata ───────────────────────────────────────────────
@@ -172,7 +176,8 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await svc.UploadAsync(BlobPaths.ChunkPath("ow"), new MemoryStream([1, 2]), empty, BlobTier.Hot);
         await svc.UploadAsync(BlobPaths.ChunkPath("ow"), new MemoryStream([3, 4, 5]), empty, BlobTier.Hot, overwrite: true);
 
-        await using var stream = await svc.DownloadAsync(BlobPaths.ChunkPath("ow"));
+        var download = await svc.DownloadAsync(BlobPaths.ChunkPath("ow"));
+        await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
         ms.ToArray().ShouldBe([3, 4, 5]);
@@ -189,7 +194,8 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await using (var ws = await svc.OpenWriteAsync(BlobPaths.ChunkPath("ow-roundtrip")))
             await new MemoryStream(payload).CopyToAsync(ws);
 
-        await using var rs = await svc.DownloadAsync(BlobPaths.ChunkPath("ow-roundtrip"));
+        var download = await svc.DownloadAsync(BlobPaths.ChunkPath("ow-roundtrip"));
+        await using var rs = download.Stream;
         var ms = new MemoryStream();
         await rs.CopyToAsync(ms);
         ms.ToArray().ShouldBe(payload);

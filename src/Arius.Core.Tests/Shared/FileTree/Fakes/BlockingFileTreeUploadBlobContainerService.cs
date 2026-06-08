@@ -17,7 +17,7 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public async Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         if (blobName.StartsWith(BlobPaths.FileTreesPrefix))
         {
@@ -28,16 +28,17 @@ internal sealed class BlockingFileTreeUploadBlobContainerService : IBlobContaine
         }
 
         Uploaded.TryAdd(blobName, 0);
+        return new UploadResult { ETag = $"blocking:{blobName}" };
     }
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default) =>
         Task.FromResult<Stream>(new MemoryStream());
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<Stream>(new MemoryStream());
+    public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new DownloadResult { Stream = new MemoryStream(), ETag = $"blocking:{blobName}" });
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
-        Task.FromResult<Stream?>(new MemoryStream());
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
+        Task.FromResult<DownloadResult?>(new DownloadResult { Stream = new MemoryStream(), ETag = $"blocking:{blobName}" });
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = false });

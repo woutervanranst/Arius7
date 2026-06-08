@@ -24,13 +24,13 @@ internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => _inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
-    public Task UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
         => _inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
         => _inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
-    public async Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         var count = Interlocked.Increment(ref _downloadCount);
         if (count == 1)
@@ -42,7 +42,7 @@ internal sealed class SlowDownloadBlobContainerService : IBlobContainerService
         return await _inner.DownloadAsync(blobName, cancellationToken);
     }
 
-    public async Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public async Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
         try
         {

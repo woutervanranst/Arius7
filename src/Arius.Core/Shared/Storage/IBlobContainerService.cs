@@ -4,29 +4,17 @@ namespace Arius.Core.Shared.Storage;
 /// Thrown when an upload is attempted against a blob that already exists,
 /// and the caller used create-if-not-exists semantics (optimistic concurrency).
 /// </summary>
-public sealed class BlobAlreadyExistsException : IOException
+public sealed class BlobAlreadyExistsException(RelativePath blobName) : IOException($"Blob already exists: {blobName}")
 {
-    public RelativePath BlobName { get; }
-
-    public BlobAlreadyExistsException(RelativePath blobName)
-        : base($"Blob already exists: {blobName}")
-    {
-        BlobName = blobName;
-    }
+    public RelativePath BlobName { get; } = blobName;
 }
 
 /// <summary>
 /// Thrown when a blob download is attempted against a blob that does not exist.
 /// </summary>
-public sealed class BlobNotFoundException : FileNotFoundException
+public sealed class BlobNotFoundException(RelativePath blobName) : FileNotFoundException($"Blob not found: {blobName}")
 {
-    public RelativePath BlobName { get; }
-
-    public BlobNotFoundException(RelativePath blobName)
-        : base($"Blob not found: {blobName}")
-    {
-        BlobName = blobName;
-    }
+    public RelativePath BlobName { get; } = blobName;
 }
 
 /// <summary>
@@ -51,16 +39,34 @@ public enum RehydratePriority
 }
 
 /// <summary>
+/// Result returned by a blob upload operation.
+/// </summary>
+public sealed record UploadResult
+{
+    public required string ETag { get; init; }
+}
+
+/// <summary>
+/// Result returned by a blob download operation.
+/// </summary>
+public sealed record DownloadResult
+{
+    public required Stream Stream { get; init; }
+
+    public required string ETag { get; init; }
+}
+
+/// <summary>
 /// Metadata returned by a HEAD or download operation on a blob.
 /// </summary>
-public sealed class BlobMetadata
+public sealed record BlobMetadata
 {
-    public required bool         Exists           { get; init; }
-    public          BlobTier?    Tier             { get; init; }
-    public          long?        ContentLength    { get; init; }
-    public          bool         IsRehydrating    { get; init; }
-    public          IReadOnlyDictionary<string, string> Metadata { get; init; }
-        = new Dictionary<string, string>();
+    public required bool                                Exists        { get; init; }
+    public          string?                             ETag          { get; init; }
+    public          BlobTier?                           Tier          { get; init; }
+    public          long?                               ContentLength { get; init; }
+    public          bool                                IsRehydrating { get; init; }
+    public          IReadOnlyDictionary<string, string> Metadata      { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>
@@ -69,6 +75,8 @@ public sealed class BlobMetadata
 public sealed record BlobListItem
 {
     public required RelativePath Name { get; init; }
+
+    public string? ETag { get; init; }
 
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
@@ -100,7 +108,7 @@ public interface IBlobContainerService
     /// throws <see cref="BlobAlreadyExistsException"/>.
     /// </para>
     /// </summary>
-    Task UploadAsync(
+    Task<UploadResult> UploadAsync(
         RelativePath                        blobName,
         Stream                              content,
         IReadOnlyDictionary<string, string> metadata,
@@ -127,19 +135,21 @@ public interface IBlobContainerService
     // ── Download ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns a readable stream for the blob at <paramref name="blobName"/>.
-    /// The caller must dispose the stream when done.
+    /// Returns a readable stream for the blob at <paramref name="blobName"/> together with
+    /// the current ETag.
+    /// The caller must dispose <see cref="DownloadResult.Stream"/> when done.
     /// Throws <see cref="BlobNotFoundException"/> when the blob does not exist.
     /// </summary>
-    Task<Stream> DownloadAsync(
+    Task<DownloadResult> DownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a readable stream for the blob at <paramref name="blobName"/>, or <c>null</c>
-    /// when the blob does not exist. The caller must dispose the stream when one is returned.
+    /// Returns a readable stream for the blob at <paramref name="blobName"/> together with the
+    /// current ETag, or <c>null</c> when the blob does not exist.
+    /// The caller must dispose <see cref="DownloadResult.Stream"/> when one is returned.
     /// </summary>
-    Task<Stream?> TryDownloadAsync(
+    Task<DownloadResult?> TryDownloadAsync(
         RelativePath      blobName,
         CancellationToken cancellationToken = default);
 

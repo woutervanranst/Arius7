@@ -1,6 +1,6 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Encryption;
+using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
@@ -55,6 +55,39 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_WritesRepairMarker_RecreatesSqliteCache_AndStagesEntriesInSqlite()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-sqlite-staging");
+        var cache = new RelativeFileSystem(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        cache.CreateDirectory(RelativePath.Root);
+
+        blobs.SeedBlob(
+            BlobPaths.ChunkPath(FakeChunkHash('a')),
+            [1, 2, 3],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.OriginalSize] = "100",
+                [BlobMetadataKeys.ChunkSize] = "3",
+            });
+
+        var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        staleStore.UpsertPendingFlush(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
+
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+
+        var result = await index.RepairAsync();
+
+        result.RebuiltEntryCount.ShouldBe(1);
+        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeTrue();
+        cache.FileExists(RelativePath.Parse("cache.sqlite")).ShouldBeTrue();
+        var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
+        repository.FileExists(ChunkIndexService.RepairInProgressMarkerPath).ShouldBeFalse();
+    }
+
+    [Test]
     public async Task RepairAsync_ReplacesRebuiltPrefixInsteadOfMergingStaleShardContents()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -77,7 +110,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "100",
                 [BlobMetadataKeys.ChunkSize] = "3",
             });
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -102,7 +135,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "10",
                 [BlobMetadataKeys.CompressedSize] = "2",
             });
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await Should.ThrowAsync<ChunkIndexRepairException>(() => index.RepairAsync());
 
@@ -114,15 +147,17 @@ public class ChunkIndexServiceRepairTests
     public async Task RepairAsync_ClearsPendingAndInFlightEntries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-clears-memory");
         var staleContentHash = FakeContentHash('a');
         var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2);
-        using var index = CreateIndex(blobs, "repair-clears-memory");
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(staleEntry);
 
         await index.RepairAsync();
         await index.FlushAsync();
 
-        (await index.LookupAsync(staleContentHash)).ShouldBeNull();
+        using var resumedIndex = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        (await resumedIndex.LookupAsync(staleContentHash)).ShouldBeNull();
         blobs.UploadedBlobNames.ShouldBeEmpty();
     }
 
@@ -152,23 +187,25 @@ public class ChunkIndexServiceRepairTests
         var repositoryKey = UniqueRepositoryKey("repair-rerun");
         var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
         var cache = new RelativeFileSystem(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+        var store = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
         repository.CreateDirectory(RelativePath.Root);
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        await cache.WriteAllBytesAsync(RelativePath.Root / PathSegment.Parse("aa"), [1, 2, 3], CancellationToken.None);
-        using var index = new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
         result.RebuiltEntryCount.ShouldBe(0);
         repository.FileExists(ChunkIndexService.RepairInProgressMarkerPath).ShouldBeFalse();
-        cache.FileExists(RelativePath.Root / PathSegment.Parse("aa")).ShouldBeFalse();
+        cache.FileExists(RelativePath.Parse("cache.sqlite.bak")).ShouldBeTrue();
+        cache.FileExists(RelativePath.Parse("cache.sqlite")).ShouldBeTrue();
     }
 
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);
-        return new ChunkIndexService(blobs, s_encryption, repositoryKey, repositoryKey);
+        return new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";

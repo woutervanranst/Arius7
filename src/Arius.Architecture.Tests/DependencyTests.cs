@@ -333,9 +333,8 @@ public class DependencyTests
         var chunkIndexNamespace = typeof(ChunkIndexService).Namespace!;
         var internalComponentTypes = new[]
         {
-            typeof(ChunkIndexShardCache),
-            typeof(ChunkIndexReader),
-            typeof(ChunkIndexWriteSession),
+            typeof(ChunkIndexLocalStore),
+            typeof(ChunkIndexRouter),
         };
 
         typeof(ChunkIndexService).IsPublic.ShouldBeTrue("ChunkIndexService remains the public chunk-index facade for this split.");
@@ -351,6 +350,17 @@ public class DependencyTests
             rule.HasNoViolations(Architecture).ShouldBeTrue(
                 $"Only {chunkIndexNamespace} may depend on {componentType.FullName}. Violations: {DescribeViolations(rule)}");
         }
+    }
+
+    [Test]
+    public void Only_ChunkIndexLocalStore_Should_Depend_On_Sqlite()
+    {
+        IArchRule rule = Classes().That().ResideInAssembly(CoreAssembly)
+            .And().DoNotHaveFullName(typeof(ChunkIndexLocalStore).FullName!)
+            .Should().NotDependOnAnyTypesThat().ResideInNamespace("Microsoft.Data.Sqlite");
+
+        rule.HasNoViolations(Architecture).ShouldBeTrue(
+            $"Only {typeof(ChunkIndexLocalStore).FullName} should know the local store uses SQLite. Violations: {DescribeViolations(rule)}");
     }
 
     // Helper: produce a human-readable summary of rule violations for failure messages

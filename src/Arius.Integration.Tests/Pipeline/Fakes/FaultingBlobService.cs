@@ -17,7 +17,7 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
-    public async Task UploadAsync(
+    public async Task<UploadResult> UploadAsync(
         RelativePath blobName,
         Stream content,
         IReadOnlyDictionary<string, string> metadata,
@@ -29,13 +29,13 @@ internal sealed class FaultingBlobService(IBlobContainerService inner, int throw
         if (ShouldFaultUpload())
             throw new IOException($"Fault-injected failure while uploading {blobName}");
 
-        await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+        return await inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
     }
 
-    public Task<Stream> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.DownloadAsync(blobName, cancellationToken);
 
-    public Task<Stream?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.TryDownloadAsync(blobName, cancellationToken);
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)

@@ -26,15 +26,13 @@ public static class ServiceCollectionExtensions
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
-    /// <param name="l1CacheBudgetBytes">Maximum byte budget for the chunk index service's in-memory L1 shard cache.</param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
         IBlobContainerService     blobContainer,
         string?                 passphrase,
         string                  accountName,
-        string                  containerName,
-        long                    l1CacheBudgetBytes = ChunkIndexService.DefaultL1CacheBudgetBytes)
+        string                  containerName)
     {
         // Storage
         services.AddSingleton(blobContainer);
@@ -49,14 +47,23 @@ public static class ServiceCollectionExtensions
             : new PlaintextPassthroughService();
         services.AddSingleton(encryption);
 
+        // Snapshot service
+        services.AddSingleton<ISnapshotService>(sp =>
+            new SnapshotService(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IEncryptionService>(),
+                accountName,
+                containerName));
+
         // Chunk index
         services.AddSingleton(sp =>
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 accountName,
                 containerName,
-                l1CacheBudgetBytes));
+                sp.GetRequiredService<ILoggerFactory>()));
 
         services.AddSingleton<ChunkStorageService>(sp =>
             new ChunkStorageService(
@@ -67,14 +74,6 @@ public static class ServiceCollectionExtensions
         // File tree service
         services.AddSingleton(sp =>
             new FileTreeService(
-                sp.GetRequiredService<IBlobContainerService>(),
-                sp.GetRequiredService<IEncryptionService>(),
-                accountName,
-                containerName));
-
-        // Snapshot service
-        services.AddSingleton(sp =>
-            new SnapshotService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
@@ -95,7 +94,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 accountName,
@@ -107,7 +106,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
@@ -124,7 +123,7 @@ public static class ServiceCollectionExtensions
             new ListQueryHandler(
                 sp.GetRequiredService<ChunkIndexService>(),
                 sp.GetRequiredService<FileTreeService>(),
-                sp.GetRequiredService<SnapshotService>(),
+                sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,
                 containerName));

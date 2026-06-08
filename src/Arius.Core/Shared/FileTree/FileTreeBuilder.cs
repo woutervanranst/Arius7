@@ -7,25 +7,14 @@ namespace Arius.Core.Shared.FileTree;
 /// <summary>
 /// Synchronizes Merkle tree blobs bottom-up from a staged filetree root.
 /// </summary>
-public sealed class FileTreeBuilder
+/// <remarks>
+/// Builds trees using shared services supplied by the caller/DI container.
+/// </remarks>
+public sealed class FileTreeBuilder(IEncryptionService encryption, FileTreeService fileTreeService)
 {
     private const int SiblingSubtreeWorkers = 4;
     private const int UploadWorkers = 8;
     private const int UploadChannelCapacity = 16;
-
-    private readonly IEncryptionService _encryption;
-    private readonly FileTreeService _fileTreeService;
-
-    /// <summary>
-    /// Builds trees using shared services supplied by the caller/DI container.
-    /// </summary>
-    public FileTreeBuilder(
-        IEncryptionService encryption,
-        FileTreeService fileTreeService)
-    {
-        _encryption = encryption;
-        _fileTreeService = fileTreeService;
-    }
 
     public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
     {
@@ -58,7 +47,7 @@ public sealed class FileTreeBuilder
             {
                 try
                 {
-                    await _fileTreeService.EnsureStoredAsync(node, ct);
+                    await fileTreeService.EnsureStoredAsync(node, ct);
                 }
                 catch (Exception ex)
                 {
@@ -125,7 +114,7 @@ public sealed class FileTreeBuilder
                 return null;
 
             var plaintext = FileTreeSerializer.Serialize(fileTreeEntries);
-            var hash = FileTreeHash.Parse(_encryption.ComputeHash(plaintext));
+            var hash = FileTreeHash.Parse(encryption.ComputeHash(plaintext));
             await uploadChannel.Writer.WriteAsync((hash, plaintext), ct);
             return hash;
         }
