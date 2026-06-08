@@ -7,8 +7,11 @@ namespace Arius.Cli.Tests.Commands.Archive;
 /// </summary>
 public class ProgressCallbackIntegrationTests
 {
+    // Progress<T>.Report dispatches its callback asynchronously on the thread pool, so the
+    // condition becomes true shortly after Report(). SpinUntil returns the instant it does, so a
+    // generous timeout costs nothing on success and only avoids false failures on loaded runners.
     private static void WaitFor(Func<bool> condition) =>
-        SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(1)).ShouldBeTrue();
+        SpinWait.SpinUntil(condition, TimeSpan.FromSeconds(10)).ShouldBeTrue();
 
     [Test]
     public void CreateHashProgress_UpdatesBytesProcessed()
