@@ -7,7 +7,7 @@ namespace Arius.Core.Shared.FileTree;
 /// Serializes and deserializes canonical filetree node content.
 /// Persisted nodes and staged nodes use different line formats, so parsing APIs are named by format.
 /// </summary>
-public static class FileTreeSerializer
+internal static class FileTreeSerializer
 {
     private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 

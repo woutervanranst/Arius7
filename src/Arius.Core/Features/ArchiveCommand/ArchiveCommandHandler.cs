@@ -39,9 +39,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
-    private readonly ChunkIndexService              _chunkIndex;
+    private readonly IChunkIndexService             _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
-    private readonly FileTreeService               _fileTreeService;
+    private readonly IFileTreeService              _fileTreeService;
     private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
@@ -52,9 +52,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     public ArchiveCommandHandler(
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
-        ChunkIndexService               index,
+        IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                 fileTreeService,
+        IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
@@ -67,9 +67,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     internal ArchiveCommandHandler(
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
-        ChunkIndexService               index,
+        IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                 fileTreeService,
+        IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,

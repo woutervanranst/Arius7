@@ -46,7 +46,8 @@ public interface ISnapshotService
 ///   <item><see cref="ResolveAsync"/>: check disk first; fall back to Azure and cache locally.</item>
 /// </list>
 /// </summary>
-public sealed class SnapshotService : ISnapshotService
+[SharedWithinAssembly]
+internal sealed class SnapshotService : ISnapshotService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;

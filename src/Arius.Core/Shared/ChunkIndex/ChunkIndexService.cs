@@ -9,7 +9,8 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// <summary>
 /// Disk-backed chunk index cache.
 /// </summary>
-public sealed class ChunkIndexService : IDisposable
+[SharedWithinAssembly]
+internal sealed class ChunkIndexService : IChunkIndexService
 {
     internal const           int          ShardPrefixLength          = 2;
     internal const           int          FlushWorkers               = 1; // TODO 8;

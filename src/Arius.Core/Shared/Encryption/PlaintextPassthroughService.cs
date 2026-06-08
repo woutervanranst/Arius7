@@ -7,7 +7,8 @@ namespace Arius.Core.Shared.Encryption;
 /// WrapForEncryption / WrapForDecryption return the stream unchanged.
 /// Hash is plain SHA256(data_bytes).
 /// </summary>
-public sealed class PlaintextPassthroughService : IEncryptionService
+[SharedWithinAssembly]
+internal sealed class PlaintextPassthroughService : IEncryptionService
 {
     /// <inheritdoc/>
     public bool IsEncrypted => false;

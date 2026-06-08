@@ -31,9 +31,9 @@ public sealed class RestoreCommandHandler
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
     private readonly IEncryptionService             _encryption;
-    private readonly ChunkIndexService              _index;
+    private readonly IChunkIndexService             _index;
     private readonly IChunkStorageService           _chunkStorage;
-    private readonly FileTreeService                _fileTreeService;
+    private readonly IFileTreeService               _fileTreeService;
     private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<RestoreCommandHandler> _logger;
@@ -42,9 +42,9 @@ public sealed class RestoreCommandHandler
 
     public RestoreCommandHandler(
         IEncryptionService             encryption,
-        ChunkIndexService              index,
+        IChunkIndexService             index,
         IChunkStorageService           chunkStorage,
-        FileTreeService                fileTreeService,
+        IFileTreeService               fileTreeService,
         ISnapshotService               snapshotSvc,
         IMediator                      mediator,
         ILogger<RestoreCommandHandler> logger,

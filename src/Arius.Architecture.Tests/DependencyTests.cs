@@ -337,7 +337,8 @@ public class DependencyTests
             typeof(ChunkIndexRouter),
         };
 
-        typeof(ChunkIndexService).IsPublic.ShouldBeTrue("ChunkIndexService remains the public chunk-index facade for this split.");
+        typeof(IChunkIndexService).IsPublic.ShouldBeTrue("IChunkIndexService is the public chunk-index facade for this split.");
+        typeof(ChunkIndexService).IsNotPublic.ShouldBeTrue("ChunkIndexService is an internal implementation detail behind IChunkIndexService.");
 
         foreach (var componentType in internalComponentTypes)
         {

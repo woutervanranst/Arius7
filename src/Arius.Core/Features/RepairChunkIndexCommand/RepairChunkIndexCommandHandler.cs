@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Arius.Core.Features.RepairChunkIndexCommand;
 
 public sealed class RepairChunkIndexCommandHandler(
-    ChunkIndexService index,
+    IChunkIndexService index,
     ILogger<RepairChunkIndexCommandHandler> logger,
     string accountName,
     string containerName)

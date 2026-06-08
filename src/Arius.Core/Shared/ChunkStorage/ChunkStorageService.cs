@@ -5,7 +5,8 @@ using Arius.Core.Shared.Streaming;
 
 namespace Arius.Core.Shared.ChunkStorage;
 
-public sealed class ChunkStorageService : IChunkStorageService
+[SharedWithinAssembly]
+internal sealed class ChunkStorageService : IChunkStorageService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService _encryption;
