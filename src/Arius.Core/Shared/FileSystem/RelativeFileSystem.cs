@@ -28,10 +28,10 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// </remarks>
     public bool IsValidSymlink(RelativePath path)
     {
-        var fullPath = root.Resolve(path);
         try
         {
-            var info = new FileInfo(fullPath);
+            var info = new FileInfo(root.Resolve(path));
+
             if (info.LinkTarget is null)
                 return true; // not a link → resolvable as-is
 
