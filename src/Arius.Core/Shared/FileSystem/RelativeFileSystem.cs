@@ -300,11 +300,28 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)
     {
         var fullPath = root.Resolve(path);
-        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
-        return (
-            new DateTimeOffset(File.GetCreationTimeUtc(handle), TimeSpan.Zero),
-            new DateTimeOffset(File.GetLastWriteTimeUtc(handle), TimeSpan.Zero));
+        try
+        {
+            using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+            return (
+                new DateTimeOffset(File.GetCreationTimeUtc(handle), TimeSpan.Zero),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(handle), TimeSpan.Zero));
+        }
+        catch (IOException ex) when (ex is not FileNotFoundException and not DirectoryNotFoundException)
+        {
+            // The file is present but held by another process with a share mode that denies our
+            // open (e.g. a live SQLite -shm/-wal file). Timestamps live in the directory entry, so
+            // read them by path: that doesn't open the file and isn't blocked by the lock, yielding
+            // the same values without faulting the caller. We exclude not-found here on purpose —
+            // the path-based APIs silently return a 1601 sentinel for a missing file rather than
+            // throwing, so a file that vanished mid-run must keep surfacing as an error, not be
+            // archived with a bogus timestamp.
+            return (
+                new DateTimeOffset(File.GetCreationTimeUtc(fullPath), TimeSpan.Zero),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero));
+        }
     }
 
     /// <summary>
