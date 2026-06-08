@@ -264,7 +264,7 @@ public class ArchiveRecoveryTests
         messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] archive-tail", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] flush-chunkindex-and-synchronize-filetree", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));

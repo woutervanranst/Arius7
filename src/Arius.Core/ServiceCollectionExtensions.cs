@@ -76,7 +76,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
-                containerName));
+                containerName,
+                sp.GetRequiredService<ILogger<FileTreeService>>()));
 
         // NOTE: AddMediator() is intentionally NOT called here.
         // The source generator must run in the outermost assembly (Arius.Cli or test project)

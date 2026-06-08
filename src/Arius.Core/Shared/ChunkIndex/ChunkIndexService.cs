@@ -3,6 +3,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.Core.Shared.ChunkIndex;
 
@@ -13,7 +14,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 internal sealed class ChunkIndexService : IChunkIndexService
 {
     internal const           int          ShardPrefixLength          = 2;
-    internal const           int          FlushWorkers               = 1; // TODO 8;
+    internal const           int          FlushWorkers               = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
@@ -22,6 +23,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
     private readonly AsyncLazy<string>                                _latestSnapshotName;
+    private readonly ILogger<ChunkIndexService>                       _logger;
     private          int                                              _acceptingEntries = 1;
 
     // -- Construction --------------------------------------------------------
@@ -34,6 +36,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// <param name="snapshotService">Snapshot service used to validate local cache state against the latest snapshot.</param>
     /// <param name="accountName">Storage account name used to derive local repository state paths.</param>
     /// <param name="containerName">Container name used to derive local repository state paths.</param>
+    /// <param name="loggerFactory"></param>
     public ChunkIndexService(
         IBlobContainerService blobs,
         IEncryptionService encryption,
@@ -44,6 +47,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     {
         _blobs      = blobs;
         _encryption = encryption;
+        _logger     = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
 
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
@@ -240,7 +244,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
         var prefixesWithPendingFlushes = _localStore.GetPrefixesWithPendingFlushes();
         if (prefixesWithPendingFlushes.Count == 0)
+        {
+            _logger.LogDebug("No pending shard flushes");
             return; // no shards need to be written to blob
+        }
+
+        _logger.LogInformation("Flushing {PrefixCount} shard prefixes", prefixesWithPendingFlushes.Count);
 
         var latestSnapshotVersion = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
@@ -259,9 +268,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
                 var result = await UploadShardAsync(prefix, shard, ct);
                 uploadedStates[prefix] = result.ETag;
+                _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
             });
 
         _localStore.MarkPendingFlushesSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
+
+        _logger.LogInformation("Flushed {UploadedCount}/{PrefixCount} shards", uploadedStates.Count, prefixesWithPendingFlushes.Count);
     }
 
     /// <summary>

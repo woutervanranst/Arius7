@@ -4,6 +4,7 @@ using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Shared.FileTree;
 
@@ -62,6 +63,29 @@ public class FileTreeBuilderTests
             root.ShouldNotBeNull();
             ((FakeRecordingBlobContainerService)fixture.BlobContainer).Uploaded.Count.ShouldBeGreaterThanOrEqualTo(1);
         }
+    }
+
+    [Test]
+    public async Task SynchronizeAsync_SingleFile_LogsBuildAndSynchronizeSummary()
+    {
+        var accountName = $"unittest-acct-logs-{Guid.NewGuid():N}";
+        var containerName = $"cont-logs-{Guid.NewGuid():N}";
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, s_enc);
+
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+        var (stagingSession, stagingRoot) = await CreateStagingAsync(fixture, ("readme.txt", FakeContentHash('b'), now, now));
+
+        var logger  = new FakeLogger<FileTreeBuilder>();
+        var builder = new FileTreeBuilder(s_enc, fixture.FileTreeService, logger);
+        await fixture.FileTreeService.ValidateAsync();
+        await using (stagingSession)
+        {
+            await builder.SynchronizeAsync(stagingRoot);
+        }
+
+        var messages = logger.Collector.GetSnapshot().Select(record => record.Message).ToArray();
+        messages.ShouldContain(message => message.Contains("Building filetree from staging root", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("Synchronized", StringComparison.Ordinal));
     }
 
     [Test]

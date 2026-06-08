@@ -3,6 +3,8 @@ using System.IO.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -28,6 +30,7 @@ internal sealed class FileTreeService : IFileTreeService
     private readonly IEncryptionService    _encryption;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
     private readonly RelativeFileSystem    _snapshotCacheFileSystem;
+    private readonly ILogger<FileTreeService> _logger;
 
     /// <summary>
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
@@ -44,10 +47,12 @@ internal sealed class FileTreeService : IFileTreeService
         IBlobContainerService blobs,
         IEncryptionService    encryption,
         string                accountName,
-        string                containerName)
+        string                containerName,
+        ILogger<FileTreeService>? logger = null)
     {
         _blobs           = blobs;
         _encryption      = encryption;
+        _logger          = logger ?? NullLogger<FileTreeService>.Instance;
         var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
         var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
 
@@ -280,6 +285,7 @@ internal sealed class FileTreeService : IFileTreeService
         // If there are no remote snapshots, the repository is empty — fast path.
         if (latestRemote is null)
         {
+            _logger.LogDebug("No remote snapshots; repository empty");
             _validated = true;
             return new FileTreeValidationResult(SnapshotMismatch: false);
         }
@@ -289,6 +295,7 @@ internal sealed class FileTreeService : IFileTreeService
             latestRemote is { } remoteSnapshot &&
             localSnapshot == remoteSnapshot)
         {
+            _logger.LogDebug("Snapshot up to date (local matches remote)");
             _validated = true;
             return new FileTreeValidationResult(SnapshotMismatch: false);
         }
@@ -299,6 +306,9 @@ internal sealed class FileTreeService : IFileTreeService
         //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
         //   any uncached remote trees now so ExistsInRemote() can stay a cheap local file existence
         //   check during the entire build instead of doing a remote existence probe per tree node.
+        _logger.LogInformation("Snapshot mismatch (local {Local}, remote {Remote}); materializing filetree markers", latestLocal?.ToString() ?? "(none)", latestRemote?.ToString() ?? "(none)");
+
+        var createdCount = 0;
         await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -309,8 +319,12 @@ internal sealed class FileTreeService : IFileTreeService
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
                 await _diskCacheFileSystem.WriteAllBytesAsync(relativePath, [], cancellationToken);
+                createdCount++;
+                _logger.LogDebug("Materialized filetree marker {Name}", blobName.Name);
             }
         }
+
+        _logger.LogInformation("Materialized {CreatedCount} filetree markers", createdCount);
 
         _validated = true;
         return new FileTreeValidationResult(SnapshotMismatch: true);

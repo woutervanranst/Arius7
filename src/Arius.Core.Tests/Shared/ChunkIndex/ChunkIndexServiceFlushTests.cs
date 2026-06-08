@@ -1,6 +1,8 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -79,6 +81,25 @@ public class ChunkIndexServiceFlushTests
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(() => index.LookupAsync(FakeContentHash('a')));
         ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
+    }
+
+    [Test]
+    public async Task FlushAsync_WithPendingEntries_LogsFlushSummary()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("flush-logs");
+
+        var collector = new FakeLogCollector();
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new FakeLoggerProvider(collector)));
+
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+
+        await index.FlushAsync();
+
+        var messages = collector.GetSnapshot().Select(record => record.Message).ToArray();
+        messages.ShouldContain(message => message.Contains("Flushing", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("Flushed", StringComparison.Ordinal));
     }
 
     private static async Task<Shard> ReadShardAsync(FakeInMemoryBlobContainerService blobs, PathSegment prefix)
