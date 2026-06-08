@@ -70,7 +70,7 @@ CBC_MAGIC      = b"Salted__"
 CBC_SALT_SIZE  = 8
 CBC_KEY_SIZE   = 32   # AES-256
 CBC_IV_SIZE    = 16   # AES block size
-CBC_PBKDF2_ITER = 10_000
+CBC_PBKDF2_ITER = 100_000
 
 
 # ── GCM recovery ──────────────────────────────────────────────────────────────
