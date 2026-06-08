@@ -16,7 +16,7 @@ namespace Arius.Core.Shared.FileTree;
 internal sealed class FileTreeBuilder(IEncryptionService encryption, IFileTreeService fileTreeService, ILogger<FileTreeBuilder>? logger = null)
 {
     private const int SiblingSubtreeWorkers = 4;
-    private const int UploadWorkers = 8;
+    private const int SynchronizeWorkers = 32;
     private const int UploadChannelCapacity = 16;
 
     private readonly ILogger<FileTreeBuilder> _logger = logger ?? NullLogger<FileTreeBuilder>.Instance;
@@ -50,7 +50,7 @@ internal sealed class FileTreeBuilder(IEncryptionService encryption, IFileTreeSe
 
         var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext)>(UploadChannelCapacity);
         var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(workerCancellationToken),
-            new ParallelOptions { CancellationToken = workerCancellationToken, MaxDegreeOfParallelism = UploadWorkers },
+            new ParallelOptions { CancellationToken = workerCancellationToken, MaxDegreeOfParallelism = SynchronizeWorkers },
             async (node, ct) =>
             {
                 try

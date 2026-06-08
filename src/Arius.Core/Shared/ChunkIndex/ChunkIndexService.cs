@@ -14,7 +14,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 internal sealed class ChunkIndexService : IChunkIndexService
 {
     internal const           int          ShardPrefixLength          = 2;
-    internal const           int          FlushWorkers               = 8;
+    internal const           int          FlushWorkers               = 32;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
