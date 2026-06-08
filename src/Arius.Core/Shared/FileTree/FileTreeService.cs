@@ -302,6 +302,7 @@ internal sealed class FileTreeService : IFileTreeService
         await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
+
             var blobName = item.Name;
             var relativePath = RelativePath.Root / blobName.Name;
             if (!_diskCacheFileSystem.FileExists(relativePath))
