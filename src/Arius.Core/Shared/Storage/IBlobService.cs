@@ -11,7 +11,7 @@ public enum PreflightMode
     ReadOnly,
 
     /// <summary>
-    /// Uploads and deletes a probe blob. Used by archive.
+    /// Creates the container if absent, then uploads and deletes a probe blob to validate write access. Used by archive.
     /// </summary>
     ReadWrite,
 }
@@ -27,9 +27,12 @@ public interface IBlobService
     IAsyncEnumerable<string> GetContainerNamesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a validated container-scoped service for <paramref name="containerName"/>.
+    /// Returns a validated container-scoped service for <paramref name="containerName"/>. Not a pure getter:
+    /// in <see cref="PreflightMode.ReadWrite"/> it creates the container if absent, then probes write access;
+    /// in <see cref="PreflightMode.ReadOnly"/> it requires the container to exist and probes list access.
+    /// Throws <see cref="PreflightException"/> on credential/access/not-found failures.
     /// </summary>
-    Task<IBlobContainerService> GetContainerServiceAsync(
+    Task<IBlobContainerService> OpenContainerServiceAsync(
         string containerName,
         PreflightMode preflightMode,
         CancellationToken cancellationToken = default);

@@ -122,7 +122,7 @@ public static class CliBuilder
         PreflightMode preflightMode)
     {
         var blobService = await blobServiceFactory.CreateAsync(accountName, accountKey).ConfigureAwait(false);
-        var blobContainer = await blobService.GetContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
+        var blobContainer = await blobService.OpenContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
 
         // ── Build DI container ────────────────────────────────────────────────
         var services = new ServiceCollection();

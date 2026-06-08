@@ -158,7 +158,7 @@ public static class ServiceCollectionExtensions
             yield break;
         }
 
-        public Task<IBlobContainerService> GetContainerServiceAsync(
+        public Task<IBlobContainerService> OpenContainerServiceAsync(
             string containerName,
             PreflightMode preflightMode,
             CancellationToken cancellationToken = default) =>
