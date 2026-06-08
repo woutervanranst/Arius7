@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Formats.Tar;
 using System.Threading.Channels;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
@@ -401,61 +400,33 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogInformation("[phase] tar-build");
             var tarBuilderTask = Task.Run(async () =>
             {
-                var           tarEntries  = new List<TarEntry>();
-                TarWriter?    tarWriter   = null;
-                MemoryStream? tarStream   = null;
-                long          currentSize = 0;
-
+                await using var tarBuilder = new TarBuilder(
+                    opts.TarTargetSize,
+                    _encryption,
+                    onBundleStarted: () => _mediator.Publish(new TarBundleStartedEvent(), cancellationToken),
+                    onEntryAdded: async (contentHash, entryCount, currentSize) =>
+                    {
+                        await _mediator.Publish(new TarEntryAddedEvent(contentHash, entryCount, currentSize), cancellationToken);
+                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", contentHash.Short8, entryCount, currentSize.Bytes().Humanize());
+                    },
+                    onBundleSealing: async sealedTar =>
+                    {
+                        await _mediator.Publish(new TarBundleSealingEvent(sealedTar.Entries.Count, sealedTar.UncompressedSize, sealedTar.TarHash, sealedTar.Entries.Select(e => e.ContentHash).ToList()), cancellationToken);
+                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, sealedTar.UncompressedSize.Bytes().Humanize());
+                        foreach (var te in sealedTar.Entries)
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
+                    });
                 try
                 {
-                    async Task SealCurrentTar()
-                    {
-                        if (tarWriter is null) 
-                            return;
-
-                        var sealedStream = tarStream!;
-
-                        try
-                        {
-                            await tarWriter.DisposeAsync();
-                            tarWriter = null;
-                            sealedStream.Position = 0;
-
-                            // Compute tar hash
-                            var tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(sealedStream, cancellationToken));
-                            sealedStream.Position = 0;
-
-                            await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
-
-                            _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
-                            foreach (var te in tarEntries)
-                                _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
-
-                            await sealedTarChannel.Writer.WriteAsync(
-                                new SealedTar(sealedStream.ToArraySegment(), tarHash, currentSize, tarEntries.ToList()),
-                                cancellationToken);
-
-                            tarEntries.Clear();
-                            tarWriter      = null;
-                            tarStream      = null;
-                            currentSize    = 0;
-                        }
-                        finally
-                        {
-                            if (tarStream is not null)
-                                await sealedStream.DisposeAsync();
-                        }
-                    }
-
                     await foreach (var upload in smallChannel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        // Open the source first: a failed open must skip this file rather than fault
-                        // the builder (which would deadlock the bounded small/sealed-tar channels) or
-                        // leave a half-written entry in the current bundle.
-                        Stream tarSource;
+                        // Open the source first: a failed open must skip this file rather than fault the
+                        // builder (which would deadlock the bounded small/sealed-tar channels) or leave a
+                        // half-written entry in the current bundle.
+                        Stream source;
                         try
                         {
-                            tarSource = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
+                            source = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
                         }
                         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                         {
@@ -464,45 +435,18 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             continue;
                         }
 
-                        // Initialize new tar if needed
-                        if (tarWriter is null)
-                        {
-                            tarStream      = new MemoryStream();
-                            tarWriter      = new TarWriter(tarStream, leaveOpen: true);
-                            await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
-                        }
-
-                        // Write entry named by content-hash (not original path)
-                        var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
-                        await using (tarSource)
-                        {
-                            tarEntry.DataStream = tarSource;
-                            await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
-                        }
-
-                        tarEntry.DataStream = null;
-
-                        tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
-                        currentSize += upload.FileSize;
-
-                        await _mediator.Publish(new TarEntryAddedEvent(upload.HashedPair.ContentHash, tarEntries.Count, currentSize), cancellationToken);
-                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", upload.HashedPair.ContentHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
-
-                        if (currentSize >= opts.TarTargetSize)
-                            await SealCurrentTar();
+                        if (await tarBuilder.AddAsync(upload, source, cancellationToken) is { } sealedTar)
+                            await sealedTarChannel.Writer.WriteAsync(sealedTar, cancellationToken);
                     }
 
-                    // Seal final partial tar
-                    await SealCurrentTar();
+                    // Seal the final partial bundle.
+                    if (await tarBuilder.SealAsync(cancellationToken) is { } finalTar)
+                        await sealedTarChannel.Writer.WriteAsync(finalTar, cancellationToken);
                 }
                 finally
                 {
-                    if (tarWriter is not null)
-                    {
-                        await tarWriter.DisposeAsync();
-                        tarStream?.Dispose();
-                    }
-
+                    // The builder's DisposeAsync (await using) discards any half-built bundle; the sealed-tar
+                    // channel is owned by this handler, so we complete it here — like every other pipeline channel.
                     sealedTarChannel.Writer.Complete();
                 }
             }, cancellationToken);
