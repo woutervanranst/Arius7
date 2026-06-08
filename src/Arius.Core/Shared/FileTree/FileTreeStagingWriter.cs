@@ -1,5 +1,6 @@
 namespace Arius.Core.Shared.FileTree;
 
+[SharedWithinAssembly]
 internal sealed class FileTreeStagingWriter : IDisposable
 {
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks

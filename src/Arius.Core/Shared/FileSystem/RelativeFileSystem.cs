@@ -5,6 +5,7 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists so features can perform file IO with <see cref="RelativePath"/> values instead of raw strings,
 /// with responsibility for containment-safe enumeration, reads, writes, and directory creation.
 /// </summary>
+[SharedWithinAssembly]
 internal sealed class RelativeFileSystem(LocalDirectory root)
 {
     // --- FILE EXIST

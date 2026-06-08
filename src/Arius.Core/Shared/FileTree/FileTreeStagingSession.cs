@@ -1,10 +1,12 @@
 namespace Arius.Core.Shared.FileTree;
 
+[SharedWithinAssembly]
 internal interface IFileTreeStagingSession : IAsyncDisposable
 {
     LocalDirectory StagingRoot { get; }
 }
 
+[SharedWithinAssembly]
 internal sealed class FileTreeStagingSession : IFileTreeStagingSession
 {
     private readonly FileStream _lockStream;

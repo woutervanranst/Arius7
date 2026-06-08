@@ -5,6 +5,7 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists so pointer detection and binary/pointer path conversion stay consistent across features,
 /// with responsibility for applying and removing the <c>.pointer.arius</c> suffix safely.
 /// </summary>
+[SharedWithinAssembly]
 internal static class RelativePathPointerExtensions
 {
     /// <summary>

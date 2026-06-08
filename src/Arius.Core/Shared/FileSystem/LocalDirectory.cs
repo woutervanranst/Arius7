@@ -5,6 +5,7 @@ namespace Arius.Core.Shared.FileSystem;
 /// It exists to separate host paths from repository-relative paths, with responsibility for normalization,
 /// root-containment checks, and safe resolution between the two domains.
 /// </summary>
+[SharedWithinAssembly]
 internal readonly record struct LocalDirectory
 {
     private string? RawValue { get; }
