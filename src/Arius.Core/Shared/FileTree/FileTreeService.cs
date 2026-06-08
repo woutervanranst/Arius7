@@ -21,7 +21,8 @@ namespace Arius.Core.Shared.FileTree;
 ///     always a rooted relative filesystem existence check on both fast and slow paths.</item>
 /// </list>
 /// </summary>
-public sealed class FileTreeService
+[SharedWithinAssembly]
+internal sealed class FileTreeService : IFileTreeService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
@@ -154,7 +155,7 @@ public sealed class FileTreeService
 
     // ── WriteAsync ────────────────────────────────────────────────────────
 
-    internal async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
+    public async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
         if (!ExistsInRemote(payload.Hash))
             await WriteAsync(payload, cancellationToken);

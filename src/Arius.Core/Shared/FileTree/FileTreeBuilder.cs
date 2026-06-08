@@ -10,7 +10,8 @@ namespace Arius.Core.Shared.FileTree;
 /// <remarks>
 /// Builds trees using shared services supplied by the caller/DI container.
 /// </remarks>
-public sealed class FileTreeBuilder(IEncryptionService encryption, FileTreeService fileTreeService)
+[SharedWithinAssembly]
+internal sealed class FileTreeBuilder(IEncryptionService encryption, IFileTreeService fileTreeService)
 {
     private const int SiblingSubtreeWorkers = 4;
     private const int UploadWorkers = 8;

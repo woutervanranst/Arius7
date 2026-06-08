@@ -7,7 +7,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// Handles shard serialization with gzip compression and optional encryption.
 /// Task 4.3.
 /// </summary>
-public static class ShardSerializer
+internal static class ShardSerializer
 {
     /// <summary>
     /// Serializes a <see cref="Shard"/> to a gzip-compressed (and optionally encrypted) byte array.

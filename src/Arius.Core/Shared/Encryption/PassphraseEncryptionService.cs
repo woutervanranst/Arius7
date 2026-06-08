@@ -20,7 +20,8 @@ namespace Arius.Core.Shared.Encryption;
 ///
 /// Hash construction: SHA256(passphrase_bytes + data_bytes) — backwards-compatible.
 /// </summary>
-public sealed class PassphraseEncryptionService : IEncryptionService
+[SharedWithinAssembly]
+internal sealed class PassphraseEncryptionService : IEncryptionService
 {
     /// <inheritdoc/>
     public bool IsEncrypted => true;

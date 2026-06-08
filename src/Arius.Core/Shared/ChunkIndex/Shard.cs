@@ -54,7 +54,7 @@ public sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, lo
 /// <summary>
 /// An in-memory shard: a collection of <see cref="ShardEntry"/> keyed by content-hash.
 /// </summary>
-public sealed class Shard
+internal sealed class Shard
 {
     private readonly Dictionary<ContentHash, ShardEntry> _entries;
 

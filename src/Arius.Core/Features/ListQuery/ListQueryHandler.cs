@@ -12,16 +12,16 @@ namespace Arius.Core.Features.ListQuery;
 /// </summary>
 public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
-    private readonly ChunkIndexService _index;
-    private readonly FileTreeService _fileTreeService;
+    private readonly IChunkIndexService _index;
+    private readonly IFileTreeService _fileTreeService;
     private readonly ISnapshotService _snapshotSvc;
     private readonly ILogger<ListQueryHandler> _logger;
     private readonly string _accountName;
     private readonly string _containerName;
 
     public ListQueryHandler(
-        ChunkIndexService index,
-        FileTreeService fileTreeService,
+        IChunkIndexService index,
+        IFileTreeService fileTreeService,
         ISnapshotService snapshotSvc,
         ILogger<ListQueryHandler> logger,
         string accountName,
