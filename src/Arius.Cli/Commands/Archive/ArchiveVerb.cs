@@ -301,7 +301,10 @@ internal static class ArchiveVerb
 
             foreach (var tar in trackedTars)
             {
-                var label = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {tar.AccumulatedBytes.Bytes().Humanize()})";
+                // Before sealing, only the running accumulated size is known; once sealed, TotalBytes holds
+                // the actual tar archive size, which is what the upload bar measures against.
+                var labelBytes = tar.TotalBytes > 0 ? tar.TotalBytes : tar.AccumulatedBytes;
+                var label = $"TAR #{tar.BundleNumber} ({tar.FileCount} files, {labelBytes.Bytes().Humanize()})";
                 string stateText, bar, pctText, cur, tot, unit;
 
                 switch (tar.State)

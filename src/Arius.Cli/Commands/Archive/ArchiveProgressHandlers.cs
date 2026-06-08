@@ -130,7 +130,10 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
         if (tar != null)
         {
             tar.TarHash    = notification.TarHash;
-            tar.TotalBytes = notification.UncompressedSize;
+            // Use the sealed tar's archive byte size (headers + padding included), not the sum of file
+            // contents: upload progress is reported against the actual bytes streamed, so the denominator
+            // must match or the bar overshoots 100% for bundles of many small files.
+            tar.TotalBytes = notification.TarByteSize;
             tar.State      = TarState.Sealing;
         }
 

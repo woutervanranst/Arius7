@@ -156,12 +156,13 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, FakeChunkHash('d'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
+            new TarBundleSealingEvent(3, 300, 450, FakeChunkHash('d'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
         state.TrackedTars[1].TarHash.ShouldBe(FakeChunkHash('d'));
-        state.TrackedTars[1].TotalBytes.ShouldBe(300L);
+        // TotalBytes tracks the tar archive size (TarByteSize=450), not the uncompressed sum (300).
+        state.TrackedTars[1].TotalBytes.ShouldBe(450L);
     }
 
     [Test]
@@ -191,7 +192,7 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, FakeChunkHash('f'), [FakeContentHash('a'), FakeContentHash('b')]),
+            new TarBundleSealingEvent(2, 200, 200, FakeChunkHash('f'), [FakeContentHash('a'), FakeContentHash('b')]),
             CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('f'), 200), CancellationToken.None);
 
@@ -229,7 +230,7 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('d'), FakeContentHash('e'), FakeContentHash('f')]),
+            new TarBundleSealingEvent(3, 300, 300, FakeChunkHash('a'), [FakeContentHash('d'), FakeContentHash('e'), FakeContentHash('f')]),
             CancellationToken.None);
         await uploadedH.Handle(
             new TarBundleUploadedEvent(FakeChunkHash('a'), 200, 3),

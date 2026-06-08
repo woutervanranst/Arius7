@@ -34,10 +34,11 @@ public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long CompressedSize
 
 /// <summary>A tar bundle is being sealed.</summary>
 /// <param name="EntryCount">Number of entries in the sealed tar.</param>
-/// <param name="UncompressedSize">Total uncompressed size of all entries in bytes.</param>
+/// <param name="UncompressedSize">Total uncompressed size of all entries in bytes (sum of file contents, excluding tar metadata).</param>
+/// <param name="TarByteSize">Size in bytes of the sealed tar archive itself, including per-entry tar headers and padding. This is the number of bytes streamed during upload, so it is the correct denominator for upload progress.</param>
 /// <param name="TarHash">Content hash of the sealed tar archive file (used as the bundle identifier).</param>
 /// <param name="ContentHashes">Content hash of every file entry in the tar, in insertion order.</param>
-public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, ChunkHash TarHash, IReadOnlyList<ContentHash> ContentHashes) : INotification;
+public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, long TarByteSize, ChunkHash TarHash, IReadOnlyList<ContentHash> ContentHashes) : INotification;
 
 /// <summary>A tar bundle was uploaded.</summary>
 public sealed record TarBundleUploadedEvent(ChunkHash TarHash, long CompressedSize, int EntryCount) : INotification;

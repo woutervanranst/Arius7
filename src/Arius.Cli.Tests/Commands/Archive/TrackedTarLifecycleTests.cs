@@ -39,11 +39,12 @@ public class TrackedTarLifecycleTests
 
         // Seal
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 300, FakeChunkHash('c'), [FakeContentHash('a'), FakeContentHash('b')]),
+            new TarBundleSealingEvent(2, 300, 512, FakeChunkHash('c'), [FakeContentHash('a'), FakeContentHash('b')]),
             CancellationToken.None);
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
         state.TrackedTars[1].TarHash.ShouldBe(FakeChunkHash('c'));
-        state.TrackedTars[1].TotalBytes.ShouldBe(300L);
+        // TotalBytes tracks the tar archive size (TarByteSize=512), not the uncompressed sum (300).
+        state.TrackedTars[1].TotalBytes.ShouldBe(512L);
 
         // Upload starts
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('c'), 300), CancellationToken.None);

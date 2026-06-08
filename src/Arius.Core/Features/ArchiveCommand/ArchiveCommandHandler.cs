@@ -428,7 +428,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     },
                     onBundleSealing: async sealedTar =>
                     {
-                        await _mediator.Publish(new TarBundleSealingEvent(sealedTar.Entries.Count, sealedTar.UncompressedSize, sealedTar.TarHash, sealedTar.Entries.Select(e => e.ContentHash).ToList()), cancellationToken);
+                        await _mediator.Publish(new TarBundleSealingEvent(sealedTar.Entries.Count, sealedTar.UncompressedSize, sealedTar.Content.Count, sealedTar.TarHash, sealedTar.Entries.Select(e => e.ContentHash).ToList()), cancellationToken);
                         _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, sealedTar.UncompressedSize.Bytes().Humanize());
                         foreach (var te in sealedTar.Entries)
                             _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
