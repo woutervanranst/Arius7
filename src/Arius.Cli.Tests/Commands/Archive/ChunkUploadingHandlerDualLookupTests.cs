@@ -46,7 +46,7 @@ public class ChunkUploadingHandlerDualLookupTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('b')]),
+            new TarBundleSealingEvent(1, 100, 100, FakeChunkHash('b'), [FakeContentHash('b')]),
             CancellationToken.None);
 
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('b'), 100), CancellationToken.None);

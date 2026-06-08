@@ -57,7 +57,7 @@ public class MediatorEventRoutingIntegrationTests
         // Small file -> TAR bundle path
         await mediator.Publish(new TarBundleStartedEvent());
         await mediator.Publish(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100));
-        await mediator.Publish(new TarBundleSealingEvent(1, 100, FakeChunkHash('b'), [FakeContentHash('a')]));
+        await mediator.Publish(new TarBundleSealingEvent(1, 100, 100, FakeChunkHash('b'), [FakeContentHash('a')]));
         await mediator.Publish(new ChunkUploadingEvent(FakeChunkHash('b'), 100));
         await mediator.Publish(new TarBundleUploadedEvent(FakeChunkHash('b'), 80, 1));
 
