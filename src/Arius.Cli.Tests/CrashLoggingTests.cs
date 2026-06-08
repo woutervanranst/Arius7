@@ -46,6 +46,29 @@ public class CrashLoggingTests
     }
 
     [Test]
+    public void ConfigureAuditLogging_WritesShortSourceContext()
+    {
+        var logFile = CliBuilder.ConfigureAuditLogging("acct", "ctr", "test");
+
+        try
+        {
+            Log.ForContext<CrashLoggingTests>().Information("contextual message");
+            Log.Information("contextless message");
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
+
+        var logContents = File.ReadAllText(logFile);
+
+        logContents.ShouldContain("[CrashLoggingTests] contextual message");
+        logContents.ShouldContain("[Arius] contextless message");
+
+        File.Delete(logFile);
+    }
+
+    [Test]
     public void ConfigureAuditLogging_DoesNotWriteToConsole()
     {
 #pragma warning disable TUnit0055
