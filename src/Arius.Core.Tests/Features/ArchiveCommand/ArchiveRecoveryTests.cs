@@ -262,6 +262,8 @@ public class ArchiveRecoveryTests
         messages.ShouldContain(message => message.Contains("[phase] large-upload", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] tar-build", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] index-update", StringComparison.Ordinal));
+        messages.ShouldContain(message => message.Contains("[phase] filetree-update", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
         messages.ShouldContain(message => message.Contains("[phase] flush-chunkindex-and-synchronize-filetree", StringComparison.Ordinal));
@@ -337,6 +339,29 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
         fixture.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
         fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocal_DeletesDeduplicatedBinaryToo()
+    {
+        // Two files with identical content: one is uploaded, the other deduplicates against it within
+        // the same run. Both binaries are durably archived, so --remove-local must delete both (the
+        // delete decision is "has a local binary that is archived", not "was uploaded this run").
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var uploaded   = RelativePath.Parse("a/original.bin");
+        var deduped    = RelativePath.Parse("b/duplicate.bin");
+        var content    = new byte[256];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(uploaded, content, CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(deduped, content, CancellationToken.None);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        fixture.LocalFileSystem.FileExists(uploaded).ShouldBeFalse();
+        fixture.LocalFileSystem.FileExists(deduped).ShouldBeFalse();
+        fixture.LocalFileSystem.FileExists(uploaded.ToPointerPath()).ShouldBeTrue();
+        fixture.LocalFileSystem.FileExists(deduped.ToPointerPath()).ShouldBeTrue();
     }
 
     [Test]
