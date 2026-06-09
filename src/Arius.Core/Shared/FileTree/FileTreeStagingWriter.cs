@@ -68,14 +68,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         try
         {
-            _stagingFileSystem.CreateDirectory(RelativePath.Root);
-            var existingLines = _stagingFileSystem.FileExists(path)
-                ? await _stagingFileSystem.ReadAllTextAsync(path, cancellationToken)
-                : null;
-            var content = existingLines is null or ""
-                ? line + Environment.NewLine
-                : existingLines + line + Environment.NewLine;
-            await _stagingFileSystem.WriteAllTextAsync(path, content, cancellationToken);
+            await _stagingFileSystem.AppendAllTextAsync(path, line + Environment.NewLine, cancellationToken);
         }
         finally
         {
