@@ -487,6 +487,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         : 1.0;
 
                     // Parallel thin chunk creation for each entry
+                    var shardEntries = new ConcurrentBag<ShardEntry>();
                     await Parallel.ForEachAsync(
                         sealedTar.Entries,
                         new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
@@ -495,7 +496,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                            _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
+                            shardEntries.Add(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
 
                             await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, entryCt);
 
@@ -505,6 +506,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             if (opts.RemoveLocal)
                                 pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
                         });
+                    
+                    // Batch add for new entries. Only runs if the whole loop completes, preserving the "index entry implies blob exists" invariant.
+                    _chunkIndex.AddEntries(shardEntries);
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
                     _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
