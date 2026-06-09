@@ -258,6 +258,40 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
+    /// <summary>
+    /// Records multiple entries as pending local flush in a single transaction. Equivalent to calling
+    /// <see cref="UpsertPendingFlush(Arius.Core.Shared.ChunkIndex.ShardEntry)"/> for each entry, but commits once to amortize the per-entry transaction cost.
+    /// </summary>
+    public void UpsertPendingFlush(IEnumerable<ShardEntry> entries)
+    {
+        var materialized = entries.ToArray();
+        if (materialized.Length == 0)
+            return;
+
+        try
+        {
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
+                var rowsAffected = 0;
+                foreach (var entry in materialized)
+                {
+                    BindEntry(command, entry);
+                    rowsAffected += command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                _logger.LogDebug("[chunk-index-local] UpsertPendingFlushBatch: entries={Entries} rowsAffected={RowsAffected}", materialized.Length, rowsAffected);
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
     // -- REMOTE-BACKED CACHE --------------------------------------------------
 
     /// <summary>

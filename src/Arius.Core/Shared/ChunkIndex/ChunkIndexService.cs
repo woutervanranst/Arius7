@@ -229,6 +229,18 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _localStore.UpsertPendingFlush(entry);
     }
 
+    /// <summary>
+    /// Records multiple chunk-index entries as pending local flush state in a single transaction.
+    /// </summary>
+    /// <param name="entries">The entries to record.</param>
+    public void AddEntries(IEnumerable<ShardEntry> entries)
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        _localStore.UpsertPendingFlush(entries);
+    }
+
     // -- Flush & Upload ---------------------------------------------------------------
 
     /// <summary>

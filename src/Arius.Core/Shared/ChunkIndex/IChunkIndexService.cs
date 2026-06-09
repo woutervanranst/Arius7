@@ -22,9 +22,14 @@ public interface IChunkIndexService : IDisposable
     Task PromoteToSnapshotVersionAsync(string newSnapshotVersion);
 
     /// <summary>
-    /// Records a newly discovered or uploaded chunk-index entry as pending local flush state.
+    /// Records a chunk-index entry as pending local flush state.
     /// </summary>
     void AddEntry(ShardEntry entry);
+
+    /// <summary>
+    /// Records multiple chunk-index entries as pending local flush state in a single transaction.
+    /// </summary>
+    void AddEntries(IEnumerable<ShardEntry> entries);
 
     /// <summary>
     /// Uploads pending local shard state and marks the flushed prefixes as synchronized remote-backed cache.
