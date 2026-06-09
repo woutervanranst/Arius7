@@ -203,7 +203,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
             var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
             var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
-            var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
 
             // ── Register queue-depth getters (task 2.3) ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
@@ -394,9 +393,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         var originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
                         var compressedSize = uploadResult.StoredSize;
 
-                        var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize);
-                        _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
-                        await indexEntryChannel.Writer.WriteAsync(entry, ct);
+                        _chunkIndex.AddEntry(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize));
 
                         await WriteFileTreeEntry(upload.HashedPair, fs, stagingWriter, ct);
                         Interlocked.Increment(ref filesUploaded);
@@ -499,7 +496,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
                             _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
-                            await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
 
                             await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, entryCt);
 
@@ -520,7 +516,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await largeUploadTask;
             await tarBuilderTask;
             await tarUploadTask;
-            indexEntryChannel.Writer.Complete();
             await dedupTask;
             await hashTask;
             await enumTask;

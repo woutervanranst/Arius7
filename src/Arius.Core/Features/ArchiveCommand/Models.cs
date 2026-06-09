@@ -67,18 +67,6 @@ internal sealed record FileToUpload(
 );
 
 /// <summary>
-/// Represents the chunk-index mapping produced after upload.
-/// It exists to hand off the newly persisted chunk identity and size metadata,
-/// with responsibility for recording the content-hash to chunk-hash relationship Arius stores in the chunk index.
-/// </summary>
-internal sealed record IndexEntry(
-    ContentHash ContentHash,
-    ChunkHash ChunkHash,
-    long   OriginalSize,
-    long   CompressedSize
-);
-
-/// <summary>
 /// Represents a small file staged into the current tar chunk accumulator.
 /// It exists so tar-chunk assembly can retain per-file manifest context while estimating compressed sizes,
 /// with responsibility for carrying the hashed file identity plus the original size used for accounting.
