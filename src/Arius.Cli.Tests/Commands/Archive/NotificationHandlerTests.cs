@@ -81,6 +81,59 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task FileSkippedHandler_WhileStillHashing_RemovesTrackedFileAndIncrementsHashSkipCounter()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var skippedH = new FileSkippedHandler(state);
+        var path     = RelativePath.Parse("hashing.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesSkippedHashing.ShouldBe(1L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task FileSkippedHandler_AfterHashing_RemovesTrackedFileWithoutIncrementingHashSkipCounter()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+        var skippedH = new FileSkippedHandler(state);
+        var path     = RelativePath.Parse("tar-input.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('2')), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesHashed.ShouldBe(1L);
+        state.FilesSkippedHashing.ShouldBe(0L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task FileSkippedHandler_DuringUpload_RemovesTrackedFileWithoutIncrementingHashSkipCounter()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var skippedH   = new FileSkippedHandler(state);
+        var path       = RelativePath.Parse("large.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 1_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('3')), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('3'), 1_000), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesUnique.ShouldBe(1L);
+        state.FilesSkippedHashing.ShouldBe(0L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
     public async Task TarBundleStartedHandler_CreatesTrackedTar()
     {
         var state   = new ProgressState();

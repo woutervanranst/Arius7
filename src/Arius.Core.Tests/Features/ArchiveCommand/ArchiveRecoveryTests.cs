@@ -7,6 +7,7 @@ using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
@@ -473,6 +474,10 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, BlobTier.Cool).WaitAsync(TimeSpan.FromSeconds(120));
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
+        fixture.ArchiveLogs.GetSnapshot()
+            .ShouldContain(record => record.Level == LogLevel.Warning &&
+                                     record.Message.Contains("Skipping unreadable file during hashing") &&
+                                     record.Message.Contains(poison.ToString()));
     }
 
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()
