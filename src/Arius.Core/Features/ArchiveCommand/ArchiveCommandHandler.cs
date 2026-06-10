@@ -208,7 +208,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
             opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
 
-            // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
+            // ── Stage 1: Enumerate ─────────────────────────────────
             _logger.LogInformation("[phase] enumerate");
             var enumTask = Task.Run(async () =>
             {
@@ -238,7 +238,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
+            // ── Stage 2: Hash ×N ───────────────────────────────────
             _logger.LogInformation("[phase] hash");
             var hashTask = Task.Run(async () =>
             {
@@ -298,7 +298,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
+            // ── Stage 3: Dedup (×1) + Router ─────────────────
             _logger.LogInformation("[phase] dedup-route");
             var dedupTask = Task.Run(async () =>
             {
@@ -359,7 +359,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 4a: Large file upload ×N (task 8.7) ─────────────────────
+            // ── Stage 4a: Large file upload ×N ─────────────────────
             _logger.LogInformation("[phase] large-upload");
             var largeUploadTask = Parallel.ForEachAsync(
                 largeChannel.Reader.ReadAllAsync(cancellationToken),
@@ -410,7 +410,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                 });
 
-            // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
+            // ── Stage 4b: Tar builder ×1 ───────────────────────────
             _logger.LogInformation("[phase] tar-build");
             var tarBuilderTask = Task.Run(async () =>
             {
@@ -465,7 +465,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 4c: Tar upload ×N (task 8.9) ────────────────────────────
+            // ── Stage 4c: Tar upload ×N ────────────────────────────
             _logger.LogInformation("[phase] tar-upload");
             var tarUploadTask = Parallel.ForEachAsync(
                 sealedTarChannel.Reader.ReadAllAsync(cancellationToken),
