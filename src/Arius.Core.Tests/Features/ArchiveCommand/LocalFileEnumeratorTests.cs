@@ -1,5 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Tests.Shared;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -30,6 +32,51 @@ public class LocalFileEnumeratorTests : IDisposable
         _fileSystem.CreateDirectory(relativePath.Parent ?? RelativePath.Root);
         File.WriteAllText(full, content ?? "binary-data");
         return full;
+    }
+
+    private string CreateSymbolicLink(string relPath, string target)
+    {
+        var relativePath = RelativePath.Parse(relPath);
+        var full = _rootDirectory.Resolve(relativePath);
+        _fileSystem.CreateDirectory(relativePath.Parent ?? RelativePath.Root);
+        File.CreateSymbolicLink(full, target);
+        return full;
+    }
+
+    // ── Broken symlinks (skipped) ─────────────────────────────────────────────
+
+    [Test]
+    public void Enumerate_BrokenSymlink_IsSkippedWithWarning()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // creating symlinks requires elevation on Windows
+
+        CreateFile("regular.txt");
+        CreateSymbolicLink("broken-link.txt", Path.Combine(_rootDirectory.ToString(), "missing-target"));
+
+        var logger     = new FakeLogger<LocalFileEnumerator>();
+        var enumerator = new LocalFileEnumerator(logger);
+
+        var pairs = enumerator.Enumerate(_rootDirectory).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["regular.txt"]);
+        logger.Collector.GetSnapshot()
+            .ShouldContain(r => r.Level == LogLevel.Warning && r.Message.Contains("broken-link.txt"));
+    }
+
+    [Test]
+    public void Enumerate_ValidSymlink_IsYielded()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // creating symlinks requires elevation on Windows
+
+        CreateFile("target.txt");
+        CreateSymbolicLink("valid-link.txt", Path.Combine(_rootDirectory.ToString(), "target.txt"));
+
+        var pairs = _enumerator.Enumerate(_rootDirectory).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString())
+            .ShouldBe(["target.txt", "valid-link.txt"], ignoreOrder: true);
     }
 
     // ── Binary + pointer ──────────────────────────────────────────────────────

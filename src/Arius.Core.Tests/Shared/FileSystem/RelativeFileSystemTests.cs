@@ -155,6 +155,39 @@ public class RelativeFileSystemTests
     }
 
     [Test]
+    public async Task GetTimestamps_FileLockedByAnotherHandle_FallsBackToPathInsteadOfThrowing()
+    {
+        // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself
+        var path     = RelativePath.Parse("locked/cache.sqlite-shm");
+        var created  = new DateTimeOffset(2024, 6, 15, 10, 20, 30, TimeSpan.Zero);
+        var modified = new DateTimeOffset(2025, 7, 16, 11, 21, 31, TimeSpan.Zero);
+        var fullPath = Path.Combine(_root, "locked", "cache.sqlite-shm");
+
+        await _fileSystem.WriteAllTextAsync(path, "shm", CancellationToken.None);
+        _fileSystem.SetTimestamps(path, created, modified);
+
+        var expectedCreated  = new DateTimeOffset(File.GetCreationTimeUtc(fullPath), TimeSpan.Zero);
+        var expectedModified = new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero);
+
+        // Simulate another process (e.g. a live SQLite -shm/-wal file) holding the file with a
+        // share mode that denies our timestamp handle-open. FileShare is enforced natively on
+        // Windows and emulated via advisory locks on Unix, so this conflicts cross-platform.
+        using var holder = new FileStream(fullPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        // Precondition: the production handle-open path really is blocked while the file is held,
+        // so the assertion below exercises the fallback rather than the happy path.
+        Should.Throw<IOException>(() =>
+            File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete).Dispose());
+
+        // GetTimestamps must not fault — it falls back to a by-path read the lock cannot block,
+        // returning the same values the handle would have.
+        var timestamps = _fileSystem.GetTimestamps(path);
+
+        timestamps.Created.ShouldBe(expectedCreated);
+        timestamps.Modified.ShouldBe(expectedModified);
+    }
+
+    [Test]
     public void OpenRead_MissingFile_Throws()
     {
         // NOTE: These tests are testing the FileSystem abstraction - keep the System.IO.Directory/File/Path types to avoid testing the abstraction against itself

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Formats.Tar;
 using System.Threading.Channels;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
@@ -18,13 +17,71 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// <summary>
 /// Implements the full archive pipeline as a Mediator command handler.
 ///
-/// Pipeline stages (tasks 8.2 – 8.14):
-/// <code>
-/// Enumerate (×1) → Hash (×N) → Dedup (×1) → Router → Large Upload (×N)
-///                                                     → Tar Builder (×1) → Tar Upload (×N)
-///                                → Filetree staging writer (disk)
-/// End-of-pipeline: Index Flush → Tree Build → Snapshot → Pointer Write → Remove Local
-/// </code>
+/// The pipeline is a set of long-running stages connected by <see cref="System.Threading.Channels.Channel{T}"/>s.
+/// Each stage drains its input channel(s), does its work, and writes to its output channel(s); a stage
+/// completes its output writer in a <c>finally</c> so downstream stages drain to completion in turn.
+///
+/// ## Stages
+///
+/// 1. **Enumerate** (×1) — walk the source tree, publish a `FileScannedEvent` per file.
+/// 2. **Hash** (×N) — re-hash binaries (or reuse the pointer hash); skip unreadable files.
+/// 3. **Dedup + Router** (×1) — look up the chunk index + the in-run `inFlightHashes` set:
+///    - **hit** → dedup (emit only a filetree update; no upload, no index entry)
+///    - **new** → route by size vs `opts.SmallFileThreshold` → large or small upload
+/// 4. **Upload** (runs concurrently):
+///    - **4a. Large Upload** (×N) — one chunk per file via `UploadLargeAsync`.
+///    - **4b. Tar Builder** (×1) — pack small files into bundles of `opts.TarTargetSize`.
+///    - **4c. Tar Upload** (×N) — upload the bundle, then fan out to thin-chunk uploads (xN), one per entry.
+/// 5. **Local-state consumers** (drain what 3/4a/4c emit):
+///    - **5a. Chunk-index** (×1) — batch 256 entries into single-writer SQLite transactions.
+///    - **5b. Filetree** (×N) — append staging entries (stripe-locked writer) and
+///      collect `pendingPointers` / `pendingDeletes`.
+/// 6. **End-of-pipeline** (mostly sequential, after all stages above drain):
+///    - **6a. Validate filetrees** (×1) — `ValidateAsync`; invalidate index caches on snapshot mismatch.
+///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; runs concurrently with 6c (`Task.WhenAll`).
+///    - **6c. Build file tree** — `FileTreeBuilder.SynchronizeAsync`; runs concurrently with 6b and yields the snapshot root hash.
+///    - **6d. Create snapshot** (×1) — create + promote a snapshot for the root hash (skipped if unchanged).
+///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (unless `--no-pointers`); runs concurrently with 6f (`Task.WhenAll`).
+///    - **6f. Remove local** (×N) — delete `pendingDeletes` in parallel (only if `--remove-local`); runs concurrently with 6e. Disjoint paths from 6e (pointer sidecar vs binary).
+///
+/// ```
+/// Enumerate ─► Hash ─► Dedup+Router ─┬─► Large Upload ───────────────┐
+///                                    └─► Tar Builder ─► Tar Upload ──┤
+///                                                                    ├─► Chunk-index consumer ─┐                             ┌─► flush chunk index (6b) ─┐                         ┌─► write pointers (6e) ───────┐
+///                                                                    └─► Filetree consumer ────┴──► validate filetrees (6a) ─┤                           ├─► create snapshot (6d) ─┤                              ├─► done
+///                                                                                                                            └─► build file tree (6c) ───┘                         └─► remove local binaries (6f) ┘
+/// ```
+///
+/// ## Channels
+///
+/// | Channel                  | Writer                       | Reader                     | Capacity        | Notes                                                       |
+/// |--------------------------|------------------------------|----------------------------|-----------------|-------------------------------------------------------------|
+/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | bounded (N)     | Backpressure caps how far enumeration runs ahead of hashing.|
+/// | `hashedChannel`          | Hash (2)                     | Dedup + Router (3)         | unbounded       | Metadata only (path+hash); lets hashing run ahead of upload.|
+/// | `largeChannel`           | Dedup + Router (3)           | Large Upload (4a)          | unbounded       | Large-file route (≥ `SmallFileThreshold`).                  |
+/// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
+/// | `sealedTarChannel`       | Tar Builder (4b)             | Tar Upload (4c)            | bounded (1)     | Carries actual tar bytes, so it stays bounded.              |
+/// | `chunkIndexEntryChannel` | Large/Tar Upload (4a/4c)     | Chunk-index consumer (5a)  | unbounded       | `ShardEntry` records.                                       |
+/// | `fileTreeEntryChannel`   | Dedup + Upload (3/4a/4c)     | Filetree consumer (5b)     | unbounded       | `HashedFilePair` records (timestamps captured at hash time).|
+/// | `pendingPointers`        | Filetree consumer (5b)       | Write pointers (6e)        | `ConcurrentBag` | Not a channel; per-file pointer-write intents.              |
+/// | `pendingDeletes`         | Filetree consumer (5b)       | Remove local binaries (6f) | `ConcurrentBag` | Not a channel; per-file local-delete intents.               |
+///
+/// ## Events
+///
+/// | Event                    | Emitted by                       |
+/// |--------------------------|----------------------------------|
+/// | `FileScannedEvent`       | Enumerate (1)                    |
+/// | `ScanCompleteEvent`      | Enumerate (1)                    |
+/// | `FileHashingEvent`       | Hash (2)                         |
+/// | `FileHashedEvent`        | Hash (2)                         |
+/// | `FileSkippedEvent`       | Hash (2), Large Upload (4a), Tar Builder (4b) |
+/// | `ChunkUploadingEvent`    | Large Upload (4a), Tar Upload (4c) |
+/// | `ChunkUploadedEvent`     | Large Upload (4a)                |
+/// | `TarBundleStartedEvent`  | Tar Builder (4b)                 |
+/// | `TarEntryAddedEvent`     | Tar Builder (4b)                 |
+/// | `TarBundleSealingEvent`  | Tar Builder (4b)                 |
+/// | `TarBundleUploadedEvent` | Tar Upload (4c)                  |
+/// | `SnapshotCreatedEvent`   | Create snapshot (6d)             |
 /// </summary>
 public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
@@ -33,18 +90,21 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private const int HashWorkers      = 4;
     private const int UploadWorkers    = 4;
     private const int TarUploadWorkers = 1;
+    private const int ThinEntryWorkers = 64;
+    private const int FileTreeUpdateWorkers = 16;
     private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
     private readonly IBlobContainerService          _blobs;
     private readonly IEncryptionService             _encryption;
-    private readonly ChunkIndexService              _chunkIndex;
+    private readonly IChunkIndexService             _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
-    private readonly FileTreeService               _fileTreeService;
+    private readonly IFileTreeService              _fileTreeService;
     private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
     private readonly ILogger<ArchiveCommandHandler> _logger;
+    private readonly ILoggerFactory                 _loggerFactory;
     private readonly string                         _accountName;
     private readonly string                         _containerName;
     private readonly Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
@@ -52,27 +112,29 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     public ArchiveCommandHandler(
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
-        ChunkIndexService               index,
+        IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                 fileTreeService,
+        IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
+        ILoggerFactory                  loggerFactory,
         string                          accountName,
         string                          containerName)
-        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, accountName, containerName, OpenStagingSessionAsync)
+        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, loggerFactory, accountName, containerName, OpenStagingSessionAsync)
     {
     }
 
     internal ArchiveCommandHandler(
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
-        ChunkIndexService               index,
+        IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
-        FileTreeService                 fileTreeService,
+        IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
         ILogger<ArchiveCommandHandler>  logger,
+        ILoggerFactory                  loggerFactory,
         string                          accountName,
         string                          containerName,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
@@ -85,6 +147,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _snapshotSvc        = snapshotSvc;
         _mediator           = mediator;
         _logger             = logger;
+        _loggerFactory      = loggerFactory;
         _accountName        = accountName;
         _containerName      = containerName;
         _openStagingSession = openStagingSession;
@@ -99,20 +162,17 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     /// <remarks>
     /// The pipeline enumerates files under the command's root directory, computes content hashes (or reuses pointer hashes),
     /// deduplicates against the persistent index and in-run uploads, uploads new chunks (large files directly, small files in tar bundles),
-    /// writes staged filetree entries, builds a tree and creates a snapshot, and optionally writes pointer files and removes local binaries.
-    /// Progress and events are published via the mediator and operational details are recorded in the index and staged filetree.
+    /// and writes staged filetree entries. Once every stage drains, it validates the filetrees, flushes the chunk index while
+    /// building the tree (concurrently), creates a snapshot, and finally writes pointer files and removes local binaries (concurrently,
+    /// each gated on its flag). Progress and events are published via the mediator and operational details are recorded in the index
+    /// and staged filetree. See the type-level documentation for the full stage/channel/event breakdown.
     /// </remarks>
     /// <param name="command">The archive command containing options (root directory, thresholds, flags) and parameters for the run.</param>
     /// <param name="cancellationToken">Cancellation token to observe while performing pipeline operations.</param>
     /// <returns>
-    /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
-    /// snapshot root hash and timestamp when created, and an error message when the operation failed.
-    /// <summary>
-    /// Runs the archive pipeline for the given command, processing files under the command's root directory into blob storage and producing an archive snapshot.
-    /// </summary>
-    /// <param name="command">The archive command containing options that control enumeration, hashing, deduplication, upload behavior, pointer writing, and local deletion.</param>
-    /// <param name="cancellationToken">Token to observe while waiting for pipeline operations to complete.</param>
-    /// <returns>An <see cref="ArchiveResult"/> with operation outcome and metrics: on success contains scanned/uploaded/deduped counts, total size, optional snapshot root hash and snapshot time; on failure contains collected counters so far and an error message.</returns>
+    /// An <see cref="ArchiveResult"/> with the operation outcome and metrics: on success, the scanned/uploaded/deduped counts,
+    /// total size processed, and the snapshot root hash and timestamp; on failure, the counters collected so far and an error message.
+    /// </returns>
     public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
         var opts = command.CommandOptions;
@@ -184,34 +244,31 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
 
-            // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+            // In-flight set: content hashes already queued/uploaded in this run
             // Used by the dedup stage to detect duplicates within the same run before the
             // index is updated.
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
-            // Channels between stages (task 8.2)
-            // The hashed/large/small channels carry metadata only (path + content hash; the
-            // file is re-opened at upload time), so they are unbounded: this lets the hash
-            // stage run fully ahead instead of being throttled by the slow upload stage via
-            // backpressure. sealedTarChannel stays bounded because it holds actual tar bytes.
-            var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-            var hashedChannel     = Channel.CreateUnbounded<HashedFilePair>();
-            var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
-            var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
-            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
-            var indexEntryChannel = Channel.CreateUnbounded<IndexEntry>();
+            // Channels between stages
+            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity); // TODO be more specific about SingleWriter / MultipleReader etc
+            var hashedChannel          = Channel.CreateUnbounded<HashedFilePair>();
+            var largeChannel           = Channel.CreateUnbounded<FileToUpload>();
+            var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
+            var sealedTarChannel       = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
+            var chunkIndexEntryChannel = Channel.CreateUnbounded<ShardEntry>();
+            var fileTreeEntryChannel   = Channel.CreateUnbounded<HashedFilePair>();
 
-            // ── Register queue-depth getters (task 2.3) ──────────────────────
+            // ── Register queue-depth getters ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
             opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
 
-            // ── Stage 1: Enumerate (task 8.3) ─────────────────────────────────
+            // ── Stage 1: Enumerate ─────────────────────────────────
             _logger.LogInformation("[phase] enumerate");
             var enumTask = Task.Run(async () =>
             {
                 try
                 {
-                    var  enumerator = new LocalFileEnumerator(_logger as ILogger<LocalFileEnumerator>);
+                    var  enumerator = new LocalFileEnumerator(_loggerFactory.CreateLogger<LocalFileEnumerator>());
                     var  pairs      = enumerator.Enumerate(LocalDirectory.Parse(opts.RootDirectory));
                     long count      = 0;
                     long totalBytes = 0;
@@ -235,46 +292,70 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 2: Hash ×N (task 8.4) ───────────────────────────────────
+            // ── Stage 2: Hash ×N ───────────────────────────────────
             _logger.LogInformation("[phase] hash");
-            var hashTask = Parallel.ForEachAsync(
-                    filePairChannel.Reader.ReadAllAsync(cancellationToken),
-                    new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
-                    async (pair, ct) =>
-                    {
-                        var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
-
-                        await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
-
-                        ContentHash contentHash;
-                        if (pair is { Binary: null, Pointer: { Hash: not null } })
+            var hashTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await Parallel.ForEachAsync(
+                        filePairChannel.Reader.ReadAllAsync(cancellationToken),
+                        new ParallelOptions { MaxDegreeOfParallelism = HashWorkers, CancellationToken = cancellationToken },
+                        async (pair, ct) =>
                         {
-                            // Pointer-only: use pointer hash directly (no re-hash)
-                            contentHash = pair.Pointer.Hash.Value;
-                        }
-                        else if (pair.Binary is not null)
-                        {
-                            await using var s  = fs.OpenRead(pair.RelativePath);
-                            var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
-                            await using var ps = new ProgressStream(s, p);
-                            contentHash = await _encryption.ComputeHashAsync(ps, ct);
-                        }
-                        else
-                        {
-                            // No binary and no pointer hash → skip
-                            _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
-                            return;
-                        }
+                            try
+                            {
+                                var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
 
-                        await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
+                                await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
-                        _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
+                                ContentHash contentHash;
+                                if (pair is { Binary: null, Pointer: { Hash: not null } })
+                                {
+                                    // Pointer-only: use pointer hash directly (no re-hash)
+                                    contentHash = pair.Pointer.Hash.Value;
+                                }
+                                else if (pair.Binary is not null)
+                                {
+                                    await using var s  = fs.OpenRead(pair.RelativePath);
+                                    var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
+                                    await using var ps = new ProgressStream(s, p);
+                                    contentHash = await _encryption.ComputeHashAsync(ps, ct);
+                                }
+                                else
+                                {
+                                    // No binary and no pointer hash → skip
+                                    _logger.LogWarning("Skipping FilePair with neither binary nor pointer hash: {Path}", pair.RelativePath);
+                                    await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
+                                    return;
+                                }
 
-                        await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
-                    })
-                .ContinueWith(_ => hashedChannel.Writer.Complete(), CancellationToken.None);
+                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
 
-            // ── Stage 3: Dedup (×1) + Router (task 8.5, 8.6) ─────────────────
+                                _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
+
+                                var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
+                                var (created, modified) = fs.GetTimestamps(metadataPath);
+
+                                await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, created, modified), ct);
+                            }
+                            catch (Exception ex) when (!ct.IsCancellationRequested)
+                            {
+                                // A single unreadable file (broken link, permission denied, deleted mid-run)
+                                // must never fault this stage — that would stop draining filePairChannel and
+                                // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
+                                _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
+                                await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
+                            }
+                        });
+                }
+                finally
+                {
+                    hashedChannel.Writer.Complete();
+                }
+            }, cancellationToken);
+
+            // ── Stage 3: Dedup (×1) + Router ─────────────────
             _logger.LogInformation("[phase] dedup-route");
             var dedupTask = Task.Run(async () =>
             {
@@ -295,7 +376,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                             // Known dedup: add to manifest only
                             _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
+                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
                         }
@@ -304,10 +385,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
+                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
-                            if (!opts.NoPointers)
-                                pendingPointers.Add((hashed.FilePair.RelativePath, hashed.ContentHash));
                         }
                         else
                         {
@@ -317,9 +396,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             Interlocked.Add(ref totalSize, fileSize);
                             var upload = new FileToUpload(hashed, fileSize);
                             var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
-                            _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})",
-                                hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8,
-                                fileSize.Bytes().Humanize());
+                            _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})", hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8, fileSize.Bytes().Humanize());
 
                             if (fileSize >= opts.SmallFileThreshold)
                                 await largeChannel.Writer.WriteAsync(upload, cancellationToken);
@@ -335,7 +412,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }, cancellationToken);
 
-            // ── Stage 4a: Large file upload ×N (task 8.7) ─────────────────────
+            // ── Stage 4a: Large file upload ×N ─────────────────────
             _logger.LogInformation("[phase] large-upload");
             var largeUploadTask = Parallel.ForEachAsync(
                 largeChannel.Reader.ReadAllAsync(cancellationToken),
@@ -347,132 +424,105 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var largeChunkHash = ChunkHash.Parse(upload.HashedPair.ContentHash);
                     await _mediator.Publish(new ChunkUploadingEvent(largeChunkHash, upload.FileSize), ct);
 
-                    await using var s              = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
-                    var             p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
-                    var             uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
-                    var             originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
-                    var             compressedSize = uploadResult.StoredSize;
+                    // Only the local read is skippable: a file that became unreadable between hashing
+                    // and upload is skipped rather than faulting the stage (which would deadlock the
+                    // bounded large channel). Upload/index failures must propagate and fail the run.
+                    Stream s;
+                    try
+                    {
+                        s = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        _logger.LogWarning(ex, "Skipping file during large upload: {Path}", upload.HashedPair.FilePair.RelativePath);
+                        await _mediator.Publish(new FileSkippedEvent(upload.HashedPair.FilePair.RelativePath), ct);
+                        return;
+                    }
 
-                    var entry = new IndexEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize);
-                    _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, entry.ChunkHash, entry.OriginalSize, entry.CompressedSize));
-                    await indexEntryChannel.Writer.WriteAsync(entry, ct);
+                    await using (s)
+                    {
+                        var p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
+                        var uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
+                        var originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
+                        var compressedSize = uploadResult.StoredSize;
 
-                    await WriteFileTreeEntry(upload.HashedPair, fs, stagingWriter, ct);
-                    Interlocked.Increment(ref filesUploaded);
+                        // Enqueue ShardEntry and FileTreeUpdate
+                        // so no filesystem access is needed here.
+                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize), ct);
+                        await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
+                        Interlocked.Increment(ref filesUploaded);
 
-                    if (!opts.NoPointers)
-                        pendingPointers.Add((upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash));
+                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
 
-                    if (opts.RemoveLocal)
-                        pendingDeletes.Add(upload.HashedPair.FilePair.RelativePath);
-
-                    await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
-
-                    _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
+                        _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
+                    }
                 });
 
-            // ── Stage 4b: Tar builder ×1 (task 8.8) ───────────────────────────
+            // ── Stage 4b: Tar builder ×1 ───────────────────────────
             _logger.LogInformation("[phase] tar-build");
             var tarBuilderTask = Task.Run(async () =>
             {
-                var           tarEntries  = new List<TarEntry>();
-                TarWriter?    tarWriter   = null;
-                MemoryStream? tarStream   = null;
-                long          currentSize = 0;
-
+                await using var tarBuilder = new TarBuilder(
+                    opts.TarTargetSize,
+                    _encryption,
+                    onBundleStarted: () => _mediator.Publish(new TarBundleStartedEvent(), cancellationToken),
+                    onEntryAdded: async (contentHash, entryCount, currentSize) =>
+                    {
+                        await _mediator.Publish(new TarEntryAddedEvent(contentHash, entryCount, currentSize), cancellationToken);
+                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", contentHash.Short8, entryCount, currentSize.Bytes().Humanize());
+                    },
+                    onBundleSealing: async sealedTar =>
+                    {
+                        await _mediator.Publish(new TarBundleSealingEvent(sealedTar.Entries.Count, sealedTar.UncompressedSize, sealedTar.Content.Count, sealedTar.TarHash, sealedTar.Entries.Select(e => e.ContentHash).ToList()), cancellationToken);
+                        _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, sealedTar.UncompressedSize.Bytes().Humanize());
+                        foreach (var te in sealedTar.Entries)
+                            _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
+                    });
                 try
                 {
-                    async Task SealCurrentTar()
-                    {
-                        if (tarWriter is null) 
-                            return;
-
-                        var sealedStream = tarStream!;
-
-                        try
-                        {
-                            await tarWriter.DisposeAsync();
-                            tarWriter = null;
-                            sealedStream.Position = 0;
-
-                            // Compute tar hash
-                            var tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(sealedStream, cancellationToken));
-                            sealedStream.Position = 0;
-
-                            await _mediator.Publish(new TarBundleSealingEvent(tarEntries.Count, currentSize, tarHash, tarEntries.Select(e => e.ContentHash).ToList()), cancellationToken);
-
-                            _logger.LogInformation("[tar] Sealed: {TarHash} {Count} file(s), {Size}", tarHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
-                            foreach (var te in tarEntries)
-                                _logger.LogInformation("[tar] Entry: {Path} ({Hash}, {Size})", te.HashedPair.FilePair.RelativePath, te.ContentHash.Short8, te.OriginalSize.Bytes().Humanize());
-
-                            await sealedTarChannel.Writer.WriteAsync(
-                                new SealedTar(sealedStream.ToArraySegment(), tarHash, currentSize, tarEntries.ToList()),
-                                cancellationToken);
-
-                            tarEntries.Clear();
-                            tarWriter      = null;
-                            tarStream      = null;
-                            currentSize    = 0;
-                        }
-                        finally
-                        {
-                            if (tarStream is not null)
-                                await sealedStream.DisposeAsync();
-                        }
-                    }
-
                     await foreach (var upload in smallChannel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        // Initialize new tar if needed
-                        if (tarWriter is null)
+                        // Open the source first: a failed open must skip this file rather than fault the
+                        // builder (which would deadlock the bounded small/sealed-tar channels) or leave a
+                        // half-written entry in the current bundle.
+                        Stream source;
+                        try
                         {
-                            tarStream      = new MemoryStream();
-                            tarWriter      = new TarWriter(tarStream, leaveOpen: true);
-                            await _mediator.Publish(new TarBundleStartedEvent(), cancellationToken);
+                            source = fs.OpenRead(upload.HashedPair.FilePair.RelativePath);
+                        }
+                        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            _logger.LogWarning(ex, "Skipping unreadable file during tar build: {Path}", upload.HashedPair.FilePair.RelativePath);
+                            await _mediator.Publish(new FileSkippedEvent(upload.HashedPair.FilePair.RelativePath), cancellationToken);
+                            continue;
                         }
 
-                        // Write entry named by content-hash (not original path)
-                        var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
-                        await using (var s = fs.OpenRead(upload.HashedPair.FilePair.RelativePath))
-                        {
-                            tarEntry.DataStream = s;
-                            await tarWriter.WriteEntryAsync(tarEntry, cancellationToken);
-                        }
-
-                        tarEntry.DataStream = null;
-
-                        tarEntries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
-                        currentSize += upload.FileSize;
-
-                        await _mediator.Publish(new TarEntryAddedEvent(upload.HashedPair.ContentHash, tarEntries.Count, currentSize), cancellationToken);
-                        _logger.LogDebug("[tar] Entry added: {Hash}, count={Count}, size={Size}", upload.HashedPair.ContentHash.Short8, tarEntries.Count, currentSize.Bytes().Humanize());
-
-                        if (currentSize >= opts.TarTargetSize)
-                            await SealCurrentTar();
+                        if (await tarBuilder.AddAsync(upload, source, cancellationToken) is { } sealedTar)
+                            await sealedTarChannel.Writer.WriteAsync(sealedTar, cancellationToken);
                     }
 
-                    // Seal final partial tar
-                    await SealCurrentTar();
+                    // Seal the final partial bundle.
+                    if (await tarBuilder.SealAsync(cancellationToken) is { } finalTar)
+                        await sealedTarChannel.Writer.WriteAsync(finalTar, cancellationToken);
                 }
                 finally
                 {
-                    if (tarWriter is not null)
-                    {
-                        await tarWriter.DisposeAsync();
-                        tarStream?.Dispose();
-                    }
-
+                    // The builder's DisposeAsync (await using) discards any half-built bundle; the sealed-tar
+                    // channel is owned by this handler, so we complete it here — like every other pipeline channel.
                     sealedTarChannel.Writer.Complete();
                 }
             }, cancellationToken);
 
-            // ── Stage 4c: Tar upload ×N (task 8.9) ────────────────────────────
+            // ── Stage 4c: Tar upload ×N ────────────────────────────
             _logger.LogInformation("[phase] tar-upload");
             var tarUploadTask = Parallel.ForEachAsync(
                 sealedTarChannel.Reader.ReadAllAsync(cancellationToken),
                 new ParallelOptions { MaxDegreeOfParallelism = TarUploadWorkers, CancellationToken = cancellationToken },
                 async (sealedTar, ct) =>
                 {
+                    // No local file is read here — the tar bytes are already sealed in memory. Every
+                    // failure in this stage is a storage/index fault that must propagate and fail the
+                    // run, so the rerun performs crash recovery rather than reporting a false success.
                     await _mediator.Publish(new ChunkUploadingEvent(sealedTar.TarHash, sealedTar.UncompressedSize), ct);
 
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
@@ -484,49 +534,88 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         ? (double)compressedSize / sealedTar.UncompressedSize
                         : 1.0;
 
-                    // Create thin chunks for each entry
-                    foreach (var entry in sealedTar.Entries)
-                    {
-                        var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                        await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, ct);
+                    // Parallel thin chunk creation for each entry
+                    await Parallel.ForEachAsync(
+                        sealedTar.Entries,
+                        new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
+                        async (entry, entryCt) =>
+                        {
+                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
+                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                        _chunkIndex.AddEntry(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
-                        await indexEntryChannel.Writer.WriteAsync(new IndexEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), ct);
-
-                        await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, ct);
-
-                        if (!opts.NoPointers)
-                            pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
-
-                        if (opts.RemoveLocal)
-                            pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
-                    }
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
+                            await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
+                        });
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
                     _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
                     Interlocked.Add(ref filesUploaded, sealedTar.Entries.Count);
                 });
 
+            // ── Stage 5a: Update ChunkIndex ×1 ─────────────────────────────
+            // Single consumer so writes funnel into batched SQLite transactions
+            _logger.LogInformation("[phase] chunk-index-update");
+            var chunkIndexUpdateTask = Task.Run(async () =>
+            {
+                const int batchSize = 256;
+                var stagedTotal = 0;
+                await foreach (var batch in chunkIndexEntryChannel.Reader.ReadAllBatchesAsync(batchSize, cancellationToken))
+                {
+                    _chunkIndex.AddEntries(batch);
+                    stagedTotal += batch.Count;
+                    _logger.LogDebug("[chunk-index] Staged batch of {Count} entries (total staged={StagedTotal})", batch.Count, stagedTotal);
+                }
+                _logger.LogInformation("[chunk-index] Staged {Count} chunk-index entries", stagedTotal);
+            }, cancellationToken);
+
+            // ── Stage 5b: Update FileTree + Pointer/Delete Intents ───────────────────────────────────
+            _logger.LogInformation("[phase] filetree-update");
+            var fileTreeUpdateTask = Parallel.ForEachAsync(
+                fileTreeEntryChannel.Reader.ReadAllAsync(cancellationToken),
+                new ParallelOptions { MaxDegreeOfParallelism = FileTreeUpdateWorkers, CancellationToken = cancellationToken },
+                async (entry, ct) =>
+                {
+                    var pair = entry.FilePair;
+                    await stagingWriter.AppendFileEntryAsync(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified, ct);
+
+                    // Once the files are captured in the FileTree, we can write the pointers & delete them
+                    if (!opts.NoPointers && pair.Binary is not null)
+                        pendingPointers.Add((pair.RelativePath, entry.ContentHash));
+
+                    if (opts.RemoveLocal && pair.Binary is not null)
+                        pendingDeletes.Add(pair.RelativePath);
+                });
+
             // Wait for all upload stages to complete
             _logger.LogInformation("[phase] await-workers");
-            await largeUploadTask;
-            await tarBuilderTask;
-            await tarUploadTask;
-            indexEntryChannel.Writer.Complete();
-            await dedupTask;
-            await enumTask;
+            try
+            {
+                // Await all producers of the update channels before closing the writers
+                await Task.WhenAll(largeUploadTask, tarBuilderTask, tarUploadTask, dedupTask);
+            }
+            finally
+            {
+                chunkIndexEntryChannel.Writer.Complete();
+                fileTreeEntryChannel.Writer.Complete();
+            }
+
+            // Drain the local-state consumers, then the upstream stages.
+            await Task.WhenAll(chunkIndexUpdateTask, fileTreeUpdateTask, hashTask, enumTask);
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
+            // ── Stage 6a: Validate filetrees ──────────────────────────────────
             _logger.LogInformation("[phase] validate-filetrees");
             var fileTreeValidation = await _fileTreeService.ValidateAsync(cancellationToken);
             if (fileTreeValidation.SnapshotMismatch)
                 _chunkIndex.InvalidateCaches();
 
-            _logger.LogInformation("[phase] archive-tail");
+            _logger.LogInformation("[phase] flush-chunkindex-and-synchronize-filetree");
+            // ── Stage 6b: Flush chunk index (concurrent w/ 6c) ──
             var flushTask   = _chunkIndex.FlushAsync(cancellationToken);
 
-            var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService);
+            // ── Stage 6c: Build file tree (concurrent w/ 6b) ─────────────────────────────────────
+            var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService, _loggerFactory.CreateLogger<FileTreeBuilder>());
             var treeTask = treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
 
             await Task.WhenAll(flushTask, treeTask);
@@ -534,6 +623,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var rootHash = await treeTask;
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
+            // ── Stage 6d: Create snapshot ─────────────────────────────────────
             _logger.LogInformation("[phase] snapshot");
             if (rootHash is not null)
             {
@@ -556,22 +646,30 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }
 
-            // Task 8.12: Write pointer files ×N in parallel
+            // ── Stage 6e: Write pointer files ×N in parallel (concurrent w/ 6f) ──────────────────
             _logger.LogInformation("[phase] write-pointers");
-            if (!opts.NoPointers)
-            {
-                await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
+            var writePointersTask = opts.NoPointers
+                ? Task.CompletedTask
+                : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (path, hash) = item;
-                    await fs.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
+                    try
+                    {
+                        await fs.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        // A pointer write that fails for one file must not fault the whole stage.
+                        _logger.LogWarning(ex, "Failed to write pointer file: {Path}", path.ToPointerPath());
+                    }
                 });
-            }
 
-            // Task 8.13: Remove local binary files
+            
+            // ── Stage 6f: Remove local binary files ×N in parallel ────────────
             _logger.LogInformation("[phase] delete-local");
-            if (opts.RemoveLocal)
-            {
-                foreach (var path in pendingDeletes)
+            var removeLocalTask = !opts.RemoveLocal
+                ? Task.CompletedTask
+                : Parallel.ForEachAsync(pendingDeletes, cancellationToken, (path, ct) =>
                 {
                     try
                     {
@@ -579,10 +677,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                     catch (Exception ex)
                     {
+                        // A delete that fails for one file must not fault the whole stage.
                         _logger.LogWarning(ex, "Failed to delete local file: {Path}", path);
                     }
-                }
-            }
+                    return ValueTask.CompletedTask;
+                });
+
+            await Task.WhenAll(writePointersTask, removeLocalTask);
 
             _logger.LogInformation("[phase] complete");
 
@@ -615,20 +716,4 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             };
         }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static async Task WriteFileTreeEntry(HashedFilePair hashed, RelativeFileSystem fileSystem, FileTreeStagingWriter writer, CancellationToken ct)
-    {
-        var pair = hashed.FilePair;
-        var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path
-            ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
-
-        // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
-        var fileTreePath = pair.RelativePath;
-
-        var (created, modified) = fileSystem.GetTimestamps(metadataPath);
-        await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
-    }
-
 }

@@ -54,6 +54,21 @@ public sealed class FileHashedHandler(ProgressState state) : INotificationHandle
     }
 }
 
+// ── FileSkippedHandler ────────────────────────────────────────────────────────
+
+/// <summary>
+/// Removes the <see cref="TrackedFile"/> row for a file the pipeline skipped (unreadable /
+/// broken link / deleted mid-run), so it does not linger at 0% in the display.
+/// </summary>
+public sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
+{
+    public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
+    {
+        state.SkipFileDuringHashing(notification.RelativePath);
+        return ValueTask.CompletedTask;
+    }
+}
+
 // ── TarBundleStartedHandler ───────────────────────────────────────────────────
 
 /// <summary>Creates a new <see cref="TrackedTar"/> with the next bundle number and State=Accumulating.</summary>
@@ -115,7 +130,10 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
         if (tar != null)
         {
             tar.TarHash    = notification.TarHash;
-            tar.TotalBytes = notification.UncompressedSize;
+            // Use the sealed tar's archive byte size (headers + padding included), not the sum of file
+            // contents: upload progress is reported against the actual bytes streamed, so the denominator
+            // must match or the bar overshoots 100% for bundles of many small files.
+            tar.TotalBytes = notification.TarByteSize;
             tar.State      = TarState.Sealing;
         }
 

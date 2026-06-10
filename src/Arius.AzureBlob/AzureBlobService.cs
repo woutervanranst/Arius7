@@ -35,7 +35,26 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
         }
     }
 
-    public async Task<IBlobContainerService> GetContainerServiceAsync(
+    /// <summary>
+    /// Validates access to <paramref name="containerName"/> per <paramref name="preflightMode"/> and returns a
+    /// container-scoped blob service.
+    /// </summary>
+    /// <remarks>
+    /// This method is not a pure getter — it has side effects driven by <paramref name="preflightMode"/>:
+    /// <list type="bullet">
+    /// <item><see cref="PreflightMode.ReadWrite"/> (archive): probes write access by uploading and deleting a probe
+    /// blob. If the upload reports the container is missing (first run), it <b>creates the container</b> instead — a
+    /// credential able to create a container can also write blobs, so the create itself proves write access. The
+    /// common case (container already exists) costs no extra round-trip, while first-run archives against a brand-new
+    /// container still succeed instead of failing the preflight with <see cref="PreflightErrorKind.ContainerNotFound"/>.
+    /// Container creation is idempotent and mirrors the archive handler's own <c>CreateContainerIfNotExistsAsync</c>.</item>
+    /// <item><see cref="PreflightMode.ReadOnly"/> (restore, ls): requires the container to already exist and only
+    /// probes list access; a missing container surfaces as <see cref="PreflightErrorKind.ContainerNotFound"/>.</item>
+    /// </list>
+    /// Throws <see cref="PreflightException"/> on credential/access/not-found failures — including a credential that
+    /// lacks container-create permission, which surfaces as <see cref="PreflightErrorKind.AccessDenied"/> (HTTP 403).
+    /// </remarks>
+    public async Task<IBlobContainerService> OpenContainerServiceAsync(
         string containerName,
         PreflightMode preflightMode,
         CancellationToken cancellationToken = default)
@@ -50,20 +69,35 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
             {
                 var probeBlob = containerClient.GetBlobClient(preflightProbeBlobName);
                 await using var emptyStream = new MemoryStream();
-                await probeBlob.UploadAsync(emptyStream, overwrite: true, cancellationToken).ConfigureAwait(false);
-                await probeBlob.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                try
+                {
+                    // Hot path: the container already exists (every run after the first). The probe upload +
+                    // delete validates write access without a redundant CreateIfNotExists round-trip per archive.
+                    await probeBlob.UploadAsync(emptyStream, overwrite: true, cancellationToken).ConfigureAwait(false);
+                    await probeBlob.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    // First-run archive: the container does not exist yet (uploading a blob into a missing
+                    // container returns 404). Create it — idempotent with the archive handler's
+                    // CreateContainerIfNotExistsAsync. No need to re-probe: every credential that can create a
+                    // container can also write blobs (Shared Key, and the built-in Storage Blob Data
+                    // Contributor/Owner roles bundle both), so a successful create already proves write access.
+                    // A credential lacking create permission surfaces as a clean 403 ->
+                    // PreflightException(AccessDenied) via the catch below.
+                    await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
             }
             else
             {
-                // Read-only callers need blob listing access, not just container metadata.
-                var pages = containerClient
+                // Read-only callers need blob listing access, not just container metadata. Fetch a single
+                // minimal page to probe list permission; a 404/403 surfaces via the catch clauses below.
+                _ = await containerClient
                     .GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix: default, cancellationToken)
-                    .AsPages(pageSizeHint: 1);
-
-                await foreach (var _ in pages.ConfigureAwait(false))
-                {
-                    break;
-                }
+                    .AsPages(pageSizeHint: 1)
+                    .FirstOrDefaultAsync(cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         catch (CredentialUnavailableException ex)

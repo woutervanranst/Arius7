@@ -56,7 +56,7 @@ public static class ServiceCollectionExtensions
                 containerName));
 
         // Chunk index
-        services.AddSingleton(sp =>
+        services.AddSingleton<IChunkIndexService>(sp =>
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
@@ -65,19 +65,19 @@ public static class ServiceCollectionExtensions
                 containerName,
                 sp.GetRequiredService<ILoggerFactory>()));
 
-        services.AddSingleton<ChunkStorageService>(sp =>
+        services.AddSingleton<IChunkStorageService>(sp =>
             new ChunkStorageService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>()));
-        services.AddSingleton<IChunkStorageService>(sp => sp.GetRequiredService<ChunkStorageService>());
 
         // File tree service
-        services.AddSingleton(sp =>
+        services.AddSingleton<IFileTreeService>(sp =>
             new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
                 accountName,
-                containerName));
+                containerName,
+                sp.GetRequiredService<ILogger<FileTreeService>>()));
 
         // NOTE: AddMediator() is intentionally NOT called here.
         // The source generator must run in the outermost assembly (Arius.Cli or test project)
@@ -91,21 +91,22 @@ public static class ServiceCollectionExtensions
             new ArchiveCommandHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
-                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
-                sp.GetRequiredService<FileTreeService>(),
+                sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
+                sp.GetRequiredService<ILoggerFactory>(),
                 accountName,
                 containerName));
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
             new RestoreCommandHandler(
                 sp.GetRequiredService<IEncryptionService>(),
-                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
-                sp.GetRequiredService<FileTreeService>(),
+                sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
@@ -114,15 +115,15 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>(sp =>
             new RepairChunkIndexCommandHandler(
-                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<ILogger<RepairChunkIndexCommandHandler>>(),
                 accountName,
                 containerName));
 
         services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>>(sp =>
             new ListQueryHandler(
-                sp.GetRequiredService<ChunkIndexService>(),
-                sp.GetRequiredService<FileTreeService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
+                sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
                 accountName,
@@ -134,7 +135,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>(sp =>
             new ChunkHydrationStatusQueryHandler(
-                sp.GetRequiredService<ChunkIndexService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));
 
@@ -157,7 +158,7 @@ public static class ServiceCollectionExtensions
             yield break;
         }
 
-        public Task<IBlobContainerService> GetContainerServiceAsync(
+        public Task<IBlobContainerService> OpenContainerServiceAsync(
             string containerName,
             PreflightMode preflightMode,
             CancellationToken cancellationToken = default) =>

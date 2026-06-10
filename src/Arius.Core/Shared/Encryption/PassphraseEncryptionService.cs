@@ -20,7 +20,8 @@ namespace Arius.Core.Shared.Encryption;
 ///
 /// Hash construction: SHA256(passphrase_bytes + data_bytes) — backwards-compatible.
 /// </summary>
-public sealed class PassphraseEncryptionService : IEncryptionService
+[SharedWithinAssembly]
+internal sealed class PassphraseEncryptionService : IEncryptionService
 {
     /// <inheritdoc/>
     public bool IsEncrypted => true;
@@ -29,7 +30,7 @@ public sealed class PassphraseEncryptionService : IEncryptionService
     private const int CbcSaltSize   = 8;
     private const int CbcKeySize    = 32; // AES-256
     private const int CbcIvSize     = 16; // AES block size
-    private const int CbcPbkdf2Iter = 10_000;
+    private const int CbcPbkdf2Iter = 100_000; //SonarQube S5344: at least 100k iterations
     private static readonly byte[] SaltedMagic = "Salted__"u8.ToArray();
 
     // ── GCM constants ────────────────────────────────────────────────────────────

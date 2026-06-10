@@ -81,6 +81,59 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task FileSkippedHandler_WhileStillHashing_RemovesTrackedFileAndIncrementsHashSkipCounter()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var skippedH = new FileSkippedHandler(state);
+        var path     = RelativePath.Parse("hashing.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesSkippedHashing.ShouldBe(1L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task FileSkippedHandler_AfterHashing_RemovesTrackedFileWithoutIncrementingHashSkipCounter()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+        var skippedH = new FileSkippedHandler(state);
+        var path     = RelativePath.Parse("tar-input.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('2')), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesHashed.ShouldBe(1L);
+        state.FilesSkippedHashing.ShouldBe(0L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task FileSkippedHandler_DuringUpload_RemovesTrackedFileWithoutIncrementingHashSkipCounter()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var skippedH   = new FileSkippedHandler(state);
+        var path       = RelativePath.Parse("large.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 1_000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('3')), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('3'), 1_000), CancellationToken.None);
+        await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
+
+        state.FilesUnique.ShouldBe(1L);
+        state.FilesSkippedHashing.ShouldBe(0L);
+        state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+    }
+
+    [Test]
     public async Task TarBundleStartedHandler_CreatesTrackedTar()
     {
         var state   = new ProgressState();
@@ -156,12 +209,13 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, FakeChunkHash('d'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
+            new TarBundleSealingEvent(3, 300, 450, FakeChunkHash('d'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         state.TrackedTars[1].State.ShouldBe(TarState.Sealing);
         state.TrackedTars[1].TarHash.ShouldBe(FakeChunkHash('d'));
-        state.TrackedTars[1].TotalBytes.ShouldBe(300L);
+        // TotalBytes tracks the tar archive size (TarByteSize=450), not the uncompressed sum (300).
+        state.TrackedTars[1].TotalBytes.ShouldBe(450L);
     }
 
     [Test]
@@ -191,7 +245,7 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, FakeChunkHash('f'), [FakeContentHash('a'), FakeContentHash('b')]),
+            new TarBundleSealingEvent(2, 200, 200, FakeChunkHash('f'), [FakeContentHash('a'), FakeContentHash('b')]),
             CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('f'), 200), CancellationToken.None);
 
@@ -229,7 +283,7 @@ public class NotificationHandlerTests
 
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('d'), FakeContentHash('e'), FakeContentHash('f')]),
+            new TarBundleSealingEvent(3, 300, 300, FakeChunkHash('a'), [FakeContentHash('d'), FakeContentHash('e'), FakeContentHash('f')]),
             CancellationToken.None);
         await uploadedH.Handle(
             new TarBundleUploadedEvent(FakeChunkHash('a'), 200, 3),

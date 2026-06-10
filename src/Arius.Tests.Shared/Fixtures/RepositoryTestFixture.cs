@@ -12,6 +12,7 @@ using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -210,10 +211,10 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
     public ArchiveCommandHandler CreateArchiveHandler()
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName);
 
     internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, AccountName, ContainerName, openStagingSession);
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName, openStagingSession);
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()

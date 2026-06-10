@@ -1,6 +1,8 @@
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Arius.Core.Shared.Encryption;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -10,11 +12,14 @@ namespace Arius.Core.Shared.FileTree;
 /// <remarks>
 /// Builds trees using shared services supplied by the caller/DI container.
 /// </remarks>
-public sealed class FileTreeBuilder(IEncryptionService encryption, FileTreeService fileTreeService)
+[SharedWithinAssembly]
+internal sealed class FileTreeBuilder(IEncryptionService encryption, IFileTreeService fileTreeService, ILogger<FileTreeBuilder>? logger = null)
 {
     private const int SiblingSubtreeWorkers = 4;
-    private const int UploadWorkers = 8;
+    private const int SynchronizeWorkers = 32;
     private const int UploadChannelCapacity = 16;
+
+    private readonly ILogger<FileTreeBuilder> _logger = logger ?? NullLogger<FileTreeBuilder>.Instance;
 
     public static FileTreeHash ComputeHash(IReadOnlyList<FileTreeEntry> entries, IEncryptionService encryption)
     {
@@ -36,18 +41,23 @@ public sealed class FileTreeBuilder(IEncryptionService encryption, FileTreeServi
     {
         var stagingFileSystem = new RelativeFileSystem(stagingRoot);
 
+        _logger.LogInformation("Building filetree from staging root");
+
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var workerCancellationToken = linkedCts.Token;
         ExceptionDispatchInfo? uploadFailure = null;
+        var uploadedCount = 0;
 
         var uploadChannel = Channel.CreateBounded<(FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext)>(UploadChannelCapacity);
         var uploadTask = Parallel.ForEachAsync(uploadChannel.Reader.ReadAllAsync(workerCancellationToken),
-            new ParallelOptions { CancellationToken = workerCancellationToken, MaxDegreeOfParallelism = UploadWorkers },
+            new ParallelOptions { CancellationToken = workerCancellationToken, MaxDegreeOfParallelism = SynchronizeWorkers },
             async (node, ct) =>
             {
                 try
                 {
                     await fileTreeService.EnsureStoredAsync(node, ct);
+                    Interlocked.Increment(ref uploadedCount);
+                    _logger.LogDebug("Stored filetree node {Hash}", node.Hash.Short8);
                 }
                 catch (Exception ex)
                 {
@@ -63,6 +73,7 @@ public sealed class FileTreeBuilder(IEncryptionService encryption, FileTreeServi
             var rootHash = await BuildDirectoryAsync(FileTreePaths.GetStagingDirectoryId(RelativePath.Root), workerCancellationToken);
             uploadChannel.Writer.TryComplete();
             await uploadTask;
+            _logger.LogInformation("Synchronized {NodeCount} filetree nodes, rootHash {RootHash}", uploadedCount, rootHash?.Short8 ?? "(none)");
             return rootHash;
         }
         catch (OperationCanceledException) when (uploadFailure is not null && !cancellationToken.IsCancellationRequested)

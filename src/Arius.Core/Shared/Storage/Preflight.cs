@@ -19,7 +19,7 @@ public enum PreflightErrorKind
 }
 
 /// <summary>
-/// Thrown by <see cref="IBlobService.GetContainerServiceAsync(string, PreflightMode, CancellationToken)"/> when a known
+/// Thrown by <see cref="IBlobService.OpenContainerServiceAsync(string, PreflightMode, CancellationToken)"/> when a known
 /// connectivity or authentication failure is detected during the preflight check.
 /// Carries structured fields so each host can format its own user-facing messages.
 /// </summary>

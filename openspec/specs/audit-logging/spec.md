@@ -113,11 +113,11 @@ Every log line in the file sink SHALL include the managed thread ID. The format 
 - **THEN** the log file SHALL show different thread IDs for log lines from different workers
 
 ### Requirement: Log line format
-The file sink log line format SHALL be: `[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [{Stage}] [T:{ThreadId}] {Message}{NewLine}`. Lines without a stage tag (e.g. operation start/end summaries) SHALL omit the `[{Stage}]` and `[T:{ThreadId}]` fields.
+The file sink log line format SHALL be: `[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] [{ShortSourceContext}] {Message}{NewLine}{Exception}`. `{ShortSourceContext}` is the emitting type's class name (e.g. `ArchiveCommandHandler`, `FileTreeBuilder`), derived from the namespace-qualified Serilog `SourceContext`; events without a source context (e.g. top-level crash logs) fall back to `Arius`. Category tags such as `[phase]`, `[hash]`, or `[tree]` are part of `{Message}` and are emitted by pipeline handlers per ADR-0007; shared services (e.g. `ChunkIndexService`, `FileTreeService`, `FileTreeBuilder`) log plain messages without category tags and are identified instead by `{ShortSourceContext}`.
 
 #### Scenario: Formatted log line
-- **WHEN** a hash worker on thread 12 logs a file hash result
-- **THEN** the log line SHALL be formatted as `[14:30:00.015] [INF] [hash] [T:12] photos/2024/sunset.jpg -> a1b2c3d4 (4.2 MB)`
+- **WHEN** a hash worker on thread 12 logs a file hash result from the archive handler
+- **THEN** the log line SHALL be formatted as `[14:30:00.015] [INF] [T:12] [ArchiveCommandHandler] [hash] photos/2024/sunset.jpg -> a1b2c3d4 (4.2 MB)`
 
 ### Requirement: Spectre.Console output capture
 The system SHALL capture all Spectre.Console output using `Recorder(AnsiConsole.Console)` and append the plain-text export to the end of the log file after the operation completes. The captured output SHALL be separated by a header line `--- Console Output ---`. Tables, progress summaries, and error messages SHALL all be captured.

@@ -229,7 +229,7 @@ public class BuildArchiveDisplayTests
         var sealingH = new TarBundleSealingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(3, 300, FakeChunkHash('a'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
+            new TarBundleSealingEvent(3, 300, 300, FakeChunkHash('a'), [FakeContentHash('a'), FakeContentHash('b'), FakeContentHash('c')]),
             CancellationToken.None);
 
         var output = RenderToString(ArchiveVerb.BuildDisplay(state));
@@ -246,7 +246,7 @@ public class BuildArchiveDisplayTests
         var uploadingH = new ChunkUploadingHandler(state);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await sealingH.Handle(
-            new TarBundleSealingEvent(2, 200, FakeChunkHash('b'), [FakeContentHash('d'), FakeContentHash('e')]),
+            new TarBundleSealingEvent(2, 200, 200, FakeChunkHash('b'), [FakeContentHash('d'), FakeContentHash('e')]),
             CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('b'), 200), CancellationToken.None);
 

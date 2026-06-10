@@ -10,8 +10,39 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
 {
     // --- FILE EXIST
 
-    public bool FileExists(RelativePath path) 
+    public bool FileExists(RelativePath path)
         => File.Exists(root.Resolve(path));
+
+    // --- SYMLINK VALIDITY
+
+    /// <summary>
+    /// Returns true when the path resolves to existing content: a regular file, or a symbolic
+    /// link whose final target (following the whole chain) exists. Returns false only for a
+    /// dangling symlink — a reparse point whose target is missing or unresolvable.
+    /// </summary>
+    /// <remarks>
+    /// Detection uses <see cref="FileSystemInfo.LinkTarget"/> (lstat semantics, does not follow the
+    /// link) so a broken link is recognised rather than mistaken for a missing file. Note that
+    /// <see cref="File.Exists(string)"/> returns false for a dangling symlink, so
+    /// <see cref="FileSystemInfo.LinkTarget"/> is required to detect broken links here.
+    /// </remarks>
+    public bool IsValidSymlink(RelativePath path)
+    {
+        try
+        {
+            var info = new FileInfo(root.Resolve(path));
+
+            if (info.LinkTarget is null)
+                return true; // not a link → resolvable as-is
+
+            var target = info.ResolveLinkTarget(returnFinalTarget: true);
+            return target is not null && target.Exists;
+        }
+        catch
+        {
+            return false; // unresolvable chain (cyclic / too many levels / missing) → treat as broken
+        }
+    }
 
     // --- DIRECTORY EXIST
 
@@ -225,6 +256,16 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
     }
 
+    /// <summary>
+    /// Appends text to a file within the rooted directory, creating the file (and parent directories) if needed.
+    /// </summary>
+    public async Task AppendAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
+    {
+        var fullPath = root.Resolve(path);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
+        await File.AppendAllTextAsync(fullPath, content, cancellationToken);
+    }
+
     public void WriteAllBytes(RelativePath path, byte[] content)
     {
         var fullPath = root.Resolve(path);
@@ -269,11 +310,28 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)
     {
         var fullPath = root.Resolve(path);
-        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
-        return (
-            new DateTimeOffset(File.GetCreationTimeUtc(handle), TimeSpan.Zero),
-            new DateTimeOffset(File.GetLastWriteTimeUtc(handle), TimeSpan.Zero));
+        try
+        {
+            using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+            return (
+                new DateTimeOffset(File.GetCreationTimeUtc(handle), TimeSpan.Zero),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(handle), TimeSpan.Zero));
+        }
+        catch (IOException ex) when (ex is not FileNotFoundException and not DirectoryNotFoundException)
+        {
+            // The file is present but held by another process with a share mode that denies our
+            // open (e.g. a live SQLite -shm/-wal file). Timestamps live in the directory entry, so
+            // read them by path: that doesn't open the file and isn't blocked by the lock, yielding
+            // the same values without faulting the caller. We exclude not-found here on purpose —
+            // the path-based APIs silently return a 1601 sentinel for a missing file rather than
+            // throwing, so a file that vanished mid-run must keep surfacing as an error, not be
+            // archived with a bogus timestamp.
+            return (
+                new DateTimeOffset(File.GetCreationTimeUtc(fullPath), TimeSpan.Zero),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero));
+        }
     }
 
     /// <summary>

@@ -21,7 +21,7 @@ public class RepositorySessionTests
         var blobContainerService = Substitute.For<IBlobContainerService>();
 
         blobServiceFactory.CreateAsync("account", "key", Arg.Any<CancellationToken>()).Returns(blobService);
-        blobService.GetContainerServiceAsync("container", PreflightMode.ReadOnly, Arg.Any<CancellationToken>()).Returns(blobContainerService);
+        blobService.OpenContainerServiceAsync("container", PreflightMode.ReadOnly, Arg.Any<CancellationToken>()).Returns(blobContainerService);
 
         var services = new ServiceCollection();
         services.AddSingleton(blobServiceFactory);
@@ -44,7 +44,7 @@ public class RepositorySessionTests
         session.Repository.ShouldBe(repository);
         session.Mediator.ShouldNotBeNull();
         await blobServiceFactory.Received(1).CreateAsync("account", "key", Arg.Any<CancellationToken>());
-        await blobService.Received(1).GetContainerServiceAsync("container", PreflightMode.ReadOnly, Arg.Any<CancellationToken>());
+        await blobService.Received(1).OpenContainerServiceAsync("container", PreflightMode.ReadOnly, Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -55,7 +55,7 @@ public class RepositorySessionTests
         var blobContainerService = Substitute.For<IBlobContainerService>();
 
         blobServiceFactory.CreateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(blobService);
-        blobService.GetContainerServiceAsync(Arg.Any<string>(), Arg.Any<PreflightMode>(), Arg.Any<CancellationToken>()).Returns(blobContainerService);
+        blobService.OpenContainerServiceAsync(Arg.Any<string>(), Arg.Any<PreflightMode>(), Arg.Any<CancellationToken>()).Returns(blobContainerService);
 
         var services = new ServiceCollection();
         services.AddSingleton(blobServiceFactory);

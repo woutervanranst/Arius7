@@ -50,10 +50,16 @@ internal sealed record PointerFile
 /// Represents a <see cref="FilePair"/> after Arius has computed its content hash.
 /// It exists to give the archive pipeline a stable handoff between hashing and deduplication,
 /// with responsibility for pairing the local file model with the resolved content identity.
+///
+/// The source file's timestamps are captured here, at hashing time — the moment we decide to
+/// archive the file and have it open — so later stages never re-read the filesystem for metadata.
+/// This keeps the snapshot consistent even if the source file is moved or deleted mid-run.
 /// </summary>
 internal sealed record HashedFilePair(
     FilePair       FilePair,
-    ContentHash    ContentHash
+    ContentHash    ContentHash,
+    DateTimeOffset Created,
+    DateTimeOffset Modified
 );
 
 /// <summary>
@@ -64,18 +70,6 @@ internal sealed record HashedFilePair(
 internal sealed record FileToUpload(
     HashedFilePair HashedPair,
     long           FileSize     // bytes (0 for pointer-only)
-);
-
-/// <summary>
-/// Represents the chunk-index mapping produced after upload.
-/// It exists to hand off the newly persisted chunk identity and size metadata,
-/// with responsibility for recording the content-hash to chunk-hash relationship Arius stores in the chunk index.
-/// </summary>
-internal sealed record IndexEntry(
-    ContentHash ContentHash,
-    ChunkHash ChunkHash,
-    long   OriginalSize,
-    long   CompressedSize
 );
 
 /// <summary>

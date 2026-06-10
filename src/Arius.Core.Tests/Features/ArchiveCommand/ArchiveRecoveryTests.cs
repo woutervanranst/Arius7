@@ -7,6 +7,8 @@ using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using System.Collections.Concurrent;
@@ -167,6 +169,7 @@ public class ArchiveRecoveryTests
             fixture.Snapshot,
             fixture.Mediator,
             new FakeLogger<ArchiveCommandHandler>(),
+            NullLoggerFactory.Instance,
             fixture.AccountName,
             fixture.ContainerName);
 
@@ -218,6 +221,7 @@ public class ArchiveRecoveryTests
             fixture.Snapshot,
             fixture.Mediator,
             new FakeLogger<ArchiveCommandHandler>(),
+            NullLoggerFactory.Instance,
             fixture.AccountName,
             fixture.ContainerName);
 
@@ -251,21 +255,30 @@ public class ArchiveRecoveryTests
             .Select(static record => record.Message)
             .ToArray();
 
-        messages.ShouldContain(message => message.Contains("[phase] ensure-container", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] open-staging", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] enumerate", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] hash", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] dedup-route", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] large-upload", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tar-build", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] archive-tail", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] complete", StringComparison.Ordinal));
+        var phases = messages
+            .Where(static message => message.StartsWith("[phase] ", StringComparison.Ordinal))
+            .Select(static message => message[8..])
+            .ToArray();
+
+        phases.ShouldBe([
+            "ensure-container",
+            "open-staging",
+            "enumerate",
+            "hash",
+            "dedup-route",
+            "large-upload",
+            "tar-build",
+            "tar-upload",
+            "chunk-index-update",
+            "filetree-update",
+            "await-workers",
+            "validate-filetrees",
+            "flush-chunkindex-and-synchronize-filetree",
+            "snapshot",
+            "write-pointers",
+            "delete-local",
+            "complete"
+        ]);
     }
 
     [Test]
@@ -337,6 +350,29 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_RemoveLocal_DeletesDeduplicatedBinaryToo()
+    {
+        // Two files with identical content: one is uploaded, the other deduplicates against it within
+        // the same run. Both binaries are durably archived, so --remove-local must delete both (the
+        // delete decision is "has a local binary that is archived", not "was uploaded this run").
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var uploaded   = RelativePath.Parse("a/original.bin");
+        var deduped    = RelativePath.Parse("b/duplicate.bin");
+        var content    = new byte[256];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(uploaded, content, CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(deduped, content, CancellationToken.None);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        fixture.LocalFileSystem.FileExists(uploaded).ShouldBeFalse();
+        fixture.LocalFileSystem.FileExists(deduped).ShouldBeFalse();
+        fixture.LocalFileSystem.FileExists(uploaded.ToPointerPath()).ShouldBeTrue();
+        fixture.LocalFileSystem.FileExists(deduped.ToPointerPath()).ShouldBeTrue();
+    }
+
+    [Test]
     public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
     {
         await using var fixture = await CreateArchiveFixtureAsync();
@@ -390,6 +426,58 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeFalse();
         result.ErrorMessage.ShouldBe("staging setup failed");
+    }
+
+    // ── Hang regression: a single unreadable file must never deadlock the pipeline ──
+
+    [Test]
+    public async Task Archive_TreeWithBrokenSymlinkAndManyFiles_CompletesAndSkipsLink()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // creating symlinks requires elevation on Windows
+
+        await using var fixture = await CreateArchiveFixtureAsync();
+
+        const int fileCount = 70; // > ChannelCapacity (64): fills the bounded enumerate→hash channel
+        for (var i = 0; i < fileCount; i++)
+            await WriteRandomFileAsync(fixture, RelativePath.Parse($"files/file-{i:D3}.bin"), 256);
+
+        // Dangling symlink: enumerated by the OS, FileInfo.Length reports the link text, OpenRead throws.
+        var brokenLink = Path.Combine(fixture.LocalDirectory.ToString(), "files", "broken.bin");
+        File.CreateSymbolicLink(brokenLink, "/nonexistent/target");
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool).WaitAsync(TimeSpan.FromSeconds(120));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.FilesScanned.ShouldBe(fileCount); // broken link filtered out during enumeration
+        result.RootHash.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Archive_WhenHashStageThrowsForOneFile_CompletesWithoutHanging()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+
+        const int fileCount = 70; // > ChannelCapacity (64): a faulting hash worker would block the producer
+        for (var i = 0; i < fileCount; i++)
+            await WriteRandomFileAsync(fixture, RelativePath.Parse($"f/file-{i:D3}.bin"), 256);
+
+        var poison = RelativePath.Parse("f/file-000.bin");
+        fixture.Mediator
+            .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo =>
+            {
+                if (callInfo.ArgAt<INotification>(0) is FileHashingEvent e && e.RelativePath.Equals(poison))
+                    throw new IOException("simulated unreadable file");
+            });
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool).WaitAsync(TimeSpan.FromSeconds(120));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        fixture.ArchiveLogs.GetSnapshot()
+            .ShouldContain(record => record.Level == LogLevel.Warning &&
+                                     record.Message.Contains("Skipping unreadable file during hashing") &&
+                                     record.Message.Contains(poison.ToString()));
     }
 
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()

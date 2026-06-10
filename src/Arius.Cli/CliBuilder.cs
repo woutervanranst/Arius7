@@ -9,6 +9,7 @@ using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog.Events;
+using Serilog.Templates;
 
 namespace Arius.Cli;
 
@@ -121,7 +122,7 @@ public static class CliBuilder
         PreflightMode preflightMode)
     {
         var blobService = await blobServiceFactory.CreateAsync(accountName, accountKey).ConfigureAwait(false);
-        var blobContainer = await blobService.GetContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
+        var blobContainer = await blobService.OpenContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
 
         // ── Build DI container ────────────────────────────────────────────────
         var services = new ServiceCollection();
@@ -156,12 +157,16 @@ public static class CliBuilder
         var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         var logFile   = Path.Combine(logDir, $"{timestamp}_{commandName}.txt");
 
-        const string outputTemplate = "[{Timestamp:HH:mm:ss.fff}] [{Level:u3}] [T:{ThreadId}] {Message}{NewLine}{Exception}";
+        // {ShortSourceContext}: the emitting type's class name from the namespace-qualified
+        // SourceContext (e.g. FileTreeBuilder from Arius.Core.Shared.FileTree.FileTreeBuilder),
+        // falling back to "Arius" for events without a source context (e.g. top-level crash logs).
+        var formatter = new ExpressionTemplate(
+            "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .Enrich.WithThreadId()
-            .WriteTo.File(logFile, outputTemplate: outputTemplate, restrictedToMinimumLevel: LogEventLevel.Information)
+            .WriteTo.File(formatter, logFile, restrictedToMinimumLevel: LogEventLevel.Information)
             .CreateLogger();
 
         return logFile;

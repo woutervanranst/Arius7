@@ -15,12 +15,12 @@ public sealed record ChunkHydrationStatusResult(RelativePath RelativePath, Conte
 
 public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>
 {
-    private readonly ChunkIndexService _chunkIndex;
+    private readonly IChunkIndexService _chunkIndex;
     private readonly IChunkStorageService _chunkStorage;
     private readonly ILogger<ChunkHydrationStatusQueryHandler> _logger;
 
     public ChunkHydrationStatusQueryHandler(
-        ChunkIndexService index,
+        IChunkIndexService index,
         IChunkStorageService chunkStorage,
         ILogger<ChunkHydrationStatusQueryHandler> logger)
     {

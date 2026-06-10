@@ -1,7 +1,5 @@
 using System.Reflection;
-using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
-using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;
 
@@ -25,26 +23,37 @@ public class ModulithTests
     [Test]
     public void Internal_Types_Should_Only_Be_Used_Within_Their_Namespace_Subtree()
     {
+        // Declaring namespace of each namespace-scoped internal type, keyed by full name.
+        var declaringNamespaceByType = NamespaceScopedInternalTypes()
+            .ToDictionary(type => type.FullName!, type => type.Namespace!, StringComparer.Ordinal);
+
         var violations = new List<string>();
 
-        foreach (var type in NamespaceScopedInternalTypes())
+        // Walk the dependency graph directly: for every Core type, inspect what it depends on. A
+        // dependency on a namespace-scoped internal type is allowed only when the consumer lives in
+        // that type's declaring namespace or a descendant of it (the spec's "namespace + children").
+        foreach (var consumer in Architecture.Types.Where(type => type.Assembly.Name == CoreAssembly.Name))
         {
-            var declaringNamespace = type.Namespace!;
+            var consumerNamespace = consumer.Namespace.FullName;
 
-            // DoNotResideInNamespace does a literal substring match (matching DependencyTests' usage),
-            // so passing the declaring namespace also excludes its descendant namespaces — leaving
-            // exactly the "declaring namespace + descendants" set as the allowed consumers.
-            IArchRule rule = Classes().That().ResideInAssembly(CoreAssembly)
-                .And().DoNotResideInNamespace(declaringNamespace)
-                .Should().NotDependOnAnyTypesThat().HaveFullName(type.FullName!);
-
-            if (!rule.HasNoViolations(Architecture))
+            foreach (var dependency in consumer.Dependencies)
             {
+                if (!declaringNamespaceByType.TryGetValue(dependency.Target.FullName, out var declaringNamespace))
+                    continue;
+
+                var withinSubtree = consumerNamespace == declaringNamespace
+                    || consumerNamespace.StartsWith(declaringNamespace + ".", StringComparison.Ordinal);
+                if (withinSubtree)
+                    continue;
+
                 violations.Add(
-                    $"'{type.FullName}' (in '{declaringNamespace}') is used outside its namespace subtree. " +
-                    $"Mark it [SharedWithinAssembly] if cross-namespace sharing is intended. {DescribeViolations(rule)}");
+                    $"'{dependency.Target.FullName}' (in '{declaringNamespace}') is used by " +
+                    $"'{consumer.FullName}' (in '{consumerNamespace}'), outside its namespace subtree. " +
+                    "Mark it [SharedWithinAssembly] if cross-namespace sharing is intended.");
             }
         }
+
+        violations = violations.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal).ToList();
 
         violations.ShouldBeEmpty(
             "Internal types may only be used within their declaring namespace or a descendant:" +
@@ -79,14 +88,4 @@ public class ModulithTests
             .Where(type => type != typeof(Core.SharedWithinAssemblyAttribute))
             // Opted-out: intentionally shared across namespaces within the assembly.
             .Where(type => type.GetCustomAttribute<Core.SharedWithinAssemblyAttribute>() is null);
-
-    // Helper: produce a human-readable summary of rule violations for failure messages.
-    private static string DescribeViolations(IArchRule rule)
-    {
-        var results = rule.Evaluate(Architecture)
-            .Where(r => !r.Passed)
-            .Select(r => r.Description)
-            .Take(10);
-        return string.Join("; ", results);
-    }
 }

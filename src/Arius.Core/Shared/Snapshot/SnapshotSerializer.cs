@@ -10,7 +10,7 @@ namespace Arius.Core.Shared.Snapshot;
 /// Serialization/deserialization for the snapshot blob payload stored in remote blob storage.
 /// This serializer is for the Azure wire format only: JSON → gzip → optional encrypt.
 /// </summary>
-public static class SnapshotSerializer
+internal static class SnapshotSerializer
 {
     private static readonly JsonSerializerOptions s_options = new()
     {

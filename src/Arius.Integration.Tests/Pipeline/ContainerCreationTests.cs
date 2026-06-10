@@ -10,6 +10,7 @@ using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Mediator;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 
@@ -49,6 +50,7 @@ public class ContainerCreationTests(AzuriteFixture azurite)
             svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, Account, containerName),
             snapshot, mediator,
             logger,
+            NullLoggerFactory.Instance,
             Account, containerName);
 
         var tempRoot = TestTempRoots.CreateDirectory("cc");
@@ -69,6 +71,32 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         {
             localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
+    }
+
+    // ── Regression: CLI preflight must not fail on a non-existent container ──
+    //
+    // The archive verb resolves the container through AzureBlobService.OpenContainerServiceAsync in
+    // PreflightMode.ReadWrite *before* the handler runs. Previously that probed write access by uploading a
+    // blob, which 404s on a missing container -> PreflightException(ContainerNotFound), aborting before the
+    // handler's auto-create ever ran. This test exercises the real preflight path against Azurite and asserts
+    // it creates the container instead of throwing. The handler-only test above does NOT cover this path.
+
+    [Test]
+    public async Task Preflight_ReadWrite_NonExistentContainer_CreatesContainerAndDoesNotThrow()
+    {
+        var containerName   = $"test-pf-{Guid.NewGuid():N}";
+        var serviceClient   = new BlobServiceClient(azurite.ConnectionString);
+        var containerClient = serviceClient.GetBlobContainerClient(containerName);
+
+        (await containerClient.ExistsAsync()).Value.ShouldBeFalse();
+
+        var blobService = new AzureBlobService(serviceClient, Account, "key");
+
+        // Before the fix this throws PreflightException(ContainerNotFound).
+        var svc = await blobService.OpenContainerServiceAsync(containerName, PreflightMode.ReadWrite, CancellationToken.None);
+
+        svc.ShouldBeOfType<AzureBlobContainerService>();
+        (await containerClient.ExistsAsync()).Value.ShouldBeTrue();
     }
 
     // ── 3.2: Archive to an existing container succeeds (idempotent) ──────────

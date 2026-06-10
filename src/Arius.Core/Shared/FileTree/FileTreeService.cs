@@ -3,6 +3,8 @@ using System.IO.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -21,12 +23,14 @@ namespace Arius.Core.Shared.FileTree;
 ///     always a rooted relative filesystem existence check on both fast and slow paths.</item>
 /// </list>
 /// </summary>
-public sealed class FileTreeService
+[SharedWithinAssembly]
+internal sealed class FileTreeService : IFileTreeService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
     private readonly RelativeFileSystem    _snapshotCacheFileSystem;
+    private readonly ILogger<FileTreeService> _logger;
 
     /// <summary>
     /// Guard ensuring <see cref="ExistsInRemote"/> is not called before <see cref="ValidateAsync"/>.
@@ -43,10 +47,12 @@ public sealed class FileTreeService
         IBlobContainerService blobs,
         IEncryptionService    encryption,
         string                accountName,
-        string                containerName)
+        string                containerName,
+        ILogger<FileTreeService>? logger = null)
     {
         _blobs           = blobs;
         _encryption      = encryption;
+        _logger          = logger ?? NullLogger<FileTreeService>.Instance;
         var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
         var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
 
@@ -154,7 +160,7 @@ public sealed class FileTreeService
 
     // ── WriteAsync ────────────────────────────────────────────────────────
 
-    internal async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
+    public async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
         if (!ExistsInRemote(payload.Hash))
             await WriteAsync(payload, cancellationToken);
@@ -279,6 +285,7 @@ public sealed class FileTreeService
         // If there are no remote snapshots, the repository is empty — fast path.
         if (latestRemote is null)
         {
+            _logger.LogDebug("No remote snapshots; repository empty");
             _validated = true;
             return new FileTreeValidationResult(SnapshotMismatch: false);
         }
@@ -288,6 +295,7 @@ public sealed class FileTreeService
             latestRemote is { } remoteSnapshot &&
             localSnapshot == remoteSnapshot)
         {
+            _logger.LogDebug("Snapshot up to date (local matches remote)");
             _validated = true;
             return new FileTreeValidationResult(SnapshotMismatch: false);
         }
@@ -298,17 +306,25 @@ public sealed class FileTreeService
         //   stable set of known-existing hashes for this epoch. Materialize empty marker files for
         //   any uncached remote trees now so ExistsInRemote() can stay a cheap local file existence
         //   check during the entire build instead of doing a remote existence probe per tree node.
+        _logger.LogInformation("Snapshot mismatch (local {Local}, remote {Remote}); materializing filetree markers", latestLocal?.ToString() ?? "(none)", latestRemote?.ToString() ?? "(none)");
+
+        var createdCount = 0;
         await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
+
             var blobName = item.Name;
             var relativePath = RelativePath.Root / blobName.Name;
             if (!_diskCacheFileSystem.FileExists(relativePath))
             {
                 // Create an empty marker file (will be filled by ReadAsync on demand)
                 await _diskCacheFileSystem.WriteAllBytesAsync(relativePath, [], cancellationToken);
+                createdCount++;
+                _logger.LogDebug("Materialized filetree marker {Name}", blobName.Name);
             }
         }
+
+        _logger.LogInformation("Materialized {CreatedCount} filetree markers", createdCount);
 
         _validated = true;
         return new FileTreeValidationResult(SnapshotMismatch: true);

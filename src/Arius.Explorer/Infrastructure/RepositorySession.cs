@@ -29,7 +29,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
         DisposeCurrentProvider();
 
         var blobService = await blobServiceFactory.CreateAsync(repository.AccountName, repository.AccountKey, cancellationToken).ConfigureAwait(false);
-        var blobContainer = await blobService.GetContainerServiceAsync(repository.ContainerName, PreflightMode.ReadOnly, cancellationToken).ConfigureAwait(false);
+        var blobContainer = await blobService.OpenContainerServiceAsync(repository.ContainerName, PreflightMode.ReadOnly, cancellationToken).ConfigureAwait(false);
 
         var services = new ServiceCollection();
         services.AddLogging(builder =>

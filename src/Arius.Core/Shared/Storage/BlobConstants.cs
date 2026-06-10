@@ -32,7 +32,8 @@ public static class BlobMetadataKeys
 /// Well-known content types for blobs uploaded by Arius.
 /// Allows quick identification of blob content without inspecting metadata.
 /// </summary>
-public static class ContentTypes
+[SharedWithinAssembly]
+internal static class ContentTypes
 {
     // ── Chunk content types (GCM encrypted — new default) ──────────────────────
     public const string LargeGcmEncrypted = "application/aes256gcm+gzip";

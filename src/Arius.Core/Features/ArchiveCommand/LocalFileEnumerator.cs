@@ -39,6 +39,12 @@ internal sealed class LocalFileEnumerator
         {
             var relativePath = file.Path;
 
+            if (!fileSystem.IsValidSymlink(relativePath))
+            {
+                _logger?.LogWarning("Skipping broken symlink: {RelPath}", relativePath);
+                continue;
+            }
+
             if (relativePath.IsPointerPath())
             {
                 // Pointer file: skip if binary exists (already emitted with binary's pair)
