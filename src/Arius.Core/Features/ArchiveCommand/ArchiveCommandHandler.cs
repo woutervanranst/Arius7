@@ -92,6 +92,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private const int UploadWorkers    = 4;
     private const int TarUploadWorkers = 1;
     private const int ThinEntryWorkers = 64;
+    private const int FileTreeUpdateWorkers = 16;
     private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
@@ -389,8 +390,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var (created, modified) = ReadTimestamps(hashed, fs);
                             await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(hashed, created, modified), cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
-                            if (!opts.NoPointers)
-                                pendingPointers.Add((hashed.FilePair.RelativePath, hashed.ContentHash));
                         }
                         else
                         {
@@ -455,12 +454,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(upload.HashedPair, created, modified), ct);
                         Interlocked.Increment(ref filesUploaded);
-
-                        if (!opts.NoPointers)
-                            pendingPointers.Add((upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash));
-
-                        if (opts.RemoveLocal)
-                            pendingDeletes.Add(upload.HashedPair.FilePair.RelativePath);
 
                         await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
 
@@ -545,7 +538,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         : 1.0;
 
                     // Parallel thin chunk creation for each entry
-                    var shardEntries = new ConcurrentBag<ShardEntry>();
                     await Parallel.ForEachAsync(
                         sealedTar.Entries,
                         new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
@@ -558,13 +550,44 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
                             await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(entry.HashedPair, created, modified), entryCt);
                         });
-                    
-                    // Batch add for new entries. Only runs if the whole loop completes, preserving the "index entry implies blob exists" invariant.
-                    _chunkIndex.AddEntries(shardEntries);
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
                     _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
                     Interlocked.Add(ref filesUploaded, sealedTar.Entries.Count);
+                });
+
+            // ── Stage 5a: Update ChunkIndex ×1 ─────────────────────────────
+            // Single consumer so writes funnel into batched SQLite transactions
+            _logger.LogInformation("[phase] chunk-index-update");
+            var chunkIndexUpdateTask = Task.Run(async () =>
+            {
+                const int batchSize = 256;
+                var stagedTotal = 0;
+                await foreach (var batch in chunkIndexEntryChannel.Reader.ReadAllBatchesAsync(batchSize, cancellationToken))
+                {
+                    _chunkIndex.AddEntries(batch);
+                    stagedTotal += batch.Count;
+                    _logger.LogDebug("[chunk-index] Staged batch of {Count} entries (total staged={StagedTotal})", batch.Count, stagedTotal);
+                }
+                _logger.LogInformation("[chunk-index] Staged {Count} chunk-index entries", stagedTotal);
+            }, cancellationToken);
+
+            // ── Stage 5b: Update FileTree + Pointer/Delete Intents ───────────────────────────────────
+            _logger.LogInformation("[phase] filetree-update");
+            var fileTreeUpdateTask = Parallel.ForEachAsync(
+                fileTreeEntryChannel.Reader.ReadAllAsync(cancellationToken),
+                new ParallelOptions { MaxDegreeOfParallelism = FileTreeUpdateWorkers, CancellationToken = cancellationToken },
+                async (entry, ct) =>
+                {
+                    var pair = entry.HashedPair.FilePair;
+                    await stagingWriter.AppendFileEntryAsync(pair.RelativePath, entry.HashedPair.ContentHash, entry.Created, entry.Modified, ct);
+
+                    // Once the files are captured in the FileTree, we can write the pointers & delete them
+                    if (!opts.NoPointers && pair.Binary is not null)
+                        pendingPointers.Add((pair.RelativePath, entry.HashedPair.ContentHash));
+
+                    if (opts.RemoveLocal && pair.Binary is not null)
+                        pendingDeletes.Add(pair.RelativePath);
                 });
 
             // Wait for all upload stages to complete

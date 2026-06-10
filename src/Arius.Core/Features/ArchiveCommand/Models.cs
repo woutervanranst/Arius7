@@ -67,6 +67,16 @@ internal sealed record FileToUpload(
 );
 
 /// <summary>
+/// Represents one file's filetree-staging update, handed off from the dedup/upload stages to the
+/// filetree consumer so those stages stay free of local-state side effects.
+/// </summary>
+internal sealed record FileTreeUpdate(
+    HashedFilePair HashedPair,
+    DateTimeOffset Created,
+    DateTimeOffset Modified
+);
+
+/// <summary>
 /// Represents a small file staged into the current tar chunk accumulator.
 /// It exists so tar-chunk assembly can retain per-file manifest context while estimating compressed sizes,
 /// with responsibility for carrying the hashed file identity plus the original size used for accounting.
