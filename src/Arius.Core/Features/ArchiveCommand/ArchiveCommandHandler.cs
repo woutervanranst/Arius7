@@ -250,7 +250,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
             // Channels between stages
-            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity);
+            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity); // TODO be more specific about SingleWriter / MultipleReader etc
             var hashedChannel          = Channel.CreateUnbounded<HashedFilePair>();
             var largeChannel           = Channel.CreateUnbounded<FileToUpload>();
             var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
