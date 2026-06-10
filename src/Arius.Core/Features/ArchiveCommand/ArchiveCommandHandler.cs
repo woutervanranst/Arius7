@@ -571,12 +571,19 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // Wait for all upload stages to complete
             _logger.LogInformation("[phase] await-workers");
-            await largeUploadTask;
-            await tarBuilderTask;
-            await tarUploadTask;
-            await dedupTask;
-            await hashTask;
-            await enumTask;
+            try
+            {
+                // Await all producers of the update channels before closing the writers
+                await Task.WhenAll(largeUploadTask, tarBuilderTask, tarUploadTask, dedupTask);
+            }
+            finally
+            {
+                chunkIndexEntryChannel.Writer.Complete();
+                fileTreeEntryChannel.Writer.Complete();
+            }
+
+            // Drain the local-state consumers, then the upstream stages.
+            await Task.WhenAll(chunkIndexUpdateTask, fileTreeUpdateTask, hashTask, enumTask);
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
