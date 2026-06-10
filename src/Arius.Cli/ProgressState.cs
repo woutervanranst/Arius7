@@ -308,13 +308,13 @@ public sealed class ProgressState
         TrackedFiles.TryRemove(relativePath, out _);
 
     /// <summary>
-    /// Removes the tracked row for a file skipped during hashing (unreadable / broken link / deleted
-    /// mid-run) and counts it toward hashing completion, since it was scanned but will never be hashed.
+    /// Removes the tracked row for a skipped file. Only files still in <see cref="FileState.Hashing"/>
+    /// count toward hashing completion; later-stage skips still clear the row but must not double-count.
     /// </summary>
     public void SkipFileDuringHashing(RelativePath relativePath)
     {
-        TrackedFiles.TryRemove(relativePath, out _);
-        Interlocked.Increment(ref _filesSkippedHashing);
+        if (TrackedFiles.TryRemove(relativePath, out var file) && file.State == FileState.Hashing)
+            Interlocked.Increment(ref _filesSkippedHashing);
     }
 
     // ── Archive: TAR bundle tracking ─────────────────────────────────────────
@@ -378,9 +378,9 @@ public sealed class ProgressState
     private long _filesHashed;
 
     /// <summary>
-    /// Number of files skipped during hashing (unreadable / broken link / deleted mid-run).
-    /// These were scanned but will never be hashed; counted toward hashing completion so the
-    /// headline reaches "done" instead of stalling one short of the scanned total.
+    /// Number of files skipped before hashing completed. These were scanned but will never be hashed;
+    /// counted toward hashing completion so the headline reaches "done" instead of stalling one short
+    /// of the scanned total. Later-stage skips clear tracked rows but do not increment this counter.
     /// </summary>
     public long FilesSkippedHashing => Interlocked.Read(ref _filesSkippedHashing);
     private long _filesSkippedHashing;
