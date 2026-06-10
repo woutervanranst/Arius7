@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -181,15 +182,21 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
             if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
+            {
+                // Hot path: hit once per prefix per lookup batch —> Debug log level
+                _logger.LogDebug("[chunk-index] shard {Prefix}: local cache current", prefix);
                 return; //Path 1
+            }
 
             // let's check remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
+            var downloadStopwatch = Stopwatch.StartNew();
             var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
             if (remoteShard is null)
             {
                 // it doesnt exist on remote -> it s a new shard
                 _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: no remote shard (new prefix)", prefix);
                 return; //Path 2
             }
 
@@ -200,6 +207,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             {
                 // our local copy is on the same version, update the snapshot version
                 _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
                 return; //Path 3a
             }
 
@@ -215,6 +223,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
 
             _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
+            _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries, {ElapsedMs}ms)",
+                prefix, shard.Count, downloadStopwatch.ElapsedMilliseconds);
         }
         finally
         {
