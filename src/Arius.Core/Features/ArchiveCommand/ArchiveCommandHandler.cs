@@ -62,7 +62,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
 /// | `sealedTarChannel`       | Tar Builder (4b)             | Tar Upload (4c)            | bounded (1)     | Carries actual tar bytes, so it stays bounded.              |
 /// | `chunkIndexEntryChannel` | Large/Tar Upload (4a/4c)     | Chunk-index consumer (5a)  | unbounded       | `ShardEntry` records.                                       |
-/// | `fileTreeEntryChannel`   | Dedup + Upload (3/4a/4c)     | Filetree consumer (5b)     | unbounded       | `FileTreeUpdate` records (dedup hits emit here only).       |
+/// | `fileTreeEntryChannel`   | Dedup + Upload (3/4a/4c)     | Filetree consumer (5b)     | unbounded       | `HashedFilePair` records (timestamps captured at hash time).|
 /// | `pendingPointers`        | Filetree consumer (5b)       | Write pointers (6e)        | `ConcurrentBag` | Not a channel; per-file pointer-write intents.              |
 /// | `pendingDeletes`         | Filetree consumer (5b)       | Remove local binaries (6f) | `ConcurrentBag` | Not a channel; per-file local-delete intents.               |
 ///
@@ -256,7 +256,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
             var sealedTarChannel       = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
             var chunkIndexEntryChannel = Channel.CreateUnbounded<ShardEntry>();
-            var fileTreeEntryChannel   = Channel.CreateUnbounded<FileTreeUpdate>();
+            var fileTreeEntryChannel   = Channel.CreateUnbounded<HashedFilePair>();
 
             // ── Register queue-depth getters ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
@@ -334,7 +334,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                                 _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
 
-                                await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash), ct);
+                                var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
+                                var (created, modified) = fs.GetTimestamps(metadataPath);
+
+                                await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, created, modified), ct);
                             }
                             catch (Exception ex) when (!ct.IsCancellationRequested)
                             {
@@ -373,8 +376,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                             // Known dedup: add to manifest only
                             _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            var (created, modified) = ReadTimestamps(hashed, fs);
-                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(hashed, created, modified), cancellationToken);
+                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
                         }
@@ -383,8 +385,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            var (created, modified) = ReadTimestamps(hashed, fs);
-                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(hashed, created, modified), cancellationToken);
+                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                         }
                         else
@@ -446,9 +447,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         var compressedSize = uploadResult.StoredSize;
 
                         // Enqueue ShardEntry and FileTreeUpdate
-                        var (created, modified) = ReadTimestamps(upload.HashedPair, fs);
+                        // so no filesystem access is needed here.
                         await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize), ct);
-                        await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(upload.HashedPair, created, modified), ct);
+                        await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
 
                         await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
@@ -542,9 +543,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                            var (created, modified) = ReadTimestamps(entry.HashedPair, fs);
                             await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
-                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(entry.HashedPair, created, modified), entryCt);
+                            await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
                         });
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
@@ -575,12 +575,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 new ParallelOptions { MaxDegreeOfParallelism = FileTreeUpdateWorkers, CancellationToken = cancellationToken },
                 async (entry, ct) =>
                 {
-                    var pair = entry.HashedPair.FilePair;
-                    await stagingWriter.AppendFileEntryAsync(pair.RelativePath, entry.HashedPair.ContentHash, entry.Created, entry.Modified, ct);
+                    var pair = entry.FilePair;
+                    await stagingWriter.AppendFileEntryAsync(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified, ct);
 
                     // Once the files are captured in the FileTree, we can write the pointers & delete them
                     if (!opts.NoPointers && pair.Binary is not null)
-                        pendingPointers.Add((pair.RelativePath, entry.HashedPair.ContentHash));
+                        pendingPointers.Add((pair.RelativePath, entry.ContentHash));
 
                     if (opts.RemoveLocal && pair.Binary is not null)
                         pendingDeletes.Add(pair.RelativePath);
@@ -715,15 +715,5 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 ErrorMessage  = ex.Message
             };
         }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static (DateTimeOffset Created, DateTimeOffset Modified) ReadTimestamps(HashedFilePair hashed, RelativeFileSystem fileSystem)
-    {
-        var pair = hashed.FilePair;
-        var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
-
-        return fileSystem.GetTimestamps(metadataPath);
     }
 }

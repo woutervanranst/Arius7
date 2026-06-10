@@ -167,7 +167,7 @@ public class TarBuilderTests
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static FileToUpload Upload(string path, ContentHash hash, long size)
-        => new(new HashedFilePair(new FilePair { RelativePath = RelativePath.Parse(path) }, hash), size);
+        => new(new HashedFilePair(new FilePair { RelativePath = RelativePath.Parse(path) }, hash, default, default), size);
 
     /// <summary>Builds <paramref name="count"/> bytes of <paramref name="fill"/> and their content hash.</summary>
     private static (byte[] Content, ContentHash Hash) Content(byte fill, int count)
