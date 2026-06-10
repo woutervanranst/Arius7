@@ -376,7 +376,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                             // Known dedup: add to manifest only
                             _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
+                            var (created, modified) = ReadTimestamps(hashed, fs);
+                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(hashed, created, modified), cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             continue;
                         }
@@ -385,7 +386,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             // Already in index OR already queued in this run → dedup hit
                             _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            await WriteFileTreeEntry(hashed, fs, stagingWriter, cancellationToken);
+                            var (created, modified) = ReadTimestamps(hashed, fs);
+                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(hashed, created, modified), cancellationToken);
                             Interlocked.Increment(ref filesDeduped);
                             if (!opts.NoPointers)
                                 pendingPointers.Add((hashed.FilePair.RelativePath, hashed.ContentHash));
@@ -450,9 +452,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         var originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
                         var compressedSize = uploadResult.StoredSize;
 
-                        _chunkIndex.AddEntry(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize));
-
-                        await WriteFileTreeEntry(upload.HashedPair, fs, stagingWriter, ct);
+                        // Enqueue ShardEntry and FileTreeUpdate
+                        var (created, modified) = ReadTimestamps(upload.HashedPair, fs);
+                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize), ct);
+                        await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(upload.HashedPair, created, modified), ct);
                         Interlocked.Increment(ref filesUploaded);
 
                         if (!opts.NoPointers)
@@ -553,15 +556,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                            shardEntries.Add(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional));
-
-                            await WriteFileTreeEntry(entry.HashedPair, fs, stagingWriter, entryCt);
-
-                            if (!opts.NoPointers)
-                                pendingPointers.Add((entry.HashedPair.FilePair.RelativePath, entry.ContentHash));
-
-                            if (opts.RemoveLocal)
-                                pendingDeletes.Add(entry.HashedPair.FilePair.RelativePath);
+                            var (created, modified) = ReadTimestamps(entry.HashedPair, fs);
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
+                            await fileTreeEntryChannel.Writer.WriteAsync(new FileTreeUpdate(entry.HashedPair, created, modified), entryCt);
                         });
                     
                     // Batch add for new entries. Only runs if the whole loop completes, preserving the "index entry implies blob exists" invariant.
@@ -695,17 +692,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task WriteFileTreeEntry(HashedFilePair hashed, RelativeFileSystem fileSystem, FileTreeStagingWriter writer, CancellationToken ct)
+    private static (DateTimeOffset Created, DateTimeOffset Modified) ReadTimestamps(HashedFilePair hashed, RelativeFileSystem fileSystem)
     {
         var pair = hashed.FilePair;
-        var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path
-            ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
+        var metadataPath = pair.Binary?.Path ?? pair.Pointer?.Path ?? throw new InvalidOperationException($"FilePair '{pair.RelativePath}' must contain either a binary or pointer file.");
 
-        // Normalize the path (remove pointer suffix for pointer-only entries mapped to binary path)
-        var fileTreePath = pair.RelativePath;
-
-        var (created, modified) = fileSystem.GetTimestamps(metadataPath);
-        await writer.AppendFileEntryAsync(fileTreePath, hashed.ContentHash, created, modified, ct);
+        return fileSystem.GetTimestamps(metadataPath);
     }
-
 }
