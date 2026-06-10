@@ -24,33 +24,32 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// ## Stages
 ///
 /// 1. **Enumerate** (×1) — walk the source tree, publish a `FileScannedEvent` per file.
-/// 2. **Hash** (×`HashWorkers`) — re-hash binaries (or reuse the pointer hash); skip unreadable files.
+/// 2. **Hash** (×N) — re-hash binaries (or reuse the pointer hash); skip unreadable files.
 /// 3. **Dedup + Router** (×1) — look up the chunk index + the in-run `inFlightHashes` set:
 ///    - **hit** → dedup (emit only a filetree update; no upload, no index entry)
 ///    - **new** → route by size vs `opts.SmallFileThreshold` → large or small upload
 /// 4. **Upload** (runs concurrently):
-///    - **4a. Large Upload** (×`UploadWorkers`) — one chunk per file via `UploadLargeAsync`.
+///    - **4a. Large Upload** (×N) — one chunk per file via `UploadLargeAsync`.
 ///    - **4b. Tar Builder** (×1) — pack small files into bundles of `opts.TarTargetSize`.
-///    - **4c. Tar Upload** (×`TarUploadWorkers`) — upload the bundle, then fan out
-///      `ThinEntryWorkers`=64 thin-chunk uploads, one per entry.
+///    - **4c. Tar Upload** (×N) — upload the bundle, then fan out to thin-chunk uploads (xN), one per entry.
 /// 5. **Local-state consumers** (drain what 3/4a/4c emit):
 ///    - **5a. Chunk-index** (×1) — batch 256 entries into single-writer SQLite transactions.
-///    - **5b. Filetree** (×`UpdateWorkers`) — append staging entries (stripe-locked writer) and
+///    - **5b. Filetree** (×N) — append staging entries (stripe-locked writer) and
 ///      collect `pendingPointers` / `pendingDeletes`.
-/// 6. **End-of-pipeline** (sequential, after all stages above drain):
+/// 6. **End-of-pipeline** (mostly sequential, after all stages above drain):
 ///    - **6a. Validate filetrees** (×1) — `ValidateAsync`; invalidate index caches on snapshot mismatch.
 ///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; runs concurrently with 6c (`Task.WhenAll`).
 ///    - **6c. Build file tree** — `FileTreeBuilder.SynchronizeAsync`; runs concurrently with 6b and yields the snapshot root hash.
 ///    - **6d. Create snapshot** (×1) — create + promote a snapshot for the root hash (skipped if unchanged).
-///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (unless `--no-pointers`).
-///    - **6f. Remove local** (×1) — delete `pendingDeletes` (only if `--remove-local`).
+///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (unless `--no-pointers`); runs concurrently with 6f (`Task.WhenAll`).
+///    - **6f. Remove local** (×N) — delete `pendingDeletes` in parallel (only if `--remove-local`); runs concurrently with 6e. Disjoint paths from 6e (pointer sidecar vs binary).
 ///
 /// ```
 /// Enumerate ─► Hash ─► Dedup+Router ─┬─► Large Upload ───────────────┐
 ///                                    └─► Tar Builder ─► Tar Upload ──┤
-///                                                                    ├─► Chunk-index consumer ─┐                             ┌─► flush chunk index (6b) ─┐
-///                                                                    └─► Filetree consumer ────┴──► validate filetrees (6a) ─┤                           ├─► create snapshot (6d) ─► write pointers (6e) ─► remove local binaries (6f)
-///                                                                                                                            └─► build file tree (6c) ───┘
+///                                                                    ├─► Chunk-index consumer ─┐                             ┌─► flush chunk index (6b) ─┐                         ┌─► write pointers (6e) ───────┐
+///                                                                    └─► Filetree consumer ────┴──► validate filetrees (6a) ─┤                           ├─► create snapshot (6d) ─┤                              ├─► done
+///                                                                                                                            └─► build file tree (6c) ───┘                         └─► remove local binaries (6f) ┘
 /// ```
 ///
 /// ## Channels
@@ -163,20 +162,17 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     /// <remarks>
     /// The pipeline enumerates files under the command's root directory, computes content hashes (or reuses pointer hashes),
     /// deduplicates against the persistent index and in-run uploads, uploads new chunks (large files directly, small files in tar bundles),
-    /// writes staged filetree entries, builds a tree and creates a snapshot, and optionally writes pointer files and removes local binaries.
-    /// Progress and events are published via the mediator and operational details are recorded in the index and staged filetree.
+    /// and writes staged filetree entries. Once every stage drains, it validates the filetrees, flushes the chunk index while
+    /// building the tree (concurrently), creates a snapshot, and finally writes pointer files and removes local binaries (concurrently,
+    /// each gated on its flag). Progress and events are published via the mediator and operational details are recorded in the index
+    /// and staged filetree. See the type-level documentation for the full stage/channel/event breakdown.
     /// </remarks>
     /// <param name="command">The archive command containing options (root directory, thresholds, flags) and parameters for the run.</param>
     /// <param name="cancellationToken">Cancellation token to observe while performing pipeline operations.</param>
     /// <returns>
-    /// An ArchiveResult containing success status, counts for scanned/uploaded/deduped files, total size processed,
-    /// snapshot root hash and timestamp when created, and an error message when the operation failed.
-    /// <summary>
-    /// Runs the archive pipeline for the given command, processing files under the command's root directory into blob storage and producing an archive snapshot.
-    /// </summary>
-    /// <param name="command">The archive command containing options that control enumeration, hashing, deduplication, upload behavior, pointer writing, and local deletion.</param>
-    /// <param name="cancellationToken">Token to observe while waiting for pipeline operations to complete.</param>
-    /// <returns>An <see cref="ArchiveResult"/> with operation outcome and metrics: on success contains scanned/uploaded/deduped counts, total size, optional snapshot root hash and snapshot time; on failure contains collected counters so far and an error message.</returns>
+    /// An <see cref="ArchiveResult"/> with the operation outcome and metrics: on success, the scanned/uploaded/deduped counts,
+    /// total size processed, and the snapshot root hash and timestamp; on failure, the counters collected so far and an error message.
+    /// </returns>
     public async ValueTask<ArchiveResult> Handle(ArchiveCommand command, CancellationToken cancellationToken)
     {
         var opts = command.CommandOptions;
@@ -615,10 +611,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 _chunkIndex.InvalidateCaches();
 
             _logger.LogInformation("[phase] flush-chunkindex-and-synchronize-filetree");
-            // ── Stage 6b: Flush chunk index ──
+            // ── Stage 6b: Flush chunk index (concurrent w/ 6c) ──
             var flushTask   = _chunkIndex.FlushAsync(cancellationToken);
 
-            // ── Stage 6c: Build file tree ─────────────────────────────────────
+            // ── Stage 6c: Build file tree (concurrent w/ 6b) ─────────────────────────────────────
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService, _loggerFactory.CreateLogger<FileTreeBuilder>());
             var treeTask = treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
 
@@ -650,11 +646,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }
 
-            // ── Stage 6e: Write pointer files ×N in parallel ──────────────────
+            // ── Stage 6e: Write pointer files ×N in parallel (concurrent w/ 6f) ──────────────────
             _logger.LogInformation("[phase] write-pointers");
-            if (!opts.NoPointers)
-            {
-                await Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
+            var writePointersTask = opts.NoPointers
+                ? Task.CompletedTask
+                : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
                     var (path, hash) = item;
                     try
@@ -667,13 +663,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         _logger.LogWarning(ex, "Failed to write pointer file: {Path}", path.ToPointerPath());
                     }
                 });
-            }
 
-            // ── Stage 6f: Remove local binary files ───────────────────────────
+            
+            // ── Stage 6f: Remove local binary files ×N in parallel ────────────
             _logger.LogInformation("[phase] delete-local");
-            if (opts.RemoveLocal)
-            {
-                foreach (var path in pendingDeletes)
+            var removeLocalTask = !opts.RemoveLocal
+                ? Task.CompletedTask
+                : Parallel.ForEachAsync(pendingDeletes, cancellationToken, (path, ct) =>
                 {
                     try
                     {
@@ -681,10 +677,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     }
                     catch (Exception ex)
                     {
+                        // A delete that fails for one file must not fault the whole stage.
                         _logger.LogWarning(ex, "Failed to delete local file: {Path}", path);
                     }
-                }
-            }
+                    return ValueTask.CompletedTask;
+                });
+
+            await Task.WhenAll(writePointersTask, removeLocalTask);
 
             _logger.LogInformation("[phase] complete");
 
