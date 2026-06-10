@@ -17,13 +17,72 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// <summary>
 /// Implements the full archive pipeline as a Mediator command handler.
 ///
-/// Pipeline stages (tasks 8.2 – 8.14):
-/// <code>
-/// Enumerate (×1) → Hash (×N) → Dedup (×1) → Router → Large Upload (×N)
-///                                                     → Tar Builder (×1) → Tar Upload (×N)
-///                                → Filetree staging writer (disk)
-/// End-of-pipeline: Index Flush → Tree Build → Snapshot → Pointer Write → Remove Local
-/// </code>
+/// The pipeline is a set of long-running stages connected by <see cref="System.Threading.Channels.Channel{T}"/>s.
+/// Each stage drains its input channel(s), does its work, and writes to its output channel(s); a stage
+/// completes its output writer in a <c>finally</c> so downstream stages drain to completion in turn.
+///
+/// ## Stages
+///
+/// 1. **Enumerate** (×1) — walk the source tree, publish a `FileScannedEvent` per file.
+/// 2. **Hash** (×`HashWorkers`) — re-hash binaries (or reuse the pointer hash); skip unreadable files.
+/// 3. **Dedup + Router** (×1) — look up the chunk index + the in-run `inFlightHashes` set:
+///    - **hit** → dedup (emit only a filetree update; no upload, no index entry)
+///    - **new** → route by size vs `opts.SmallFileThreshold` → large or small upload
+/// 4. **Upload** (runs concurrently):
+///    - **4a. Large Upload** (×`UploadWorkers`) — one chunk per file via `UploadLargeAsync`.
+///    - **4b. Tar Builder** (×1) — pack small files into bundles of `opts.TarTargetSize`.
+///    - **4c. Tar Upload** (×`TarUploadWorkers`) — upload the bundle, then fan out
+///      `ThinEntryWorkers`=64 thin-chunk uploads, one per entry.
+/// 5. **Local-state consumers** (drain what 3/4a/4c emit):
+///    - **5a. Chunk-index** (×1) — batch 256 entries into single-writer SQLite transactions.
+///    - **5b. Filetree** (×`UpdateWorkers`) — append staging entries (stripe-locked writer) and
+///      collect `pendingPointers` / `pendingDeletes`.
+/// 6. **End-of-pipeline** (sequential, after all stages above drain):
+///    - **6a. Validate filetrees** (×1) — `ValidateAsync`; invalidate index caches on snapshot mismatch.
+///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; runs concurrently with 6c (`Task.WhenAll`).
+///    - **6c. Build file tree** — `FileTreeBuilder.SynchronizeAsync`; runs concurrently with 6b and yields the snapshot root hash.
+///    - **6d. Create snapshot** (×1) — create + promote a snapshot for the root hash (skipped if unchanged).
+///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (unless `--no-pointers`).
+///    - **6f. Remove local** (×1) — delete `pendingDeletes` (only if `--remove-local`).
+///
+/// ```
+/// Enumerate ─► Hash ─► Dedup+Router ─┬─► Large Upload ───────────────┐
+///                                    └─► Tar Builder ─► Tar Upload ──┤
+///                                                                    ├─► Chunk-index consumer ─┐                             ┌─► flush chunk index (6b) ─┐
+///                                                                    └─► Filetree consumer ────┴──► validate filetrees (6a) ─┤                           ├─► create snapshot (6d) ─► write pointers (6e) ─► remove local binaries (6f)
+///                                                                                                                            └─► build file tree (6c) ───┘
+/// ```
+///
+/// ## Channels
+///
+/// | Channel                  | Writer                       | Reader                     | Capacity        | Notes                                                       |
+/// |--------------------------|------------------------------|----------------------------|-----------------|-------------------------------------------------------------|
+/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | bounded (N)     | Backpressure caps how far enumeration runs ahead of hashing.|
+/// | `hashedChannel`          | Hash (2)                     | Dedup + Router (3)         | unbounded       | Metadata only (path+hash); lets hashing run ahead of upload.|
+/// | `largeChannel`           | Dedup + Router (3)           | Large Upload (4a)          | unbounded       | Large-file route (≥ `SmallFileThreshold`).                  |
+/// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
+/// | `sealedTarChannel`       | Tar Builder (4b)             | Tar Upload (4c)            | bounded (1)     | Carries actual tar bytes, so it stays bounded.              |
+/// | `chunkIndexEntryChannel` | Large/Tar Upload (4a/4c)     | Chunk-index consumer (5a)  | unbounded       | `ShardEntry` records.                                       |
+/// | `fileTreeEntryChannel`   | Dedup + Upload (3/4a/4c)     | Filetree consumer (5b)     | unbounded       | `FileTreeUpdate` records (dedup hits emit here only).       |
+/// | `pendingPointers`        | Filetree consumer (5b)       | Write pointers (6e)        | `ConcurrentBag` | Not a channel; per-file pointer-write intents.              |
+/// | `pendingDeletes`         | Filetree consumer (5b)       | Remove local binaries (6f) | `ConcurrentBag` | Not a channel; per-file local-delete intents.               |
+///
+/// ## Events
+///
+/// | Event                    | Emitted by                       |
+/// |--------------------------|----------------------------------|
+/// | `FileScannedEvent`       | Enumerate (1)                    |
+/// | `ScanCompleteEvent`      | Enumerate (1)                    |
+/// | `FileHashingEvent`       | Hash (2)                         |
+/// | `FileHashedEvent`        | Hash (2)                         |
+/// | `FileSkippedEvent`       | Hash (2), Large Upload (4a), Tar Builder (4b) |
+/// | `ChunkUploadingEvent`    | Large Upload (4a), Tar Upload (4c) |
+/// | `ChunkUploadedEvent`     | Large Upload (4a)                |
+/// | `TarBundleStartedEvent`  | Tar Builder (4b)                 |
+/// | `TarEntryAddedEvent`     | Tar Builder (4b)                 |
+/// | `TarBundleSealingEvent`  | Tar Builder (4b)                 |
+/// | `TarBundleUploadedEvent` | Tar Upload (4c)                  |
+/// | `SnapshotCreatedEvent`   | Create snapshot (6d)             |
 /// </summary>
 public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
@@ -188,23 +247,19 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
 
-            // In-flight set: content hashes already queued/uploaded in this run (task 4.8)
+            // In-flight set: content hashes already queued/uploaded in this run
             // Used by the dedup stage to detect duplicates within the same run before the
             // index is updated.
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
-            // Channels between stages (task 8.2)
-            // The hashed/large/small channels carry metadata only (path + content hash; the
-            // file is re-opened at upload time), so they are unbounded: this lets the hash
-            // stage run fully ahead instead of being throttled by the slow upload stage via
-            // backpressure. sealedTarChannel stays bounded because it holds actual tar bytes.
+            // Channels between stages
             var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
             var hashedChannel     = Channel.CreateUnbounded<HashedFilePair>();
             var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
             var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
             var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
 
-            // ── Register queue-depth getters (task 2.3) ──────────────────────
+            // ── Register queue-depth getters ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
             opts.OnUploadQueueReady?.Invoke(() => largeChannel.Reader.Count + sealedTarChannel.Reader.Count);
 
@@ -526,14 +581,17 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 
+            // ── Stage 6a: Validate filetrees ──────────────────────────────────
             _logger.LogInformation("[phase] validate-filetrees");
             var fileTreeValidation = await _fileTreeService.ValidateAsync(cancellationToken);
             if (fileTreeValidation.SnapshotMismatch)
                 _chunkIndex.InvalidateCaches();
 
             _logger.LogInformation("[phase] flush-chunkindex-and-synchronize-filetree");
+            // ── Stage 6b: Flush chunk index ──
             var flushTask   = _chunkIndex.FlushAsync(cancellationToken);
 
+            // ── Stage 6c: Build file tree ─────────────────────────────────────
             var treeBuilder = new FileTreeBuilder(_encryption, _fileTreeService, _loggerFactory.CreateLogger<FileTreeBuilder>());
             var treeTask = treeBuilder.SynchronizeAsync(stagingSession.StagingRoot, cancellationToken);
 
@@ -542,6 +600,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var rootHash = await treeTask;
             _logger.LogInformation("[tree] Build complete: rootHash={RootHash}", rootHash?.Short8 ?? "(none)");
 
+            // ── Stage 6d: Create snapshot ─────────────────────────────────────
             _logger.LogInformation("[phase] snapshot");
             if (rootHash is not null)
             {
@@ -564,7 +623,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
             }
 
-            // Task 8.12: Write pointer files ×N in parallel
+            // ── Stage 6e: Write pointer files ×N in parallel ──────────────────
             _logger.LogInformation("[phase] write-pointers");
             if (!opts.NoPointers)
             {
@@ -583,7 +642,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 });
             }
 
-            // Task 8.13: Remove local binary files
+            // ── Stage 6f: Remove local binary files ───────────────────────────
             _logger.LogInformation("[phase] delete-local");
             if (opts.RemoveLocal)
             {
