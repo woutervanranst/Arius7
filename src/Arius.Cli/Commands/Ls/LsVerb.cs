@@ -56,10 +56,9 @@ internal static class LsVerb
 
             var resolvedKey = CliBuilder.ResolveKey(key, resolvedAccount);
 
+            // No console recorder here: ls streams entries and must stay bounded in memory,
+            // so the listing itself is not captured into the audit log — only the summary is.
             CliBuilder.ConfigureAuditLogging(resolvedAccount, container, "ls");
-            var recorder = AnsiConsole.Console.CreateRecorder();
-            var savedConsole = AnsiConsole.Console;
-            AnsiConsole.Console = recorder;
 
             try
             {
@@ -124,15 +123,13 @@ internal static class LsVerb
                     Filter  = filter,
                 };
 
-                var table = new Table();
-                table.AddColumn("Path");
-                table.AddColumn(new TableColumn("Size").RightAligned());
-                table.AddColumn("Created");
-                table.AddColumn("Modified");
-
+                // Rows are written as they stream in (no table materialization) so the listing
+                // is responsive and memory-bounded even for repositories with millions of entries.
                 var fileCount = 0;
                 try
                 {
+                    AnsiConsole.MarkupLine($"[bold]{"Size",12}  {"Created",-16}  {"Modified",-16}  Path[/]");
+
                     await foreach (var entry in mediator.CreateStream(new ListQuery(opts), ct))
                     {
                         if (entry is not RepositoryFileEntry file)
@@ -143,11 +140,10 @@ internal static class LsVerb
                         var size = file.OriginalSize.HasValue
                             ? file.OriginalSize.Value.Bytes().Humanize()
                             : "?";
-                        table.AddRow(
-                            Markup.Escape(file.RelativePath.ToString()),
-                            size,
-                            file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-",
-                            file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-");
+                        var created  = file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+                        var modified = file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+                        AnsiConsole.MarkupLine(
+                            $"{Markup.Escape(size),12}  {created,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToString())}");
                         fileCount++;
                     }
                 }
@@ -157,14 +153,13 @@ internal static class LsVerb
                     return 1;
                 }
 
-                AnsiConsole.Write(table);
                 AnsiConsole.MarkupLine($"[dim]{fileCount} file(s)[/]");
+                Log.Information("ls completed: {FileCount} file(s)", fileCount);
                 return 0;
             }
             finally
             {
-                AnsiConsole.Console = savedConsole;
-                CliBuilder.FlushAuditLog(recorder);
+                Log.CloseAndFlush();
             }
         });
 

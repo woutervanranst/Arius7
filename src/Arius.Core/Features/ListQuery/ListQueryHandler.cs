@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -9,9 +10,15 @@ namespace Arius.Core.Features.ListQuery;
 
 /// <summary>
 /// Streams repository entries from a snapshot with optional local filesystem merge.
+/// A producer task walks the file tree depth-first and writes entries to a bounded channel,
+/// so memory stays bounded regardless of repository size: in flight are at most one
+/// directory's tree entries, one chunk-index lookup batch, and the channel buffer.
 /// </summary>
 public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
+    private const int EntryChannelCapacity = 4096;
+    private const int SizeLookupBatchSize  = 512;
+
     private readonly IChunkIndexService _index;
     private readonly IFileTreeService _fileTreeService;
     private readonly ISnapshotService _snapshotSvc;
@@ -68,160 +75,227 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
             prefix,
             cancellationToken);
 
-        await foreach (var entry in WalkDirectoryAsync(
-                           treeHash,
-                           localFileSystem,
-                           relativeDirectory,
-                           opts.Filter,
-                           opts.Recursive,
-                           cancellationToken))
+        var channel = Channel.CreateBounded<RepositoryEntry>(new BoundedChannelOptions(EntryChannelCapacity)
         {
-            yield return entry;
+            SingleWriter = true,
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
+
+        using var producerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var producer = ProduceAsync(
+            channel.Writer,
+            treeHash,
+            localFileSystem,
+            relativeDirectory,
+            opts.Filter,
+            opts.Recursive,
+            producerCts.Token);
+
+        try
+        {
+            await foreach (var entry in channel.Reader.ReadAllAsync(cancellationToken))
+            {
+                // ReadAllAsync only observes the token while waiting; check it per item so
+                // cancellation is prompt even when the channel buffer still holds entries.
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return entry;
+            }
+        }
+        finally
+        {
+            // Unblocks the producer if enumeration was abandoned before the channel drained.
+            await producerCts.CancelAsync();
+            await producer;
         }
     }
 
-    private async IAsyncEnumerable<RepositoryEntry> WalkDirectoryAsync(
+    /// <summary>
+    /// Walks the tree and completes the channel; a failure (including cancellation) is surfaced
+    /// to the consumer through the channel rather than thrown, so awaiting this task never throws.
+    /// </summary>
+    private async Task ProduceAsync(
+        ChannelWriter<RepositoryEntry> writer,
         FileTreeHash? treeHash,
         RelativeFileSystem? localFileSystem,
-        RelativePath currentRelativeDirectory,
+        RelativePath relativeDirectory,
         string? filter,
         bool recursive,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        IReadOnlyList<FileTreeEntry>? treeEntries = null;
-        if (treeHash is { } currentTreeHash)
+        try
         {
-            treeEntries = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken);
+            await WalkTreeAsync(writer, treeHash, localFileSystem, relativeDirectory, filter, recursive, cancellationToken).ConfigureAwait(false);
+            writer.Complete();
         }
-
-        var localSnapshot = BuildLocalDirectorySnapshot(localFileSystem, currentRelativeDirectory);
-        var cloudEntries = treeEntries ?? [];
-
-        var yieldedDirectoryNames = new HashSet<PathSegment>();
-        var yieldedFileNames = new HashSet<PathSegment>();
-        var recursionTargets = new List<RecursionTarget>();
-
-        foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
+        catch (Exception ex)
         {
-            var directoryName = entry.Name;
-            var relativePath = currentRelativeDirectory / directoryName;
-            var existsLocally = localSnapshot.Directories.TryGetValue(directoryName, out _);
+            writer.Complete(ex);
+        }
+    }
 
-            yieldedDirectoryNames.Add(directoryName);
-            yield return new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally);
+    private async Task WalkTreeAsync(
+        ChannelWriter<RepositoryEntry> writer,
+        FileTreeHash? rootTreeHash,
+        RelativeFileSystem? localFileSystem,
+        RelativePath rootRelativeDirectory,
+        string? filter,
+        bool recursive,
+        CancellationToken cancellationToken)
+    {
+        // Explicit depth-first stack instead of recursive iterators: yielding an entry costs O(1)
+        // instead of O(depth), and pending state is just (path, hash) records per unvisited sibling.
+        var pending = new Stack<RecursionTarget>();
+        pending.Push(new RecursionTarget(
+            RelativeDirectory: rootRelativeDirectory,
+            TreeHash: rootTreeHash,
+            HasLocalDirectory: localFileSystem is not null));
 
-            if (recursive)
+        while (pending.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var current = pending.Pop();
+
+            IReadOnlyList<FileTreeEntry> cloudEntries = [];
+            if (current.TreeHash is { } currentTreeHash)
             {
-                recursionTargets.Add(new RecursionTarget(
+                cloudEntries = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken).ConfigureAwait(false);
+            }
+
+            var localSnapshot = BuildLocalDirectorySnapshot(
+                current.HasLocalDirectory ? localFileSystem : null,
+                current.RelativeDirectory);
+
+            var recursionTargets = recursive ? new List<RecursionTarget>() : null;
+
+            var yieldedDirectoryNames = new HashSet<PathSegment>();
+            foreach (var entry in cloudEntries.OfType<DirectoryEntry>())
+            {
+                var directoryName = entry.Name;
+                var relativePath = current.RelativeDirectory / directoryName;
+                var existsLocally = localSnapshot.Directories.ContainsKey(directoryName);
+
+                yieldedDirectoryNames.Add(directoryName);
+                await writer.WriteAsync(
+                    new RepositoryDirectoryEntry(relativePath, entry.FileTreeHash, ExistsInCloud: true, ExistsLocally: existsLocally),
+                    cancellationToken).ConfigureAwait(false);
+
+                recursionTargets?.Add(new RecursionTarget(
                     RelativeDirectory: relativePath,
                     TreeHash: entry.FileTreeHash,
                     HasLocalDirectory: existsLocally));
             }
-        }
 
-        foreach (var localDirectory in localSnapshot.Directories.Values)
-        {
-            if (!yieldedDirectoryNames.Add(localDirectory.Name))
+            foreach (var localDirectory in localSnapshot.Directories.Values)
             {
-                continue;
-            }
+                if (!yieldedDirectoryNames.Add(localDirectory.Name))
+                {
+                    continue;
+                }
 
-            yield return new RepositoryDirectoryEntry(localDirectory.Path, TreeHash: null, ExistsInCloud: false, ExistsLocally: true);
+                await writer.WriteAsync(
+                    new RepositoryDirectoryEntry(localDirectory.Path, TreeHash: null, ExistsInCloud: false, ExistsLocally: true),
+                    cancellationToken).ConfigureAwait(false);
 
-            if (recursive)
-            {
-                recursionTargets.Add(new RecursionTarget(
+                recursionTargets?.Add(new RecursionTarget(
                     RelativeDirectory: localDirectory.Path,
                     TreeHash: null,
                     HasLocalDirectory: true));
             }
-        }
 
-        var visibleCloudFiles = cloudEntries
-            .OfType<FileEntry>()
-            .Select(e => new CloudFileCandidate(e, localSnapshot.Files.GetValueOrDefault(e.Name)))
-            .ToList();
-
-        foreach (var candidate in visibleCloudFiles)
-        {
-            yieldedFileNames.Add(candidate.Entry.Name);
-        }
-
-        var hashes = visibleCloudFiles
-            .Where(candidate => MatchesFilter(candidate.Entry.Name, filter))
-            .Select(candidate => candidate.Entry.ContentHash)
-            .Distinct()
-            .ToList();
-        var sizeLookup = hashes.Count == 0
-            ? new Dictionary<ContentHash, ShardEntry>()
-            : new Dictionary<ContentHash, ShardEntry>(await _index.LookupAsync(hashes, cancellationToken));
-
-        foreach (var candidate in visibleCloudFiles)
-        {
-            if (!MatchesFilter(candidate.Entry.Name, filter))
+            // Cloud files are emitted in bounded batches: each batch resolves its sizes with one
+            // chunk-index lookup, so a directory with millions of files never materializes in full.
+            // A cloud file consumes ('Remove') its local counterpart even when the filter rejects it,
+            // so the local-only pass below only sees files that have no cloud entry.
+            var localFiles = localSnapshot.Files;
+            var batch = new List<CloudFileCandidate>(SizeLookupBatchSize);
+            foreach (var entry in cloudEntries.OfType<FileEntry>())
             {
-                continue;
+                localFiles.Remove(entry.Name, out var localFile);
+
+                if (!MatchesFilter(entry.Name, filter))
+                {
+                    continue;
+                }
+
+                batch.Add(new CloudFileCandidate(entry, localFile));
+                if (batch.Count == SizeLookupBatchSize)
+                {
+                    await EmitCloudFileBatchAsync(writer, current.RelativeDirectory, batch, cancellationToken).ConfigureAwait(false);
+                    batch.Clear();
+                }
             }
 
-            var relativePath = currentRelativeDirectory / candidate.Entry.Name;
+            if (batch.Count > 0)
+            {
+                await EmitCloudFileBatchAsync(writer, current.RelativeDirectory, batch, cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var localFile in localFiles.Values)
+            {
+                if (!MatchesFilter(localFile.Name, filter))
+                {
+                    continue;
+                }
+
+                await writer.WriteAsync(
+                    new RepositoryFileEntry(
+                        RelativePath: localFile.Path,
+                        ContentHash: null,
+                        OriginalSize: localFile.FileSize,
+                        Created: localFile.Created,
+                        Modified: localFile.Modified,
+                        ExistsInCloud: false,
+                        ExistsLocally: true,
+                        HasPointerFile: localFile.PointerExists,
+                        BinaryExists: localFile.BinaryExists,
+                        Hydrated: null),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (recursionTargets is { Count: > 0 })
+            {
+                // Reversed so the stack pops them in listing order (depth-first pre-order).
+                for (var i = recursionTargets.Count - 1; i >= 0; i--)
+                {
+                    pending.Push(recursionTargets[i]);
+                }
+            }
+        }
+    }
+
+    private async Task EmitCloudFileBatchAsync(
+        ChannelWriter<RepositoryEntry> writer,
+        RelativePath relativeDirectory,
+        List<CloudFileCandidate> batch,
+        CancellationToken cancellationToken)
+    {
+        var sizeLookup = await _index.LookupAsync(
+            batch.Select(candidate => candidate.Entry.ContentHash).Distinct(),
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var candidate in batch)
+        {
+            var relativePath = relativeDirectory / candidate.Entry.Name;
             var localFile = candidate.LocalFile;
             long? originalSize = localFile?.FileSize;
             if (sizeLookup.TryGetValue(candidate.Entry.ContentHash, out var shardEntry))
                 originalSize = shardEntry.OriginalSize;
 
-            yield return new RepositoryFileEntry(
-                RelativePath: relativePath,
-                ContentHash: candidate.Entry.ContentHash,
-                OriginalSize: originalSize,
-                Created: candidate.Entry.Created,
-                Modified: candidate.Entry.Modified,
-                ExistsInCloud: true,
-                ExistsLocally: localFile is not null,
-                HasPointerFile: localFile?.PointerExists,
-                BinaryExists: localFile?.BinaryExists,
-                Hydrated: null);
-        }
-
-        foreach (var localFile in localSnapshot.Files.Values)
-        {
-            if (yieldedFileNames.Contains(localFile.Name) || !MatchesFilter(localFile.Name, filter))
-            {
-                continue;
-            }
-
-            var relativePath = localFile.Path;
-            yield return new RepositoryFileEntry(
-                RelativePath: relativePath,
-                ContentHash: null,
-                OriginalSize: localFile.FileSize,
-                Created: localFile.Created,
-                Modified: localFile.Modified,
-                ExistsInCloud: false,
-                ExistsLocally: true,
-                HasPointerFile: localFile.PointerExists,
-                BinaryExists: localFile.BinaryExists,
-                Hydrated: null);
-        }
-
-        if (!recursive)
-        {
-            yield break;
-        }
-
-        foreach (var target in recursionTargets)
-        {
-            await foreach (var child in WalkDirectoryAsync(
-                               target.TreeHash,
-                               target.HasLocalDirectory ? localFileSystem : null,
-                               target.RelativeDirectory,
-                               filter,
-                               recursive,
-                               cancellationToken))
-            {
-                yield return child;
-            }
+            await writer.WriteAsync(
+                new RepositoryFileEntry(
+                    RelativePath: relativePath,
+                    ContentHash: candidate.Entry.ContentHash,
+                    OriginalSize: originalSize,
+                    Created: candidate.Entry.Created,
+                    Modified: candidate.Entry.Modified,
+                    ExistsInCloud: true,
+                    ExistsLocally: localFile is not null,
+                    HasPointerFile: localFile?.PointerExists,
+                    BinaryExists: localFile?.BinaryExists,
+                    Hydrated: null),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -280,7 +354,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
         IEnumerable<LocalFileEntry> fileInfos;
         try
         {
-            fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory, SearchOption.AllDirectories)
+            // Immediate children only: nested files are handled when their own directory is walked,
+            // and this keeps the snapshot bounded by directory width.
+            fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory, SearchOption.TopDirectoryOnly)
                 .OrderBy(f => f.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
                 .ToList();
         }
@@ -345,8 +421,9 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
 
     private sealed record LocalDirectorySnapshot(
         IReadOnlyDictionary<PathSegment, LocalDirectoryState> Directories,
-        IReadOnlyDictionary<PathSegment, LocalFileState> Files)
+        Dictionary<PathSegment, LocalFileState> Files)
     {
+        // Shared instance is safe: the walk only ever removes from Files, which is a no-op here.
         public static LocalDirectorySnapshot Empty { get; } =
             new LocalDirectorySnapshot(
                 new Dictionary<PathSegment, LocalDirectoryState>(),
