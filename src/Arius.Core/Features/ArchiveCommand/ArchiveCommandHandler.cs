@@ -253,11 +253,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, bool>();
 
             // Channels between stages
-            var filePairChannel   = Channel.CreateBounded<FilePair>(ChannelCapacity);
-            var hashedChannel     = Channel.CreateUnbounded<HashedFilePair>();
-            var largeChannel      = Channel.CreateUnbounded<FileToUpload>();
-            var smallChannel      = Channel.CreateUnbounded<FileToUpload>();
-            var sealedTarChannel  = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
+            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity);
+            var hashedChannel          = Channel.CreateUnbounded<HashedFilePair>();
+            var largeChannel           = Channel.CreateUnbounded<FileToUpload>();
+            var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
+            var sealedTarChannel       = Channel.CreateBounded<SealedTar>(TarUploadWorkers);
+            var chunkIndexEntryChannel = Channel.CreateUnbounded<ShardEntry>();
+            var fileTreeEntryChannel   = Channel.CreateUnbounded<FileTreeUpdate>();
 
             // ── Register queue-depth getters ──────────────────────
             opts.OnHashQueueReady?.Invoke(() => filePairChannel.Reader.Count);
