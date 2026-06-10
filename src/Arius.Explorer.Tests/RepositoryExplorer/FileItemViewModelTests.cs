@@ -14,15 +14,11 @@ public class FileItemViewModelTests
     {
         var file = new RepositoryFileEntry(
             RelativePath: RelativePath.Parse("folder1/folder2/file.txt"),
+            State: RepositoryEntryState.Repository,
             ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,
-            Modified: null,
-            ExistsInCloud: true,
-            ExistsLocally: true,
-            HasPointerFile: false,
-            BinaryExists: false,
-            Hydrated: null);
+            Modified: null);
 
         var viewModel = new FileItemViewModel(file);
 
@@ -34,15 +30,11 @@ public class FileItemViewModelTests
     {
         var file = new RepositoryFileEntry(
             RelativePath: RelativePath.Parse("file.txt"),
+            State: RepositoryEntryState.Repository,
             ContentHash: ContentHashA,
             OriginalSize: 1,
             Created: null,
-            Modified: null,
-            ExistsInCloud: true,
-            ExistsLocally: true,
-            HasPointerFile: false,
-            BinaryExists: false,
-            Hydrated: null);
+            Modified: null);
 
         var viewModel = new FileItemViewModel(file);
 

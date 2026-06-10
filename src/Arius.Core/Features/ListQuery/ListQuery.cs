@@ -40,32 +40,67 @@ public sealed record ListQueryOptions
 
 
 /// <summary>
+/// Where an entry exists (local disk and/or the repository on blob storage) and, for repository
+/// files, the storage-tier state of its chunk. Flags combine: e.g. a file that is archived in the
+/// repository and present on disk as pointer + binary is
+/// <c>LocalPointer | LocalBinary | Repository | RepositoryArchived</c>.
+/// </summary>
+[Flags]
+public enum RepositoryEntryState
+{
+    None = 0,
+
+    // ── Local disk ──────────────────────────────────────────────────────────
+
+    /// <summary>A pointer sidecar file exists on disk (files only).</summary>
+    LocalPointer = 1 << 0,
+
+    /// <summary>The binary file exists on disk (files only).</summary>
+    LocalBinary = 1 << 1,
+
+    /// <summary>The directory exists on disk (directories only).</summary>
+    LocalDirectory = 1 << 2,
+
+    // ── Repository (blob storage) ───────────────────────────────────────────
+
+    /// <summary>Present in the snapshot file tree.</summary>
+    Repository = 1 << 3,
+
+    /// <summary>Chunk tier hint: hot/cool/cold — downloadable now. Implies <see cref="Repository"/>.</summary>
+    RepositoryHydrated = 1 << 4,
+
+    /// <summary>Chunk tier hint: archive — needs rehydration first. Implies <see cref="Repository"/>.</summary>
+    RepositoryArchived = 1 << 5,
+
+    /// <summary>
+    /// Rehydration is pending. Implies <see cref="RepositoryArchived"/>. The chunk index cannot
+    /// know this; it is only set by live refinement (see ChunkHydrationStatusQuery).
+    /// </summary>
+    RepositoryRehydrating = 1 << 6,
+}
+
+/// <summary>
 /// Base type for entries emitted by the streaming repository listing.
 /// </summary>
-public abstract record RepositoryEntry(RelativePath RelativePath);
+public abstract record RepositoryEntry(RelativePath RelativePath, RepositoryEntryState State);
 
 /// <summary>
 /// A file entry emitted by the repository listing.
 /// </summary>
 public sealed record RepositoryFileEntry(
     RelativePath RelativePath,
+    RepositoryEntryState State,
     ContentHash? ContentHash,
     long? OriginalSize,
     DateTimeOffset? Created,
-    DateTimeOffset? Modified,
-    bool ExistsInCloud,
-    bool ExistsLocally,
-    bool? HasPointerFile,
-    bool? BinaryExists,
-    bool? Hydrated = null)
-    : RepositoryEntry(RelativePath);
+    DateTimeOffset? Modified)
+    : RepositoryEntry(RelativePath, State);
 
 /// <summary>
 /// A directory entry emitted by the repository listing.
 /// </summary>
 public sealed record RepositoryDirectoryEntry(
     RelativePath RelativePath,
-    FileTreeHash? TreeHash,
-    bool ExistsInCloud,
-    bool ExistsLocally)
-    : RepositoryEntry(RelativePath);
+    RepositoryEntryState State,
+    FileTreeHash? TreeHash)
+    : RepositoryEntry(RelativePath, State);

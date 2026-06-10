@@ -38,9 +38,9 @@ public class ResolveFileHydrationStatusesHandlerTests
         using var index = new ChunkIndexService(blobs, s_encryption, snapshot, $"acct-hydration-{key}", $"ctr-hydration-{key}");
         var entry = chunkType switch
         {
-            BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
-            BlobMetadataKeys.TypeThin  => new ShardEntry(contentHash, tarChunkHash,                 100, 25),
-            BlobMetadataKeys.TypeTar   => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25),
+            BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25, BlobTier.Cool),
+            BlobMetadataKeys.TypeThin  => new ShardEntry(contentHash, tarChunkHash,                 100, 25, BlobTier.Cool),
+            BlobMetadataKeys.TypeTar   => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25, BlobTier.Cool),
             _                          => throw new ArgumentOutOfRangeException(nameof(chunkType), chunkType, null)
         };
         index.AddEntry(entry);
@@ -52,7 +52,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry(RelativePath.Parse($"{chunkType}.bin"), contentHash, 100, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse($"{chunkType}.bin"), RepositoryEntryState.Repository, contentHash, 100, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();
@@ -87,8 +87,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var snapshot = new FakeSnapshotService();
         using var index = new ChunkIndexService(blobs, s_encryption, snapshot, "acct-hydration-thin-special", "ctr-hydration-thin-special");
-        index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10));
-        index.AddEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15));
+        index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10, BlobTier.Cool));
+        index.AddEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15, BlobTier.Cool));
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
@@ -97,8 +97,8 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var files = new[]
         {
-            new RepositoryFileEntry(RelativePath.Parse("thin.bin"), thinContentHash, 50, null, null, true, false, null, null),
-            new RepositoryFileEntry(RelativePath.Parse("tar.bin"), tarContentHash, 75, null, null, true, false, null, null)
+            new RepositoryFileEntry(RelativePath.Parse("thin.bin"), RepositoryEntryState.Repository, thinContentHash, 50, null, null),
+            new RepositoryFileEntry(RelativePath.Parse("tar.bin"), RepositoryEntryState.Repository, tarContentHash, 75, null, null)
         };
 
         var results = new List<ChunkHydrationStatusResult>();

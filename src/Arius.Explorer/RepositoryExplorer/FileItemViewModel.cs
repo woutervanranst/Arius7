@@ -39,14 +39,15 @@ public partial class FileItemViewModel : ObservableObject
 
         Name = file.RelativePath.Name.ToString();
 
-        PointerFileStateColor      = file.HasPointerFile == true ? Brushes.Black : Brushes.Transparent;
-        BinaryFileStateColor       = file.BinaryExists == true ? Brushes.Blue : Brushes.White;
-        PointerFileEntryStateColor = file.ExistsInCloud ? Brushes.Black : Brushes.Transparent;
-        HydrationStatus = file.Hydrated switch
+        PointerFileStateColor      = file.State.HasFlag(RepositoryEntryState.LocalPointer) ? Brushes.Black : Brushes.Transparent;
+        BinaryFileStateColor       = file.State.HasFlag(RepositoryEntryState.LocalBinary) ? Brushes.Blue : Brushes.White;
+        PointerFileEntryStateColor = file.State.HasFlag(RepositoryEntryState.Repository) ? Brushes.Black : Brushes.Transparent;
+        HydrationStatus = file.State switch
         {
-            true => ChunkHydrationStatus.Available,
-            false => ChunkHydrationStatus.NeedsRehydration,
-            null => ChunkHydrationStatus.Unknown,
+            _ when file.State.HasFlag(RepositoryEntryState.RepositoryRehydrating) => ChunkHydrationStatus.RehydrationPending,
+            _ when file.State.HasFlag(RepositoryEntryState.RepositoryArchived)    => ChunkHydrationStatus.NeedsRehydration,
+            _ when file.State.HasFlag(RepositoryEntryState.RepositoryHydrated)    => ChunkHydrationStatus.Available,
+            _                                                                     => ChunkHydrationStatus.Unknown,
         };
 
         OriginalLength = file.OriginalSize ?? 0;

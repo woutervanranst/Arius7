@@ -4,6 +4,7 @@ using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Integration.Tests.ChunkIndex.Fakes;
 using Arius.Tests.Shared.Fixtures;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 
@@ -32,9 +33,9 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         var h1  = FakeContentHash('1');
         var h1b = SamePrefix(h1, 'a');
         var h2  = FakeContentHash('2');
-        var e1  = new ShardEntry(h1,  FakeChunkHash('a'), 1024, 512);
-        var e1b = new ShardEntry(h1b, FakeChunkHash('b'), 2048, 700);
-        var e2  = new ShardEntry(h2,  FakeChunkHash('c'), 4096, 900);
+        var e1  = new ShardEntry(h1,  FakeChunkHash('a'), 1024, 512, BlobTier.Cool);
+        var e1b = new ShardEntry(h1b, FakeChunkHash('b'), 2048, 700, BlobTier.Cool);
+        var e2  = new ShardEntry(h2,  FakeChunkHash('c'), 4096, 900, BlobTier.Cool);
 
         // Machine A: archive the three chunks and flush, writing two shards.
         var counterA  = new CountingBlobContainerService(raw);
@@ -75,7 +76,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         var snapshot      = new SnapshotService(raw, encryption, Account, containerName);
 
         var h1 = FakeContentHash('3');
-        var e1 = new ShardEntry(h1, FakeChunkHash('c'), 800, 400);
+        var e1 = new ShardEntry(h1, FakeChunkHash('c'), 800, 400, BlobTier.Cool);
 
         using (var run1 = new ChunkIndexService(raw, encryption, snapshot, Account, containerName))
         {

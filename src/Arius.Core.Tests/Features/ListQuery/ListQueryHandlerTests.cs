@@ -1,5 +1,6 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
@@ -17,7 +18,7 @@ public class ListQueryHandlerTests
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
-    public async Task Handle_CloudOnlyNonRecursive_StreamsRootDirectoryEntries()
+    public async Task Handle_RepositoryOnlyNonRecursive_StreamsRootDirectoryEntries()
     {
         var rootTree = Entries(
             DirectoryEntryOf("docs/", TreeHashFor("docs")),
@@ -36,7 +37,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-1", "ctr-ls-test-1", s_encryption);
-        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50));
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50, BlobTier.Cool));
         var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
@@ -49,8 +50,7 @@ public class ListQueryHandlerTests
 
         var directory = results.OfType<RepositoryDirectoryEntry>().Single();
         directory.RelativePath.ShouldBe(RelativePath.Parse("docs"));
-        directory.ExistsInCloud.ShouldBeTrue();
-        directory.ExistsLocally.ShouldBeFalse();
+        directory.State.ShouldBe(RepositoryEntryState.Repository);
         directory.TreeHash.ShouldBe(TreeHashFor("docs"));
 
         var file = results.OfType<RepositoryFileEntry>().Single();
@@ -59,10 +59,7 @@ public class ListQueryHandlerTests
         file.OriginalSize.ShouldBe(123);
         file.Created.ShouldBe(s_created);
         file.Modified.ShouldBe(s_modified);
-        file.ExistsInCloud.ShouldBeTrue();
-        file.ExistsLocally.ShouldBeFalse();
-        file.HasPointerFile.ShouldBeNull();
-        file.BinaryExists.ShouldBeNull();
+        file.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
     }
 
     [Test]
@@ -92,7 +89,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-2", "ctr-ls-test-2", s_encryption);
-        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200));
+        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200, BlobTier.Cool));
         var handler = fixture.CreateListQueryHandler();
 
         var results = new List<RepositoryEntry>();
@@ -125,7 +122,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-segments", "ctr-ls-segments", s_encryption);
-        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('1'), FakeChunkHash('3'), 10, 5));
+        fixture.Index.AddEntry(new ShardEntry(FakeContentHash('1'), FakeChunkHash('3'), 10, 5, BlobTier.Cool));
         var handler = fixture.CreateListQueryHandler();
 
         var results = await handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("photos"), Recursive = true }), CancellationToken.None)
@@ -160,7 +157,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_WithLocalPath_MergesCloudAndLocalFilesInOneDirectory()
+    public async Task Handle_WithLocalPath_OverlaysRepositoryAndLocalFilesInOneDirectory()
     {
         var tempRoot = TestTempRoots.CreateDirectory("ls");
         var localFileSystem = new RelativeFileSystem(tempRoot);
@@ -173,7 +170,7 @@ public class ListQueryHandlerTests
             await localFileSystem.WriteAllTextAsync(RelativePath.Parse("local-only.txt"), "local-only", CancellationToken.None);
 
             var rootTree = Entries(
-                FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
+                FileEntryOf("repository-only.txt", ContentHashFor("repository-only")),
                 FileEntryOf("shared.txt", ContentHashFor("shared")));
             var snapshot = new SnapshotManifest
             {
@@ -189,8 +186,8 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-3", "ctr-ls-test-3", s_encryption);
-            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
-            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("repository-only"), FakeChunkHash('4'), 10, 5, BlobTier.Cool));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10, BlobTier.Cool));
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
@@ -205,24 +202,15 @@ public class ListQueryHandlerTests
             results.Count.ShouldBe(3);
 
             var shared = results.Single(file => file.RelativePath == RelativePath.Parse("shared.txt"));
-            shared.ExistsInCloud.ShouldBeTrue();
-            shared.ExistsLocally.ShouldBeTrue();
-            shared.HasPointerFile.ShouldBe(true);
-            shared.BinaryExists.ShouldBe(true);
+            shared.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated | RepositoryEntryState.LocalPointer | RepositoryEntryState.LocalBinary);
             shared.OriginalSize.ShouldBe(20);
 
-            var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("cloud-only.txt"));
-            cloudOnly.ExistsInCloud.ShouldBeTrue();
-            cloudOnly.ExistsLocally.ShouldBeFalse();
-            cloudOnly.HasPointerFile.ShouldBeNull();
-            cloudOnly.BinaryExists.ShouldBeNull();
-            cloudOnly.OriginalSize.ShouldBe(10);
+            var repositoryOnly = results.Single(file => file.RelativePath == RelativePath.Parse("repository-only.txt"));
+            repositoryOnly.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
+            repositoryOnly.OriginalSize.ShouldBe(10);
 
             var localOnly = results.Single(file => file.RelativePath == RelativePath.Parse("local-only.txt"));
-            localOnly.ExistsInCloud.ShouldBeFalse();
-            localOnly.ExistsLocally.ShouldBeTrue();
-            localOnly.HasPointerFile.ShouldBe(false);
-            localOnly.BinaryExists.ShouldBe(true);
+            localOnly.State.ShouldBe(RepositoryEntryState.LocalBinary);
             localOnly.ContentHash.ShouldBeNull();
         }
         finally
@@ -245,7 +233,7 @@ public class ListQueryHandlerTests
             await localFileSystem.WriteAllTextAsync(RelativePath.Parse("docs/local-only.txt"), "local-only", CancellationToken.None);
 
             var docsTree = Entries(
-                FileEntryOf("cloud-only.txt", ContentHashFor("cloud-only")),
+                FileEntryOf("repository-only.txt", ContentHashFor("repository-only")),
                 FileEntryOf("shared.txt", ContentHashFor("shared")));
             var docsHash = FileTreeBuilder.ComputeHash(docsTree, s_encryption);
             var rootTree = Entries(DirectoryEntryOf("docs/", docsHash));
@@ -264,8 +252,8 @@ public class ListQueryHandlerTests
             blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-prefix-local", "ctr-ls-prefix-local", s_encryption);
-            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cloud-only"), FakeChunkHash('4'), 10, 5));
-            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("repository-only"), FakeChunkHash('4'), 10, 5, BlobTier.Cool));
+            fixture.Index.AddEntry(new ShardEntry(ContentHashFor("shared"), FakeChunkHash('5'), 20, 10, BlobTier.Cool));
             var handler = fixture.CreateListQueryHandler();
 
             var results = new List<RepositoryFileEntry>();
@@ -280,18 +268,13 @@ public class ListQueryHandlerTests
             results.Count.ShouldBe(3);
 
             var shared = results.Single(file => file.RelativePath == RelativePath.Parse("docs/shared.txt"));
-            shared.ExistsInCloud.ShouldBeTrue();
-            shared.ExistsLocally.ShouldBeTrue();
-            shared.HasPointerFile.ShouldBe(true);
-            shared.BinaryExists.ShouldBe(true);
+            shared.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated | RepositoryEntryState.LocalPointer | RepositoryEntryState.LocalBinary);
 
-            var cloudOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/cloud-only.txt"));
-            cloudOnly.ExistsInCloud.ShouldBeTrue();
-            cloudOnly.ExistsLocally.ShouldBeFalse();
+            var repositoryOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/repository-only.txt"));
+            repositoryOnly.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
 
             var localOnly = results.Single(file => file.RelativePath == RelativePath.Parse("docs/local-only.txt"));
-            localOnly.ExistsInCloud.ShouldBeFalse();
-            localOnly.ExistsLocally.ShouldBeTrue();
+            localOnly.State.ShouldBe(RepositoryEntryState.LocalBinary);
 
         }
         finally
@@ -467,27 +450,27 @@ public class ListQueryHandlerTests
     {
         var tempRoot = TestTempRoots.CreateDirectory("ls-38");
         var localFileSystem = new RelativeFileSystem(tempRoot);
-        localFileSystem.CreateDirectory(RelativePath.Parse("cloud-local-dir"));
+        localFileSystem.CreateDirectory(RelativePath.Parse("repository-local-dir"));
         localFileSystem.CreateDirectory(RelativePath.Parse("local-only-dir"));
 
         try
         {
-            IReadOnlyList<FileTreeEntry> cloudLocalTree = [];
-            IReadOnlyList<FileTreeEntry> cloudOnlyTree = [];
-            var cloudLocalHash = FileTreeBuilder.ComputeHash(cloudLocalTree, s_encryption);
-            var cloudOnlyHash = FileTreeBuilder.ComputeHash(cloudOnlyTree, s_encryption);
+            IReadOnlyList<FileTreeEntry> repositoryLocalTree = [];
+            IReadOnlyList<FileTreeEntry> repositoryOnlyTree = [];
+            var repositoryLocalHash = FileTreeBuilder.ComputeHash(repositoryLocalTree, s_encryption);
+            var repositoryOnlyHash = FileTreeBuilder.ComputeHash(repositoryOnlyTree, s_encryption);
 
-            // root has: cloud+local dir, cloud-only dir; local has: local-only dir
+            // root has: repository+local dir, repository-only dir; local has: local-only dir
             var rootTree = Entries(
-                DirectoryEntryOf("cloud-local-dir/", cloudLocalHash),
-                DirectoryEntryOf("cloud-only-dir/", cloudOnlyHash));
+                DirectoryEntryOf("repository-local-dir/", repositoryLocalHash),
+                DirectoryEntryOf("repository-only-dir/", repositoryOnlyHash));
             var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
             var snapshot = MakeSnapshot(rootHash);
 
             var blobs = new FakeSeededBlobContainerService();
             await SeedTreeAsync(blobs, rootTree);
-            await SeedTreeAsync(blobs, cloudLocalTree);
-            await SeedTreeAsync(blobs, cloudOnlyTree);
+            await SeedTreeAsync(blobs, repositoryLocalTree);
+            await SeedTreeAsync(blobs, repositoryOnlyTree);
             blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
@@ -499,17 +482,14 @@ public class ListQueryHandlerTests
 
             dirs.Count.ShouldBe(3);
 
-            var cloudLocal = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-local-dir"));
-            cloudLocal.ExistsInCloud.ShouldBeTrue();
-            cloudLocal.ExistsLocally.ShouldBeTrue();
+            var repositoryLocal = dirs.Single(d => d.RelativePath == RelativePath.Parse("repository-local-dir"));
+            repositoryLocal.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.LocalDirectory);
 
-            var cloudOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("cloud-only-dir"));
-            cloudOnly.ExistsInCloud.ShouldBeTrue();
-            cloudOnly.ExistsLocally.ShouldBeFalse();
+            var repositoryOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("repository-only-dir"));
+            repositoryOnly.State.ShouldBe(RepositoryEntryState.Repository);
 
             var localOnly = dirs.Single(d => d.RelativePath == RelativePath.Parse("local-only-dir"));
-            localOnly.ExistsInCloud.ShouldBeFalse();
-            localOnly.ExistsLocally.ShouldBeTrue();
+            localOnly.State.ShouldBe(RepositoryEntryState.LocalDirectory);
         }
         finally
         {
@@ -518,7 +498,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_BatchSizeLookup_CalledOncePerDirectory_SizeNullWhenNotInIndex()
+    public async Task Handle_SizeLookup_SizeNullAndBareRepositoryStateWhenNotInIndex()
     {
         var childTree = Entries(FileEntryOf("child-file.txt", FakeContentHash('d')));
         var childHash = FileTreeBuilder.ComputeHash(childTree, s_encryption);
@@ -535,7 +515,7 @@ public class ListQueryHandlerTests
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-39", "ctr-39", s_encryption);
-        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500));
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500, BlobTier.Cool));
 
         var handler = fixture.CreateListQueryHandler();
         var files   = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = true }), CancellationToken.None)
@@ -547,8 +527,45 @@ public class ListQueryHandlerTests
         var child   = files.Single(f => f.RelativePath == RelativePath.Parse("child/child-file.txt"));
 
         known.OriginalSize.ShouldBe(999);
+        known.State.ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
+
+        // Not in the chunk index: present in the tree but no size and no tier refinement.
         unknown.OriginalSize.ShouldBeNull();
+        unknown.State.ShouldBe(RepositoryEntryState.Repository);
+
         child.OriginalSize.ShouldBeNull();
+        child.State.ShouldBe(RepositoryEntryState.Repository);
+    }
+
+    [Test]
+    public async Task Handle_StorageTierHint_MapsToHydratedOrArchivedState()
+    {
+        var rootTree = Entries(
+            FileEntryOf("hot.txt", ContentHashFor("hot")),
+            FileEntryOf("cool.txt", ContentHashFor("cool")),
+            FileEntryOf("archived.txt", ContentHashFor("archived")));
+        var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, s_encryption));
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, rootTree);
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-tier", "ctr-ls-tier", s_encryption);
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("hot"), FakeChunkHash('1'), 10, 5, BlobTier.Hot));
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("cool"), FakeChunkHash('2'), 20, 10, BlobTier.Cool));
+        fixture.Index.AddEntry(new ShardEntry(ContentHashFor("archived"), FakeChunkHash('3'), 30, 15, BlobTier.Archive));
+        var handler = fixture.CreateListQueryHandler();
+
+        var files = await handler.Handle(new ListQueryType(new ListQueryOptions { Recursive = false }), CancellationToken.None)
+            .OfType<RepositoryFileEntry>()
+            .ToListAsync();
+
+        files.Single(f => f.RelativePath == RelativePath.Parse("hot.txt")).State
+            .ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
+        files.Single(f => f.RelativePath == RelativePath.Parse("cool.txt")).State
+            .ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated);
+        files.Single(f => f.RelativePath == RelativePath.Parse("archived.txt")).State
+            .ShouldBe(RepositoryEntryState.Repository | RepositoryEntryState.RepositoryArchived);
     }
 
     [Test]

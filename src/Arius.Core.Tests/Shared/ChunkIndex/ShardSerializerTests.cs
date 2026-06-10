@@ -1,4 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -13,7 +14,8 @@ public class ShardSerializerTests
                 FakeContentHash('a'),
                 FakeChunkHash('b'),
                 512,
-                256)
+                256,
+                BlobTier.Archive)
         );
 
         var bytes  = await ShardSerializer.SerializeAsync(shard, svc);
@@ -21,6 +23,7 @@ public class ShardSerializerTests
 
         loaded.TryLookup(FakeContentHash('a'), out var e).ShouldBeTrue();
         e!.OriginalSize.ShouldBe(512);
+        e.StorageTierHint.ShouldBe(BlobTier.Archive);
     }
 
     [Test]
@@ -32,7 +35,8 @@ public class ShardSerializerTests
                 FakeContentHash('e'),
                 FakeChunkHash('f'),
                 512,
-                256)
+                256,
+                BlobTier.Archive)
         );
 
         var bytes = await ShardSerializer.SerializeAsync(shard, svc);
@@ -52,7 +56,8 @@ public class ShardSerializerTests
                 FakeContentHash('c'),
                 FakeChunkHash('d'),
                 100,
-                40)
+                40,
+                BlobTier.Cool)
         );
 
         var bytes  = await ShardSerializer.SerializeAsync(shard, svc);
@@ -60,6 +65,7 @@ public class ShardSerializerTests
 
         loaded.TryLookup(FakeContentHash('c'), out var e).ShouldBeTrue();
         e!.CompressedSize.ShouldBe(40);
+        e.StorageTierHint.ShouldBe(BlobTier.Cool);
     }
 
     [Test]
@@ -71,7 +77,8 @@ public class ShardSerializerTests
                 FakeContentHash('8'),
                 FakeChunkHash('9'),
                 100,
-                40)
+                40,
+                BlobTier.Cool)
         );
 
         var bytes = await ShardSerializer.SerializeAsync(shard, svc);

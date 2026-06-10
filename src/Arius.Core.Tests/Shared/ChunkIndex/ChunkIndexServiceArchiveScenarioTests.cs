@@ -4,6 +4,7 @@ using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -88,9 +89,9 @@ public class ChunkIndexServiceArchiveScenarioTests
         var h1 = FakeContentHash('a');
         var h2 = SamePrefix(h1, 'b');
         var h3 = FakeContentHash('b');
-        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5);
-        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8);
-        var e3 = new ShardEntry(h3, FakeChunkHash('3'), 30, 12);
+        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
+        var e3 = new ShardEntry(h3, FakeChunkHash('3'), 30, 12, BlobTier.Cool);
         var prefixAa = Shard.PrefixOf(h1);
         var prefixBb = Shard.PrefixOf(h3);
 
@@ -178,7 +179,7 @@ public class ChunkIndexServiceArchiveScenarioTests
         var first   = await WarmFirstRunAsync(blobs, account);
 
         var h4 = SamePrefix(first.H1, 'c'); // new content in the EXISTING prefix "aa"
-        var e4 = new ShardEntry(h4, FakeChunkHash('4'), 40, 16);
+        var e4 = new ShardEntry(h4, FakeChunkHash('4'), 40, 16, BlobTier.Cool);
 
         blobs.RequestedBlobNames.Clear();
         blobs.UploadedBlobNames.Clear(); // ignore the warm-up run's uploads
@@ -264,7 +265,7 @@ public class ChunkIndexServiceArchiveScenarioTests
         //   (3) Machine A re-archives a new hash in "aa": this REWRITES the remote shard (new etag A2) and
         //       creates snapshot "s2". Machine B's cache is now stale — it still thinks "aa" is A1 / s1.
         var h5 = SamePrefix(first.H1, 'd');
-        var e5 = new ShardEntry(h5, FakeChunkHash('5'), 50, 25);
+        var e5 = new ShardEntry(h5, FakeChunkHash('5'), 50, 25, BlobTier.Cool);
         using (var runA2 = NewRun(blobs, machineA, new FakeSnapshotService([Snapshot("s1")])))
         {
             (await runA2.LookupAsync(h5)).ShouldBeNull();
@@ -309,7 +310,7 @@ public class ChunkIndexServiceArchiveScenarioTests
         //   (3) Machine A archives AGAIN, but only adds a chunk in a NEW prefix "cc" — it never rewrites "aa".
         //       This creates snapshot "s2" while "aa"'s shard (still ETag A1) stays exactly as machine B cached it.
         var h6 = FakeContentHash('c'); // prefix "cc"
-        var e6 = new ShardEntry(h6, FakeChunkHash('6'), 60, 30);
+        var e6 = new ShardEntry(h6, FakeChunkHash('6'), 60, 30, BlobTier.Cool);
         using (var runA2 = NewRun(blobs, machineA, new FakeSnapshotService([Snapshot("s1")])))
         {
             (await runA2.LookupAsync(h6)).ShouldBeNull();
@@ -357,8 +358,8 @@ public class ChunkIndexServiceArchiveScenarioTests
         var account  = UniqueRepositoryKey("s5-flush-retry");
         var h1 = FakeContentHash('a');
         var h2 = SamePrefix(h1, 'b');
-        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5);
-        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8);
+        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
         var prefixAa = Shard.PrefixOf(h1);
 
         //   Run A records both entries (persisted to SQLite as DIRTY rows), then its flush DIES on the upload:
@@ -430,9 +431,9 @@ public class ChunkIndexServiceArchiveScenarioTests
         var h1 = FakeContentHash('a');
         var h2 = SamePrefix(h1, 'b');
         var h3 = FakeContentHash('b');
-        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5);
-        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8);
-        var e3 = new ShardEntry(h3, FakeChunkHash('3'), 30, 12);
+        var e1 = new ShardEntry(h1, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        var e2 = new ShardEntry(h2, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
+        var e3 = new ShardEntry(h3, FakeChunkHash('3'), 30, 12, BlobTier.Cool);
 
         using var run = NewRun(blobs, account, new FakeSnapshotService());
         await run.LookupAsync(h1);
