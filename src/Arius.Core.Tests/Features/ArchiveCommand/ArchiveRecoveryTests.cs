@@ -254,23 +254,30 @@ public class ArchiveRecoveryTests
             .Select(static record => record.Message)
             .ToArray();
 
-        messages.ShouldContain(message => message.Contains("[phase] ensure-container", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] open-staging", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] enumerate", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] hash", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] dedup-route", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] large-upload", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tar-build", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] tar-upload", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] index-update", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] filetree-update", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] await-workers", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] validate-filetrees", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] flush-chunkindex-and-synchronize-filetree", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] snapshot", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] write-pointers", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] delete-local", StringComparison.Ordinal));
-        messages.ShouldContain(message => message.Contains("[phase] complete", StringComparison.Ordinal));
+        var phases = messages
+            .Where(static message => message.StartsWith("[phase] ", StringComparison.Ordinal))
+            .Select(static message => message[8..])
+            .ToArray();
+
+        phases.ShouldBe([
+            "ensure-container",
+            "open-staging",
+            "enumerate",
+            "hash",
+            "dedup-route",
+            "large-upload",
+            "tar-build",
+            "tar-upload",
+            "chunk-index-update",
+            "filetree-update",
+            "await-workers",
+            "validate-filetrees",
+            "flush-chunkindex-and-synchronize-filetree",
+            "snapshot",
+            "write-pointers",
+            "delete-local",
+            "complete"
+        ]);
     }
 
     [Test]
