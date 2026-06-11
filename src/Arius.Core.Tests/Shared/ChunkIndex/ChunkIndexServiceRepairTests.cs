@@ -103,11 +103,11 @@ public class ChunkIndexServiceRepairTests
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("repair-replace-prefix");
         var rebuiltHash = FakeContentHash('a');
-        var staleHash = ContentHash.Parse($"{rebuiltHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('f', 64 - ChunkIndexService.ShardPrefixLength)}");
+        var staleHash = ContentHash.Parse($"{rebuiltHash.Prefix(ChunkIndexService.MinShardPrefixLength)}{new string('f', 64 - ChunkIndexService.MinShardPrefixLength)}");
         var staleShard = new Shard();
         staleShard.AddOrUpdate(new ShardEntry(staleHash, FakeChunkHash('f'), 999, 111, BlobTier.Cool));
         blobs.SeedBlob(
-            BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(rebuiltHash)),
+            BlobPaths.ChunkIndexShardPath(ChunkIndexRouter.GetRootPrefix(rebuiltHash)),
             await ShardSerializer.SerializeAsync(staleShard, s_encryption, TestCompression.Instance),
             BlobTier.Cool);
         blobs.SeedBlob(

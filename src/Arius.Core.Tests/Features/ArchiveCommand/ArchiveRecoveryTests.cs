@@ -102,7 +102,7 @@ public class ArchiveRecoveryTests
         var relativePath = RelativePath.Parse("docs/readme.txt");
         var content = await WriteRandomFileAsync(fixture, relativePath, 2 * 1024 * 1024);
         var contentHash = fixture.Encryption.ComputeHash(content);
-        var shardBlobName = BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash));
+        var shardBlobName = BlobPaths.ChunkIndexShardPath(ChunkIndexRouter.GetRootPrefix(contentHash));
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
 
         var result = await ArchiveAsync(fixture, BlobTier.Cool, smallFileThreshold: 0);

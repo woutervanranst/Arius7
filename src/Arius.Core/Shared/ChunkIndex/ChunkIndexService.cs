@@ -16,7 +16,8 @@ namespace Arius.Core.Shared.ChunkIndex;
 [SharedWithinAssembly]
 internal sealed class ChunkIndexService : IChunkIndexService
 {
-    internal const           int          ShardPrefixLength          = 2;
+    internal const           int          MinShardPrefixLength       = 2;
+    internal const           int          MaxShardEntryCount         = 10_000;
     internal const           int          FlushWorkers               = 32;
     internal const           int          PrefixLoadWorkers          = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
@@ -26,9 +27,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
     private readonly ICompressionService                              _compression;
     private readonly RelativeFileSystem                               _repositoryFileSystem;
     private readonly ChunkIndexLocalStore                             _localStore;
-    private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
+    private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _rootGates = [];
     private readonly AsyncLazy<string>                                _latestSnapshotName;
     private readonly ILogger<ChunkIndexService>                       _logger;
+    private readonly int                                              _maxShardEntryCount;
     private          int                                              _acceptingEntries = 1;
 
     // -- Construction --------------------------------------------------------
@@ -42,6 +44,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// <param name="accountName">Storage account name used to derive the local repository state path.</param>
     /// <param name="containerName">Container name used to derive the local repository state path.</param>
     /// <param name="loggerFactory">Optional logger factory for chunk-index and local-store diagnostics.</param>
+    /// <param name="maxShardEntryCount">Shard split threshold; overridable so tests can split with few entries.</param>
     public ChunkIndexService(
         IBlobContainerService blobs,
         IEncryptionService encryption,
@@ -49,12 +52,14 @@ internal sealed class ChunkIndexService : IChunkIndexService
         ISnapshotService snapshotService,
         string accountName,
         string containerName,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        int maxShardEntryCount = MaxShardEntryCount)
     {
-        _blobs       = blobs;
-        _encryption  = encryption;
-        _compression = compression;
-        _logger      = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
+        _blobs              = blobs;
+        _encryption         = encryption;
+        _compression        = compression;
+        _maxShardEntryCount = maxShardEntryCount;
+        _logger             = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
 
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
@@ -89,11 +94,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         if (hashes.Length == 0)
             return result;
 
-        var validationWork = new List<(PathSegment Prefix, List<ContentHash> Hashes)>();
-        foreach (var prefixGroup in hashes.GroupBy(ChunkIndexRouter.GetLeafPrefix))
+        var validationWork = new List<(PathSegment Root, List<ContentHash> Hashes)>();
+        foreach (var rootGroup in hashes.GroupBy(ChunkIndexRouter.GetRootPrefix))
         {
             var hashesNeedingValidation = new List<ContentHash>();
-            foreach (var contentHash in prefixGroup)
+            foreach (var contentHash in rootGroup)
             {
                 var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
                 if (pendingFlushEntry is not null)
@@ -108,7 +113,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             if (hashesNeedingValidation.Count == 0)
                 continue;
 
-            validationWork.Add((prefixGroup.Key, hashesNeedingValidation));
+            validationWork.Add((rootGroup.Key, hashesNeedingValidation));
         }
 
         if (validationWork.Count == 0)
@@ -116,13 +121,13 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
         var latestSnapshotName = await _latestSnapshotName;
 
-        // Load the distinct prefixes concurrently: on a cold cache each prefix is a remote shard
-        // download, and with ShardPrefixLength = 2 even a small batch spans many prefixes.
-        // EnsurePrefixLoadedAndSynchronizedAsync is safe for concurrent callers (per-prefix gates).
+        // Load the distinct root subtrees concurrently: on a cold cache each root costs a subtree
+        // listing plus shard downloads, and even a small batch spans many roots.
+        // EnsureCoverageForHashesAsync is safe for concurrent callers (per-root gates).
         await Parallel.ForEachAsync(
             validationWork,
             new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
-            async (item, ct) => await EnsurePrefixLoadedAndSynchronizedAsync(item.Prefix, latestSnapshotName, ct));
+            async (item, ct) => await EnsureCoverageForHashesAsync(item.Root, item.Hashes, latestSnapshotName, ct));
 
         foreach (var item in validationWork)
         {
@@ -153,7 +158,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             return pendingFlushEntry;
 
         var latestSnapshot = await _latestSnapshotName;
-        await EnsurePrefixLoadedAndSynchronizedAsync(ChunkIndexRouter.GetLeafPrefix(contentHash), latestSnapshot, cancellationToken);
+        await EnsureCoverageForHashesAsync(ChunkIndexRouter.GetRootPrefix(contentHash), [contentHash], latestSnapshot, cancellationToken);
         return _localStore.FindEntry(contentHash);
     }
 
@@ -174,65 +179,132 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Synchronization -----------------------------------------------------
 
     /// <summary>
-    /// Ensures the specified prefix has been validated against remote state for the latest snapshot version.
+    /// Ensures every hash in <paramref name="hashes"/> (all within the <paramref name="root"/>
+    /// subtree) has validated local coverage, taking the root gate.
     /// </summary>
-    /// <param name="prefix">The shard prefix to synchronize.</param>
-    /// <param name="latestSnapshotVersion">The snapshot version that the prefix validation is recorded against.</param>
-    /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
-    private async Task EnsurePrefixLoadedAndSynchronizedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
+    private async Task EnsureCoverageForHashesAsync(PathSegment root, IReadOnlyList<ContentHash> hashes, string latestSnapshotVersion, CancellationToken cancellationToken)
     {
-        var gate = _prefixGates.GetOrAdd(prefix, static _ => new SemaphoreSlim(1, 1));
+        var gate = _rootGates.GetOrAdd(root, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
-            // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
-            if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
-            {
-                // Hot path: hit once per prefix per lookup batch —> Debug log level
-                _logger.LogDebug("[chunk-index] shard {Prefix}: local cache current", prefix);
-                return; //Path 1
-            }
-
-            // let's check remote
-            var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-            var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
-            if (remoteShard is null)
-            {
-                // it doesnt exist on remote -> it s a new shard
-                _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
-                _logger.LogInformation("[chunk-index] shard {Prefix}: no remote shard (new prefix)", prefix);
-                return; //Path 2
-            }
-
-            await using var stream = remoteShard.Stream; // ensure the stream is disposed if we go through path 3a
-
-            // it exists at remote - is remote on the same version?
-            if (_localStore.IsPrefixAtETag(prefix, remoteShard.ETag))
-            {
-                // our local copy is on the same version, update the snapshot version
-                _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
-                _logger.LogInformation("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
-                return; //Path 3a
-            }
-
-            // remote has a more recent version - Path 3b
-            Shard shard;
-            try
-            {
-                shard = ShardSerializer.Deserialize(stream, _encryption, _compression);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
-            {
-                throw new ChunkIndexCorruptException(blobName, ex);
-            }
-
-            _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
-            _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
+            await EnsureCoverageCoreAsync(root, hashes, latestSnapshotVersion, cancellationToken);
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Gate-free core: ensures every hash has a validated coverage claim at
+    /// <paramref name="latestSnapshotVersion"/>, loading or revalidating the authoritative shard
+    /// per hash from one subtree listing. Returns the shard target per hash (the existing
+    /// authoritative shard, or the terminal walk depth when the hash's range is empty).
+    /// The caller must hold the root gate.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<ContentHash, PathSegment>> EnsureCoverageCoreAsync(PathSegment root, IReadOnlyList<ContentHash> hashes, string latestSnapshotVersion, CancellationToken cancellationToken)
+    {
+        var targets = new Dictionary<ContentHash, PathSegment>(hashes.Count);
+        List<ContentHash>? uncovered = null;
+        foreach (var contentHash in hashes)
+        {
+            if (_localStore.FindCoveredPrefix(contentHash, latestSnapshotVersion) is { } covered)
+                targets[contentHash] = covered;
+            else
+                (uncovered ??= []).Add(contentHash);
+        }
+
+        if (uncovered is null)
+        {
+            // Hot path: all hashes covered by validated claims — zero remote calls.
+            _logger.LogDebug("[chunk-index] root {Root}: local cache current", root);
+            return targets;
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            // One subtree listing decides, per hash, between "existing shard" (parent-wins walk)
+            // and "empty range at this depth" — a missing blob alone can mean either.
+            var listing = await ListShardSubtreeAsync(root, cancellationToken);
+            var names = listing.Keys.ToHashSet(StringComparer.Ordinal);
+
+            var emptyPrefixes = new HashSet<PathSegment>();
+            var shardsToLoad = new Dictionary<PathSegment, string?>();
+            foreach (var contentHash in uncovered)
+            {
+                var target = ChunkIndexRouter.ResolveTarget(names, contentHash);
+                targets[contentHash] = target.Prefix;
+                if (target.Exists)
+                    shardsToLoad[target.Prefix] = listing[target.Prefix.ToString()];
+                else
+                    emptyPrefixes.Add(target.Prefix);
+            }
+
+            foreach (var prefix in emptyPrefixes)
+            {
+                _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: no remote shard (empty range)", prefix);
+            }
+
+            var lostListingRace = false;
+            foreach (var (prefix, listedETag) in shardsToLoad)
+            {
+                if (listedETag is not null && _localStore.IsPrefixAtETag(prefix, listedETag))
+                {
+                    _localStore.SetPrefixSnapshotVersion(prefix, listedETag, latestSnapshotVersion);
+                    _logger.LogInformation("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
+                    continue;
+                }
+
+                var blobName = BlobPaths.ChunkIndexShardPath(prefix);
+                var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
+                if (remoteShard is null)
+                {
+                    if (attempt == 0)
+                    {
+                        // Deleted between listing and download (a racing split elsewhere):
+                        // re-resolve everything from a fresh listing, once.
+                        lostListingRace = true;
+                        break;
+                    }
+
+                    _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
+                    _logger.LogWarning("[chunk-index] shard {Prefix}: listed but not downloadable after retry; treating range as empty", prefix);
+                    continue;
+                }
+
+                await using var stream = remoteShard.Stream;
+
+                Shard shard;
+                try
+                {
+                    shard = ShardSerializer.Deserialize(stream, _encryption);
+                }
+                catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
+                {
+                    throw new ChunkIndexCorruptException(blobName, ex);
+                }
+
+                _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
+            }
+
+            if (!lostListingRace)
+                return targets;
+        }
+    }
+
+    /// <summary>
+    /// Lists all existing shard blobs in the <paramref name="root"/> subtree (raw name-prefix
+    /// listing, so <c>aa</c> matches <c>aa</c>, <c>aa0</c>, <c>aa3f</c>, …) as shard name → ETag.
+    /// </summary>
+    private async Task<Dictionary<string, string?>> ListShardSubtreeAsync(PathSegment root, CancellationToken cancellationToken)
+    {
+        var names = new Dictionary<string, string?>(StringComparer.Ordinal);
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, root.ToString(), cancellationToken: cancellationToken))
+            names[item.Name.Name.ToString()] = item.ETag;
+        return names;
     }
 
     // -- AddEntry ------------------------------------------------------------
@@ -274,49 +346,120 @@ internal sealed class ChunkIndexService : IChunkIndexService
         if (Interlocked.Exchange(ref _acceptingEntries, 0) == 0)
             throw new InvalidOperationException("Chunk-index service cannot be used after flush has started.");
 
-        var prefixesWithPendingFlushes = _localStore.GetPrefixesWithPendingFlushes();
-        if (prefixesWithPendingFlushes.Count == 0)
+        var rootsWithPendingFlushes = _localStore.GetRootsWithPendingFlushes();
+        if (rootsWithPendingFlushes.Count == 0)
         {
             _logger.LogDebug("No pending shard flushes");
             return; // no shards need to be written to blob
         }
 
-        _logger.LogInformation("Flushing {PrefixCount} shard prefixes", prefixesWithPendingFlushes.Count);
+        _logger.LogInformation("Flushing {RootCount} shard subtrees", rootsWithPendingFlushes.Count);
 
         var latestSnapshotVersion = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
 
         await Parallel.ForEachAsync(
-            prefixesWithPendingFlushes,
+            rootsWithPendingFlushes,
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (prefix, ct) =>
-            {
-                // 1. Ensure the local copy of the shard is in sync with remote - the local cache may be out of date from a previous run on another machine
-                await EnsurePrefixLoadedAndSynchronizedAsync(prefix, latestSnapshotVersion, ct);
+            async (root, ct) => await FlushRootAsync(root, latestSnapshotVersion, uploadedStates, ct));
 
-                var shard = BuildShard(prefix);
-                if (shard.Count == 0)
-                    return;
-
-                var result = await UploadShardAsync(prefix, shard, ct);
-                uploadedStates[prefix] = result.ETag;
-                _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
-            });
-
+        // Only after EVERY subtree uploaded successfully: pending rows become clean, and the
+        // uploaded shard set becomes validated coverage (leaf claims replace any split parent's
+        // claim via coverage-overlap deletion).
         _localStore.MarkPendingFlushesSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
 
-        _logger.LogInformation("Flushed {UploadedCount}/{PrefixCount} shards", uploadedStates.Count, prefixesWithPendingFlushes.Count);
+        _logger.LogInformation("Flushed {UploadedCount} shards across {RootCount} subtrees", uploadedStates.Count, rootsWithPendingFlushes.Count);
     }
 
     /// <summary>
-    /// Builds the shard payload for one prefix from the current local store state.
+    /// Flushes all pending entries in one root subtree, holding the root gate: resolves the
+    /// authoritative target shard per pending hash, merges, and uploads — splitting any shard
+    /// that exceeds the entry-count threshold.
     /// </summary>
-    /// <param name="prefix">The shard prefix to materialize.</param>
-    /// <returns>A shard containing all currently stored entries for the prefix.</returns>
+    private async Task FlushRootAsync(PathSegment root, string latestSnapshotVersion, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
+    {
+        var gate = _rootGates.GetOrAdd(root, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            // Resolve targets and ensure the authoritative shards are loaded locally — the local
+            // cache may be out of date from a previous run on another machine, and an interrupted
+            // split resolves to the still-existing parent here (reloading its full range before
+            // the re-split rewrites the children).
+            var pendingHashes = _localStore.GetPendingFlushHashes(root);
+            var targets = await EnsureCoverageCoreAsync(root, pendingHashes, latestSnapshotVersion, cancellationToken);
+
+            // An interrupted split can yield mixed-depth targets (parent + already-claimed child);
+            // a target nested inside another target is fully covered by the ancestor's range.
+            var distinctTargets = targets.Values.Distinct().ToList();
+            var flushTargets = distinctTargets
+                .Where(prefix => !distinctTargets.Any(other => other != prefix && prefix.ToString().StartsWith(other.ToString(), StringComparison.Ordinal)))
+                .OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal);
+
+            foreach (var prefix in flushTargets)
+            {
+                var shard = BuildShard(prefix);
+                if (shard.Count == 0)
+                    continue;
+
+                if (shard.Count <= _maxShardEntryCount)
+                {
+                    var result = await UploadShardAsync(prefix, shard, cancellationToken);
+                    uploadedStates[prefix] = result.ETag;
+                    _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
+                    continue;
+                }
+
+                await SplitShardAsync(root, prefix, shard, uploadedStates, cancellationToken);
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Splits an over-threshold shard: uploads all non-empty leaf shards FIRST, and only then
+    /// deletes the parent and any other stale shard in its range. A crash mid-split leaves the
+    /// parent intact; since the snapshot for this run is not yet published, the parent still
+    /// contains everything any published snapshot references, and parent-wins lookup stays
+    /// correct. The pending rows stay pending, so a retry re-resolves the parent and re-splits.
+    /// </summary>
+    private async Task SplitShardAsync(PathSegment root, PathSegment prefix, Shard shard, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
+    {
+        var leaves = ChunkIndexRouter.PartitionIntoLeaves(prefix, shard.Entries.ToList(), _maxShardEntryCount);
+        foreach (var (leafPrefix, leafEntries) in leaves)
+        {
+            var leafShard = new Shard();
+            leafShard.AddOrUpdateRange(leafEntries);
+            var result = await UploadShardAsync(leafPrefix, leafShard, cancellationToken);
+            uploadedStates[leafPrefix] = result.ETag;
+        }
+
+        _logger.LogInformation("Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
+
+        // Delete the parent and every other blob in range(prefix) that was not just written —
+        // including leftovers of a previously interrupted split (their extra entries were never
+        // published; the machine that wrote them still has them as pending rows and will re-flush).
+        var written = leaves.Select(leaf => leaf.Prefix.ToString()).ToHashSet(StringComparer.Ordinal);
+        var listing = await ListShardSubtreeAsync(root, cancellationToken);
+        foreach (var name in listing.Keys.Where(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal) && !written.Contains(name)))
+        {
+            await _blobs.DeleteAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse(name)), cancellationToken);
+            _logger.LogInformation("Deleted stale shard {Name} after split of {Prefix}", name, prefix);
+        }
+    }
+
+    /// <summary>
+    /// Builds the current shard payload for one prefix range from local store state.
+    /// </summary>
+    /// <param name="prefix">The shard prefix range to materialize.</param>
+    /// <returns>A shard containing all currently stored entries within the prefix range.</returns>
     private Shard BuildShard(PathSegment prefix)
     {
         var shard = new Shard();
-        _localStore.ReadPrefixEntries(prefix, shard.AddOrUpdate);
+        _localStore.ReadRangeEntries(prefix, shard.AddOrUpdate);
         return shard;
     }
 
@@ -399,7 +542,28 @@ internal sealed class ChunkIndexService : IChunkIndexService
             rebuiltEntryCount++;
         }
 
-        var rebuiltPrefixes = _localStore.GetStoredPrefixes().ToHashSet();
+        // Compute a fresh balanced layout from the staged entries: recursively split any range
+        // whose entry count exceeds the threshold. This also re-balances an over-split remote
+        // layout (the stale-shard pass below deletes everything not in the rebuilt set).
+        var rebuiltPrefixes = new HashSet<PathSegment>();
+        foreach (var root in _localStore.GetStoredRootPrefixes())
+            CollectLeaves(root);
+
+        void CollectLeaves(PathSegment prefix)
+        {
+            var count = _localStore.CountRangeEntries(prefix);
+            if (count == 0)
+                return;
+
+            if (count <= _maxShardEntryCount)
+            {
+                rebuiltPrefixes.Add(prefix);
+                return;
+            }
+
+            foreach (var child in ChunkIndexRouter.GetChildPrefixes(prefix))
+                CollectLeaves(child);
+        }
 
         var uploadedShardCount = 0;
         await Parallel.ForEachAsync(

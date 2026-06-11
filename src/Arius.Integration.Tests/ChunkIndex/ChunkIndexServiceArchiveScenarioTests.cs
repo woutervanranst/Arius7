@@ -98,5 +98,5 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
     /// <summary>A content hash sharing <paramref name="hash"/>'s shard prefix but filled with <paramref name="fill"/>.</summary>
     private static ContentHash SamePrefix(ContentHash hash, char fill)
-        => ContentHash.Parse($"{hash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string(fill, 64 - ChunkIndexService.ShardPrefixLength)}");
+        => ContentHash.Parse($"{hash.Prefix(ChunkIndexService.MinShardPrefixLength)}{new string(fill, 64 - ChunkIndexService.MinShardPrefixLength)}");
 }

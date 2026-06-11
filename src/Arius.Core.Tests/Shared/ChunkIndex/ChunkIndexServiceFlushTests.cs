@@ -20,8 +20,8 @@ public class ChunkIndexServiceFlushTests
         var snapshot = new FakeSnapshotService([BlobPaths.SnapshotPath(new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero))]);
 
         var cleanHash = FakeContentHash('a');
-        var dirtyHash = ContentHash.Parse($"{cleanHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('d', 64 - ChunkIndexService.ShardPrefixLength)}");
-        var prefix = Shard.PrefixOf(cleanHash);
+        var dirtyHash = ContentHash.Parse($"{cleanHash.Prefix(ChunkIndexService.MinShardPrefixLength)}{new string('d', 64 - ChunkIndexService.MinShardPrefixLength)}");
+        var prefix = ChunkIndexRouter.GetRootPrefix(cleanHash);
         var cleanEntry = new ShardEntry(cleanHash, FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         blobs.SeedBlob(

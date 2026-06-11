@@ -145,11 +145,4 @@ internal sealed class Shard
 
         return shard;
     }
-
-    // ── Prefix calculation ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the configured shard prefix for a content-hash.
-    /// </summary>
-    public static PathSegment PrefixOf(ContentHash contentHash) => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.ShardPrefixLength));
 }

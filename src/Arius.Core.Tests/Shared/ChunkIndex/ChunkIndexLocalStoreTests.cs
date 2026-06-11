@@ -17,7 +17,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("1");
+        version.ExecuteScalar().ShouldBe("2");
 
         using var journalMode = connection.CreateCommand();
         journalMode.CommandText = "PRAGMA journal_mode;";
@@ -37,7 +37,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindPendingFlushEntry(entry.ContentHash).ShouldBe(entry);
         store.HasPendingFlushEntries().ShouldBeTrue();
-        store.GetPrefixesWithPendingFlushes().ShouldBe([ChunkIndexRouter.GetLeafPrefix(entry.ContentHash)]);
+        store.GetRootsWithPendingFlushes().ShouldBe([ChunkIndexRouter.GetRootPrefix(entry.ContentHash)]);
 
         using var connection = OpenConnection(root);
         using var command = connection.CreateCommand();
@@ -95,7 +95,7 @@ public class ChunkIndexLocalStoreTests
         var remoteBackedEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlushEntry);
 
-        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(contentHash), "remote-1", "snap-1", [remoteBackedEntry]);
+        store.UpdatePrefix(ChunkIndexRouter.GetRootPrefix(contentHash), "remote-1", "snap-1", [remoteBackedEntry]);
 
         store.FindEntry(contentHash).ShouldBe(pendingFlushEntry);
         store.FindPendingFlushEntry(contentHash).ShouldBe(pendingFlushEntry);
@@ -108,7 +108,7 @@ public class ChunkIndexLocalStoreTests
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
+        var prefix = ChunkIndexRouter.GetRootPrefix(entry.ContentHash);
 
         store.UpdatePrefix(prefix, "opaque-identity", "snapshot-1", [entry]);
 
@@ -126,7 +126,7 @@ public class ChunkIndexLocalStoreTests
         var store = new ChunkIndexLocalStore(root);
         var remoteBackedEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var pendingFlushEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(remoteBackedEntry.ContentHash);
+        var prefix = ChunkIndexRouter.GetRootPrefix(remoteBackedEntry.ContentHash);
         store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [remoteBackedEntry]);
         store.UpsertPendingFlush(pendingFlushEntry);
 
@@ -147,7 +147,7 @@ public class ChunkIndexLocalStoreTests
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
+        var prefix = ChunkIndexRouter.GetRootPrefix(entry.ContentHash);
         var originalSnapshotVersion = "snapshot-1";
         var latestSnapshotVersion = "snapshot-2";
         store.UpdatePrefix(prefix, "remote-1", originalSnapshotVersion, [entry]);
@@ -169,7 +169,7 @@ public class ChunkIndexLocalStoreTests
         var fromSnapshot = "snapshot-1";
         var toSnapshot = "snapshot-2";
         var remoteEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var remotePrefix = ChunkIndexRouter.GetLeafPrefix(remoteEntry.ContentHash);
+        var remotePrefix = ChunkIndexRouter.GetRootPrefix(remoteEntry.ContentHash);
         var emptyPrefix = PathSegment.Parse("ff");
         var untouchedPrefix = PathSegment.Parse("ee");
 
@@ -198,8 +198,8 @@ public class ChunkIndexLocalStoreTests
         var snapshotVersion = "snapshot-2";
         var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
-        var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
-        var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
+        var firstPrefix = ChunkIndexRouter.GetRootPrefix(firstEntry.ContentHash);
+        var secondPrefix = ChunkIndexRouter.GetRootPrefix(secondEntry.ContentHash);
         store.UpsertPendingFlush(firstEntry);
         store.UpsertPendingFlush(secondEntry);
 
@@ -225,7 +225,7 @@ public class ChunkIndexLocalStoreTests
         var pendingFlush = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var remoteBacked = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlush);
-        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(remoteBacked.ContentHash), "remote-1", "snap-1", [remoteBacked]);
+        store.UpdatePrefix(ChunkIndexRouter.GetRootPrefix(remoteBacked.ContentHash), "remote-1", "snap-1", [remoteBacked]);
 
         store.ClearRemoteBackedCache();
 
@@ -233,7 +233,7 @@ public class ChunkIndexLocalStoreTests
         store.FindPendingFlushEntry(pendingFlush.ContentHash).ShouldBe(pendingFlush);
         store.FindEntry(remoteBacked.ContentHash).ShouldBeNull();
         store.FindPendingFlushEntry(remoteBacked.ContentHash).ShouldBeNull();
-        store.IsPrefixAtSnapshotVersion(ChunkIndexRouter.GetLeafPrefix(remoteBacked.ContentHash), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(ChunkIndexRouter.GetRootPrefix(remoteBacked.ContentHash), "snap-1").ShouldBeFalse();
     }
 
     [Test]
@@ -263,7 +263,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("1");
+        version.ExecuteScalar().ShouldBe("2");
     }
 
     [Test]
