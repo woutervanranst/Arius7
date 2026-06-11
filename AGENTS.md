@@ -82,7 +82,7 @@ Specialist agents
 
 ## Way of Working
 
-- Arius is pre-release with no production repositories: breaking changes to persisted formats (shard line format, SQLite cache schema, blob layout) are acceptable without migrations or legacy parsing — confirm first, then prefer the clean break. After a persisted-format change, stale local state under `~/.arius` (mostly test residue) can fail test runs and must be deleted.
+- Arius is pre-release with no production repositories: breaking changes to persisted formats (shard line format, SQLite cache schema, blob layout) are acceptable without migrations or legacy parsing — confirm first, then prefer the clean break.
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
@@ -167,9 +167,6 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
   - **storage tier hint**: each chunk-index entry records the chunk blob's storage tier at archive time (wire values: hot=1, cool=2, cold=3, archive=4; for tar-bundled files, the tar blob's tier). It is a *hint* — lifecycle policies or rehydration can change the actual tier — and lets `ls` report hydrated-vs-archived state from the index without per-blob calls. Live truth (including rehydration-pending) comes from `ChunkHydrationStatusQuery`.
 - **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
 - **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
-
-- **repository** (as a location): the archived data in the blob container. A *repository file/directory* is an entry in the snapshot file tree; a *local file/directory* exists on disk. Use `repository*`/`local*` naming for this distinction — not "cloud". `ListQuery` results expose it as the combinable `RepositoryEntryState` flags (`LocalPointer | LocalBinary | LocalDirectory | Repository | RepositoryHydrated | RepositoryArchived | RepositoryRehydrating`).
-- **overlay**: the `ls`/list semantics — the snapshot file tree is the reference sequence and the local filesystem is overlaid on top per directory: each repository file consumes its local counterpart, leftovers emit last as local-only. No union/distinct pass over both sets.
 
 - Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
 
