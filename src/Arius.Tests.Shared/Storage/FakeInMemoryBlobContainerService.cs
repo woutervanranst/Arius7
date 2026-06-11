@@ -20,10 +20,21 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     private readonly ConcurrentQueue<RelativePath> _requestedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _deletedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _uploadedBlobNames = new();
+    private readonly ConcurrentQueue<string> _listedNamePrefixes = new();
 
     public ICollection<RelativePath> RequestedBlobNames => new RecordingCollection(_requestedBlobNames);
     public ICollection<RelativePath> DeletedBlobNames => new RecordingCollection(_deletedBlobNames);
     public ICollection<RelativePath> UploadedBlobNames => new RecordingCollection(_uploadedBlobNames);
+
+    /// <summary>Raw name-prefix listing requests, recorded as "directory/namePrefix" strings (separate from <see cref="RequestedBlobNames"/> so download-count assertions stay meaningful).</summary>
+    public IReadOnlyCollection<string> ListedNamePrefixes => _listedNamePrefixes.ToArray();
+
+    public void ClearListedNamePrefixes()
+    {
+        while (_listedNamePrefixes.TryDequeue(out _))
+        {
+        }
+    }
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -129,6 +140,35 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
                 Metadata = metadata,
                 ContentLength = contentLength,
                 Tier = currentBlob?.Tier,
+            };
+            await Task.Yield();
+        }
+    }
+
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath directory,
+        string namePrefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        _listedNamePrefixes.Enqueue(directory == RelativePath.Root ? namePrefix : $"{directory}/{namePrefix}");
+
+        var rawPrefix = directory == RelativePath.Root ? namePrefix : $"{directory}/{namePrefix}";
+        foreach (var blobName in _blobs.Keys
+                     .Where(name => name.ToString().StartsWith(rawPrefix, StringComparison.Ordinal))
+                     .OrderBy(name => name.ToString(), StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_blobs.TryGetValue(blobName, out var blob))
+                continue;
+
+            yield return new BlobListItem
+            {
+                Name = blobName,
+                ETag = blob.ETag,
+                Metadata = includeMetadata ? new Dictionary<string, string>(blob.Metadata) : null,
+                ContentLength = includeMetadata ? blob.Content.LongLength : null,
+                Tier = blob.Tier,
             };
             await Task.Yield();
         }

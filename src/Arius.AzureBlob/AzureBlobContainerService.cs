@@ -204,6 +204,36 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         }
     }
 
+    /// <summary>
+    /// Raw-name-prefix listing: matches blob names that start with
+    /// <c>{directory}/{namePrefix}</c> as a plain string (no trailing slash), so
+    /// <c>ListAsync(chunk-index, "aa")</c> returns <c>chunk-index/aa</c>, <c>chunk-index/aa0</c>, …
+    /// </summary>
+    public async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath directory,
+        string namePrefix,
+        bool includeMetadata = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var item in _container.GetBlobsAsync(
+                           traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
+                           states: BlobStates.None,
+                           prefix: $"{directory.ToBlobPrefix()}{namePrefix}",
+                           cancellationToken: cancellationToken))
+        {
+            yield return new BlobListItem
+            {
+                Name = RelativePath.Parse(item.Name),
+                ETag = item.Properties.ETag?.ToString(),
+                Metadata = includeMetadata && item.Metadata is not null
+                    ? new Dictionary<string, string>(item.Metadata)
+                    : null,
+                ContentLength = includeMetadata ? item.Properties.ContentLength : null,
+                Tier = FromAzureTier(item.Properties.AccessTier),
+            };
+        }
+    }
+
     // ── Metadata update ───────────────────────────────────────────────────────
 
     public async Task SetMetadataAsync(

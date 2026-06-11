@@ -185,6 +185,27 @@ public interface IBlobContainerService
         bool              includeMetadata,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lists blobs directly under <paramref name="directory"/> whose final name segment starts
+    /// with <paramref name="namePrefix"/> as a raw string prefix (NOT segment-aligned):
+    /// <c>ListAsync(chunk-index, "aa")</c> matches <c>chunk-index/aa</c>, <c>chunk-index/aa0</c>
+    /// and <c>chunk-index/aa3f</c>.
+    /// The default implementation filters a directory listing client-side; backends that support
+    /// native raw-prefix listing should override it.
+    /// </summary>
+    async IAsyncEnumerable<BlobListItem> ListAsync(
+        RelativePath      directory,
+        string            namePrefix,
+        bool              includeMetadata   = false,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var item in ListAsync(directory, includeMetadata, cancellationToken))
+        {
+            if (item.Name.Name.ToString().StartsWith(namePrefix, StringComparison.Ordinal))
+                yield return item;
+        }
+    }
+
     // ── Metadata update ───────────────────────────────────────────────────────
 
     /// <summary>
