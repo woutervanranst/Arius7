@@ -543,40 +543,53 @@ public sealed class ProgressState
         Volatile.Write(ref _treeTraversalComplete, true);
     }
 
-    // ── Restore: disposition tallies ─────────────────────────────────────────
+    // ── Restore: download queue depth (set by pipeline via OnDownloadQueueReady) ──
 
-    /// <summary>Count of files with disposition New (not yet on disk).</summary>
-    public int DispositionNew => (int)Interlocked.Read(ref _dispositionNew);
-    private long _dispositionNew;
+    /// <summary>
+    /// Getter for the download-stage queue depth (chunks resolved and waiting for a worker);
+    /// null until the pipeline sets it via the OnDownloadQueueReady callback.
+    /// </summary>
+    public Func<int>? DownloadQueueDepth
+    {
+        get => Volatile.Read(ref _downloadQueueDepth);
+        set => Volatile.Write(ref _downloadQueueDepth, value);
+    }
+    private Func<int>? _downloadQueueDepth;
+
+    // ── Restore: route tallies ─────────────────────────────────────────
+
+    /// <summary>Count of files with route New (not yet on disk).</summary>
+    public int RouteNew => (int)Interlocked.Read(ref _routeNew);
+    private long _routeNew;
 
     /// <summary>Count of files skipped because local copy is identical.</summary>
-    public int DispositionSkipIdentical => (int)Interlocked.Read(ref _dispositionSkipIdentical);
-    private long _dispositionSkipIdentical;
+    public int RouteSkipIdentical => (int)Interlocked.Read(ref _routeSkipIdentical);
+    private long _routeSkipIdentical;
 
     /// <summary>Count of files overwritten (--overwrite flag set).</summary>
-    public int DispositionOverwrite => (int)Interlocked.Read(ref _dispositionOverwrite);
-    private long _dispositionOverwrite;
+    public int RouteOverwrite => (int)Interlocked.Read(ref _routeOverwrite);
+    private long _routeOverwrite;
 
     /// <summary>Count of files kept because local differs and --overwrite not set.</summary>
-    public int DispositionKeepLocalDiffers => (int)Interlocked.Read(ref _dispositionKeepLocalDiffers);
-    private long _dispositionKeepLocalDiffers;
+    public int RouteKeepLocalDiffers => (int)Interlocked.Read(ref _routeKeepLocalDiffers);
+    private long _routeKeepLocalDiffers;
 
-    /// <summary>Increments the disposition tally for the specified disposition.</summary>
-    public void IncrementDisposition(RestoreDisposition disposition)
+    /// <summary>Increments the route tally for the specified route.</summary>
+    public void IncrementRoute(RestoreRoute route)
     {
-        switch (disposition)
+        switch (route)
         {
-            case RestoreDisposition.New:
-                Interlocked.Increment(ref _dispositionNew);
+            case RestoreRoute.New:
+                Interlocked.Increment(ref _routeNew);
                 break;
-            case RestoreDisposition.SkipIdentical:
-                Interlocked.Increment(ref _dispositionSkipIdentical);
+            case RestoreRoute.SkipIdentical:
+                Interlocked.Increment(ref _routeSkipIdentical);
                 break;
-            case RestoreDisposition.Overwrite:
-                Interlocked.Increment(ref _dispositionOverwrite);
+            case RestoreRoute.Overwrite:
+                Interlocked.Increment(ref _routeOverwrite);
                 break;
-            case RestoreDisposition.KeepLocalDiffers:
-                Interlocked.Increment(ref _dispositionKeepLocalDiffers);
+            case RestoreRoute.KeepLocalDiffers:
+                Interlocked.Increment(ref _routeKeepLocalDiffers);
                 break;
         }
     }

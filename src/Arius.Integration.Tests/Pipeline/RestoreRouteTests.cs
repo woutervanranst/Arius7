@@ -5,11 +5,11 @@ using NSubstitute;
 namespace Arius.Integration.Tests.Pipeline;
 
 /// <summary>
-/// Tests for the restore pipeline's file disposition logic (step 3).
-/// Covers all four disposition cases: New, SkipIdentical, Overwrite, KeepLocalDiffers.
+/// Tests for the restore pipeline's file route logic (step 3).
+/// Covers all four route cases: New, SkipIdentical, Overwrite, KeepLocalDiffers.
 /// </summary>
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
-public class RestoreDispositionTests(AzuriteFixture azurite)
+public class RestoreRouteTests(AzuriteFixture azurite)
 {
     // ── KeepLocalDiffers: file exists, hash differs, no --overwrite → do NOT restore ──
 
@@ -70,11 +70,11 @@ public class RestoreDispositionTests(AzuriteFixture azurite)
 
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
 
-        // Verify FileDispositionEvent with KeepLocalDiffers was published
+        // Verify FileRoutedEvent with KeepLocalDiffers was published
         await fix.Mediator.Received().Publish(
-            Arg.Is<FileDispositionEvent>(e =>
+            Arg.Is<FileRoutedEvent>(e =>
                 e.RelativePath == relativePath &&
-                e.Disposition == RestoreDisposition.KeepLocalDiffers),
+                e.Route == RestoreRoute.KeepLocalDiffers),
             Arg.Any<CancellationToken>());
 
         // Verify exactly 1 FileSkippedEvent was published with the file's size

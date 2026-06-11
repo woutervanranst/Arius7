@@ -101,14 +101,14 @@ public sealed class TreeTraversalProgressHandler(ProgressState state) : INotific
     }
 }
 
-// ── FileDispositionHandler ────────────────────────────────────────────────────
+// ── FileRoutedHandler ────────────────────────────────────────────────────
 
-/// <summary>Increments the appropriate disposition tally based on the event's <see cref="RestoreDisposition"/> value.</summary>
-public sealed class FileDispositionHandler(ProgressState state) : INotificationHandler<FileDispositionEvent>
+/// <summary>Increments the appropriate route tally based on the event's <see cref="RestoreRoute"/> value.</summary>
+public sealed class FileRoutedHandler(ProgressState state) : INotificationHandler<FileRoutedEvent>
 {
-    public ValueTask Handle(FileDispositionEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(FileRoutedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementDisposition(notification.Disposition);
+        state.IncrementRoute(notification.Route);
         return ValueTask.CompletedTask;
     }
 }

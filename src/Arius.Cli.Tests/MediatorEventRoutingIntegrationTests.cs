@@ -109,10 +109,10 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new TreeTraversalProgressEvent(7));
         await mediator.Publish(new TreeTraversalCompleteEvent(10, 3500));
 
-        // Per-file disposition decisions: a.txt/b.txt are new, c.txt already matches on disk (-> later skipped).
-        await mediator.Publish(new FileDispositionEvent(RelativePath.Parse("a.txt"), RestoreDisposition.New, 1000L));
-        await mediator.Publish(new FileDispositionEvent(RelativePath.Parse("b.txt"), RestoreDisposition.New, 2000L));
-        await mediator.Publish(new FileDispositionEvent(RelativePath.Parse("c.txt"), RestoreDisposition.SkipIdentical, 500L));
+        // Per-file route decisions: a.txt/b.txt are new, c.txt already matches on disk (-> later skipped).
+        await mediator.Publish(new FileRoutedEvent(RelativePath.Parse("a.txt"), RestoreRoute.New, 1000L));
+        await mediator.Publish(new FileRoutedEvent(RelativePath.Parse("b.txt"), RestoreRoute.New, 2000L));
+        await mediator.Publish(new FileRoutedEvent(RelativePath.Parse("c.txt"), RestoreRoute.SkipIdentical, 500L));
 
         // Chunk index lookups done: group/large/tar counts + byte totals. The handler re-stamps the original
         // size set above (it calls SetTreeTraversalComplete again), so keep that value consistent (3500).
@@ -151,9 +151,9 @@ public class MediatorEventRoutingIntegrationTests
         state.TreeTraversalComplete.ShouldBeTrue();
         state.RestoreTotalOriginalSize.ShouldBe(3500L);
 
-        // FileDispositionEvent
-        state.DispositionNew.ShouldBe(2);
-        state.DispositionSkipIdentical.ShouldBe(1);
+        // FileRoutedEvent
+        state.RouteNew.ShouldBe(2);
+        state.RouteSkipIdentical.ShouldBe(1);
 
         // ChunkResolutionCompleteEvent
         state.ChunkGroups.ShouldBe(3);

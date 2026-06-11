@@ -25,11 +25,11 @@ public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOrigina
 /// <summary>Emitted periodically during tree traversal with the cumulative count of files discovered.</summary>
 public sealed record TreeTraversalProgressEvent(int FilesFound) : INotification;
 
-/// <summary>Disposition decision for each file during restore conflict check.</summary>
-public enum RestoreDisposition { New, SkipIdentical, Overwrite, KeepLocalDiffers }
+/// <summary>Route decision for each file during restore conflict check.</summary>
+public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 
-/// <summary>Emitted for each file's disposition decision during restore.</summary>
-public sealed record FileDispositionEvent(RelativePath RelativePath, RestoreDisposition Disposition, long FileSize) : INotification;
+/// <summary>Emitted for each file's route decision during restore.</summary>
+public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
 /// <summary>Emitted after chunk index lookups complete.</summary>
 public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
