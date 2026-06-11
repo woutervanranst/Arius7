@@ -190,7 +190,6 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
             // let's check remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
-            var downloadStopwatch = Stopwatch.StartNew();
             var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
             if (remoteShard is null)
             {
@@ -223,8 +222,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
 
             _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
-            _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries, {ElapsedMs}ms)",
-                prefix, shard.Count, downloadStopwatch.ElapsedMilliseconds);
+            _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
         }
         finally
         {
