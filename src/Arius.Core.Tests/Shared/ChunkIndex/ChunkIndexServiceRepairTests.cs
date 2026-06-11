@@ -150,6 +150,29 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_ThinChunkWithMissingParentTar_Fails()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var thinContentHash = FakeContentHash('b');
+        blobs.SeedBlob(
+            BlobPaths.ThinChunkPath(thinContentHash),
+            [],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.ParentChunkHash] = FakeChunkHash('c').ToString(), // tar blob not seeded
+                [BlobMetadataKeys.OriginalSize] = "10",
+                [BlobMetadataKeys.CompressedSize] = "2",
+            });
+        using var index = CreateIndex(blobs, "repair-missing-tar");
+
+        // The parent tar's tier governs the thin entry; a missing tar means the repository is
+        // broken and the repair must fail rather than persist a guessed tier.
+        await Should.ThrowAsync<ChunkIndexRepairException>(() => index.RepairAsync());
+    }
+
+    [Test]
     public async Task RepairAsync_ClearsPendingAndInFlightEntries()
     {
         var blobs = new FakeInMemoryBlobContainerService();

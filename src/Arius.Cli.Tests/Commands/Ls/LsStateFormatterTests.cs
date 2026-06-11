@@ -56,4 +56,18 @@ public class LsStateFormatterTests
 
         LsStateFormatter.ToMarkup(state).ShouldBe("[dim].[/][dim].[/]R[lightskyblue1]A[/]");
     }
+
+    [Test]
+    public void ToMarkup_Rehydrating_UsesPurpleTilde()
+    {
+        var state = RepositoryEntryState.Repository | RepositoryEntryState.RepositoryArchived | RepositoryEntryState.RepositoryRehydrating;
+
+        LsStateFormatter.ToMarkup(state).ShouldBe("[dim].[/][dim].[/]R[purple]~[/]");
+    }
+
+    [Test]
+    public void ToMarkup_UnknownTier_RendersQuestionMark()
+    {
+        LsStateFormatter.ToMarkup(RepositoryEntryState.Repository).ShouldBe("[dim].[/][dim].[/]R?");
+    }
 }

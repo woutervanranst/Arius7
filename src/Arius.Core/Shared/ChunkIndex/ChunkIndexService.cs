@@ -462,9 +462,15 @@ internal sealed class ChunkIndexService : IChunkIndexService
             if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
                 throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
 
+            // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
+            // A parent tar absent from the listing means the repository is broken — fail the repair
+            // rather than persisting a guessed (hydrated) tier.
+            if (!tarTiers.TryGetValue(parentChunkHash, out var tarTier))
+                throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
+
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
             var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize, tarTiers.GetValueOrDefault(parentChunkHash, BlobTier.Hot));
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize, tarTier);
         }
 
         static long ReadChunkSize(BlobListItem item)

@@ -51,6 +51,10 @@ public partial class FileItemViewModel : ObservableObject
         };
 
         OriginalLength = file.OriginalSize ?? 0;
+
+        // The property setter no-ops when the switch lands on the default (Unknown),
+        // so apply the presentation (color + tooltip) explicitly.
+        OnHydrationStatusChanged(HydrationStatus);
     }
 
     partial void OnHydrationStatusChanged(ChunkHydrationStatus value)
