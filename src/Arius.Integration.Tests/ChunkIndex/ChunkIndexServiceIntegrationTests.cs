@@ -5,6 +5,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Data.Sqlite;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 
@@ -61,7 +62,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         var contentHash = FakeContentHash('1');
         var chunkHash   = FakeChunkHash('a');
-        var entry       = new ShardEntry(contentHash, chunkHash, 1024, 512);
+        var entry       = new ShardEntry(contentHash, chunkHash, 1024, 512, BlobTier.Cool);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 
@@ -81,7 +82,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var (svc, _) = await CreateServiceAsync();
         var contentHash = FakeContentHash('2');
         var chunkHash   = FakeChunkHash('b');
-        var entry       = new ShardEntry(contentHash, chunkHash, 500, 200);
+        var entry       = new ShardEntry(contentHash, chunkHash, 500, 200, BlobTier.Cool);
 
         svc.AddEntry(entry); // goes to in-flight, NOT yet uploaded
 
@@ -105,7 +106,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var svc1        = new ChunkIndexService(blobs, encryption, snapshot, Account, containerName);
         var contentHash = FakeContentHash('3');
         var chunkHash   = FakeChunkHash('c');
-        var entry       = new ShardEntry(contentHash, chunkHash, 800, 400);
+        var entry       = new ShardEntry(contentHash, chunkHash, 800, 400, BlobTier.Cool);
         svc1.AddEntry(entry);
         await svc1.FlushAsync();
 

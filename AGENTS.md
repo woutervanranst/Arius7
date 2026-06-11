@@ -82,6 +82,7 @@ Specialist agents
 
 ## Way of Working
 
+- Arius is pre-release with no production repositories: breaking changes to persisted formats (shard line format, SQLite cache schema, blob layout) are acceptable without migrations or legacy parsing — confirm first, then prefer the clean break.
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
@@ -99,6 +100,8 @@ Specialist agents
 - Arius is a backup tool for important files. Correctness, durability, and recoverability matter more than raw throughput.
 - Repository scale can be large: potentially terabytes of binary data and many thousands of small files. Consider both byte scale and file-count scale when designing or optimizing archive, restore, list, and cache behavior.
 - Prefer streaming, batching, and bounded-memory or bounded-disk pipelines over whole-repository in-memory materialization when file count can grow.
+- Long-running handlers (`ArchiveCommandHandler`, `ListQueryHandler`) are structured as channel-connected stages: bounded channels for backpressure, each stage completes its writer when done (faults propagate via `Complete(exception)`), and a type-level doc header with stage/channel tables. Mirror that structure and documentation style when adding or restructuring pipelines.
+- For interactive commands (`ls`), favor responsiveness: small lookup batches, stream output as results arrive, never buffer the full listing (no table/recorder materialization in the CLI).
 - Avoid per-file remote round-trips when a batched list, manifest walk, shard lookup, or validated cache can answer the question.
 - Blob storage is non-transactional across blobs. A run can leave partial remote updates if it crashes. Consider retry-safe and recoverable from partial flushes, partial uploads, and crashes.
 - Local caches can be stale, incomplete, or corrupt. Cache contents are performance hints, not the source of truth.
@@ -161,6 +164,7 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
   - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
 - **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
   - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+  - **storage tier hint**: each chunk-index entry records the chunk blob's storage tier at archive time (wire values: hot=1, cool=2, cold=3, archive=4; for tar-bundled files, the tar blob's tier). It is a *hint* — lifecycle policies or rehydration can change the actual tier — and lets `ls` report hydrated-vs-archived state from the index without per-blob calls. Live truth (including rehydration-pending) comes from `ChunkHydrationStatusQuery`.
 - **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
 - **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
 

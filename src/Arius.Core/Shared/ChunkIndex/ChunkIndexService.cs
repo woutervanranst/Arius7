@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -15,6 +16,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
 {
     internal const           int          ShardPrefixLength          = 2;
     internal const           int          FlushWorkers               = 32;
+    internal const           int          PrefixLoadWorkers          = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
@@ -77,8 +79,6 @@ internal sealed class ChunkIndexService : IChunkIndexService
         ThrowIfRepairIncomplete();
         ThrowIfFlushed();
 
-        // NOTE: this method needs to be battle tested during list/restore optimization
-
         var hashes = contentHashes.Distinct().ToArray();
         var result = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
         if (hashes.Length == 0)
@@ -110,9 +110,17 @@ internal sealed class ChunkIndexService : IChunkIndexService
             return result;
 
         var latestSnapshotName = await _latestSnapshotName;
+
+        // Load the distinct prefixes concurrently: on a cold cache each prefix is a remote shard
+        // download, and with ShardPrefixLength = 2 even a small batch spans many prefixes.
+        // EnsurePrefixLoadedAndSynchronizedAsync is safe for concurrent callers (per-prefix gates).
+        await Parallel.ForEachAsync(
+            validationWork,
+            new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
+            async (item, ct) => await EnsurePrefixLoadedAndSynchronizedAsync(item.Prefix, latestSnapshotName, ct));
+
         foreach (var item in validationWork)
         {
-            await EnsurePrefixLoadedAndSynchronizedAsync(item.Prefix, latestSnapshotName, cancellationToken);
             foreach (var contentHash in item.Hashes)
             {
                 var entry = _localStore.FindEntry(contentHash);
@@ -174,7 +182,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             // is the local version up to date with the snapshot. if it is, we dont need to make a remote call to check the etag
             if (_localStore.IsPrefixAtSnapshotVersion(prefix, latestSnapshotVersion))
+            {
+                // Hot path: hit once per prefix per lookup batch —> Debug log level
+                _logger.LogDebug("[chunk-index] shard {Prefix}: local cache current", prefix);
                 return; //Path 1
+            }
 
             // let's check remote
             var blobName = BlobPaths.ChunkIndexShardPath(prefix);
@@ -183,6 +195,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             {
                 // it doesnt exist on remote -> it s a new shard
                 _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: no remote shard (new prefix)", prefix);
                 return; //Path 2
             }
 
@@ -193,6 +206,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             {
                 // our local copy is on the same version, update the snapshot version
                 _localStore.SetPrefixSnapshotVersion(prefix, remoteShard.ETag, latestSnapshotVersion);
+                _logger.LogInformation("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
                 return; //Path 3a
             }
 
@@ -208,6 +222,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
 
             _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
+            _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
         }
         finally
         {
@@ -344,6 +359,24 @@ internal sealed class ChunkIndexService : IChunkIndexService
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
+        // Pass 1: collect tar blob tiers. A thin chunk's data lives in its parent tar (the thin
+        // stub itself is always uploaded Cool), so its tier hint must come from the tar blob.
+        // Memory is bounded by the tar count, not the file count.
+        var tarTiers = new Dictionary<ChunkHash, BlobTier>();
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (item.Metadata is { } metadata
+                && metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType)
+                && ariusType == BlobMetadataKeys.TypeTar
+                && ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash))
+            {
+                tarTiers[tarHash] = item.Tier ?? BlobTier.Hot;
+            }
+        }
+
+        // Pass 2: rebuild the entries.
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
 
@@ -352,7 +385,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             cancellationToken.ThrowIfCancellationRequested();
             listedChunkCount++;
 
-            var entry = CreateRepairEntry(item);
+            var entry = CreateRepairEntry(item, tarTiers);
             if (entry is null)
                 continue;
 
@@ -401,7 +434,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// </summary>
     /// <param name="item">The listed chunk blob.</param>
     /// <returns>The rebuilt shard entry, or <see langword="null"/> when the blob should not appear in the chunk index.</returns>
-    private static ShardEntry? CreateRepairEntry(BlobListItem item)
+    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
     {
         var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
         if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
@@ -410,7 +443,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item),
+            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarTiers),
             BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
             _                          => null,
         };
@@ -420,18 +453,24 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
             var compressedSize = ReadChunkSize(item);
-            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize);
+            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize, item.Tier ?? BlobTier.Hot);
         }
 
-        static ShardEntry CreateThinRepairEntry(BlobListItem item)
+        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
         {
             var contentHash = ContentHash.Parse(item.Name.Name.ToString());
             if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
                 throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
 
+            // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
+            // A parent tar absent from the listing means the repository is broken — fail the repair
+            // rather than persisting a guessed (hydrated) tier.
+            if (!tarTiers.TryGetValue(parentChunkHash, out var tarTier))
+                throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
+
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
             var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize);
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize, tarTier);
         }
 
         static long ReadChunkSize(BlobListItem item)

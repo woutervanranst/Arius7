@@ -15,6 +15,11 @@ internal static class LsVerb
         var passphraseOption = CliBuilder.PassphraseOption();
         var containerOption  = CliBuilder.ContainerOption();
 
+        var localPathArg = new Argument<string?>("path")
+        {
+            Description = "Local directory to overlay (shows local presence per file)",
+            Arity       = ArgumentArity.ZeroOrOne,
+        };
         var lsVersionOption = new Option<string?>("-v", "--version")
         {
             Description = "Snapshot version (partial timestamp, default latest)",
@@ -33,6 +38,7 @@ internal static class LsVerb
         cmd.Options.Add(keyOption);
         cmd.Options.Add(passphraseOption);
         cmd.Options.Add(containerOption);
+        cmd.Arguments.Add(localPathArg);
         cmd.Options.Add(lsVersionOption);
         cmd.Options.Add(prefixOption);
         cmd.Options.Add(filterOption);
@@ -43,9 +49,16 @@ internal static class LsVerb
             var key        = parseResult.GetValue(keyOption);
             var passphrase = parseResult.GetValue(passphraseOption);
             var container  = parseResult.GetValue(containerOption)!;
+            var localPath  = parseResult.GetValue(localPathArg);
             var version    = parseResult.GetValue(lsVersionOption);
             var prefix     = parseResult.GetValue(prefixOption);
             var filter     = parseResult.GetValue(filterOption);
+
+            if (localPath is not null && !Directory.Exists(localPath))
+            {
+                AnsiConsole.MarkupLine($"[red]Error:[/] Local directory not found: {Markup.Escape(localPath)}");
+                return 1;
+            }
 
             var resolvedAccount = CliBuilder.ResolveAccount(account);
             if (resolvedAccount is null)
@@ -56,10 +69,9 @@ internal static class LsVerb
 
             var resolvedKey = CliBuilder.ResolveKey(key, resolvedAccount);
 
+            // No console recorder here: ls streams entries and must stay bounded in memory,
+            // so the listing itself is not captured into the audit log — only the summary is.
             CliBuilder.ConfigureAuditLogging(resolvedAccount, container, "ls");
-            var recorder = AnsiConsole.Console.CreateRecorder();
-            var savedConsole = AnsiConsole.Console;
-            AnsiConsole.Console = recorder;
 
             try
             {
@@ -119,20 +131,20 @@ internal static class LsVerb
 
                 var opts = new ListQueryOptions
                 {
-                    Version = version,
-                    Prefix  = parsedPrefix,
-                    Filter  = filter,
+                    Version   = version,
+                    Prefix    = parsedPrefix,
+                    Filter    = filter,
+                    LocalPath = localPath,
                 };
 
-                var table = new Table();
-                table.AddColumn("Path");
-                table.AddColumn(new TableColumn("Size").RightAligned());
-                table.AddColumn("Created");
-                table.AddColumn("Modified");
-
+                // Rows are written as they stream in (no table materialization) so the listing
+                // is responsive and memory-bounded even for repositories with millions of entries.
                 var fileCount = 0;
                 try
                 {
+                    AnsiConsole.MarkupLine($"[bold]State  {"Size",12}  {"Created",-16}  {"Modified",-16}  Path[/]");
+                    AnsiConsole.MarkupLine("[dim]P=local pointer  B=local binary  R=in repository  H=hydrated  A=archived  ~=rehydrating  ?=tier unknown[/]");
+
                     await foreach (var entry in mediator.CreateStream(new ListQuery(opts), ct))
                     {
                         if (entry is not RepositoryFileEntry file)
@@ -143,28 +155,27 @@ internal static class LsVerb
                         var size = file.OriginalSize.HasValue
                             ? file.OriginalSize.Value.Bytes().Humanize()
                             : "?";
-                        table.AddRow(
-                            Markup.Escape(file.RelativePath.ToString()),
-                            size,
-                            file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-",
-                            file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-");
+                        var created  = file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+                        var modified = file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+                        AnsiConsole.MarkupLine(
+                            $"{LsStateFormatter.ToMarkup(file.State)}   {Markup.Escape(size),12}  {created,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToString())}");
                         fileCount++;
                     }
                 }
                 catch (Exception ex)
                 {
+                    Log.Error(ex, "ls failed");
                     AnsiConsole.MarkupLine($"[red]Ls failed:[/] {Markup.Escape(ex.Message)}");
                     return 1;
                 }
 
-                AnsiConsole.Write(table);
                 AnsiConsole.MarkupLine($"[dim]{fileCount} file(s)[/]");
+                Log.Information("ls completed: {FileCount} file(s)", fileCount);
                 return 0;
             }
             finally
             {
-                AnsiConsole.Console = savedConsole;
-                CliBuilder.FlushAuditLog(recorder);
+                Log.CloseAndFlush();
             }
         });
 

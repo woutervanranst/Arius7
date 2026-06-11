@@ -11,6 +11,7 @@ using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -273,7 +274,7 @@ public class RestoreCommandHandlerTests
 
             var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8).ToString());
             var chunkHash = ChunkHash.Parse(validHash);
-            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7));
+            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7, BlobTier.Cool));
 
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes($"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
             blobs.AddBlob(BlobPaths.FileTreePath(rootHash),             await CompressAsync(invalidTreePayload));

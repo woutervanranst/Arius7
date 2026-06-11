@@ -128,6 +128,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
                 ETag = _blobs.TryGetValue(blobName, out var currentBlob) ? currentBlob.ETag : null,
                 Metadata = metadata,
                 ContentLength = contentLength,
+                Tier = currentBlob?.Tier,
             };
             await Task.Yield();
         }

@@ -33,23 +33,23 @@ public sealed class ChunkHydrationStatusQueryHandler : IStreamQueryHandler<Chunk
         ChunkHydrationStatusQuery query,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var cloudFiles = query.Files
-            .Where(file => file is { ExistsInCloud: true, ContentHash: not null })
+        var repositoryFiles = query.Files
+            .Where(file => file.State.HasFlag(RepositoryEntryState.Repository) && file.ContentHash is not null)
             .Select(file => (File: file, ContentHash: file.ContentHash!.Value))
             .ToList();
 
-        if (cloudFiles.Count == 0)
+        if (repositoryFiles.Count == 0)
         {
             yield break;
         }
 
         var indexEntries = await _chunkIndex.LookupAsync(
-            cloudFiles.Select(file => file.ContentHash).Distinct(),
+            repositoryFiles.Select(file => file.ContentHash).Distinct(),
             cancellationToken).ConfigureAwait(false);
 
         var statusByChunkHash = new Dictionary<ChunkHash, ChunkHydrationStatus>();
 
-        foreach (var (file, contentHash) in cloudFiles)
+        foreach (var (file, contentHash) in repositoryFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

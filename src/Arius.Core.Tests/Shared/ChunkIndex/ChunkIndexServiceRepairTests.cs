@@ -39,19 +39,25 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "10",
                 [BlobMetadataKeys.CompressedSize] = "2",
             });
+        blobs.SeedBlob(
+            BlobPaths.ChunkPath(parentChunkHash),
+            [4, 5],
+            BlobTier.Archive,
+            new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar });
         blobs.SeedBlob(staleShard, [9], BlobTier.Cool);
         using var index = CreateIndex(blobs, "repair-rebuild");
 
         var result = await index.RepairAsync();
 
-        result.ListedChunkCount.ShouldBe(2);
+        result.ListedChunkCount.ShouldBe(3);
         result.RebuiltEntryCount.ShouldBe(2);
         result.UploadedShardCount.ShouldBe(2);
         result.DeletedStaleShardCount.ShouldBe(1);
         blobs.DeletedBlobNames.ShouldContain(staleShard);
 
-        (await index.LookupAsync(largeContentHash)).ShouldBe(new ShardEntry(largeContentHash, ChunkHash.Parse(largeContentHash), 100, 3));
-        (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2));
+        // The large entry's tier comes from its own blob; the thin entry's from its parent tar.
+        (await index.LookupAsync(largeContentHash)).ShouldBe(new ShardEntry(largeContentHash, ChunkHash.Parse(largeContentHash), 100, 3, BlobTier.Cool));
+        (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2, BlobTier.Archive));
     }
 
     [Test]
@@ -74,7 +80,7 @@ public class ChunkIndexServiceRepairTests
             });
 
         var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
-        staleStore.UpsertPendingFlush(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1));
+        staleStore.UpsertPendingFlush(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1, BlobTier.Cool));
 
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
@@ -95,7 +101,7 @@ public class ChunkIndexServiceRepairTests
         var rebuiltHash = FakeContentHash('a');
         var staleHash = ContentHash.Parse($"{rebuiltHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('f', 64 - ChunkIndexService.ShardPrefixLength)}");
         var staleShard = new Shard();
-        staleShard.AddOrUpdate(new ShardEntry(staleHash, FakeChunkHash('f'), 999, 111));
+        staleShard.AddOrUpdate(new ShardEntry(staleHash, FakeChunkHash('f'), 999, 111, BlobTier.Cool));
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(rebuiltHash)),
             await ShardSerializer.SerializeAsync(staleShard, s_encryption),
@@ -115,7 +121,7 @@ public class ChunkIndexServiceRepairTests
         var result = await index.RepairAsync();
 
         result.RebuiltShardCount.ShouldBe(1);
-        (await index.LookupAsync(rebuiltHash)).ShouldBe(new ShardEntry(rebuiltHash, ChunkHash.Parse(rebuiltHash), 100, 3));
+        (await index.LookupAsync(rebuiltHash)).ShouldBe(new ShardEntry(rebuiltHash, ChunkHash.Parse(rebuiltHash), 100, 3, BlobTier.Cool));
         (await index.LookupAsync(staleHash)).ShouldBeNull();
     }
 
@@ -144,12 +150,35 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_ThinChunkWithMissingParentTar_Fails()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var thinContentHash = FakeContentHash('b');
+        blobs.SeedBlob(
+            BlobPaths.ThinChunkPath(thinContentHash),
+            [],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.ParentChunkHash] = FakeChunkHash('c').ToString(), // tar blob not seeded
+                [BlobMetadataKeys.OriginalSize] = "10",
+                [BlobMetadataKeys.CompressedSize] = "2",
+            });
+        using var index = CreateIndex(blobs, "repair-missing-tar");
+
+        // The parent tar's tier governs the thin entry; a missing tar means the repository is
+        // broken and the repair must fail rather than persist a guessed tier.
+        await Should.ThrowAsync<ChunkIndexRepairException>(() => index.RepairAsync());
+    }
+
+    [Test]
     public async Task RepairAsync_ClearsPendingAndInFlightEntries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("repair-clears-memory");
         var staleContentHash = FakeContentHash('a');
-        var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2);
+        var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2, BlobTier.Cool);
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(staleEntry);
 
@@ -191,7 +220,7 @@ public class ChunkIndexServiceRepairTests
         repository.CreateDirectory(RelativePath.Root);
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();

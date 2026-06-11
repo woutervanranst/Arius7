@@ -259,19 +259,19 @@ public partial class RepositoryExplorerViewModel : ObservableObject
 
         try
         {
-            var cloudFiles = node.Items
-                .Where(item => item.File.ExistsInCloud && item.File.ContentHash is not null)
+            var repositoryFiles = node.Items
+                .Where(item => item.File.State.HasFlag(RepositoryEntryState.Repository) && item.File.ContentHash is not null)
                 .Select(item => item.File)
                 .ToList();
 
-            if (cloudFiles.Count == 0)
+            if (repositoryFiles.Count == 0)
                 return;
 
             var lookup = node.Items.ToDictionary(
                 item => item.File.RelativePath,
                 item => item);
 
-            await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(cloudFiles), cancellationToken))
+            await foreach (var status in repositorySession.Mediator.CreateStream(new ChunkHydrationStatusQuery(repositoryFiles), cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -458,7 +458,7 @@ public partial class RepositoryExplorerViewModel : ObservableObject
             return;
 
         var unresolved = items
-            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.ExistsInCloud && item.File.ContentHash is not null)
+            .Where(item => item.HydrationStatus == ChunkHydrationStatus.Unknown && item.File.State.HasFlag(RepositoryEntryState.Repository) && item.File.ContentHash is not null)
             .Select(item => item.File)
             .ToList();
 

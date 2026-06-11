@@ -1,0 +1,882 @@
+ ▐▛███▜▌   Claude Code v2.1.170
+▝▜█████▛▘  Fable 5 · Claude Team
+  ▘▘ ▝▝    ~/.superset/worktrees/Arius7/streaming-list-and-restore/src
+
+ ▎ Fable 5 is here! Our newest model for complex, long-running work
+ ▎ Included in your plan limits until Jun 22, then switch to usage credits to continue.
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+⏺ Both files are updated.
+
+  README.md (user-facing, no code concepts):
+  - The chunk-index/ section now shows the new shard line format with the
+  trailing tier field, explains the wire values (1=hot … 4=archive), that it's a
+  hint letting ls report downloadable-vs-archived without contacting each blob,
+  and that large-file lines omit the chunk-hash field.
+  - The usage section heading is corrected to "List files in a snapshot" with a
+  note that results stream as found (responsive at millions of files) and a
+  pointer to --prefix, --filter, and -v.
+
+  AGENTS.md (agent-facing):
+  - Domain language gained three entries: storage tier hint (recorded at archive
+  time, hint semantics, live truth stays with ChunkHydrationStatusQuery),
+  repository vs local naming (use repository*/local*, not "cloud";
+  RepositoryEntryState flags listed), and overlay (tree is the reference
+  sequence, local filesystem overlaid per directory).
+  - Scale And Durability now documents the channel-pipeline convention (bounded
+  channels, writers completed in stage, fault propagation via
+  Complete(exception), stage/channel doc-header style to mirror) and the
+  responsiveness rule for interactive commands (small batches, stream output,
+  never buffer the full listing).
+  - Way of Working leads with the pre-release rule: breaking changes to
+  persisted formats are acceptable without migrations (confirm first), and stale
+  ~/.arius state must be deleted after such a change since it fails test runs —
+  exactly what we hit this session.
+
+✻ Crunched for 1m 57s
+
+※ recap: Goal: streaming repository-aware ls with state flags and tier hints in the chunk index. All code, tests (Core/CLI/Integration green), README and AGENTS.md updates are done. Next action: review the diff and commit, or tell me what to adjust.
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Referenced file AGENTS.md
+  ⎿  Referenced file README.md
+  ⎿  Read ../../../../.claude/projects/-Users-wouter--superset-projects-Arius7/memory/wouter-wants-honest-perf-assessments.md (15 lines)
+  ⎿  Read ../../../../.claude/projects/-Users-wouter--superset-projects-Arius7/memory/arius-dev-phase-breaking-changes-ok.md (15 lines)
+  ⎿  Referenced file src/Arius.Core.Tests/Features/ListQuery/ListQueryHandlerTests.cs
+  ⎿  Plan file referenced (~/.claude/plans/can-you-mirror-the-mossy-kite.md)
+
+❯ 1. could the CLI indicate if the file is present locally or remote; similar   
+  to Arius.Explorer? 2. i d like a bit more logging;                            
+  /Users/wouter/.arius/ariusci-test888/logs/2026-06-11_00-07-34_ls.txt is       
+  rather limited right now. eg cache misses/hits, downloading shard, ... what   
+  is the hot path, what is the exception path                                   
+
+⏺ Two new asks: (1) ls output should show local/repository presence per file
+  like the Explorer does, and (2) richer logging on the ls path (shard cache
+  hits/misses, downloads). Let me look at the current state of the relevant
+  files.
+
+  Searched for 4 patterns, read 6 files (ctrl+o to expand)
+  ⎿  Loaded src/Arius.Explorer/CLAUDE.md
+
+⏺ Bash(cd
+      /Users/wouter/.superset/worktrees/Arius7/streaming-list-and-restore/src &&
+      grep -rn "LogDebug\|LogTrace\|LogVerbose" Arius.Core --include='*.cs' |
+      sed 's/:.*…)
+  ⎿  Arius.Core/Features/RestoreCommand/RestoreCommandHandler.cs: LogDebug(
+     "[tree] Traversal progress: {FilesFound} files discovered", result.Cou
+     nt);
+     … +69 lines (ctrl+o to expand)
+
+⏺ Let me look at the actual log file the user referenced to see what's missing.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ User answered Claude's questions:
+  ⎿  · How should the ls output indicate local/repository presence per file? → 
+     Compact flag column (Recommended)
+     · ls currently never passes LocalPath, so the local overlay is inert in the
+     CLI — there is no way to point it at a local directory. How should the 
+     local root be provided? → Optional positional [path] (Recommended)
+     · How should the richer logging be leveled? Per-prefix shard events 
+     (downloaded / cache current / new / revalidated) are bounded at ~256 lines 
+     per run; the existing per-hash Debug logs in ChunkIndexLocalStore would be 
+     millions of lines for large listings. → everything from 1 but no progress 
+     heartbeat. error logging should be at error log level no?
+
+  Searched for 1 pattern, listed 1 directory (ctrl+o to expand)
+
+⏺ I have everything I need. Writing the plan now.
+
+⏺ Updated plan
+  ⎿  Error writing file
+  Read 1 file (ctrl+o to expand)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ ls: state column + local overlay path; richer chunk-index logging       │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ Two follow-ups on the streaming ls work:                                │
+     │                                                                         │
+     │ 1. The CLI doesn't show where a file exists. Explorer renders four      │
+     │ indicators per file (local pointer, local binary, repository,           │
+     │ hydration) from RepositoryEntryState; the CLI prints only               │
+     │ size/dates/path. Worse, LsVerb never sets ListQueryOptions.LocalPath,   │
+     │ so the local overlay the handler supports is unreachable from the CLI.  │
+     │ 2. The ls log file is nearly empty.                                     │
+     │ ~/.arius/.../2026-06-11_00-07-34_ls.txt shows 19 seconds of silence     │
+     │ between [phase] resolve and [phase] complete for 37k files. No          │
+     │ visibility into chunk-index cache hits/misses or shard downloads. The   │
+     │ file sink is Information+; all existing chunk-index detail logging is   │
+     │ per-hash Debug (ChunkIndexLocalStore.FindEntry etc.) — millions of      │
+     │ lines if unlocked wholesale, so that is not the lever.                  │
+     │                                                                         │
+     │ User decisions: compact 4-char flag column; optional positional [path]  │
+     │ argument; bounded Information-level logging (per-prefix shard events,   │
+     │ end summary, no progress heartbeat); failures logged at Error level.    │
+     │ Hot path (per-hash/per-item) stays unlogged at default level; the       │
+     │ per-prefix validation path (≤256 events/run) and the exception path are │
+     │ what get logged.                                                        │
+     │                                                                         │
+     │ 1. LsVerb — state column + positional path                              │
+     │ (src/Arius.Cli/Commands/Ls/LsVerb.cs)                                   │
+     │                                                                         │
+     │ - Add optional positional Argument<string?>("path") ("Local directory   │
+     │ to overlay; shows local presence per file"). When provided: validate    │
+     │ Directory.Exists, else red error + exit 1; pass into                    │
+     │ ListQueryOptions.LocalPath. When omitted: LocalPath = null (P/B render  │
+     │ as dots).                                                               │
+     │ - New first column State, 4 chars, formatted from RepositoryEntryState: │
+     │   - char 1: P (LocalPointer), char 2: B (LocalBinary), char 3: R        │
+     │ (Repository),                                                           │
+     │   - char 4: H (RepositoryHydrated), A (RepositoryArchived), ~           │
+     │ (RepositoryRehydrating — never set by ls today, live-only; handled for  │
+     │ completeness), ? (Repository set but no Hydrated/Archived bit, i.e.     │
+     │ hash missing from chunk index), . (not in repository).                  │
+     │   - Absent flags render as [dim].[/]. Colors echo Explorer: B and H     │
+     │ blue, A lightskyblue1, others default.                                  │
+     │ - Implement as a small internal static formatter (e.g. LsStateFormatter │
+     │ in the Ls folder) returning the markup string, so it is directly        │
+     │ unit-testable per flag combination.                                     │
+     │ - Header becomes State  Size  Created  Modified  Path plus one dim      │
+     │ legend line: P=local pointer  B=local binary  R=in repository           │
+     │ H=hydrated  A=archived.                                                 │
+     │ - Local-only files (no Repository flag) already flow through the stream │
+     │ — they now appear naturally as e.g. .B...                               │
+     │ - The enumeration catch currently prints Ls failed: but writes nothing  │
+     │ to the log file — add Log.Error(ex, "ls failed") there (exception path, │
+     │ Error level).                                                           │
+     │                                                                         │
+     │ 2. ChunkIndexService — per-prefix cache-path logging + once-per-run     │
+     │ memo (src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)            │
+     │                                                                         │
+     │ EnsurePrefixLoadedAndSynchronizedAsync has four outcomes (already       │
+     │ commented Path 1/2/3a/3b) but logs none of them. Logging them per call  │
+     │ would be noisy: ls resolves in batches of 32, each batch re-validates   │
+     │ ~30 prefixes, so Path 1 fires ~once per prefix per batch (≈35k times in │
+     │ the 37k-file run — and each one is a SQLite IsPrefixAtSnapshotVersion   │
+     │ query on the hot path).                                                 │
+     │                                                                         │
+     │ Add an in-memory validated-prefix memo                                  │
+     │ (ConcurrentDictionary<PathSegment, bool> _validatedPrefixes):           │
+     │                                                                         │
+     │ - Check the memo before taking the prefix gate → fast return, no        │
+     │ SQLite, no log. Re-check after acquiring the gate (a concurrent caller  │
+     │ may have validated while we waited) → silent return.                    │
+     │ - On each successful outcome, record the prefix in the memo and log     │
+     │ once per run per prefix at Information:                                 │
+     │   - Path 1: [chunk-index] shard {Prefix}: local cache current           │
+     │   - Path 2: [chunk-index] shard {Prefix}: no remote shard (new prefix)  │
+     │   - Path 3a: [chunk-index] shard {Prefix}: cache revalidated (etag      │
+     │ unchanged)                                                              │
+     │   - Path 3b: [chunk-index] shard {Prefix}: downloaded ({EntryCount}     │
+     │ entries, {Elapsed}ms) — wrap download+deserialize in a Stopwatch.       │
+     │ - Clear the memo in PromoteToSnapshotVersionAsync and InvalidateCaches  │
+     │ (snapshot version is otherwise fixed per service instance via           │
+     │ AsyncLazy, so memoization is safe within a run).                        │
+     │                                                                         │
+     │ Honest framing of the memo: its primary job is making "exactly one log  │
+     │ line per prefix" possible; eliminating the repeated per-batch SQLite    │
+     │ validation queries is a real but modest side win (point reads are       │
+     │ microseconds — a few seconds saved over a million-file listing, not a   │
+     │ headline).                                                              │
+     │                                                                         │
+     │ The corrupt-shard path (ChunkIndexCorruptException) propagates to the   │
+     │ consumer and is now logged at Error by the verb — no duplicate Error    │
+     │ log at the throw site.                                                  │
+     │                                                                         │
+     │ 3. ListQueryHandler — end-of-run summary                                │
+     │ (src/Arius.Core/Features/ListQuery/ListQueryHandler.cs)                 │
+     │                                                                         │
+     │ In the Stage-3 consume loop (already touches every entry before yield), │
+     │ count with a Stopwatch: directories, files, and file splits —           │
+     │ local+repository (Repository and any Local* bit), local-only,           │
+     │ repository-only, archived (RepositoryArchived). Replace the bare        │
+     │ [phase] complete log with:                                              │
+     │                                                                         │
+     │ [ls] Complete: {Directories} directories, {Files} files ({Both}         │
+     │ local+repository, {LocalOnly} local-only, {RepositoryOnly}              │
+     │ repository-only, {Archived} archived) in {Elapsed}                      │
+     │                                                                         │
+     │ No per-N progress heartbeat (user declined). Counter increments are     │
+     │ flag checks — negligible on the hot path.                               │
+     │                                                                         │
+     │ 4. Tests                                                                │
+     │                                                                         │
+     │ - src/Arius.Cli.Tests/Commands/Ls/ListQueryParsingTests.cs (uses        │
+     │ existing CliHarness + substituted ListQueryHandler): positional path    │
+     │ lands in Options.LocalPath; omitted path → LocalPath null; nonexistent  │
+     │ path → exit 1.                                                          │
+     │ - New LsStateFormatterTests: flag-combination matrix → expected 4-char  │
+     │ strings (PBRH, P.RA, ..R?, .B.., rehydrating → ~).                      │
+     │ -                                                                       │
+     │ src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceLookupTests.cs: │
+     │ repeated LookupAsync for the same prefix performs only one remote       │
+     │ TryDownloadAsync (memo path; assert via the fake blob service call      │
+     │ count — pattern already used by                                         │
+     │ LookupAsync_ManyDistinctPrefixes_LoadsEachShardOnceAndResolvesAll);     │
+     │ after InvalidateCaches the prefix is revalidated remotely again.        │
+     │ - Existing ls verb output assertions (if any capture console text)      │
+     │ updated for the new header/columns.                                     │
+     │                                                                         │
+     │ Verification                                                            │
+     │                                                                         │
+     │ 1. dotnet build src/Arius.slnx                                          │
+     │ 2. Run src/Arius.Core.Tests, src/Arius.Cli.Tests,                       │
+     │ src/Arius.Integration.Tests (Core 2× — the cancellation test was        │
+     │ flake-prone historically).                                              │
+     │ 3. Live smoke if credentials are available (ARIUS_ACCOUNT/ARIUS_KEY or  │
+     │ user runs it): arius ls -c test888 [path] against the ariusci account;  │
+     │ inspect the new log file for per-shard cache lines + summary, and the   │
+     │ console for the state column.                                           │
+     ╰─────────────────────────────────────────────────────────────────────────╯
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/can-you-mirror-the-mossy-kite.md · /plan to 
+     edit
+     ls: state column + local overlay path; richer chunk-index logging
+
+     Context
+
+     Two follow-ups on the streaming ls work:
+
+     1. The CLI doesn't show where a file exists. Explorer renders four
+     indicators per file (local pointer, local binary, repository, hydration)
+     from RepositoryEntryState; the CLI prints only size/dates/path. Worse,
+     LsVerb never sets ListQueryOptions.LocalPath, so the local overlay the
+     handler supports is unreachable from the CLI.
+     2. The ls log file is nearly empty. ~/.arius/.../2026-06-11_00-07-34_ls.txt
+     shows 19 seconds of silence between [phase] resolve and [phase] complete
+     for 37k files. No visibility into chunk-index cache hits/misses or shard
+     downloads. The file sink is Information+; all existing chunk-index detail
+     logging is per-hash Debug (ChunkIndexLocalStore.FindEntry etc.) — millions
+     of lines if unlocked wholesale, so that is not the lever.
+
+     User decisions: compact 4-char flag column; optional positional [path]
+     argument; bounded Information-level logging (per-prefix shard events, end
+     summary, no progress heartbeat); failures logged at Error level. Hot path
+     (per-hash/per-item) stays unlogged at default level; the per-prefix
+     validation path (≤256 events/run) and the exception path are what get
+     logged.
+
+     1. LsVerb — state column + positional path 
+     (src/Arius.Cli/Commands/Ls/LsVerb.cs)
+
+     - Add optional positional Argument<string?>("path") ("Local directory to
+     overlay; shows local presence per file"). When provided: validate
+     Directory.Exists, else red error + exit 1; pass into
+     ListQueryOptions.LocalPath. When omitted: LocalPath = null (P/B render as
+     dots).
+     - New first column State, 4 chars, formatted from RepositoryEntryState:
+       - char 1: P (LocalPointer), char 2: B (LocalBinary), char 3: R
+     (Repository),
+       - char 4: H (RepositoryHydrated), A (RepositoryArchived), ~
+     (RepositoryRehydrating — never set by ls today, live-only; handled for
+     completeness), ? (Repository set but no Hydrated/Archived bit, i.e. hash
+     missing from chunk index), . (not in repository).
+       - Absent flags render as [dim].[/]. Colors echo Explorer: B and H blue, A
+     lightskyblue1, others default.
+     - Implement as a small internal static formatter (e.g. LsStateFormatter in
+     the Ls folder) returning the markup string, so it is directly unit-testable
+     per flag combination.
+     - Header becomes State  Size  Created  Modified  Path plus one dim legend
+     line: P=local pointer  B=local binary  R=in repository  H=hydrated  
+     A=archived.
+     - Local-only files (no Repository flag) already flow through the stream —
+     they now appear naturally as e.g. .B...
+     - The enumeration catch currently prints Ls failed: but writes nothing to 
+     the log file — add Log.Error(ex, "ls failed") there (exception path, Error
+     level).
+
+     2. ChunkIndexService — per-prefix cache-path logging 
+     (src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)
+
+     EnsurePrefixLoadedAndSynchronizedAsync has four outcomes (already commented
+     Path 1/2/3a/3b) but logs none of them. Key observation: paths 2/3a/3b each
+     end by recording the prefix as validated in SQLite (AddEmptyPrefix /
+     SetPrefixSnapshotVersion / UpdatePrefix), so every later call for that
+     prefix takes Path 1 — paths 2/3a/3b are inherently once-per-prefix-per-run
+     (≤256 lines). Only Path 1 is hot (~once per prefix per 32-file batch; ≈35k
+     times in the 37k-file run). So plain leveling suffices, no memo/state
+     needed:
+
+     - Path 1 (cache hit, hot path): LogDebug("[chunk-index] shard {Prefix}: 
+     local cache current") — stays out of the Information+ file sink; a no-sink
+     LogDebug per batch-prefix is negligible.
+     - Path 2: Information [chunk-index] shard {Prefix}: no remote shard (new 
+     prefix)
+     - Path 3a: Information [chunk-index] shard {Prefix}: cache revalidated 
+     (etag unchanged)
+     - Path 3b: Information [chunk-index] shard {Prefix}: downloaded 
+     ({EntryCount} entries, {Elapsed}ms) — wrap download+deserialize in a
+     Stopwatch.
+
+     A cold-cache ls thus logs one downloaded line per shard it touches; a warm
+     run logs (at Information) nothing per prefix — the absence of download
+     lines plus the end summary tells the cache-hit story.
+
+     The corrupt-shard path (ChunkIndexCorruptException) propagates to the
+     consumer and is now logged at Error by the verb — no duplicate Error log at
+     the throw site.
+
+     3. ListQueryHandler — end-of-run summary 
+     (src/Arius.Core/Features/ListQuery/ListQueryHandler.cs)
+
+     In the Stage-3 consume loop (already touches every entry before yield),
+     count with a Stopwatch: directories, files, and file splits —
+     local+repository (Repository and any Local* bit), local-only,
+     repository-only, archived (RepositoryArchived). Replace the bare [phase] 
+     complete log with:
+
+     [ls] Complete: {Directories} directories, {Files} files ({Both} 
+     local+repository, {LocalOnly} local-only, {RepositoryOnly} repository-only,
+     {Archived} archived) in {Elapsed}
+
+     No per-N progress heartbeat (user declined). Counter increments are flag
+     checks — negligible on the hot path.
+
+     4. Tests
+
+     - src/Arius.Cli.Tests/Commands/Ls/ListQueryParsingTests.cs (uses existing
+     CliHarness + substituted ListQueryHandler): positional path lands in
+     Options.LocalPath; omitted path → LocalPath null; nonexistent path →
+     exit 1.
+     - New LsStateFormatterTests: flag-combination matrix → expected 4-char
+     strings (PBRH, P.RA, ..R?, .B.., rehydrating → ~).
+     - src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceLookupTests.cs:
+     behavior is unchanged (logging only), so existing coverage
+     (LookupAsync_ManyDistinctPrefixes_LoadsEachShardOnceAndResolvesAll etc.)
+     suffices; no new tests needed here.
+     - Existing ls verb output assertions (if any capture console text) updated
+     for the new header/columns.
+
+     Verification
+
+     1. dotnet build src/Arius.slnx
+     2. Run src/Arius.Core.Tests, src/Arius.Cli.Tests,
+     src/Arius.Integration.Tests (Core 2× — the cancellation test was
+     flake-prone historically).
+     3. Live smoke if credentials are available (ARIUS_ACCOUNT/ARIUS_KEY or user
+     runs it): arius ls -c test888 [path] against the ariusci account; inspect
+     the new log file for per-shard cache lines + summary, and the console for
+     the state column.
+
+⏺ Plan approved. First, a quick memory update capturing that correction, then
+  implementation.
+
+  Wrote 1 memory (ctrl+o to expand)
+
+⏺ Now the chunk-index logging — the smallest piece:
+
+⏺ Update(Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)
+  ⎿  Added 10 lines
+      181          {
+      182              // is the local version up to date with the snapsh
+           ot. if it is, we dont need to make a remote call to check the 
+           etag
+      183              if (_localStore.IsPrefixAtSnapshotVersion(prefix, 
+           latestSnapshotVersion))
+      184 +            {                                                 
+      185 +                // Hot path: hit once per prefix per lookup ba
+          +tch — Debug keeps it out of the audit log.                    
+      186 +                _logger.LogDebug("[chunk-index] shard {Prefix}
+          +: local cache current", prefix);                              
+      187                  return; //Path 1
+      188 +            }                                                 
+      189  
+      190              // let's check remote
+      191              var blobName = BlobPaths.ChunkIndexShardPath(prefi
+           x);
+      192 +            var downloadStopwatch = System.Diagnostics.Stopwat
+          +ch.StartNew();                                                
+      193              var remoteShard = await _blobs.TryDownloadAsync(bl
+           obName, cancellationToken);
+      194              if (remoteShard is null)
+      195              {
+      196                  // it doesnt exist on remote -> it s a new sha
+           rd
+      197                  _localStore.AddEmptyPrefix(prefix, latestSnaps
+           hotVersion);
+      198 +                _logger.LogInformation("[chunk-index] shard {P
+          +refix}: no remote shard (new prefix)", prefix);               
+      199                  return; //Path 2
+      200              }
+      201  
+     ...
+      206              {
+      207                  // our local copy is on the same version, upda
+           te the snapshot version
+      208                  _localStore.SetPrefixSnapshotVersion(prefix, r
+           emoteShard.ETag, latestSnapshotVersion);
+      209 +                _logger.LogInformation("[chunk-index] shard {P
+          +refix}: cache revalidated (etag unchanged)", prefix);         
+      210                  return; //Path 3a
+      211              }
+      212  
+     ...
+      222              }
+      223  
+      224              _localStore.UpdatePrefix(prefix, remoteShard.ETag,
+            latestSnapshotVersion, shard.Entries);
+      225 +            _logger.LogInformation(                           
+      226 +                "[chunk-index] shard {Prefix}: downloaded ({En
+          +tryCount} entries, {ElapsedMs}ms)",                           
+      227 +                prefix, shard.Count, downloadStopwatch.Elapsed
+          +Milliseconds);                                                
+      228          }
+      229          finally
+      230          {
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+⏺ Update(Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)
+  ⎿  Added 1 line
+      1  using System.Collections.Concurrent;
+      2 +using System.Diagnostics;                                       
+      3  using Arius.Core.Shared.Encryption;
+      4  using Arius.Core.Shared.Snapshot;
+      5  using Arius.Core.Shared.Storage;
+
+⏺ Update(Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)
+  ⎿  Added 1 line, removed 1 line
+      190  
+      191              // let's check remote
+      192              var blobName = BlobPaths.ChunkIndexShardPath(prefi
+           x);
+      193 -            var downloadStopwatch = System.Diagnostics.Stopwat
+          -ch.StartNew();                                                
+      193 +            var downloadStopwatch = Stopwatch.StartNew();     
+      194              var remoteShard = await _blobs.TryDownloadAsync(bl
+           obName, cancellationToken);
+      195              if (remoteShard is null)
+      196              {
+
+⏺ Now the ListQueryHandler end-of-run summary:
+
+⏺ Update(Arius.Core/Features/ListQuery/ListQueryHandler.cs)
+  ⎿  Added 32 lines, removed 1 line
+      151          }, CancellationToken.None);
+      152  
+      153          // ── Stage 3: Consume ───────────────────────────────
+           ───────────────────
+      154 +        var stopwatch       = Stopwatch.StartNew();           
+      155 +        var directoryCount  = 0;                              
+      156 +        var bothCount       = 0; // in the repository and (poi
+          +nter and/or binary) on disk                                   
+      157 +        var localOnlyCount  = 0;                              
+      158 +        var repositoryOnlyCount = 0;                          
+      159 +        var archivedCount   = 0;                              
+      160          try
+      161          {
+      162              await foreach (var entry in entryChannel.Reader.Re
+           adAllAsync(cancellationToken))
+     ...
+      164                  // ReadAllAsync only observes the token while 
+           waiting; check it per item so
+      165                  // cancellation is prompt even when the channe
+           l buffer still holds entries.
+      166                  cancellationToken.ThrowIfCancellationRequested
+           ();
+      167 +                                                              
+      168 +                if (entry is RepositoryDirectoryEntry)        
+      169 +                {                                             
+      170 +                    directoryCount++;                         
+      171 +                }                                             
+      172 +                else                                          
+      173 +                {                                             
+      174 +                    var inRepository = entry.State.HasFlag(Rep
+          +ositoryEntryState.Repository);                                
+      175 +                    var onDisk       = (entry.State & (Reposit
+          +oryEntryState.LocalPointer | RepositoryEntryState.LocalBinary)
+          +) != 0;                                                       
+      176 +                    if (inRepository && onDisk) bothCount++;  
+      177 +                    else if (inRepository) repositoryOnlyCount
+          +++;                                                           
+      178 +                    else localOnlyCount++;                    
+      179 +                                                              
+      180 +                    if (entry.State.HasFlag(RepositoryEntrySta
+          +te.RepositoryArchived))                                       
+      181 +                        archivedCount++;                      
+      182 +                }                                             
+      183 +                                                              
+      184                  yield return entry;
+      185              }
+      186  
+      164 -            _logger.LogInformation("[phase] complete");       
+      187 +            _logger.LogInformation(                           
+      188 +                "[ls] Complete: {DirectoryCount} directories, 
+          +{FileCount} files ({BothCount} local+repository, {LocalOnlyCou
+          +nt} local-only, {RepositoryOnlyCount} repository-only, {Archiv
+          +edCount} archived) in {Elapsed}",                             
+      189 +                directoryCount,                               
+      190 +                bothCount + localOnlyCount + repositoryOnlyCou
+          +nt,                                                           
+      191 +                bothCount,                                    
+      192 +                localOnlyCount,                               
+      193 +                repositoryOnlyCount,                          
+      194 +                archivedCount,                                
+      195 +                stopwatch.Elapsed);                           
+      196          }
+      197          finally
+      198          {
+
+⏺ Update(Arius.Core/Features/ListQuery/ListQueryHandler.cs)
+  ⎿  Added 1 line
+      1 +using System.Diagnostics;                                       
+      2  using System.Runtime.CompilerServices;
+      3  using System.Threading.Channels;
+      4  using Arius.Core.Shared.ChunkIndex;
+
+⏺ Now the CLI: state formatter + positional path. First a quick look at how
+  RestoreVerb declares its path argument so ls matches:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now writing the formatter and updating LsVerb:
+
+⏺ Write(Arius.Cli/Commands/Ls/LsStateFormatter.cs)
+  ⎿  Wrote 46 lines to Arius.Cli/Commands/Ls/LsStateFormatter.cs
+       2 using Arius.Core.Features.ListQuery;
+       3 namespace Arius.Cli.Commands.Ls;
+       4 
+       6 /// Renders a <see cref="RepositoryEntryState"/> as a fixed-widt
+         h 4-char state cell:
+       7 /// local pointer (P), local binary (B), repository presence (R)
+       8 /// (H = hydrated, A = archived, ~ = rehydrating, ? = not in the
+          chunk index).
+       9 /// Absent flags render as a dot.
+      10 /// </summary>
+     … +52 lines (ctrl+o to expand)
+
+⏺ Update(Arius.Cli/Commands/Ls/LsVerb.cs)  ⎿  Added 5 lines
+      15          var passphraseOption = CliBuilder.PassphraseOption();
+      16          var containerOption  = CliBuilder.ContainerOption();
+      17  
+      18 +        var localPathArg = new Argument<string?>("path")       
+      19 +        {                                                      
+      20 +            Description = "Local directory to overlay (shows lo
+         +cal presence per file)",                                       
+      21 +            Arity       = ArgumentArity.ZeroOrOne,             
+      22 +        };                                                     
+      23          var lsVersionOption = new Option<string?>("-v", "--vers
+          ion")
+      24          {
+      25              Description = "Snapshot version (partial timestamp,
+           default latest)",
+
+⏺ Update(Arius.Cli/Commands/Ls/LsVerb.cs)
+  ⎿  Added 1 line
+      38          cmd.Options.Add(keyOption);
+      39          cmd.Options.Add(passphraseOption);
+      40          cmd.Options.Add(containerOption);
+      41 +        cmd.Arguments.Add(localPathArg);                       
+      42          cmd.Options.Add(lsVersionOption);
+      43          cmd.Options.Add(prefixOption);
+      44          cmd.Options.Add(filterOption);
+
+⏺ Update(Arius.Cli/Commands/Ls/LsVerb.cs)
+  ⎿  Added 7 lines
+      49              var key        = parseResult.GetValue(keyOption);
+      50              var passphrase = parseResult.GetValue(passphraseOpt
+          ion);
+      51              var container  = parseResult.GetValue(containerOpti
+          on)!;
+      52 +            var localPath  = parseResult.GetValue(localPathArg)
+         +;                                                              
+      53              var version    = parseResult.GetValue(lsVersionOpti
+          on);
+      54              var prefix     = parseResult.GetValue(prefixOption)
+          ;
+      55              var filter     = parseResult.GetValue(filterOption)
+          ;
+      56  
+      57 +            if (localPath is not null && !Directory.Exists(loca
+         +lPath))                                                        
+      58 +            {                                                  
+      59 +                AnsiConsole.MarkupLine($"[red]Error:[/] Local d
+         +irectory not found: {Markup.Escape(localPath)}");              
+      60 +                return 1;                                      
+      61 +            }                                                  
+      62 +                                                               
+      63              var resolvedAccount = CliBuilder.ResolveAccount(acc
+          ount);
+      64              if (resolvedAccount is null)
+      65              {
+
+⏺ Now the options record, output columns, and error logging:
+
+⏺ Update(Arius.Cli/Commands/Ls/LsVerb.cs)
+  ⎿  Added 4 lines, removed 3 lines
+      131  
+      132                  var opts = new ListQueryOptions
+      133                  {
+      134 -                    Version = version,                        
+      135 -                    Prefix  = parsedPrefix,                   
+      136 -                    Filter  = filter,                         
+      134 +                    Version   = version,                      
+      135 +                    Prefix    = parsedPrefix,                 
+      136 +                    Filter    = filter,                       
+      137 +                    LocalPath = localPath,                    
+      138                  };
+      139  
+      140                  // Rows are written as they stream in (no tabl
+           e materialization) so the listing
+
+⏺ Update(Arius.Cli/Commands/Ls/LsVerb.cs)
+  ⎿  Added 4 lines, removed 2 lines
+      142                  var fileCount = 0;
+      143                  try
+      144                  {
+      145 -                    AnsiConsole.MarkupLine($"[bold]{"Size",12}
+          -  {"Created",-16}  {"Modified",-16}  Path[/]");               
+      145 +                    AnsiConsole.MarkupLine($"[bold]State  {"Si
+          +ze",12}  {"Created",-16}  {"Modified",-16}  Path[/]");        
+      146 +                    AnsiConsole.MarkupLine("[dim]P=local point
+          +er  B=local binary  R=in repository  H=hydrated  A=archived[/]
+          +");                                                           
+      147  
+      148                      await foreach (var entry in mediator.Creat
+           eStream(new ListQuery(opts), ct))
+      149                      {
+     ...
+      158                          var created  = file.Created?.ToString(
+           "yyyy-MM-dd HH:mm") ?? "-";
+      159                          var modified = file.Modified?.ToString
+           ("yyyy-MM-dd HH:mm") ?? "-";
+      160                          AnsiConsole.MarkupLine(
+      160 -                            $"{Markup.Escape(size),12}  {creat
+          -ed,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToSt
+          -ring())}");                                                   
+      161 +                            $"{LsStateFormatter.ToMarkup(file.
+          +State)}   {Markup.Escape(size),12}  {created,-16}  {modified,-
+          +16}  {Markup.Escape(file.RelativePath.ToString())}");         
+      162                          fileCount++;
+      163                      }
+      164                  }
+      165                  catch (Exception ex)
+      166                  {
+      167 +                    Log.Error(ex, "ls failed");               
+      168                      AnsiConsole.MarkupLine($"[red]Ls failed:[/
+           ] {Markup.Escape(ex.Message)}");
+      169                      return 1;
+      170                  }
+
+⏺ Bash(find Arius.Cli.Tests -name "CliHarness.cs" | xargs cat)
+  ⎿  using System.CommandLine;
+     using Arius.Core.Features.ArchiveCommand;
+     using Arius.Core.Features.ChunkHydrationStatusQuery;
+     … +97 lines (ctrl+o to expand)
+
+⏺ Write(Arius.Cli.Tests/Commands/Ls/LsStateFormatterTests.cs)
+  ⎿  Wrote 59 lines to Arius.Cli.Tests/Commands/Ls/LsStateFormatterTests.cs
+       2 using Arius.Core.Features.ListQuery;
+       3 
+       4 namespace Arius.Cli.Tests.Commands.Ls;
+       5 
+       6 public class LsStateFormatterTests
+       8     [Test]
+       9     [Arguments(
+      10         RepositoryEntryState.LocalPointer | RepositoryEntryState
+         .LocalBinary | RepositoryEntryState.Repository | RepositoryEntry
+         State.RepositoryHydrated,
+     … +62 lines (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(sed -i '' 's/public async Task
+      ToChars_RendersFlagCombination(RepositoryEntryState state, string
+      expected)/public void ToChars_RendersFlagCombination(Repository…)
+  ⎿  33:    public void ToChars_RendersFlagCombination(RepositoryEntryState
+      state, string expected)
+     39:    public void ToMarkup_PresentFlags_AreColored()
+     … +2 lines (ctrl+o to expand)
+
+⏺ Now the parsing tests for the positional path:
+
+⏺ Update(Arius.Cli.Tests/Commands/Ls/ListQueryParsingTests.cs)
+  ⎿  File must be read first
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(Arius.Cli.Tests/Commands/Ls/ListQueryParsingTests.cs)
+  ⎿  Added 32 lines
+      51          cmd.Options.Version.ShouldBeNull();
+      52          cmd.Options.Prefix.ShouldBeNull();
+      53          cmd.Options.Filter.ShouldBeNull();
+      54 +        cmd.Options.LocalPath.ShouldBeNull();                  
+      55      }
+      56  
+      57      [Test]
+      58 +    public async Task ListQuery_PositionalPath_PassedAsLocalPat
+         +h()                                                            
+      59 +    {                                                          
+      60 +        var localDirectory = Directory.CreateTempSubdirectory("
+         +arius-ls-test").FullName;                                      
+      61 +        try                                                    
+      62 +        {                                                      
+      63 +            var harness = new CliHarness();                    
+      64 +            var exitCode = await harness.InvokeAsync($"ls -a ac
+         +ct -k key -c ctr \"{localDirectory}\"");                       
+      65 +                                                               
+      66 +            exitCode.ShouldBe(0);                              
+      67 +                                                               
+      68 +            var call = harness.ListQueryHandler.ReceivedCalls()
+         +.Single();                                                     
+      69 +            var cmd = (ListQuery)call.GetArguments()[0]!;      
+      70 +            cmd.Options.LocalPath.ShouldBe(localDirectory);    
+      71 +        }                                                      
+      72 +        finally                                                
+      73 +        {                                                      
+      74 +            Directory.Delete(localDirectory);                  
+      75 +        }                                                      
+      76 +    }                                                          
+      77 +                                                               
+      78 +    [Test]                                                     
+      79 +    public async Task ListQuery_NonexistentPath_ReturnsExitCode
+         +1()                                                            
+      80 +    {                                                          
+      81 +        var harness = new CliHarness();                        
+      82 +        var exitCode = await harness.InvokeAsync("ls -a acct -k
+         + key -c ctr /nonexistent/arius-ls-test-dir");                  
+      83 +                                                               
+      84 +        exitCode.ShouldBe(1);                                  
+      85 +        harness.ListQueryHandler.ReceivedCalls().ShouldBeEmpty(
+         +);                                                             
+      86 +    }                                                          
+      87 +                                                               
+      88 +    [Test]                                                     
+      89      public async Task ListQuery_MockHandlerCaptures_PrefixAndFi
+          lter()
+      90      {
+      91          var harness = new CliHarness();
+
+⏺ Bash(grep -rn "Created\|file(s)\|Modified" Arius.Cli.Tests --include='*.cs' |
+      grep -v Restore | head; echo ---; dotnet build Arius.slnx 2>&1 | tail -5)
+  ⎿  Arius.Cli.Tests/MediatorEventRoutingIntegrationTests.cs:70:        awa
+     it mediator.Publish(new SnapshotCreatedEvent(FakeFileTreeHash('c'), Da
+     teTimeOffset.UtcNow, 1));
+     … +12 lines (ctrl+o to expand)
+  ⎿  (timeout 5m)
+
+⏺ Build is clean. Running the test suites:
+
+⏺ Bash(dotnet test Arius.Cli.Tests 2>&1 | tail -4)
+  ⎿  Specifying a directory for 'dotnet test' should be via '--project' or
+     '--solution'.
+
+⏺ Bash(dotnet test --project Arius.Cli.Tests 2>&1 | tail -4)
+  ⎿    failed: 0
+       succeeded: 149
+       skipped: 0
+       duration: 1s 327ms
+  ⎿  (timeout 5m)
+
+⏺ Bash(dotnet test --project Arius.Core.Tests 2>&1 | tail -4 && dotnet test
+      --project Arius.Integration.Tests 2>&1 | tail -4)
+  ⎿    failed: 0
+       succeeded: 462
+       skipped: 1
+     … +5 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+⏺ Bash(dotnet test --project Arius.Core.Tests 2>&1 | tail -4)
+  ⎿    failed: 0
+       succeeded: 462
+       skipped: 1
+       duration: 1s 638ms
+  ⎿  (timeout 5m)
+
+⏺ All green. Let me try the live smoke against the repository the user used, if
+  credentials are in the environment:
+
+⏺ Bash([ -n "$ARIUS_ACCOUNT" ] && echo "account: $ARIUS_ACCOUNT" || echo "no
+      ARIUS_ACCOUNT"; [ -n "$ARIUS_KEY" ] && echo "key: set" || echo "no
+      ARIUS_KEY"; ls ~/.micro…)
+  ⎿  no ARIUS_ACCOUNT
+     no ARIUS_KEY
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Bash(cat
+      ~/.microsoft/usersecrets/1bfdbc8c-623a-4240-a1df-52ef154346b5/secrets.json
+      2>/dev/null | python3 -c "import json,sys;
+      print(list(json.load(sys.stdin).keys()…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 1, in <module>
+         import json,sys; print(list(json.load(sys.stdin).keys()))
+                                     ~~~~~~~~~^^^^^^^^^^^
+       File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework
+     /Versions/3.14/lib/python3.14/json/__init__.py", line 298, in load
+         return loads(fp.read(),
+             cls=cls, object_hook=object_hook,
+             parse_float=parse_float, parse_int=parse_int,
+             parse_constant=parse_constant, object_pairs_hook=object_pairs_hook,
+     **kw)
+     … +9 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Bash(az account show --query name -o tsv 2>&1 | head -2)
+  ⎿  (eval):1: command not found: az
+
+⏺ No credentials are reachable from this shell (no ARIUS_ACCOUNT/ARIUS_KEY, no
+  user-secrets file, no az), so the live smoke is left for you. Everything else
+  is implemented and verified.
+
+  What changed
+
+  ls now shows where each file exists (LsVerb.cs, new LsStateFormatter.cs):
+  - New optional positional argument: arius ls -c <container> [path]. The path
+  is the local directory to overlay; it finally wires up
+  ListQueryOptions.LocalPath, which the CLI never passed before. A nonexistent
+  path errors with exit 1 before any work starts.
+  - Each row gets a 4-char State column — P local pointer, B local binary, R in
+  repository, then H hydrated / A archived / ~ rehydrating / ? not in chunk
+  index — with absent flags as dim dots and colors echoing Explorer (B/H blue, A
+  lightskyblue). A dim legend line sits under the header. Local-only files now
+  appear naturally as e.g. .B...
+
+  Richer log file, bounded (no memo — your leveling suggestion was right, and it
+  turned out paths 2/3a/3b are inherently once-per-prefix because each ends by
+  marking the prefix validated in SQLite, after which calls take Path 1):
+  - ChunkIndexService.EnsurePrefixLoadedAndSynchronizedAsync logs every outcome:
+  cache hit at Debug (stays out of the Information+ file sink — it fires per
+  prefix per batch), and at Information: no remote shard (new prefix), cache 
+  revalidated (etag unchanged), and downloaded ({EntryCount} entries, 
+  {ElapsedMs}ms) with a stopwatch around download+deserialize. A cold ls logs
+  one download line per shard; a warm run logs none — absence of download lines
+  is the cache-hit story.
+  - ListQueryHandler replaces the bare [phase] complete with a real summary:
+  directories, files split into local+repository / local-only / repository-only,
+  archived count, and elapsed time.
+  - The ls enumeration catch now does Log.Error(ex, "ls failed") — previously a
+  failed listing left no trace in the log file at all.
+
+  Verification
+
+  - dotnet build src/Arius.slnx — 0 errors.
+  - Tests all green: CLI 149 (incl. new LsStateFormatterTests matrix and
+  positional-path parsing tests), Core 462 ×2 runs (flake check),
+  Integration 77.
+
+  To smoke it yourself: arius ls -c test888 <local-dir> — the console should
+  show the State column, and the new log file should contain per-shard
+  chunk-index lines plus the [ls] Complete: … files (… local+repository, …) in …
+  summary.
+
+✻ Crunched for 12m 27s
+
+※ recap: Goal: ls now shows a per-file local/repository state column with an optional local path argument, plus richer bounded logging of shard cache activity. All tests pass; next action is your live smoke test: arius ls -c test888 <local-dir>.

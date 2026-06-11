@@ -448,7 +448,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         // Enqueue ShardEntry and FileTreeUpdate
                         // so no filesystem access is needed here.
-                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize), ct);
+                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize, opts.UploadTier), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
 
@@ -543,7 +543,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             var proportional = (long)(entry.OriginalSize * proportionalFactor);
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
 
-                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional), entryCt);
+                            // The tar blob's tier governs all of its thin entries.
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, opts.UploadTier), entryCt);
                             await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
                         });
 

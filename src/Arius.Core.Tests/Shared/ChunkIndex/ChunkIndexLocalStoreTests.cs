@@ -1,6 +1,7 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Microsoft.Data.Sqlite;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -29,7 +30,7 @@ public class ChunkIndexLocalStoreTests
         var repositoryKey = $"acct-local-store-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
-        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
 
         store.UpsertPendingFlush(entry);
 
@@ -50,14 +51,31 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    [Arguments(BlobTier.Hot)]
+    [Arguments(BlobTier.Cool)]
+    [Arguments(BlobTier.Cold)]
+    [Arguments(BlobTier.Archive)]
+    public void UpsertAndFind_RoundTripsStorageTierHint(BlobTier tier)
+    {
+        var repositoryKey = $"acct-local-store-tier-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, tier);
+
+        store.UpsertPendingFlush(entry);
+
+        store.FindEntry(entry.ContentHash)!.StorageTierHint.ShouldBe(tier);
+    }
+
+    [Test]
     public void UpsertPendingFlush_DuplicateContentHash_LastWriterWins()
     {
         var repositoryKey = $"acct-local-store-duplicate-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var contentHash = FakeContentHash('a');
-        var first = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        var second = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8);
+        var first = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var second = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
 
         store.UpsertPendingFlush(first);
         store.UpsertPendingFlush(second);
@@ -73,8 +91,8 @@ public class ChunkIndexLocalStoreTests
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var contentHash = FakeContentHash('a');
-        var pendingFlushEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5);
-        var remoteBackedEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8);
+        var pendingFlushEntry = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var remoteBackedEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlushEntry);
 
         store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(contentHash), "remote-1", "snap-1", [remoteBackedEntry]);
@@ -89,7 +107,7 @@ public class ChunkIndexLocalStoreTests
         var repositoryKey = $"acct-local-store-clean-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
-        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
 
         store.UpdatePrefix(prefix, "opaque-identity", "snapshot-1", [entry]);
@@ -106,8 +124,8 @@ public class ChunkIndexLocalStoreTests
         var repositoryKey = $"acct-local-store-reset-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
-        var remoteBackedEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
-        var pendingFlushEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
+        var remoteBackedEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var pendingFlushEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
         var prefix = ChunkIndexRouter.GetLeafPrefix(remoteBackedEntry.ContentHash);
         store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [remoteBackedEntry]);
         store.UpsertPendingFlush(pendingFlushEntry);
@@ -128,7 +146,7 @@ public class ChunkIndexLocalStoreTests
         var repositoryKey = $"acct-local-store-mark-validated-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
-        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
         var originalSnapshotVersion = "snapshot-1";
         var latestSnapshotVersion = "snapshot-2";
@@ -150,7 +168,7 @@ public class ChunkIndexLocalStoreTests
         var store = new ChunkIndexLocalStore(root);
         var fromSnapshot = "snapshot-1";
         var toSnapshot = "snapshot-2";
-        var remoteEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
+        var remoteEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var remotePrefix = ChunkIndexRouter.GetLeafPrefix(remoteEntry.ContentHash);
         var emptyPrefix = PathSegment.Parse("ff");
         var untouchedPrefix = PathSegment.Parse("ee");
@@ -178,8 +196,8 @@ public class ChunkIndexLocalStoreTests
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var snapshotVersion = "snapshot-2";
-        var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
-        var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8);
+        var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
         var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
         var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
         store.UpsertPendingFlush(firstEntry);
@@ -204,8 +222,8 @@ public class ChunkIndexLocalStoreTests
         var repositoryKey = $"acct-local-store-clear-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
-        var pendingFlush = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5);
-        var remoteBacked = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6);
+        var pendingFlush = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var remoteBacked = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlush);
         store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(remoteBacked.ContentHash), "remote-1", "snap-1", [remoteBacked]);
 
@@ -229,7 +247,7 @@ public class ChunkIndexLocalStoreTests
         var walPath = RelativePath.Parse("cache.sqlite-wal");
         var shmPath = RelativePath.Parse("cache.sqlite-shm");
 
-        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
         SqliteConnection.ClearAllPools();
         fileSystem.WriteAllBytesAsync(walPath, [1], CancellationToken.None).GetAwaiter().GetResult();
         fileSystem.WriteAllBytesAsync(shmPath, [2], CancellationToken.None).GetAwaiter().GetResult();
@@ -271,12 +289,12 @@ public class ChunkIndexLocalStoreTests
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var fileSystem = new RelativeFileSystem(root);
-        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         SqliteConnection.ClearAllPools();
         fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
-        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.UpsertPendingFlush(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
+        var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.UpsertPendingFlush(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool)));
 
         ex.Message.ShouldContain("Delete the local chunk-index cache directory");
     }

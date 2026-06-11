@@ -51,6 +51,38 @@ public class ListQueryParsingTests
         cmd.Options.Version.ShouldBeNull();
         cmd.Options.Prefix.ShouldBeNull();
         cmd.Options.Filter.ShouldBeNull();
+        cmd.Options.LocalPath.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task ListQuery_PositionalPath_PassedAsLocalPath()
+    {
+        var localDirectory = Directory.CreateTempSubdirectory("arius-ls-test").FullName;
+        try
+        {
+            var harness = new CliHarness();
+            var exitCode = await harness.InvokeAsync($"ls -a acct -k key -c ctr \"{localDirectory}\"");
+
+            exitCode.ShouldBe(0);
+
+            var call = harness.ListQueryHandler.ReceivedCalls().Single();
+            var cmd = (ListQuery)call.GetArguments()[0]!;
+            cmd.Options.LocalPath.ShouldBe(localDirectory);
+        }
+        finally
+        {
+            Directory.Delete(localDirectory);
+        }
+    }
+
+    [Test]
+    public async Task ListQuery_NonexistentPath_ReturnsExitCode1()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr /nonexistent/arius-ls-test-dir");
+
+        exitCode.ShouldBe(1);
+        harness.ListQueryHandler.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Test]

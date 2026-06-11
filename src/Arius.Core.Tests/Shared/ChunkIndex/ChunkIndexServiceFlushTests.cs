@@ -3,6 +3,7 @@ using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
@@ -20,8 +21,8 @@ public class ChunkIndexServiceFlushTests
         var cleanHash = FakeContentHash('a');
         var dirtyHash = ContentHash.Parse($"{cleanHash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string('d', 64 - ChunkIndexService.ShardPrefixLength)}");
         var prefix = Shard.PrefixOf(cleanHash);
-        var cleanEntry = new ShardEntry(cleanHash, FakeChunkHash('b'), 10, 5);
-        var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('c'), 20, 8);
+        var cleanEntry = new ShardEntry(cleanHash, FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(prefix),
             await ShardSerializer.SerializeAsync(CreateShard(cleanEntry), s_encryption),
@@ -48,11 +49,11 @@ public class ChunkIndexServiceFlushTests
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-closed");
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
-        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
 
-        var ex = Should.Throw<InvalidOperationException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6)));
+        var ex = Should.Throw<InvalidOperationException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool)));
         ex.Message.ShouldBe("Chunk-index service cannot be used after flush has started.");
     }
 
@@ -75,7 +76,7 @@ public class ChunkIndexServiceFlushTests
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-lookup-closed");
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
-        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
 
@@ -93,7 +94,7 @@ public class ChunkIndexServiceFlushTests
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new FakeLoggerProvider(collector)));
 
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
-        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5));
+        index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
 

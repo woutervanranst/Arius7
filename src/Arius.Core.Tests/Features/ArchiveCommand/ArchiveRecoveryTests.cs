@@ -480,6 +480,24 @@ public class ArchiveRecoveryTests
                                      record.Message.Contains(poison.ToString()));
     }
 
+    [Test]
+    [MatrixDataSource]
+    public async Task Archive_RecordsUploadTierAsStorageTierHint_ForLargeAndTarBackedFiles(
+        [Matrix(BlobTier.Cool, BlobTier.Archive)] BlobTier uploadTier)
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var largeContent = await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), 2 * 1024 * 1024);
+        var smallContent = await WriteRandomFileAsync(fixture, RelativePath.Parse("small.txt"), 256);
+
+        var result = await ArchiveAsync(fixture, uploadTier);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(largeContent)))!.StorageTierHint.ShouldBe(uploadTier);
+        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(smallContent)))!.StorageTierHint.ShouldBe(uploadTier);
+    }
+
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()
         => await RepositoryTestFixture.CreateWithEncryptionAsync(
             new FakeInMemoryBlobContainerService(),

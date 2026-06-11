@@ -85,13 +85,15 @@ arius restore ./photos \
 
 Filter paths with `--target-path`.
 
-### List snapshots
+### List files in a snapshot
 
 ```bash
 arius ls \
   -a mystorageaccount \
   -c photos-backup
 ```
+
+Filter with `--prefix <path>` and `--filter <substring>`, and pick an older snapshot with `-v <version>`.
 
 ### Repair chunk index
 
@@ -290,10 +292,7 @@ distinguishable by their HTTP `Content-Type` header and `arius_type` metadata:
 | **tar** | `chunks/<tar-hash>` | `application/aes256cbc+tar+gzip` or `application/tar+gzip` | Bundle of small files: tar + gzip + optional encrypt | Configurable (`-t`) |
 | **thin** | `chunks/<content-hash>` | `text/plain; charset=utf-8` | Empty body; parent tar-hash in metadata | Always Cool |
 
-**Routing rule:** files >= 1 MB are uploaded individually as **large** chunks. Files
-< 1 MB are accumulated into **tar** bundles (target size 64 MB). For each file in a tar
-bundle, a **thin** pointer blob is created so that every content-hash has a
-corresponding blob in `chunks/`.
+**Routing rule:** files >= 1 MB are uploaded individually as **large** chunks. Files < 1 MB are accumulated into **tar** bundles (target size 64 MB, can become larger depending on TAR overhead). For each file in a tar bundle, a **thin** pointer blob is created so that every content-hash has a corresponding blob in `chunks/`.
 
 Thin chunks are kept on Cool tier and include their parent tar-hash in metadata so repair can rebuild mappings without downloading each thin chunk.
 
@@ -306,16 +305,20 @@ tier. Once rehydration completes and files are restored, these blobs are cleaned
 ### chunk-index/
 
 Deduplication index split into prefix-keyed shards. Each shard is a text file (gzip-compressed, optionally encrypted) where
-each line maps a content-hash to its chunk-hash:
+each line maps a content-hash to its chunk-hash, sizes, and the chunk's storage tier:
 
-```
-<content-hash> <chunk-hash> <original-size> <compressed-size>
+```text
+<content-hash> <chunk-hash> <original-size> <compressed-size> <tier>
 ```
 
-For large files, content-hash equals chunk-hash. For tar-bundled files, chunk-hash is
-the tar-hash. Arius keeps local chunk-index state in a SQLite cache under the repository
-state directory, validates touched prefixes lazily against the latest snapshot, and can
-rebuild the local cache or the remote shards from committed chunks when repair is needed.
+For large files, content-hash equals chunk-hash and the chunk-hash field is omitted.
+The tier field records the chunk's storage tier at archive time (`1`=hot, `2`=cool,
+`3`=cold, `4`=archive); it is a hint that lets `ls` report whether a file is readily
+downloadable or archived without contacting each blob. For tar-bundled files, chunk-hash
+is the tar-hash and the tier is the tar blob's tier. Arius keeps local chunk-index state
+in a SQLite cache under the repository state directory, validates touched prefixes lazily
+against the latest snapshot, and can rebuild the local cache or the remote shards from
+committed chunks when repair is needed.
 
 ## Toolchain
 

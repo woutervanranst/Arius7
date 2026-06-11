@@ -81,6 +81,8 @@ public sealed record BlobListItem
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
     public long? ContentLength { get; init; }
+
+    public BlobTier? Tier { get; init; }
 }
 
 /// <summary>

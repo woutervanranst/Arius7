@@ -195,6 +195,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
                     ? new Dictionary<string, string>(item.Metadata)
                     : null,
                 ContentLength = includeMetadata ? item.Properties.ContentLength : null,
+                Tier = FromAzureTier(item.Properties.AccessTier),
             };
         }
     }
