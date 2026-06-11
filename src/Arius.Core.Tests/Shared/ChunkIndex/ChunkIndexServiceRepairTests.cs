@@ -233,6 +233,70 @@ public class ChunkIndexServiceRepairTests
         cache.FileExists(RelativePath.Parse("cache.sqlite")).ShouldBeTrue();
     }
 
+    // ── Layout re-balancing ──────────────────────────────────────────────────
+
+    [Test]
+    public async Task RepairAsync_RootOverThreshold_UploadsSplitLayout()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-split-layout");
+        var contentHashes = new[] { "aa1", "aa2", "aa3" }.Select(p => ContentHash.Parse(p.PadRight(64, '9'))).ToArray();
+        foreach (var contentHash in contentHashes)
+            SeedLargeChunk(blobs, contentHash);
+
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2);
+
+        var result = await index.RepairAsync();
+
+        // 3 entries in root "aa" exceed the threshold of 2 → repair publishes the split layout.
+        result.UploadedShardCount.ShouldBe(3);
+        (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")))).ShouldBeNull();
+        foreach (var contentHash in contentHashes)
+        {
+            (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse(contentHash.Prefix(3))))).ShouldNotBeNull();
+            (await index.LookupAsync(contentHash)).ShouldNotBeNull();
+        }
+    }
+
+    [Test]
+    public async Task RepairAsync_OverSplitRemoteLayout_CoarsensToFittingPrefix()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("repair-coarsen");
+        var first = ContentHash.Parse("aa1".PadRight(64, '9'));
+        var second = ContentHash.Parse("aa2".PadRight(64, '9'));
+        SeedLargeChunk(blobs, first);
+        SeedLargeChunk(blobs, second);
+        // A previously split layout whose ranges have since shrunk below the threshold.
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa1")), [1], BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa2")), [2], BlobTier.Cool);
+
+        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+
+        var result = await index.RepairAsync();
+
+        // Both entries fit one root shard → repair coarsens and the stale pass deletes the old leaves.
+        result.UploadedShardCount.ShouldBe(1);
+        result.DeletedStaleShardCount.ShouldBe(2);
+        blobs.DeletedBlobNames.ShouldContain(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa1")));
+        blobs.DeletedBlobNames.ShouldContain(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa2")));
+        (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")))).ShouldNotBeNull();
+        (await index.LookupAsync(first)).ShouldNotBeNull();
+        (await index.LookupAsync(second)).ShouldNotBeNull();
+    }
+
+    private static void SeedLargeChunk(FakeInMemoryBlobContainerService blobs, ContentHash contentHash)
+        => blobs.SeedBlob(
+            BlobPaths.ChunkPath(ChunkHash.Parse(contentHash)),
+            [1, 2, 3],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.OriginalSize] = "100",
+                [BlobMetadataKeys.ChunkSize] = "3",
+            });
+
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);

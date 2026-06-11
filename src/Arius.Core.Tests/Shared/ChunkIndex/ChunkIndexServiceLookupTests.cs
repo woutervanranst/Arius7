@@ -425,6 +425,70 @@ public class ChunkIndexServiceLookupTests
         cache.FileExists(RelativePath.Root / PathSegment.Parse("aa")).ShouldBeFalse();
     }
 
+    // ── Dynamic shard layout ─────────────────────────────────────────────────
+
+    [Test]
+    public async Task LookupAsync_ParentAndChildCoexist_ParentWins()
+    {
+        // Crashed-split state: parent "aa" and child "aa3" both exist and both contain the hash.
+        // The parent is authoritative (the child's data was never published).
+        var blobs = new FakeInMemoryBlobContainerService();
+        var contentHash = ContentHash.Parse("aa3".PadRight(64, '9'));
+        var parentEntry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        var childEntry = new ShardEntry(contentHash, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")), await ShardSerializer.SerializeAsync(CreateShard(parentEntry), s_encryption), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(childEntry), s_encryption), BlobTier.Cool);
+        using var index = CreateIndex(blobs, "parent-wins");
+
+        var actual = await index.LookupAsync(contentHash);
+
+        actual.ShouldBe(parentEntry);
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa"))]); // only the parent is downloaded
+    }
+
+    [Test]
+    public async Task LookupAsync_SplitLayout_DescendsToLeafShard()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var contentHash = ContentHash.Parse("aa3".PadRight(64, '9'));
+        var entry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption), BlobTier.Cool);
+        using var index = CreateIndex(blobs, "descend-leaf");
+
+        (await index.LookupAsync(contentHash)).ShouldBe(entry);
+
+        blobs.RequestedBlobNames.ShouldBe([BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3"))]);
+
+        // The leaf coverage claim makes the repeat lookup a pure local hit.
+        blobs.RequestedBlobNames.Clear();
+        blobs.ClearListedNamePrefixes();
+        (await index.LookupAsync(contentHash)).ShouldBe(entry);
+        blobs.RequestedBlobNames.ShouldBeEmpty();
+        blobs.ListedNamePrefixes.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task LookupAsync_EmptyChildRangeOfSplitRoot_MissWithoutDownload()
+    {
+        // "aa" was split (a sibling child exists) but the requested hash's own range has no blob:
+        // the listing alone proves the miss.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var siblingEntry = new ShardEntry(ContentHash.Parse("aa0".PadRight(64, '9')), FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa0")), await ShardSerializer.SerializeAsync(CreateShard(siblingEntry), s_encryption), BlobTier.Cool);
+        var missingHash = ContentHash.Parse("aa5".PadRight(64, '9'));
+        using var index = CreateIndex(blobs, "empty-child-range");
+
+        (await index.LookupAsync(missingHash)).ShouldBeNull();
+
+        blobs.RequestedBlobNames.ShouldBeEmpty(); // no shard download — the listing decided
+        blobs.ListedNamePrefixes.Count.ShouldBe(1);
+
+        // The empty range is claimed at its terminal walk depth, so the repeat lookup costs nothing.
+        blobs.ClearListedNamePrefixes();
+        (await index.LookupAsync(missingHash)).ShouldBeNull();
+        blobs.ListedNamePrefixes.ShouldBeEmpty();
+    }
+
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);

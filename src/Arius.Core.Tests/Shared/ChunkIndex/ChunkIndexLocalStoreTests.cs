@@ -299,6 +299,112 @@ public class ChunkIndexLocalStoreTests
         ex.Message.ShouldContain("Delete the local chunk-index cache directory");
     }
 
+    // ── Range queries (variable-depth prefixes) ──────────────────────────────
+
+    [Test]
+    public void ReadRangeEntries_OddNibblePrefix_FiltersInclusiveBounds()
+    {
+        var store = CreateStore("range-odd-nibble");
+        var entries = new[] { Entry("aa2f"), Entry("aa30"), Entry("aa3f"), Entry("aa40") };
+        store.UpsertPendingFlush(entries);
+
+        var inRange = new List<ShardEntry>();
+        store.ReadRangeEntries(PathSegment.Parse("aa3"), inRange.Add);
+
+        inRange.Select(e => e.ContentHash).ShouldBe([entries[1].ContentHash, entries[2].ContentHash]);
+        store.CountRangeEntries(PathSegment.Parse("aa3")).ShouldBe(2);
+        store.CountRangeEntries(PathSegment.Parse("aa")).ShouldBe(4);
+        store.CountRangeEntries(PathSegment.Parse("bb")).ShouldBe(0);
+    }
+
+    [Test]
+    public void GetRootsWithPendingFlushes_AndGetPendingFlushHashes_FilterByRootRange()
+    {
+        var store = CreateStore("pending-roots");
+        var pendingAa = Entry("aa1");
+        var pendingBb = Entry("bb1");
+        var cleanCc = Entry("cc1");
+        store.UpsertPendingFlush(pendingAa);
+        store.UpsertPendingFlush(pendingBb);
+        store.UpdatePrefix(PathSegment.Parse("cc"), "remote-1", "snap-1", [cleanCc]);
+
+        store.GetRootsWithPendingFlushes().ShouldBe([PathSegment.Parse("aa"), PathSegment.Parse("bb")]);
+        store.GetPendingFlushHashes(PathSegment.Parse("aa")).ShouldBe([pendingAa.ContentHash]);
+        store.GetStoredRootPrefixes().ShouldBe([PathSegment.Parse("aa"), PathSegment.Parse("bb"), PathSegment.Parse("cc")]);
+    }
+
+    // ── Coverage claims ──────────────────────────────────────────────────────
+
+    [Test]
+    public void FindCoveredPrefix_AncestorClaimCoversHash_AndRespectsSnapshotVersion()
+    {
+        var store = CreateStore("coverage-find");
+        var entry = Entry("aa1");
+        store.UpdatePrefix(PathSegment.Parse("aa"), "remote-1", "snap-1", [entry]);
+
+        store.FindCoveredPrefix(ContentHash.Parse("aa3f".PadRight(64, '9')), "snap-1").ShouldBe(PathSegment.Parse("aa"));
+        store.FindCoveredPrefix(ContentHash.Parse("aa3f".PadRight(64, '9')), "snap-2").ShouldBeNull(); // stale snapshot
+        store.FindCoveredPrefix(ContentHash.Parse("bb00".PadRight(64, '9')), "snap-1").ShouldBeNull(); // other range
+    }
+
+    [Test]
+    public void UpsertingCoverageClaim_RemovesOverlappingClaims_AndKeepsSiblings()
+    {
+        var store = CreateStore("coverage-overlap");
+        store.AddEmptyPrefix(PathSegment.Parse("aa"), "snap-1");
+        store.AddEmptyPrefix(PathSegment.Parse("ab"), "snap-1");
+
+        // A deeper claim replaces its ancestor (split discovered), never its siblings.
+        store.AddEmptyPrefix(PathSegment.Parse("aa3"), "snap-1");
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa"), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa3"), "snap-1").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("ab"), "snap-1").ShouldBeTrue();
+
+        // A shallower claim replaces all its descendants (e.g. repair coarsened the layout).
+        store.AddEmptyPrefix(PathSegment.Parse("aa"), "snap-2");
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa3"), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa"), "snap-2").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("ab"), "snap-1").ShouldBeTrue();
+    }
+
+    // ── Schema versioning ────────────────────────────────────────────────────
+
+    [Test]
+    public void Initialize_SchemaVersionMismatch_RecreatesDatabase()
+    {
+        var repositoryKey = $"acct-local-store-schema-mismatch-{Guid.NewGuid():N}";
+        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+        store.UpsertPendingFlush(Entry("aa1"));
+
+        SqliteConnection.ClearAllPools();
+        using (var connection = OpenConnection(root))
+        using (var downgrade = connection.CreateCommand())
+        {
+            downgrade.CommandText = "UPDATE metadata SET value = '1' WHERE key = 'schema_version';";
+            downgrade.ExecuteNonQuery();
+        }
+
+        SqliteConnection.ClearAllPools();
+        var reopened = new ChunkIndexLocalStore(root);
+
+        reopened.HasPendingFlushEntries().ShouldBeFalse(); // recreated, not migrated
+        using var verify = OpenConnection(root);
+        using var version = verify.CreateCommand();
+        version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
+        version.ExecuteScalar().ShouldBe("2");
+    }
+
+    private static ChunkIndexLocalStore CreateStore(string name)
+    {
+        var repositoryKey = $"acct-local-store-{name}-{Guid.NewGuid():N}";
+        return new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+    }
+
+    /// <summary>An entry whose content hash starts with <paramref name="hashPrefix"/> (padded with '9').</summary>
+    private static ShardEntry Entry(string hashPrefix)
+        => new(ContentHash.Parse(hashPrefix.PadRight(64, '9')), FakeChunkHash('e'), 10, 5, BlobTier.Cool);
+
     private static SqliteConnection OpenConnection(LocalDirectory root)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder

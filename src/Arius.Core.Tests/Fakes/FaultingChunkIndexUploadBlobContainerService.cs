@@ -16,11 +16,18 @@ internal sealed class FaultingChunkIndexUploadBlobContainerService(FakeInMemoryB
     /// <summary>When <see langword="true"/>, uploads to <c>chunk-index/*</c> throw instead of being stored.</summary>
     public bool FailChunkIndexUploads { get; set; } = true;
 
+    /// <summary>Number of chunk-index uploads that succeed before failing kicks in (default 0 = fail immediately). Lets tests simulate a flush that dies mid-split.</summary>
+    public int AllowedChunkIndexUploads { get; set; }
+
+    private int _chunkIndexUploadAttempts;
+
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => Inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
-        => FailChunkIndexUploads && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
+        => FailChunkIndexUploads
+           && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
+           && Interlocked.Increment(ref _chunkIndexUploadAttempts) > AllowedChunkIndexUploads
             ? throw new InvalidOperationException("chunk-index upload failed")
             : Inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
 
