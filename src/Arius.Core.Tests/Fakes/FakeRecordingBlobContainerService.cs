@@ -8,29 +8,18 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 {
-    private readonly Lock _gate = new();
     private readonly HashSet<RelativePath> _remoteBlobs = [];
 
     public HashSet<RelativePath> Uploaded { get; } = [];
     public HashSet<RelativePath> HeadChecked { get; } = [];
 
-    public void SeedRemoteBlob(RelativePath blobName)
-    {
-        lock (_gate)
-        {
-            _remoteBlobs.Add(blobName);
-        }
-    }
+    public void SeedRemoteBlob(RelativePath blobName) => _remoteBlobs.Add(blobName);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
-        lock (_gate)
-        {
-            Uploaded.Add(blobName);
-        }
-
+        Uploaded.Add(blobName);
         return Task.FromResult(new UploadResult { ETag = $"recorded:{blobName}" });
     }
 
@@ -45,25 +34,15 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        lock (_gate)
-        {
-            HeadChecked.Add(blobName);
-            return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
-        }
+        HeadChecked.Add(blobName);
+        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
     }
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        RelativePath[] matchingBlobNames;
-        lock (_gate)
-        {
-            matchingBlobNames = _remoteBlobs
-                .Where(name => name.StartsWith(prefix))
-                .OrderBy(name => name.ToString(), StringComparer.Ordinal)
-                .ToArray();
-        }
-
-        foreach (var blobName in matchingBlobNames)
+        foreach (var blobName in _remoteBlobs
+                     .Where(name => name.StartsWith(prefix))
+                     .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return new BlobListItem { Name = blobName };
