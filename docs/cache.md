@@ -94,9 +94,34 @@ pure local file-system lookups.
 hash to its storage chunk hash, original size, stored chunk size, and storage
 tier hint. This is the deduplication index.
 
-Entries are grouped into *shards* by the first two hex characters of the
-content hash (256 shards possible). Each shard is a dictionary of all
-entries sharing that prefix.
+Entries are grouped into *shards* by a hex prefix of the content hash with a
+**dynamic length**. Small repositories use the 2-character layout (up to 256
+shards, e.g. `chunk-index/aa`). When a shard exceeds `MaxShardEntryCount`
+entries at flush time it is split 16-way by the next hex character
+(`aa` → `aa0`..`aaf`), recursively and unevenly per subtree (`aaf` may later
+split into `aaf0`.. while `ab` never splits). Only non-empty shards are
+written, and there is no layout manifest — the layout is self-describing from
+which shard blobs exist:
+
+- **Routing (parent wins):** for a hash, walk down from its 2-character root;
+  the *shallowest existing* shard blob on the hash's prefix path is
+  authoritative. If no blob exists on the path, descend while any strictly
+  deeper blob shares the prefix; the resulting depth is where the range is
+  empty (and where new entries would be written).
+- **Split ordering:** a split uploads all non-empty children *before* deleting
+  the parent. A flush that crashes mid-split therefore leaves the parent
+  intact; since the snapshot for that run was never published, the parent still
+  contains everything any published snapshot references, so parent-wins reads
+  stay correct without any sentinel. The crashed run's rows stay
+  `pending_flush = 1` and the retry re-splits and converges.
+- **Repair re-balances:** full repair recomputes the layout from the rebuilt
+  entry counts (splitting and coarsening as needed) and deletes every other
+  `chunk-index/` blob.
+
+Known limitation (pre-existing, unchanged by dynamic sharding): concurrent
+archives from two machines into the same repository can overwrite each other's
+shard rewrites (last writer wins). Repair recovers; etag-conditional
+chunk-index writes are a possible future hardening.
 
 **Local cache shape:**
 
@@ -113,8 +138,9 @@ The local store keeps:
 
 - clean rows hydrated from remote shard blobs;
 - dirty rows recorded after chunk upload and before archive-tail flush;
-- per-prefix validation state (`loaded_prefixes`) containing the last validated
-  snapshot identity plus the last seen remote blob identity.
+- per-range validation state (`loaded_prefixes`): non-overlapping coverage
+  claims for variable-length prefixes, each holding the last validated snapshot
+  identity plus the last seen remote blob identity.
 
 There is no separate L1 shard cache, no plaintext per-prefix local shard-file
 cache, and no write-session overlay collection.
@@ -123,17 +149,17 @@ cache, and no write-session overlay collection.
 flowchart TD
     A[LookupAsync content hash] --> B{Dirty row in local SQLite?}
     B -->|yes| C[Return dirty row]
-    B -->|no| D[Group hashes by shard prefix]
-    D --> E{Prefix already validated for current snapshot?}
+    B -->|no| D[Group hashes by 2-char root]
+    D --> E{Coverage claim at current snapshot covers hash?}
     E -->|yes| F[Read requested rows from local SQLite]
-    E -->|no| G[TryDownloadAsync chunk-index/prefix]
-    G --> H{Remote shard exists?}
-    H -->|no| H2[AddEmptyPrefix: drop clean rows, mark loaded-empty]
+    E -->|no| G[List chunk-index subtree for the root]
+    G --> H{Walk: shallowest existing shard on the hash's path?}
+    H -->|none| H2[AddEmptyPrefix at terminal walk depth]
     H2 --> F
-    H -->|yes| H3{DownloadResult.ETag matches stored identity?}
-    H3 -->|yes| I[Advance validated snapshot identity, discard body]
+    H -->|shard| H3{Listed ETag matches stored identity?}
+    H3 -->|yes| I[Advance validated snapshot identity, no download]
     I --> F
-    H3 -->|no| J[Delete clean rows for prefix only]
+    H3 -->|no| J[TryDownloadAsync the shard, delete clean rows in its range]
     J --> K[Deserialize downloaded shard body]
     K --> L[Ingest clean rows into local SQLite]
     L --> F
@@ -143,11 +169,14 @@ flowchart TD
 
     P[AddEntry after chunk upload] --> Q[Upsert dirty row into local SQLite]
     Q --> R[Same-run lookup can see dirty row]
-    S[FlushAsync] --> T[Read dirty prefixes from SQLite]
-    T --> U[Ensure each prefix is loaded and validated]
-    U --> V[Stream prefix rows ordered by content hash]
-    V --> W[Upload complete shard to Azure]
-    W --> X[Mark dirty rows clean and store new blob identity]
+    S[FlushAsync] --> T[Read dirty roots from SQLite]
+    T --> U[Resolve the authoritative target shard per dirty hash]
+    U --> V[Stream range rows ordered by content hash]
+    V --> W{Merged count over MaxShardEntryCount?}
+    W -->|no| W1[Upload complete shard to Azure]
+    W -->|yes| W2[Upload all non-empty leaf shards, THEN delete parent + stale blobs in range]
+    W1 --> X[Mark dirty rows clean and store new blob identities]
+    W2 --> X
 ```
 
 Dirty rows and clean rows are separate states in the same local database,
@@ -168,9 +197,11 @@ identity with the current remote blob identity for that prefix.
   prefix lazily and reads only requested hashes from local SQLite.
 - `AddEntry` — records a newly uploaded chunk as a dirty row immediately after
   upload.
-- `FlushAsync` — reads dirty prefixes from SQLite, reloads the remote base when
-  needed, uploads complete replacement shard blobs, then marks those rows clean
-  only after all touched prefixes upload successfully.
+- `FlushAsync` — reads dirty roots from SQLite, resolves the authoritative
+  target shard per dirty hash (reloading the remote base when needed), uploads
+  complete replacement shard blobs — splitting any shard that exceeds
+  `MaxShardEntryCount` — then marks those rows clean only after all touched
+  subtrees upload successfully.
 - `InvalidateCaches` — clears discardable clean SQLite rows and loaded-prefix
   state while preserving dirty rows. It also deletes any leftover legacy
   plaintext per-prefix shard files as stale cache state.
