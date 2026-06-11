@@ -2,8 +2,6 @@
 
 ## General
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ### 1. Think Before Coding
@@ -61,6 +59,17 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+### 5. Guidance specifically for Anthropic Fable 5
+
+Don't add features, refactor, or introduce abstractions beyond what the task requires. A
+bug fix doesn't need surrounding cleanup and a one-shot operation usually doesn't need a
+helper. Don't design for hypothetical future requirements: do the simplest thing that
+works well. Avoid premature abstraction and half-finished implementations. Don't add
+error handling, fallbacks, or validation for scenarios that cannot happen. Trust
+internal code and framework guarantees. Only validate at system boundaries (user input,
+external APIs). Don't use feature flags or backwards-compatibility shims when you can
+just change the code.
 
 ## Agent Guidance: dotnet-skills
 
