@@ -27,7 +27,10 @@ namespace Arius.Core.Features.ListQuery;
 ///    reference sequence and the local directory (enumerated once, immediate children only) is
 ///    *overlaid* on top: each repository file consumes its local counterpart, and the leftovers
 ///    are emitted last as local-only — repository entries first, local-only last, no
-///    union/distinct pass over both sets. Directory entries and local-only files are emitted
+///    union/distinct pass over both sets. Overlay name matching is case-sensitive (exact tree
+///    names; case-variant files each get their own row — presentation is the client's call),
+///    while <c>Prefix</c>/<c>Filter</c> are case-insensitive user-typed conveniences.
+///    Directory entries and local-only files are emitted
 ///    fully resolved; repository files are emitted as candidates that still need size + tier.
 /// 2. **Resolve** (×1) — buffers consecutive candidates (≤ <see cref="ResolveBatchSize"/>) and
 ///    resolves each batch with one <see cref="IChunkIndexService.LookupAsync(IEnumerable{ContentHash}, CancellationToken)"/>

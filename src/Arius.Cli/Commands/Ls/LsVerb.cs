@@ -143,7 +143,7 @@ internal static class LsVerb
                 try
                 {
                     AnsiConsole.MarkupLine($"[bold]State  {"Size",12}  {"Created",-16}  {"Modified",-16}  Path[/]");
-                    AnsiConsole.MarkupLine("[dim]P=local pointer  B=local binary  R=in repository  H=hydrated  A=archived[/]");
+                    AnsiConsole.MarkupLine("[dim]P=local pointer  B=local binary  R=in repository  H=hydrated  A=archived  ~=rehydrating  ?=tier unknown[/]");
 
                     await foreach (var entry in mediator.CreateStream(new ListQuery(opts), ct))
                     {

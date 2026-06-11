@@ -307,7 +307,7 @@ tier. Once rehydration completes and files are restored, these blobs are cleaned
 Deduplication index split into prefix-keyed shards. Each shard is a text file (gzip-compressed, optionally encrypted) where
 each line maps a content-hash to its chunk-hash, sizes, and the chunk's storage tier:
 
-```
+```text
 <content-hash> <chunk-hash> <original-size> <compressed-size> <tier>
 ```
 

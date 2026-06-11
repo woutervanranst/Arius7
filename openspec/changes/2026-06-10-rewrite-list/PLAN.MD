@@ -61,7 +61,7 @@ Note for the flags: even with a mandatory hint, a list-query lookup can still *m
 
 Rewrite `src/Arius.Core/Features/ListQuery/ListQueryHandler.cs` mirroring `ArchiveCommandHandler` conventions (doc header with stages/channels tables + diagram, `── Tuning knobs ──` / `── Dependencies ──` sections, `[phase]` logs, writers completed in `finally`, faults propagated via `Complete(ex)`):
 
-```
+```text
 Walk (×1) ─► walkItemChannel (bounded) ─► Resolve (×1) ─► entryChannel (bounded) ─► Handle (yield)
 ```
 
