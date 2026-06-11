@@ -68,4 +68,12 @@ public interface IChunkStorageService
     /// </summary>
     Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists chunks that currently have a rehydrated copy via a single prefix listing (no per-chunk calls),
+    /// mapping each chunk hash to whether that copy is ready to download (<c>true</c>, non-archive tier) or
+    /// still rehydrating (<c>false</c>, archive tier).
+    /// </summary>
+    Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(
+        CancellationToken cancellationToken = default);
 }

@@ -5,7 +5,7 @@ using Spectre.Console.Rendering;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
-public class BuildRestoreDisplayDispositionTests
+public class BuildRestoreDisplayRouteTests
 {
     private static string RenderToString(IRenderable renderable)
     {
@@ -21,15 +21,15 @@ public class BuildRestoreDisplayDispositionTests
     }
 
     [Test]
-    public void BuildRestoreDisplay_DispositionTallies_ShowAllFourCategories()
+    public void BuildRestoreDisplay_RouteTallies_ShowAllFourCategories()
     {
         var state = new ProgressState();
         state.SetTreeTraversalComplete(4, 4000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(RestoreDisposition.New);
-        state.IncrementDisposition(RestoreDisposition.SkipIdentical);
-        state.IncrementDisposition(RestoreDisposition.Overwrite);
-        state.IncrementDisposition(RestoreDisposition.KeepLocalDiffers);
+        state.IncrementRoute(RestoreRoute.New);
+        state.IncrementRoute(RestoreRoute.SkipIdentical);
+        state.IncrementRoute(RestoreRoute.Overwrite);
+        state.IncrementRoute(RestoreRoute.KeepLocalDiffers);
 
         var output = RenderToString(RestoreVerb.BuildDisplay(state));
 

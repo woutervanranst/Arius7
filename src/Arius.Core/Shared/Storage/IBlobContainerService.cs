@@ -18,6 +18,15 @@ public sealed class BlobNotFoundException(RelativePath blobName) : FileNotFoundE
 }
 
 /// <summary>
+/// Thrown when a blob download is attempted against a blob that is still in the archive tier
+/// (not yet rehydrated). Lets callers re-route the chunk to the rehydration path.
+/// </summary>
+public sealed class BlobArchivedException(RelativePath blobName) : IOException($"Blob is archived: {blobName}")
+{
+    public RelativePath BlobName { get; } = blobName;
+}
+
+/// <summary>
 /// Blob tier for uploaded content.
 /// Maps to Azure access tiers; other backends may map these to equivalent concepts.
 /// </summary>

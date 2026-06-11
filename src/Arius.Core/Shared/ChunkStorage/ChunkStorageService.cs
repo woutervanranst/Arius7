@@ -34,8 +34,27 @@ internal sealed class ChunkStorageService : IChunkStorageService
     public Task StartRehydrationAsync(ChunkHash chunkHash, RehydratePriority priority, CancellationToken cancellationToken = default) 
         => _blobs.CopyAsync(BlobPaths.ChunkPath(chunkHash), BlobPaths.ChunkRehydratedPath(chunkHash), BlobTier.Cold, priority, cancellationToken);
 
-    public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(CancellationToken cancellationToken = default) 
+    public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(CancellationToken cancellationToken = default)
         => PlanCleanupCoreAsync(cancellationToken);
+
+    public Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(CancellationToken cancellationToken = default)
+        => ListRehydratedChunksCoreAsync(cancellationToken);
+
+    private async Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksCoreAsync(CancellationToken cancellationToken)
+    {
+        var rehydrated = new Dictionary<ChunkHash, bool>();
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken: cancellationToken))
+        {
+            // The rehydrated blob name is "chunks-rehydrated/{chunkHash}"; the final segment is the hash.
+            if (!ChunkHash.TryParse(item.Name.Name.ToString(), out var chunkHash))
+                continue;
+
+            // Tier != Archive → the copy is hydrated and ready to download; Archive → still rehydrating.
+            rehydrated[chunkHash] = item.Tier is not null && item.Tier != BlobTier.Archive;
+        }
+
+        return rehydrated;
+    }
 
     private async Task<ChunkUploadResult> UploadChunkAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress, string ariusType, bool isTar, CancellationToken cancellationToken)
     {

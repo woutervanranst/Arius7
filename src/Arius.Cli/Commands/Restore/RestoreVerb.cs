@@ -166,6 +166,8 @@ internal static class RestoreVerb
 
                         return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
                     },
+
+                    OnDownloadQueueReady = getter => restoreProgress.DownloadQueueDepth = getter,
                 };
 
                 RestoreResult? result = null;
@@ -382,20 +384,20 @@ internal static class RestoreVerb
 
         // ── Stage 2: Checking / Checked ───────────────────────────────────────
         {
-            var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
-                            + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
-            var dispositionStarted = dispTotal > 0;
+            var dispTotal = state.RouteNew + state.RouteSkipIdentical
+                            + state.RouteOverwrite + state.RouteKeepLocalDiffers;
+            var routeStarted = dispTotal > 0;
             var checkedComplete = state.ChunkGroups > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
 
             string checkedSymbol;
-            if (checkedComplete && (dispositionStarted || total == 0))
+            if (checkedComplete && (routeStarted || total == 0))
                 checkedSymbol = "[green]●[/]";
-            else if (dispositionStarted)
+            else if (routeStarted)
                 checkedSymbol = "[yellow]○[/]";
             else
                 checkedSymbol = "[dim]○[/]";
 
-            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew:N0} new, {state.DispositionSkipIdentical:N0} identical, {state.DispositionOverwrite:N0} overwrite, {state.DispositionKeepLocalDiffers:N0} kept"));
+            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.RouteNew:N0} new, {state.RouteSkipIdentical:N0} identical, {state.RouteOverwrite:N0} overwrite, {state.RouteKeepLocalDiffers:N0} kept"));
         }
 
         // ── Stage 3: Restoring ────────────────────────────────────────────────
@@ -409,6 +411,10 @@ internal static class RestoreVerb
                 restoringSymbol = "[dim]○[/]";
 
             var countStr = state.TreeTraversalComplete ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
+
+            var queueDepth = state.DownloadQueueDepth?.Invoke() ?? 0;
+            if (queueDepth > 0 && !allDone)
+                countStr += $"  [dim]({queueDepth:N0} queued)[/]";
 
             var totalCompressed = state.RestoreTotalCompressedBytes;
             var bytesDownloaded = state.RestoreBytesDownloaded;

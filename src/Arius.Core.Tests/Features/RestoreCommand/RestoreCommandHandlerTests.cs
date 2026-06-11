@@ -441,6 +441,154 @@ public class RestoreCommandHandlerTests
         fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/other.jpg")).ShouldBeFalse();
     }
 
+    [Test]
+    public async Task Handle_ScatteredTarEntries_DownloadsChunkOnce_AndRestoresAll()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-scattered-tar-{Guid.NewGuid():N}",
+            $"ctr-restore-scattered-tar-{Guid.NewGuid():N}");
+
+        // Three distinct small files at scattered tree paths — they bundle into a single tar chunk,
+        // but the restore walk visits them far apart (sorted depth-first). The refcount-flush grouper
+        // must still download the tar exactly once.
+        var paths = new[]
+        {
+            RelativePath.Parse("aaa/first.bin"),
+            RelativePath.Parse("mmm/deep/second.bin"),
+            RelativePath.Parse("zzz/third.bin"),
+        };
+        var contents = new[] { new byte[] { 1, 1, 1 }, new byte[] { 2, 2, 2, 2 }, new byte[] { 3, 3 } };
+        for (var i = 0; i < paths.Length; i++)
+            await fixture.LocalFileSystem.WriteAllBytesAsync(paths[i], contents[i], CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalDirectory.ToString(),
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024, // all three are "small" → one tar bundle
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        // Isolate restore-time blob access from archive-time access.
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        blobs.RequestedBlobNames.Clear();
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(3);
+
+        for (var i = 0; i < paths.Length; i++)
+            fixture.RestoreFileSystem.ReadAllBytes(paths[i]).ShouldBe(contents[i]);
+
+        // The single tar chunk must be downloaded exactly once despite three scattered files.
+        var chunkDownloads = blobs.RequestedBlobNames.Count(n => n.ToString().StartsWith("chunks/"));
+        chunkDownloads.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Handle_DownloadFailure_FailsGracefullyWithoutDeadlock()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-download-fail-{Guid.NewGuid():N}",
+            $"ctr-restore-download-fail-{Guid.NewGuid():N}");
+
+        // Many 1:1 (large) chunks so the grouper is still emitting when a worker faults — exercises the
+        // cancellation that unblocks the grouper from the bounded chunk channel.
+        for (var i = 0; i < 12; i++)
+            await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse($"dir{i}/file{i}.bin"), [(byte)i, (byte)(i + 1), (byte)(i + 2)], CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalDirectory.ToString(),
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1, // every file is its own (large) chunk
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        // Delete one chunk blob so its download throws BlobNotFoundException mid-pipeline.
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        RelativePath? victim = null;
+        await foreach (var item in ((IBlobContainerService)blobs).ListAsync(BlobPaths.ChunksPrefix))
+        {
+            victim = item.Name;
+            break;
+        }
+        victim.ShouldNotBeNull();
+        await blobs.DeleteAsync(victim.Value);
+
+        var handleTask = fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+            }),
+            CancellationToken.None).AsTask();
+
+        // A regression to deadlock would hang here; the timeout turns that into a clear failure.
+        var result = await handleTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Handle_CancelRehydration_RestoresNothing()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-cancel-rehydration-{Guid.NewGuid():N}",
+            $"ctr-restore-cancel-rehydration-{Guid.NewGuid():N}");
+
+        var relativePath = RelativePath.Parse("archive/file.bin");
+        var content      = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+
+        // Archive to the Archive tier so the chunk classifies as needing rehydration.
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Archive,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var confirmCalled = false;
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+                // Cancel rehydration → nothing should be downloaded.
+                ConfirmRehydration = (_, _) =>
+                {
+                    confirmCalled = true;
+                    return Task.FromResult<RehydratePriority?>(null);
+                },
+            }),
+            CancellationToken.None);
+
+        confirmCalled.ShouldBeTrue("ConfirmRehydration should be invoked for an archive-tier chunk");
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(0);
+        restoreResult.ChunksPendingRehydration.ShouldBeGreaterThanOrEqualTo(1);
+        fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeFalse();
+    }
+
     private static async Task<byte[]> CompressAsync(byte[] plaintext)
     {
         using var output = new MemoryStream();

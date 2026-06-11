@@ -30,7 +30,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(847, 14_200_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementRoute(RestoreRoute.New);
         state.SetChunkResolution(10, 5, 5);
         state.SetRestoreTotalCompressedBytes(8_310_000_000);
         state.AddRestoreBytesDownloaded(3_170_000_000);
@@ -80,7 +80,7 @@ public class BuildRestoreDisplayAggregateProgressTests
         state.SetRestoreTotalFiles(4612);
         state.SetTreeTraversalComplete(4612, 5_260_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementRoute(RestoreRoute.New);
         state.SetChunkResolution(100, 50, 50);
         state.SetRestoreTotalCompressedBytes(4_920_000_000);
         state.AddRestoreBytesDownloaded(10_000_000);

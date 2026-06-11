@@ -56,6 +56,11 @@ public sealed record RestoreOptions
     /// </summary>
     public Func<ChunkHash, long, IProgress<long>>? CreateTarBundleDownloadProgress { get; init; }
 
+    /// <summary>
+    /// Optional callback that hands the CLI a getter for the current download-queue depth (chunks resolved
+    /// and waiting for a download worker). Mirrors archive's <c>OnHashQueueReady</c>/<c>OnUploadQueueReady</c>.
+    /// </summary>
+    public Action<Func<int>>? OnDownloadQueueReady { get; init; }
 }
 
 /// <summary>

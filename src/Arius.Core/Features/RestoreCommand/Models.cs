@@ -1,3 +1,6 @@
+using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.ChunkStorage;
+
 namespace Arius.Core.Features.RestoreCommand;
 
 // ── Internal pipeline models ──────────────────────────────────────────────────
@@ -10,6 +13,41 @@ internal sealed record FileToRestore(
     ContentHash    ContentHash,
     DateTimeOffset Created,
     DateTimeOffset Modified
+);
+
+/// <summary>
+/// A <see cref="FileToRestore"/> paired with its resolved chunk-index entry (the Resolve stage's output).
+/// Carries the index entry so downstream stages need not re-look-up the chunk.
+/// </summary>
+internal sealed record ResolvedFile(
+    FileToRestore File,
+    ShardEntry    IndexEntry
+);
+
+/// <summary>
+/// Per-chunk classification accumulated during pass 1 (keyed by distinct <see cref="ChunkHash"/>).
+/// <see cref="RefCount"/> is the number of to-restore files referencing the chunk; pass 2 uses it to
+/// flush a tar group once all its files have arrived. For tar chunks the sizes are summed across files.
+/// </summary>
+internal sealed record ChunkClassification
+{
+    public required bool                 IsLargeChunk   { get; init; }
+    public required ChunkHydrationStatus Status         { get; set; }
+    public          long                 CompressedSize { get; set; }
+    public          long                 OriginalSize   { get; set; }
+    public          int                  RefCount       { get; set; }
+}
+
+/// <summary>
+/// A closed group dispatched to a pass-2 download worker. For large chunks <see cref="Files"/> holds the
+/// single file; for tar bundles it holds every to-restore file mapped to the chunk.
+/// </summary>
+internal sealed record ChunkToRestore(
+    ChunkHash                   ChunkHash,
+    bool                        IsLargeChunk,
+    IReadOnlyList<FileToRestore> Files,
+    long                        CompressedSize,
+    long                        OriginalSize
 );
 
 // ── Task 10.6: Cost estimation model ─────────────────────────────────────────

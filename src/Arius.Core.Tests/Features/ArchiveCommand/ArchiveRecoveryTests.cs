@@ -606,5 +606,7 @@ public class ArchiveRecoveryTests
         public Task StartRehydrationAsync(ChunkHash chunkHash, RehydratePriority priority, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<IRehydratedChunkCleanupPlan> PlanRehydratedCleanupAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }
