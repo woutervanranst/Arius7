@@ -38,7 +38,7 @@ namespace Arius.Core.Features.ListQuery;
 ///    the stages via a linked CTS.
 ///
 /// ```
-/// Walk ─► walkItemChannel ─► Resolve ─► entryChannel ─► Handle (yield)
+/// Walk (1) ─► walkItemChannel ─► Resolve (2) ─► entryChannel ─► Handle (3) (yield)
 /// ```
 ///
 /// ## Channels
@@ -77,15 +77,7 @@ public sealed class ListQueryHandler(
         var opts = command.Options;
 
         // ── Operation start marker ────────────────────────────────────────────
-        _logger.LogInformation(
-            "[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}",
-            _accountName,
-            _containerName,
-            opts.Version ?? "latest",
-            opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)",
-            opts.Filter ?? "(none)",
-            opts.Recursive,
-            opts.LocalPath ?? "(none)");
+        _logger.LogInformation("[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", _accountName, _containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
 
         // ── Resolve snapshot and starting point ───────────────────────────────
         _logger.LogInformation("[phase] resolve-snapshot");
@@ -161,9 +153,12 @@ public sealed class ListQueryHandler(
                 {
                     var inRepository = entry.State.HasFlag(RepositoryEntryState.Repository);
                     var onDisk       = (entry.State & (RepositoryEntryState.LocalPointer | RepositoryEntryState.LocalBinary)) != 0;
-                    if (inRepository && onDisk) bothCount++;
-                    else if (inRepository) repositoryOnlyCount++;
-                    else localOnlyCount++;
+                    if (inRepository && onDisk) 
+                        bothCount++;
+                    else if (inRepository) 
+                        repositoryOnlyCount++;
+                    else 
+                        localOnlyCount++;
 
                     if (entry.State.HasFlag(RepositoryEntryState.RepositoryArchived))
                         archivedCount++;
@@ -502,14 +497,11 @@ public sealed class ListQueryHandler(
 
     private sealed record LocalDirectoryState(PathSegment Name, RelativePath Path);
 
-    private sealed record LocalDirectorySnapshot(
-        IReadOnlyDictionary<PathSegment, LocalDirectoryState> Directories,
-        Dictionary<PathSegment, LocalFileState> Files)
+    private sealed record LocalDirectorySnapshot(IReadOnlyDictionary<PathSegment, LocalDirectoryState> Directories, Dictionary<PathSegment, LocalFileState> Files)
     {
         // Shared instance is safe: the walk only ever removes from Files, which is a no-op here.
-        public static LocalDirectorySnapshot Empty { get; } =
-            new LocalDirectorySnapshot(
+        public static LocalDirectorySnapshot Empty { get; } =  new(
                 new Dictionary<PathSegment, LocalDirectoryState>(),
-                new Dictionary<PathSegment, LocalFileState>());
+                []);
     }
 }
