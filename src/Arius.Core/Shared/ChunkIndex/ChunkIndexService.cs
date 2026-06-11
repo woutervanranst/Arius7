@@ -222,7 +222,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
             return targets;
         }
 
-        for (var attempt = 0; ; attempt++)
+        var retriedListing = false;
+        while (true)
         {
             // One subtree listing decides, per hash, between "existing shard" (parent-wins walk)
             // and "empty range at this depth" — a missing blob alone can mean either.
@@ -261,7 +262,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 var remoteShard = await _blobs.TryDownloadAsync(blobName, cancellationToken);
                 if (remoteShard is null)
                 {
-                    if (attempt == 0)
+                    if (!retriedListing)
                     {
                         // Deleted between listing and download (a racing split elsewhere):
                         // re-resolve everything from a fresh listing, once.
@@ -292,6 +293,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
             if (!lostListingRace)
                 return targets;
+
+            retriedListing = true;
         }
     }
 
@@ -389,8 +392,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var pendingHashes = _localStore.GetPendingFlushHashes(root);
             var targets = await EnsureCoverageCoreAsync(root, pendingHashes, latestSnapshotVersion, cancellationToken);
 
-            // An interrupted split can yield mixed-depth targets (parent + already-claimed child);
-            // a target nested inside another target is fully covered by the ancestor's range.
+            // An interrupted split can yield mixed-depth targets, e.g. a parent plus an
+            // already-claimed child. A target nested inside another target is fully covered by
+            // the ancestor's range, so only the shallowest targets are flushed.
             var distinctTargets = targets.Values.Distinct().ToList();
             var flushTargets = distinctTargets
                 .Where(prefix => !distinctTargets.Any(other => other != prefix && prefix.ToString().StartsWith(other.ToString(), StringComparison.Ordinal)))

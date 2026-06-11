@@ -193,18 +193,13 @@ public interface IBlobContainerService
     /// The default implementation filters a directory listing client-side; backends that support
     /// native raw-prefix listing should override it.
     /// </summary>
-    async IAsyncEnumerable<BlobListItem> ListAsync(
+    IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath      directory,
         string            namePrefix,
         bool              includeMetadata   = false,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await foreach (var item in ListAsync(directory, includeMetadata, cancellationToken))
-        {
-            if (item.Name.Name.ToString().StartsWith(namePrefix, StringComparison.Ordinal))
-                yield return item;
-        }
-    }
+        CancellationToken cancellationToken = default)
+        => ListAsync(directory, includeMetadata, cancellationToken)
+            .Where(item => item.Name.Name.ToString().StartsWith(namePrefix, StringComparison.Ordinal));
 
     // ── Metadata update ───────────────────────────────────────────────────────
 
