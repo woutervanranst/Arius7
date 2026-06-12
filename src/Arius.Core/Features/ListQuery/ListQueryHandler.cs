@@ -27,10 +27,10 @@ namespace Arius.Core.Features.ListQuery;
 /// |----------------------|-------------------------------------|--------------------------------------|
 /// | Read                 | ReadRemoteDirectoryAsync(treeHash)  | ReadLocalDirectory(fileSystem, dir)  |
 /// |                      |   → RemoteDirectoryListing          |   → LocalDirectoryListing            |
-/// | Merge files          | MergeFilesAsync — remote files in tree order, each absorbing its local    |
+/// | Merge files          | MergeFilesAsync — remote files in tree order, each absorbing its local     |
 /// |                      | counterpart; local leftovers trail as local-only                           |
-/// | Merge subdirectories | MergeSubdirectories — remote subdirectories in tree order, flagged when   |
-/// |                      | also present locally; local-only trail. Doubles as the walk worklist.     |
+/// | Merge subdirectories | MergeSubdirectories — remote subdirectories in tree order, flagged when    |
+/// |                      | also present locally; local-only trail. Doubles as the walk worklist.      |
 /// </code>
 ///
 /// Overlay name matching is case-sensitive (exact tree names; case-variant files each get their
