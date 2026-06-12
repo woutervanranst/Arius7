@@ -6,6 +6,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
@@ -333,6 +334,76 @@ public class ListQueryHandlerTests
         result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
         result[PathSegment.Parse("shared.txt")].Size.ShouldBe(12);
         result[PathSegment.Parse("pointer-only.txt")].Size.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Handle_RecursiveLocalOnlyDirectory_DescendsAndYieldsLocalFiles()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-local-recursive");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Parse("local-only-dir"));
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("local-only-dir/nested.txt"), "nested", CancellationToken.None);
+
+            IReadOnlyList<FileTreeEntry> rootTree = [];
+            var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, s_encryption));
+
+            var blobs = new FakeSeededBlobContainerService();
+            await SeedTreeAsync(blobs, rootTree);
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-local-recursive", "ctr-ls-local-recursive", s_encryption);
+            var handler = fixture.CreateListQueryHandler();
+
+            var results = await handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot.ToString(), Recursive = true }), CancellationToken.None)
+                .ToListAsync();
+
+            var directory = results.OfType<RepositoryDirectoryEntry>().Single();
+            directory.RelativePath.ShouldBe(RelativePath.Parse("local-only-dir"));
+            directory.State.ShouldBe(RepositoryEntryState.LocalDirectory);
+            directory.TreeHash.ShouldBeNull();
+
+            var file = results.OfType<RepositoryFileEntry>().Single();
+            file.RelativePath.ShouldBe(RelativePath.Parse("local-only-dir/nested.txt"));
+            file.State.ShouldBe(RepositoryEntryState.LocalBinary);
+            file.ContentHash.ShouldBeNull();
+            file.OriginalSize.ShouldBe(6);
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public void LocalDirectoryReader_Read_MissingDirectory_ReturnsEmptyListingAndLogsWarnings()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-missing-local-dir");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+
+        try
+        {
+            var logger = new FakeLogger<ListQueryHandler>();
+
+            var listing = LocalDirectoryReader.Read(localFileSystem, RelativePath.Parse("missing"), logger);
+
+            listing.Files.ShouldBeEmpty();
+            listing.Subdirectories.ShouldBeEmpty();
+
+            var warnings = logger.Collector.GetSnapshot()
+                .Where(record => record.Level == LogLevel.Warning)
+                .ToList();
+            warnings.Count.ShouldBe(2);
+            warnings.ShouldContain(record => record.Message.Contains("Could not enumerate subdirectories"));
+            warnings.ShouldContain(record => record.Message.Contains("Could not enumerate files"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
     }
 
     [Test]
