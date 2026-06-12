@@ -284,7 +284,7 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public void BuildFiles_PointerSuffixComparisonIsCaseInsensitive()
+    public void PairFiles_PointerSuffixComparisonIsCaseInsensitive()
     {
         var files = new[]
         {
@@ -298,24 +298,21 @@ public class ListQueryHandlerTests
             }
         };
 
-        var result = LocalFileSnapshotBuilder.BuildFiles(
+        var result = LocalDirectoryReader.PairFiles(
             files,
             path => path.ToString() == "docs/shared.txt",
-            path => path.ToString() == "docs/shared.txt" ? 12 : throw new InvalidOperationException($"Unexpected size request for {path}"),
-            _ => (s_created, s_modified),
-            path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
+            path => path.ToString() == "docs/shared.txt" ? (12L, s_created, s_modified) : throw new InvalidOperationException($"Unexpected stat request for {path}"));
 
         result.Count.ShouldBe(1);
 
         var shared = result[PathSegment.Parse("shared.txt")];
         shared.BinaryExists.ShouldBeTrue();
         shared.PointerExists.ShouldBeTrue();
-        shared.PointerHash.ShouldBe(FakeContentHash('2'));
-        shared.FileSize.ShouldBe(12);
+        shared.Size.ShouldBe(12);
     }
 
     [Test]
-    public void BuildFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
+    public void PairFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
     {
         var files = new[]
         {
@@ -333,7 +330,7 @@ public class ListQueryHandlerTests
             }
         };
 
-        var result = LocalFileSnapshotBuilder.BuildFiles(
+        var result = LocalDirectoryReader.PairFiles(
             files,
             path => path.ToString() switch
             {
@@ -342,24 +339,15 @@ public class ListQueryHandlerTests
             },
             path => path.ToString() switch
             {
-                "docs/shared.txt" => 12,
-                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
-                "docs/pointer-only.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
-                _ => throw new InvalidOperationException($"Unexpected size request for {path}")
-            },
-            _ => (s_created, s_modified),
-            path => path.ToString() switch
-            {
-                "docs/shared.txt.pointer.arius" => FakeContentHash('2'),
-                "docs/pointer-only.txt.pointer.arius" => FakeContentHash('3'),
-                _ => null
+                "docs/shared.txt" => (12L, s_created, s_modified),
+                _ => throw new InvalidOperationException($"Unexpected stat request for {path}")
             });
 
         result.Count.ShouldBe(2);
         result[PathSegment.Parse("shared.txt")].PointerExists.ShouldBeTrue();
         result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
-        result[PathSegment.Parse("shared.txt")].FileSize.ShouldBe(12);
-        result[PathSegment.Parse("pointer-only.txt")].FileSize.ShouldBeNull();
+        result[PathSegment.Parse("shared.txt")].Size.ShouldBe(12);
+        result[PathSegment.Parse("pointer-only.txt")].Size.ShouldBeNull();
     }
 
     [Test]
