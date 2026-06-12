@@ -70,7 +70,6 @@ public sealed class ListQueryHandler(
 
         // Walk, accumulating summary counters as entries stream past.
         logger.LogInformation("[phase] walk");
-        var stopwatch           = Stopwatch.StartNew();
         var directoryCount      = 0;
         var bothCount           = 0; // in the repository and (pointer and/or binary) on disk
         var localOnlyCount      = 0;
@@ -94,7 +93,6 @@ public sealed class ListQueryHandler(
                     repositoryOnlyCount++;
                 else
                     localOnlyCount++;
-
                 if (entry.State.HasFlag(RepositoryEntryState.RepositoryArchived))
                     archivedCount++;
             }
@@ -102,7 +100,7 @@ public sealed class ListQueryHandler(
             yield return entry;
         }
 
-        logger.LogInformation("[list] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived) in {Elapsed}", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount, stopwatch.Elapsed);
+        logger.LogInformation("[list] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived)", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount);
     }
 
     // ── The walk ──────────────────────────────────────────────────────────────
