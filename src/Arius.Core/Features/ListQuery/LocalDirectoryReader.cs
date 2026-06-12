@@ -42,8 +42,16 @@ internal static class LocalDirectoryReader
             fileSystem.FileExists,
             path =>
             {
-                var (created, modified) = fileSystem.GetTimestamps(path);
-                return (fileSystem.GetFileSize(path), created, modified);
+                try
+                {
+                    var (created, modified) = fileSystem.GetTimestamps(path);
+                    return (fileSystem.GetFileSize(path), created, modified);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    logger.LogWarning(ex, "Could not stat file: {Path}", path);
+                    return (0, DateTimeOffset.MinValue, DateTimeOffset.MinValue);
+                }
             });
 
         return new LocalDirectoryListing(files, subdirectories);
