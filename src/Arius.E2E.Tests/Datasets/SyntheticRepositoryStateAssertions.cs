@@ -10,10 +10,8 @@ internal static class SyntheticRepositoryStateAssertions
         var fileSystem = new RelativeFileSystem(rootDirectory);
         var actual = new Dictionary<RelativePath, ContentHash>();
 
-        foreach (var file in fileSystem.EnumerateFiles())
+        foreach (var relativePath in fileSystem.EnumerateFiles())
         {
-            var relativePath = file.Path;
-
             if (!includePointerFiles && relativePath.ToString().EndsWith(".pointer.arius", StringComparison.Ordinal))
                 continue;
 

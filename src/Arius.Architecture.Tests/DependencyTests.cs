@@ -88,8 +88,6 @@ public class DependencyTests
         {
             // FileSystem types
             typeof(LocalDirectory),
-            typeof(LocalDirectoryEntry),
-            typeof(LocalFileEntry),
             typeof(RelativeFileSystem),
 
             // Archive feature types
