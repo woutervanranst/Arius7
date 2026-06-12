@@ -66,17 +66,17 @@ public enum RepositoryEntryState
     /// <summary>Present in the snapshot file tree.</summary>
     Repository = 1 << 3,
 
-    /// <summary>Chunk tier hint: hot/cool/cold — downloadable now. Implies <see cref="Repository"/>.</summary>
-    RepositoryHydrated = Repository | (1 << 4),
+    /// <summary>Chunk tier hint: hot/cool/cold — downloadable now. Set alongside <see cref="Repository"/>.</summary>
+    RepositoryHydrated = 1 << 4,
 
-    /// <summary>Chunk tier hint: archive — needs rehydration first. Implies <see cref="Repository"/>.</summary>
-    RepositoryArchived = Repository | (1 << 5),
+    /// <summary>Chunk tier hint: archive — needs rehydration first. Set alongside <see cref="Repository"/>.</summary>
+    RepositoryArchived = 1 << 5,
 
     /// <summary>
-    /// Rehydration is pending. Implies <see cref="RepositoryArchived"/>. The chunk index cannot
+    /// Rehydration is pending. Set alongside <see cref="RepositoryArchived"/>. The chunk index cannot
     /// know this; it is only set by live refinement (see ChunkHydrationStatusQuery).
     /// </summary>
-    RepositoryRehydrating = RepositoryArchived | (1 << 6),
+    RepositoryRehydrating = 1 << 6,
 }
 
 /// <summary>
