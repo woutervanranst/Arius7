@@ -51,7 +51,7 @@ public sealed class ListQueryHandler(
     {
         var opts = command.Options;
 
-        _logger.LogInformation("[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", _accountName, _containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
+        logger.LogInformation("[list] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", accountName, containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
 
         // Resolve the snapshot and descend to the prefix directory.
         logger.LogInformation("[phase] resolve-snapshot");
@@ -102,7 +102,7 @@ public sealed class ListQueryHandler(
             yield return entry;
         }
 
-        _logger.LogInformation("[ls] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived) in {Elapsed}", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount, stopwatch.Elapsed);
+        logger.LogInformation("[list] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived) in {Elapsed}", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount, stopwatch.Elapsed);
     }
 
     // ── The walk ──────────────────────────────────────────────────────────────
