@@ -38,13 +38,6 @@ internal static class FileTreeSerializer
         return s_utf8.GetBytes(sb.ToString());
     }
 
-    private sealed class PathSegmentOrdinalComparer : IComparer<PathSegment>
-    {
-        public static PathSegmentOrdinalComparer Instance { get; } = new();
-
-        public int Compare(PathSegment x, PathSegment y) => x.Compare(y, StringComparer.Ordinal);
-    }
-
     /// <summary>
     /// Serializes one file entry in the persisted filetree node format.
     /// </summary>

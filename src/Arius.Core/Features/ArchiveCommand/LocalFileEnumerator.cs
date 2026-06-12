@@ -35,10 +35,8 @@ internal sealed class LocalFileEnumerator
     {
         var fileSystem = new RelativeFileSystem(rootDirectory);
 
-        foreach (var file in fileSystem.EnumerateFiles())
+        foreach (var relativePath in fileSystem.EnumerateFiles())
         {
-            var relativePath = file.Path;
-
             if (!fileSystem.IsValidSymlink(relativePath))
             {
                 _logger?.LogWarning("Skipping broken symlink: {RelPath}", relativePath);

@@ -149,36 +149,29 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// <summary>
     /// Enumerates immediate child directories of the provided relative path.
     /// </summary>
-    public IEnumerable<LocalDirectoryEntry> EnumerateDirectories(RelativePath path)
+    public IEnumerable<RelativePath> EnumerateDirectories(RelativePath path)
     {
         foreach (var directoryPath in Directory.EnumerateDirectories(root.Resolve(path), "*", SearchOption.TopDirectoryOnly))
         {
-            if (!root.TryGetRelativePath(directoryPath, out var relativePath))
-                continue;
-
-            yield return new LocalDirectoryEntry { Path = relativePath };
+            if (root.TryGetRelativePath(directoryPath, out var relativePath))
+                yield return relativePath;
         }
     }
 
     /// <summary>
-    /// Enumerates all files recursively under the rooted directory as repository-relative entries.
+    /// Enumerates all files recursively under the rooted directory as repository-relative paths.
     /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles() => EnumerateFiles(RelativePath.Root, SearchOption.AllDirectories);
+    public IEnumerable<RelativePath> EnumerateFiles() => EnumerateFiles(RelativePath.Root, SearchOption.AllDirectories);
 
     /// <summary>
-    /// Enumerates immediate child files of the provided relative path.
+    /// Enumerates files under the provided relative path as repository-relative paths.
     /// </summary>
-    public IEnumerable<LocalFileEntry> EnumerateFiles(RelativePath path, SearchOption searchOption)
+    public IEnumerable<RelativePath> EnumerateFiles(RelativePath path, SearchOption searchOption)
     {
         foreach (var filePath in Directory.EnumerateFiles(root.Resolve(path), "*", searchOption))
         {
-            if (!root.TryGetRelativePath(filePath, out var relativePath))
-                continue;
-
-            yield return new LocalFileEntry
-            {
-                Path = relativePath
-            };
+            if (root.TryGetRelativePath(filePath, out var relativePath))
+                yield return relativePath;
         }
     }
 

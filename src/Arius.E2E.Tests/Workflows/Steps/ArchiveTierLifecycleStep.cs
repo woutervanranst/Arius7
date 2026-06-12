@@ -133,9 +133,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         {
             // Select one representative tar-backed file under the subtree and preserve the exact
             // existing chunk blob bytes/metadata so the ready path can reuse the real blob.
-            foreach (var file in fixture.LocalFileSystem.EnumerateFiles(targetPath, SearchOption.AllDirectories))
+            foreach (var relativePath in fixture.LocalFileSystem.EnumerateFiles(targetPath, SearchOption.AllDirectories))
             {
-                var relativePath = file.Path;
                 var bytes       = await fixture.LocalFileSystem.ReadAllBytesAsync(relativePath, cancellationToken); // todo use streaming
                 var contentHash = fixture.Encryption.ComputeHash(bytes);
                 var entry       = await fixture.Repository.Index.LookupAsync(contentHash, cancellationToken);

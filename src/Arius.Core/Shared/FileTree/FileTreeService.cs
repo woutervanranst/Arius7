@@ -346,11 +346,4 @@ internal sealed class FileTreeService : IFileTreeService
 
         return _diskCacheFileSystem.FileExists(FileTreePaths.GetCachePath(hash));
     }
-
-    private sealed class PathSegmentOrdinalComparer : IComparer<PathSegment>
-    {
-        public static PathSegmentOrdinalComparer Instance { get; } = new();
-
-        public int Compare(PathSegment x, PathSegment y) => x.Compare(y, StringComparer.Ordinal);
-    }
 }

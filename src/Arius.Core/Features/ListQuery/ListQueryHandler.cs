@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -11,45 +10,32 @@ using Microsoft.Extensions.Logging;
 namespace Arius.Core.Features.ListQuery;
 
 /// <summary>
-/// Streams repository entries from a snapshot, overlaying the local filesystem on top.
+/// Streams repository entries for <c>ls</c> by walking two trees that mirror each other: the
+/// snapshot's persisted filetree (remote) and the local directory tree (local).
 ///
-/// The pipeline is a set of stages connected by bounded <see cref="System.Threading.Channels.Channel{T}"/>s.
-/// Each stage drains its input channel, does its work, and writes to its output channel; a stage
-/// completes its output writer when it finishes (faults are propagated through
-/// <c>Writer.Complete(exception)</c> so the downstream consumer rethrows them). Memory stays bounded
-/// regardless of repository size: in flight are at most one directory's tree entries, one
-/// chunk-index lookup batch, and the channel buffers.
+/// Per directory, both sides are read and merged: the remote listing is the reference sequence
+/// and the local listing is overlaid on top — every remote entry absorbs its local counterpart,
+/// and the local leftovers trail as local-only. Files are emitted first, then subdirectories.
+/// The walk is breadth-first (FIFO), so the shallow structure of a large repository streams out
+/// before any subtree is descended. One chunk-index lookup per directory supplies file sizes and
+/// storage tiers. Entries are yielded as soon as their directory is merged; memory is bounded by
+/// directory width plus the traversal frontier, not by repository size.
 ///
-/// ## Stages
+/// The symmetric read/merge quartet:
+/// <code>
+/// | Step                 | Remote (repository filetree)        | Local (filesystem)                   |
+/// |----------------------|-------------------------------------|--------------------------------------|
+/// | Read                 | ReadRemoteDirectoryAsync(treeHash)  | ReadLocalDirectory(fileSystem, dir)  |
+/// |                      |   → RemoteDirectoryListing          |   → LocalDirectoryListing            |
+/// | Merge files          | MergeFilesAsync — remote files in tree order, each absorbing its local     |
+/// |                      | counterpart; local leftovers trail as local-only                           |
+/// | Merge subdirectories | MergeSubdirectories — remote subdirectories in tree order, flagged when    |
+/// |                      | also present locally; local-only trail. Doubles as the walk worklist.      |
+/// </code>
 ///
-/// 1. **Walk** (×1) — iterative depth-first walk of the snapshot file tree (explicit stack; O(1)
-///    per entry instead of O(depth) nested iterators). Per directory, the file-tree node is the
-///    reference sequence and the local directory (enumerated once, immediate children only) is
-///    *overlaid* on top: each repository file consumes its local counterpart, and the leftovers
-///    are emitted last as local-only — repository entries first, local-only last, no
-///    union/distinct pass over both sets. Overlay name matching is case-sensitive (exact tree
-///    names; case-variant files each get their own row — presentation is the client's call),
-///    while <c>Prefix</c>/<c>Filter</c> are case-insensitive user-typed conveniences.
-///    Directory entries and local-only files are emitted
-///    fully resolved; repository files are emitted as candidates that still need size + tier.
-/// 2. **Resolve** (×1) — buffers consecutive candidates (≤ <see cref="ResolveBatchSize"/>) and
-///    resolves each batch with one <see cref="IChunkIndexService.LookupAsync(IEnumerable{ContentHash}, CancellationToken)"/>
-///    call (sizes + storage-tier hints → <see cref="RepositoryEntryState"/> flags). Any pending
-///    batch is flushed before a resolved entry is forwarded, so the listing order is preserved;
-///    batches thus flush naturally at directory boundaries.
-/// 3. **Consume** — <c>Handle</c> yields from the entry channel; abandoning enumeration cancels
-///    the stages via a linked CTS.
-///
-/// ```
-/// Walk (1) ─► walkItemChannel ─► Resolve (2) ─► entryChannel ─► Handle (3) (yield)
-/// ```
-///
-/// ## Channels
-///
-/// | Channel           | Writer      | Reader      | Capacity    | Notes                                                  |
-/// |-------------------|-------------|-------------|-------------|--------------------------------------------------------|
-/// | `walkItemChannel` | Walk (1)    | Resolve (2) | bounded (N) | Backpressure caps how far the walk runs ahead.         |
-/// | `entryChannel`    | Resolve (2) | Handle (3)  | bounded (N) | Backpressure caps how far resolution runs ahead of the consumer. |
+/// Overlay name matching is case-sensitive (exact tree names; case-variant files each get their
+/// own row — presentation is the client's call), while <c>Prefix</c>/<c>Filter</c> are
+/// case-insensitive user-typed conveniences.
 /// </summary>
 public sealed class ListQueryHandler(
     IChunkIndexService index,
@@ -59,32 +45,17 @@ public sealed class ListQueryHandler(
     string accountName,
     string containerName) : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
-    // ── Tuning knobs ──────────────────────────────────────────────────────────
-
-    private const int ChannelCapacity  = 4096;
-    private const int ResolveBatchSize = 32; // small: first results must not wait on a large batch
-
-    // ── Dependencies ──────────────────────────────────────────────────────────
-
-    private readonly IChunkIndexService _index = index;
-    private readonly IFileTreeService _fileTreeService = fileTreeService;
-    private readonly ISnapshotService _snapshotSvc = snapshotSvc;
-    private readonly ILogger<ListQueryHandler> _logger = logger;
-    private readonly string _accountName = accountName;
-    private readonly string _containerName = containerName;
-
     public async IAsyncEnumerable<RepositoryEntry> Handle(
         ListQuery command,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var opts = command.Options;
 
-        // ── Operation start marker ────────────────────────────────────────────
-        _logger.LogInformation("[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", _accountName, _containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
+        logger.LogInformation("[list] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", accountName, containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
 
-        // ── Resolve snapshot and starting point ───────────────────────────────
-        _logger.LogInformation("[phase] resolve-snapshot");
-        var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+        // Resolve the snapshot and descend to the prefix directory.
+        logger.LogInformation("[phase] resolve-snapshot");
+        var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
         {
             throw new InvalidOperationException(
@@ -95,268 +66,149 @@ public sealed class ListQueryHandler(
 
         var localRoot       = ParseLocalRoot(opts.LocalPath);
         var localFileSystem = localRoot is { } root ? new RelativeFileSystem(root) : null;
-        var (treeHash, relativeDirectory) = await ResolveStartingPointAsync(snapshot.RootHash, opts.Prefix, cancellationToken);
+        var (treeHash, startDirectory) = await ResolveStartingPointAsync(snapshot.RootHash, opts.Prefix, cancellationToken);
 
-        // ── Channels between stages ───────────────────────────────────────────
-        var walkItemChannel = Channel.CreateBounded<WalkItem>(new BoundedChannelOptions(ChannelCapacity) { SingleWriter = true, SingleReader = true });
-        var entryChannel    = Channel.CreateBounded<RepositoryEntry>(new BoundedChannelOptions(ChannelCapacity) { SingleWriter = true, SingleReader = true });
-
-        using var stageCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // ── Stage 1: Walk ×1 ──────────────────────────────────────────────────
-        _logger.LogInformation("[phase] walk");
-        var walkTask = Task.Run(async () =>
-        {
-            try
-            {
-                await WalkTreeAsync(walkItemChannel.Writer, treeHash, localFileSystem, relativeDirectory, opts.Filter, opts.Recursive, stageCts.Token);
-                walkItemChannel.Writer.Complete();
-            }
-            catch (Exception ex)
-            {
-                walkItemChannel.Writer.Complete(ex);
-            }
-        }, CancellationToken.None);
-
-        // ── Stage 2: Resolve ×1 ───────────────────────────────────────────────
-        _logger.LogInformation("[phase] resolve");
-        var resolveTask = Task.Run(async () =>
-        {
-            try
-            {
-                await ResolveAsync(walkItemChannel.Reader, entryChannel.Writer, stageCts.Token);
-                entryChannel.Writer.Complete();
-            }
-            catch (Exception ex)
-            {
-                entryChannel.Writer.Complete(ex);
-            }
-        }, CancellationToken.None);
-
-        // ── Stage 3: Consume ──────────────────────────────────────────────────
-        var stopwatch       = Stopwatch.StartNew();
-        var directoryCount  = 0;
-        var bothCount       = 0; // in the repository and (pointer and/or binary) on disk
-        var localOnlyCount  = 0;
+        // Walk, accumulating summary counters as entries stream past.
+        logger.LogInformation("[phase] walk");
+        var directoryCount      = 0;
+        var bothCount           = 0; // in the repository and (pointer and/or binary) on disk
+        var localOnlyCount      = 0;
         var repositoryOnlyCount = 0;
-        var archivedCount   = 0;
-        try
+        var archivedCount       = 0;
+
+        var start = new DirectoryToWalk(startDirectory, treeHash, ExistsLocally: localFileSystem is not null);
+        await foreach (var entry in WalkAsync(start, localFileSystem, opts.Filter, opts.Recursive, cancellationToken))
         {
-            await foreach (var entry in entryChannel.Reader.ReadAllAsync(cancellationToken))
+            if (entry is RepositoryDirectoryEntry)
             {
-                // ReadAllAsync only observes the token while waiting; check it per item so
-                // cancellation is prompt even when the channel buffer still holds entries.
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (entry is RepositoryDirectoryEntry)
-                {
-                    directoryCount++;
-                }
+                directoryCount++;
+            }
+            else
+            {
+                var inRepository = entry.State.HasFlag(RepositoryEntryState.Repository);
+                var onDisk       = (entry.State & (RepositoryEntryState.LocalPointer | RepositoryEntryState.LocalBinary)) != 0;
+                if (inRepository && onDisk)
+                    bothCount++;
+                else if (inRepository)
+                    repositoryOnlyCount++;
                 else
-                {
-                    var inRepository = entry.State.HasFlag(RepositoryEntryState.Repository);
-                    var onDisk       = (entry.State & (RepositoryEntryState.LocalPointer | RepositoryEntryState.LocalBinary)) != 0;
-                    if (inRepository && onDisk) 
-                        bothCount++;
-                    else if (inRepository) 
-                        repositoryOnlyCount++;
-                    else 
-                        localOnlyCount++;
-
-                    if (entry.State.HasFlag(RepositoryEntryState.RepositoryArchived))
-                        archivedCount++;
-                }
-
-                yield return entry;
+                    localOnlyCount++;
+                if (entry.State.HasFlag(RepositoryEntryState.RepositoryArchived))
+                    archivedCount++;
             }
 
-            _logger.LogInformation("[ls] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived) in {Elapsed}", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount, stopwatch.Elapsed);
+            yield return entry;
         }
-        finally
-        {
-            // Unblocks the stages if enumeration was abandoned before the channels drained.
-            await stageCts.CancelAsync();
-            await Task.WhenAll(walkTask, resolveTask);
-        }
+
+        logger.LogInformation("[list] Complete: {DirectoryCount} directories, {FileCount} files ({BothCount} local+repository, {LocalOnlyCount} local-only, {RepositoryOnlyCount} repository-only, {ArchivedCount} archived)", directoryCount, bothCount + localOnlyCount + repositoryOnlyCount, bothCount, localOnlyCount, repositoryOnlyCount, archivedCount);
     }
 
-    // ── Stage 1: Walk ─────────────────────────────────────────────────────────
+    // ── The walk ──────────────────────────────────────────────────────────────
 
-    private async Task WalkTreeAsync(
-        ChannelWriter<WalkItem> writer,
-        FileTreeHash?           rootTreeHash,
-        RelativeFileSystem?     localFileSystem,
-        RelativePath            rootRelativeDirectory,
-        string?                 filter,
-        bool                    recursive,
-        CancellationToken       cancellationToken)
+    /// <summary>
+    /// Breadth-first walk over the merged remote/local tree: each directory's entries are emitted
+    /// in full — files first, then subdirectories — before any descent.
+    /// </summary>
+    private async IAsyncEnumerable<RepositoryEntry> WalkAsync(
+        DirectoryToWalk     start,
+        RelativeFileSystem? localFileSystem,
+        string?             filter,
+        bool                recursive,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var pending = new Stack<DirectoryToWalk>();
-        pending.Push(new DirectoryToWalk(
-            RelativeDirectory: rootRelativeDirectory,
-            TreeHash: rootTreeHash,
-            HasLocalDirectory: localFileSystem is not null));
+        var pending = new Queue<DirectoryToWalk>();
+        pending.Enqueue(start);
 
         while (pending.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var current = pending.Pop();
+            var directory = pending.Dequeue();
 
-            IReadOnlyList<FileTreeEntry> repositoryEntries = [];
-            if (current.TreeHash is { } currentTreeHash)
+            // Read both halves of the mirror.
+            var remote = await ReadRemoteDirectoryAsync(directory.TreeHash, cancellationToken).ConfigureAwait(false);
+            var local  = ReadLocalDirectory(localFileSystem, directory);
+
+            // Files first: the remote listing is the reference sequence, local overlays it.
+            await foreach (var file in MergeFilesAsync(directory.Path, remote, local, filter, cancellationToken).ConfigureAwait(false))
+                yield return file;
+
+            // Then subdirectories; the merged list doubles as the traversal worklist.
+            foreach (var subdirectory in MergeSubdirectories(directory.Path, remote, local))
             {
-                repositoryEntries = await _fileTreeService.ReadAsync(currentTreeHash, cancellationToken).ConfigureAwait(false);
-            }
+                yield return new RepositoryDirectoryEntry(subdirectory.Path, DirectoryStateOf(subdirectory), subdirectory.TreeHash);
 
-            var localSnapshot = BuildLocalDirectorySnapshot(
-                current.HasLocalDirectory ? localFileSystem : null,
-                current.RelativeDirectory);
-
-            var childDirectories = recursive ? new List<DirectoryToWalk>() : null;
-
-            // Directories: repository first, then local-only.
-            var emittedDirectoryNames = new HashSet<PathSegment>();
-            foreach (var repositoryDirectory in repositoryEntries.OfType<DirectoryEntry>())
-            {
-                var directoryName = repositoryDirectory.Name;
-                var relativePath  = current.RelativeDirectory / directoryName;
-                var existsLocally = localSnapshot.Directories.ContainsKey(directoryName);
-                var state         = RepositoryEntryState.Repository | (existsLocally ? RepositoryEntryState.LocalDirectory : RepositoryEntryState.None);
-
-                emittedDirectoryNames.Add(directoryName);
-                await writer.WriteAsync(
-                    WalkItem.Resolved(new RepositoryDirectoryEntry(relativePath, state, repositoryDirectory.FileTreeHash)),
-                    cancellationToken).ConfigureAwait(false);
-
-                childDirectories?.Add(new DirectoryToWalk(
-                    RelativeDirectory: relativePath,
-                    TreeHash: repositoryDirectory.FileTreeHash,
-                    HasLocalDirectory: existsLocally));
-            }
-
-            foreach (var localDirectory in localSnapshot.Directories.Values)
-            {
-                if (!emittedDirectoryNames.Add(localDirectory.Name))
-                {
-                    continue;
-                }
-
-                await writer.WriteAsync(
-                    WalkItem.Resolved(new RepositoryDirectoryEntry(localDirectory.Path, RepositoryEntryState.LocalDirectory, TreeHash: null)),
-                    cancellationToken).ConfigureAwait(false);
-
-                childDirectories?.Add(new DirectoryToWalk(
-                    RelativeDirectory: localDirectory.Path,
-                    TreeHash: null,
-                    HasLocalDirectory: true));
-            }
-
-            // Files: the repository (file tree) is the reference sequence; each repository file
-            // consumes ('Remove') its local counterpart — even when the filter rejects it — so the
-            // local-only pass below only sees files that have no repository entry.
-            var localFiles = localSnapshot.Files;
-            foreach (var repositoryFile in repositoryEntries.OfType<FileEntry>())
-            {
-                localFiles.Remove(repositoryFile.Name, out var localFile);
-
-                if (!MatchesFilter(repositoryFile.Name, filter))
-                {
-                    continue;
-                }
-
-                await writer.WriteAsync(
-                    WalkItem.Unresolved(new RepositoryFileCandidate(repositoryFile, localFile, current.RelativeDirectory)),
-                    cancellationToken).ConfigureAwait(false);
-            }
-
-            foreach (var localFile in localFiles.Values)
-            {
-                if (!MatchesFilter(localFile.Name, filter))
-                {
-                    continue;
-                }
-
-                await writer.WriteAsync(
-                    WalkItem.Resolved(new RepositoryFileEntry(
-                        RelativePath: localFile.Path,
-                        State: LocalStateOf(localFile),
-                        ContentHash: null,
-                        OriginalSize: localFile.FileSize,
-                        Created: localFile.Created,
-                        Modified: localFile.Modified)),
-                    cancellationToken).ConfigureAwait(false);
-            }
-
-            if (childDirectories is { Count: > 0 })
-            {
-                // Reversed so the stack pops them in listing order (depth-first pre-order).
-                for (var i = childDirectories.Count - 1; i >= 0; i--)
-                {
-                    pending.Push(childDirectories[i]);
-                }
+                if (recursive)
+                    pending.Enqueue(subdirectory);
             }
         }
     }
 
-    // ── Stage 2: Resolve ──────────────────────────────────────────────────────
 
-    private async Task ResolveAsync(
-        ChannelReader<WalkItem>        reader,
-        ChannelWriter<RepositoryEntry> writer,
-        CancellationToken              cancellationToken)
+    // ── Read: the two halves of the mirror ────────────────────────────────────
+
+    /// <summary>Remote half of the read step: load the directory's persisted filetree node.</summary>
+    private async Task<RemoteDirectoryListing> ReadRemoteDirectoryAsync(FileTreeHash? treeHash, CancellationToken cancellationToken)
     {
-        var batch = new List<RepositoryFileCandidate>(ResolveBatchSize);
+        if (treeHash is not { } hash)
+            return RemoteDirectoryListing.Empty; // local-only directory: nothing remote to read
 
-        await foreach (var item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-        {
-            if (item.Candidate is { } candidate)
-            {
-                batch.Add(candidate);
-                if (batch.Count == ResolveBatchSize)
-                {
-                    await ResolveBatchAsync(writer, batch, cancellationToken).ConfigureAwait(false);
-                    batch.Clear();
-                }
-
-                continue;
-            }
-
-            // A resolved entry must not overtake the candidates emitted before it.
-            if (batch.Count > 0)
-            {
-                await ResolveBatchAsync(writer, batch, cancellationToken).ConfigureAwait(false);
-                batch.Clear();
-            }
-
-            await writer.WriteAsync(item.Entry!, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (batch.Count > 0)
-        {
-            await ResolveBatchAsync(writer, batch, cancellationToken).ConfigureAwait(false);
-        }
+        var treeEntries = await fileTreeService.ReadAsync(hash, cancellationToken).ConfigureAwait(false);
+        return RemoteDirectoryListing.From(treeEntries);
     }
 
-    private async Task ResolveBatchAsync(
-        ChannelWriter<RepositoryEntry> writer,
-        List<RepositoryFileCandidate>  batch,
-        CancellationToken              cancellationToken)
+    /// <summary>Local half of the read step: enumerate the directory's immediate children.</summary>
+    private LocalDirectoryListing ReadLocalDirectory(RelativeFileSystem? localFileSystem, DirectoryToWalk directory)
     {
-        var indexEntries = await _index.LookupAsync(
-            batch.Select(candidate => candidate.RepositoryFile.ContentHash).Distinct(),
-            cancellationToken).ConfigureAwait(false);
+        if (localFileSystem is null || !directory.ExistsLocally || !localFileSystem.DirectoryExists(directory.Path))
+            return LocalDirectoryListing.Empty;
 
-        foreach (var candidate in batch)
+        return LocalDirectoryReader.Read(localFileSystem, directory.Path, logger);
+    }
+
+
+    // ── Merge: remote is the reference sequence, local overlays it ────────────
+
+    /// <summary>
+    /// Merges the files of one directory. Each remote file absorbs (<c>Remove</c>s) its local
+    /// counterpart — even when the filter rejects it — so the local-only pass at the end only sees
+    /// files with no remote entry. One chunk-index lookup for the whole directory resolves sizes
+    /// and storage tiers.
+    /// </summary>
+    private async IAsyncEnumerable<RepositoryFileEntry> MergeFilesAsync(
+        RelativePath           directory,
+        RemoteDirectoryListing remote,
+        LocalDirectoryListing  local,
+        string?                filter,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // Pair: every remote file absorbs its local counterpart.
+        var pairs = new List<(FileEntry Remote, LocalFile? Local)>(remote.Files.Count);
+        foreach (var remoteFile in remote.Files)
         {
-            var repositoryFile = candidate.RepositoryFile;
-            var localFile      = candidate.LocalFile;
+            local.Files.Remove(remoteFile.Name, out var localFile);
 
+            if (MatchesFilter(remoteFile.Name, filter))
+                pairs.Add((remoteFile, localFile));
+        }
+
+        // Resolve: one lookup for the directory yields sizes and storage tiers.
+        IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries = new Dictionary<ContentHash, ShardEntry>();
+        if (pairs.Count > 0)
+        {
+            indexEntries = await index.LookupAsync(
+                pairs.Select(pair => pair.Remote.ContentHash).Distinct(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // Emit: remote files in tree order…
+        foreach (var (remoteFile, localFile) in pairs)
+        {
             var state = RepositoryEntryState.Repository;
-            long? originalSize = localFile?.FileSize;
-            if (indexEntries.TryGetValue(repositoryFile.ContentHash, out var indexEntry))
+            long? size = localFile?.Size;
+            if (indexEntries.TryGetValue(remoteFile.ContentHash, out var indexEntry))
             {
-                originalSize = indexEntry.OriginalSize;
+                size = indexEntry.OriginalSize;
                 state |= indexEntry.StorageTierHint == BlobTier.Archive
                     ? RepositoryEntryState.RepositoryArchived
                     : RepositoryEntryState.RepositoryHydrated;
@@ -365,19 +217,66 @@ public sealed class ListQueryHandler(
             if (localFile is { } presentLocalFile)
                 state |= LocalStateOf(presentLocalFile);
 
-            await writer.WriteAsync(
-                new RepositoryFileEntry(
-                    RelativePath: candidate.RelativeDirectory / repositoryFile.Name,
-                    State: state,
-                    ContentHash: repositoryFile.ContentHash,
-                    OriginalSize: originalSize,
-                    Created: repositoryFile.Created,
-                    Modified: repositoryFile.Modified),
-                cancellationToken).ConfigureAwait(false);
+            yield return new RepositoryFileEntry(
+                RelativePath: directory / remoteFile.Name,
+                State: state,
+                ContentHash: remoteFile.ContentHash,
+                OriginalSize: size,
+                Created: remoteFile.Created,
+                Modified: remoteFile.Modified);
+        }
+
+        // …then the local leftovers as local-only.
+        foreach (var localFile in local.Files.Values)
+        {
+            if (!MatchesFilter(localFile.Name, filter))
+                continue;
+
+            yield return new RepositoryFileEntry(
+                RelativePath: directory / localFile.Name,
+                State: LocalStateOf(localFile),
+                ContentHash: null,
+                OriginalSize: localFile.Size,
+                Created: localFile.Created,
+                Modified: localFile.Modified);
         }
     }
 
-    private static RepositoryEntryState LocalStateOf(LocalFileState localFile) =>
+    /// <summary>
+    /// Merges the subdirectories of one directory: remote subdirectories in tree order (flagged
+    /// when they also exist locally), then local-only ones (sorted). The result doubles as the
+    /// walk's traversal worklist.
+    /// </summary>
+    private static List<DirectoryToWalk> MergeSubdirectories(RelativePath parent, RemoteDirectoryListing remote, LocalDirectoryListing local)
+    {
+        var merged = new List<DirectoryToWalk>(remote.Subdirectories.Count);
+
+        var remoteNames = new HashSet<PathSegment>();
+        foreach (var remoteDirectory in remote.Subdirectories)
+        {
+            remoteNames.Add(remoteDirectory.Name);
+            merged.Add(new DirectoryToWalk(
+                Path: parent / remoteDirectory.Name,
+                TreeHash: remoteDirectory.FileTreeHash,
+                ExistsLocally: local.Subdirectories.Contains(remoteDirectory.Name)));
+        }
+
+        var localOnly = local.Subdirectories
+            .Where(name => !remoteNames.Contains(name))
+            .OrderBy(name => name, PathSegmentOrdinalIgnoreCaseComparer.Instance);
+        foreach (var name in localOnly)
+        {
+            merged.Add(new DirectoryToWalk(parent / name, TreeHash: null, ExistsLocally: true));
+        }
+
+        return merged;
+    }
+
+    private static RepositoryEntryState DirectoryStateOf(DirectoryToWalk directory) =>
+        (directory.TreeHash is not null ? RepositoryEntryState.Repository : RepositoryEntryState.None) |
+        (directory.ExistsLocally ? RepositoryEntryState.LocalDirectory : RepositoryEntryState.None);
+
+    private static RepositoryEntryState LocalStateOf(LocalFile localFile) =>
         (localFile.PointerExists ? RepositoryEntryState.LocalPointer : RepositoryEntryState.None) |
         (localFile.BinaryExists ? RepositoryEntryState.LocalBinary : RepositoryEntryState.None);
 
@@ -402,7 +301,7 @@ public sealed class ListQueryHandler(
                 break;
             }
 
-            var treeEntries = await _fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
+            var treeEntries = await fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
@@ -414,55 +313,7 @@ public sealed class ListQueryHandler(
         return (currentHash, prefix.Value);
     }
 
-    // ── Local overlay ─────────────────────────────────────────────────────────
-
-    private LocalDirectorySnapshot BuildLocalDirectorySnapshot(RelativeFileSystem? localFileSystem, RelativePath currentRelativeDirectory)
-    {
-        if (localFileSystem is null || !localFileSystem.DirectoryExists(currentRelativeDirectory))
-        {
-            return LocalDirectorySnapshot.Empty;
-        }
-
-        var directories = new Dictionary<PathSegment, LocalDirectoryState>();
-        try
-        {
-            foreach (var directory in localFileSystem.EnumerateDirectories(currentRelativeDirectory)
-                         .OrderBy(d => d.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance))
-            {
-                directories[directory.Path.Name] = new LocalDirectoryState(directory.Path.Name, directory.Path);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", currentRelativeDirectory);
-        }
-
-        IEnumerable<LocalFileEntry> fileInfos;
-        try
-        {
-            // Immediate children only: nested files are handled when their own directory is walked,
-            // and this keeps the snapshot bounded by directory width.
-            fileInfos = localFileSystem.EnumerateFiles(currentRelativeDirectory, SearchOption.TopDirectoryOnly)
-                .OrderBy(f => f.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not enumerate files in: {Directory}", currentRelativeDirectory);
-            fileInfos = [];
-        }
-
-        // The listing only needs pointer/binary *existence*, never the pointer's hash —
-        // so pointer file contents are not read (one avoided file read per pointer).
-        var files = LocalFileSnapshotBuilder.BuildFiles(
-            fileInfos,
-            localFileSystem.FileExists,
-            localFileSystem.GetFileSize,
-            localFileSystem.GetTimestamps,
-            readPointerHash: _ => null);
-
-        return new LocalDirectorySnapshot(directories, files);
-    }
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static LocalDirectory? ParseLocalRoot(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : LocalDirectory.Parse(path);
@@ -473,38 +324,9 @@ public sealed class ListQueryHandler(
     private static bool PathSegmentEqualsIgnoreCase(PathSegment left, PathSegment right) =>
         left.Equals(right, StringComparison.OrdinalIgnoreCase);
 
-    private sealed class PathSegmentOrdinalIgnoreCaseComparer : IComparer<PathSegment>
-    {
-        public static PathSegmentOrdinalIgnoreCaseComparer Instance { get; } = new();
-
-        public int Compare(PathSegment x, PathSegment y) =>
-            x.Compare(y, StringComparer.OrdinalIgnoreCase);
-    }
-
-    // ── Pipeline records ──────────────────────────────────────────────────────
-
     /// <summary>
-    /// One item flowing from Walk to Resolve: either an already-resolved entry (directories,
-    /// local-only files) or a repository-file candidate that still needs its size + tier.
+    /// One directory on the walk worklist: where it is, its remote tree node (if any), and whether
+    /// it exists locally — together these say which halves of the mirror there are to read.
     /// </summary>
-    private sealed record WalkItem(RepositoryEntry? Entry, RepositoryFileCandidate? Candidate)
-    {
-        public static WalkItem Resolved(RepositoryEntry entry) => new(entry, null);
-
-        public static WalkItem Unresolved(RepositoryFileCandidate candidate) => new(null, candidate);
-    }
-
-    private sealed record RepositoryFileCandidate(FileEntry RepositoryFile, LocalFileState? LocalFile, RelativePath RelativeDirectory);
-
-    private sealed record DirectoryToWalk(RelativePath RelativeDirectory, FileTreeHash? TreeHash, bool HasLocalDirectory);
-
-    private sealed record LocalDirectoryState(PathSegment Name, RelativePath Path);
-
-    private sealed record LocalDirectorySnapshot(IReadOnlyDictionary<PathSegment, LocalDirectoryState> Directories, Dictionary<PathSegment, LocalFileState> Files)
-    {
-        // Shared instance is safe: the walk only ever removes from Files, which is a no-op here.
-        public static LocalDirectorySnapshot Empty { get; } =  new(
-                new Dictionary<PathSegment, LocalDirectoryState>(),
-                []);
-    }
+    private sealed record DirectoryToWalk(RelativePath Path, FileTreeHash? TreeHash, bool ExistsLocally);
 }

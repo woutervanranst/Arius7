@@ -50,10 +50,8 @@ internal static class SyntheticRepositoryMaterializer
         FileSystemHelper.CopyDirectory(sourceRootDirectory, targetRootDirectory);
 
         var files = new Dictionary<RelativePath, ContentHash>();
-        foreach (var file in fileSystem.EnumerateFiles())
+        foreach (var relativePath in fileSystem.EnumerateFiles())
         {
-            var relativePath = file.Path;
-
             await using var stream = fileSystem.OpenRead(relativePath);
             files[relativePath] = await encryption.ComputeHashAsync(stream);
         }

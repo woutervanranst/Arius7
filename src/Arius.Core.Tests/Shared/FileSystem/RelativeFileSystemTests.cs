@@ -25,9 +25,9 @@ public class RelativeFileSystemTests
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         File.WriteAllText(fullPath, "hello");
 
-        var entry = _fileSystem.EnumerateFiles().Single();
+        var path = _fileSystem.EnumerateFiles().Single();
 
-        entry.Path.ShouldBe(RelativePath.Parse("photos/2024/pic.jpg"));
+        path.ShouldBe(RelativePath.Parse("photos/2024/pic.jpg"));
     }
 
     [Test]
@@ -274,7 +274,6 @@ public class RelativeFileSystemTests
         Directory.CreateDirectory(Path.Combine(_root, "cache", "a", "nested"));
 
         var directories = _fileSystem.EnumerateDirectories(RelativePath.Parse("cache"))
-            .Select(entry => entry.Path)
             .ToArray();
 
         directories.ShouldBe([
@@ -294,7 +293,6 @@ public class RelativeFileSystemTests
         File.WriteAllText(Path.Combine(_root, "other", "c.txt"), "c");
 
         var files = _fileSystem.EnumerateFiles(RelativePath.Parse("cache"), SearchOption.AllDirectories)
-            .Select(entry => entry.Path)
             .ToArray();
 
         files.ShouldBe([

@@ -21,8 +21,9 @@ jobs:
             collect_coverage: true
           - os: macos-latest
             runner: macos
-            # GitHub-hosted macOS runners are arm64, and dotnet-coverage
-            # dynamic instrumentation does not produce usable coverage there.
+            # GitHub-hosted macOS runners are arm64. dotnet-coverage dynamic
+            # instrumentation supports macOS x64, but not macOS arm64, so this
+            # job skips coverage on macOS rather than uploading an unusable report.
             collect_coverage: false
           - os: windows-latest
             runner: windows

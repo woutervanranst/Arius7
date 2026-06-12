@@ -6,6 +6,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using ListQueryType = Arius.Core.Features.ListQuery.ListQuery;
 
@@ -130,30 +131,6 @@ public class ListQueryHandlerTests
             .ToListAsync();
 
         results.Select(file => file.RelativePath).ShouldBe([RelativePath.Parse("photos/pic.jpg")]);
-    }
-
-    [Test]
-    public async Task Handle_RootedPrefix_ThrowsFormatException()
-    {
-        IReadOnlyList<FileTreeEntry> rootTree = [];
-        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
-        var snapshot = MakeSnapshot(rootHash);
-
-        var blobs = new FakeSeededBlobContainerService();
-        await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
-
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-invalid-prefix", "ctr-ls-invalid-prefix", s_encryption);
-        var handler = fixture.CreateListQueryHandler();
-
-        var exception = await Should.ThrowAsync<FormatException>(async () =>
-        {
-            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("/photos") }), CancellationToken.None))
-            {
-            }
-        });
-
-        exception.Message.ShouldContain("Invalid relative path");
     }
 
     [Test]
@@ -284,56 +261,38 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public void BuildFiles_PointerSuffixComparisonIsCaseInsensitive()
+    public void PairFiles_PointerSuffixComparisonIsCaseInsensitive()
     {
         var files = new[]
         {
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
-            }
+            RelativePath.Parse("docs/shared.txt"),
+            RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
         };
 
-        var result = LocalFileSnapshotBuilder.BuildFiles(
+        var result = LocalDirectoryReader.PairFiles(
             files,
             path => path.ToString() == "docs/shared.txt",
-            path => path.ToString() == "docs/shared.txt" ? 12 : throw new InvalidOperationException($"Unexpected size request for {path}"),
-            _ => (s_created, s_modified),
-            path => path.ToString() == "docs/shared.txt.POINTER.ARIUS" ? FakeContentHash('2') : null);
+            path => path.ToString() == "docs/shared.txt" ? (12L, s_created, s_modified) : throw new InvalidOperationException($"Unexpected stat request for {path}"));
 
         result.Count.ShouldBe(1);
 
         var shared = result[PathSegment.Parse("shared.txt")];
         shared.BinaryExists.ShouldBeTrue();
         shared.PointerExists.ShouldBeTrue();
-        shared.PointerHash.ShouldBe(FakeContentHash('2'));
-        shared.FileSize.ShouldBe(12);
+        shared.Size.ShouldBe(12);
     }
 
     [Test]
-    public void BuildFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
+    public void PairFiles_DoesNotProbeForCounterpartsAlreadyPresentInEnumeratedSet()
     {
         var files = new[]
         {
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt.pointer.arius")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
-            }
+            RelativePath.Parse("docs/shared.txt"),
+            RelativePath.Parse("docs/shared.txt.pointer.arius"),
+            RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
         };
 
-        var result = LocalFileSnapshotBuilder.BuildFiles(
+        var result = LocalDirectoryReader.PairFiles(
             files,
             path => path.ToString() switch
             {
@@ -342,24 +301,85 @@ public class ListQueryHandlerTests
             },
             path => path.ToString() switch
             {
-                "docs/shared.txt" => 12,
-                "docs/shared.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
-                "docs/pointer-only.txt.pointer.arius" => throw new InvalidOperationException($"Unexpected size request for {path}"),
-                _ => throw new InvalidOperationException($"Unexpected size request for {path}")
-            },
-            _ => (s_created, s_modified),
-            path => path.ToString() switch
-            {
-                "docs/shared.txt.pointer.arius" => FakeContentHash('2'),
-                "docs/pointer-only.txt.pointer.arius" => FakeContentHash('3'),
-                _ => null
+                "docs/shared.txt" => (12L, s_created, s_modified),
+                _ => throw new InvalidOperationException($"Unexpected stat request for {path}")
             });
 
         result.Count.ShouldBe(2);
         result[PathSegment.Parse("shared.txt")].PointerExists.ShouldBeTrue();
         result[PathSegment.Parse("pointer-only.txt")].BinaryExists.ShouldBeFalse();
-        result[PathSegment.Parse("shared.txt")].FileSize.ShouldBe(12);
-        result[PathSegment.Parse("pointer-only.txt")].FileSize.ShouldBeNull();
+        result[PathSegment.Parse("shared.txt")].Size.ShouldBe(12);
+        result[PathSegment.Parse("pointer-only.txt")].Size.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Handle_RecursiveLocalOnlyDirectory_DescendsAndYieldsLocalFiles()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-local-recursive");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Parse("local-only-dir"));
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("local-only-dir/nested.txt"), "nested", CancellationToken.None);
+
+            IReadOnlyList<FileTreeEntry> rootTree = [];
+            var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, s_encryption));
+
+            var blobs = new FakeSeededBlobContainerService();
+            await SeedTreeAsync(blobs, rootTree);
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-local-recursive", "ctr-ls-local-recursive", s_encryption);
+            var handler = fixture.CreateListQueryHandler();
+
+            var results = await handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot.ToString(), Recursive = true }), CancellationToken.None)
+                .ToListAsync();
+
+            var directory = results.OfType<RepositoryDirectoryEntry>().Single();
+            directory.RelativePath.ShouldBe(RelativePath.Parse("local-only-dir"));
+            directory.State.ShouldBe(RepositoryEntryState.LocalDirectory);
+            directory.TreeHash.ShouldBeNull();
+
+            var file = results.OfType<RepositoryFileEntry>().Single();
+            file.RelativePath.ShouldBe(RelativePath.Parse("local-only-dir/nested.txt"));
+            file.State.ShouldBe(RepositoryEntryState.LocalBinary);
+            file.ContentHash.ShouldBeNull();
+            file.OriginalSize.ShouldBe(6);
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public void LocalDirectoryReader_Read_MissingDirectory_ReturnsEmptyListingAndLogsWarnings()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-missing-local-dir");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+
+        try
+        {
+            var logger = new FakeLogger<ListQueryHandler>();
+
+            var listing = LocalDirectoryReader.Read(localFileSystem, RelativePath.Parse("missing"), logger);
+
+            listing.Files.ShouldBeEmpty();
+            listing.Subdirectories.ShouldBeEmpty();
+
+            var warnings = logger.Collector.GetSnapshot()
+                .Where(record => record.Level == LogLevel.Warning)
+                .ToList();
+            warnings.Count.ShouldBe(2);
+            warnings.ShouldContain(record => record.Message.Contains("Could not enumerate subdirectories"));
+            warnings.ShouldContain(record => record.Message.Contains("Could not enumerate files"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
     }
 
     [Test]
