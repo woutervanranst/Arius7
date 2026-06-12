@@ -137,8 +137,6 @@ internal static class LsVerb
                     LocalPath = localPath,
                 };
 
-                // Rows are written as they stream in (no table materialization) so the listing
-                // is responsive and memory-bounded even for repositories with millions of entries.
                 var fileCount = 0;
                 try
                 {
@@ -149,6 +147,7 @@ internal static class LsVerb
                     {
                         if (entry is not RepositoryFileEntry file)
                         {
+                            // Skip directories
                             continue;
                         }
 
@@ -157,8 +156,7 @@ internal static class LsVerb
                             : "?";
                         var created  = file.Created?.ToString("yyyy-MM-dd HH:mm") ?? "-";
                         var modified = file.Modified?.ToString("yyyy-MM-dd HH:mm") ?? "-";
-                        AnsiConsole.MarkupLine(
-                            $"{LsStateFormatter.ToMarkup(file.State)}   {Markup.Escape(size),12}  {created,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToString())}");
+                        AnsiConsole.MarkupLine($"{LsStateFormatter.ToMarkup(file.State)}   {Markup.Escape(size),12}  {created,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToString())}");
                         fileCount++;
                     }
                 }
@@ -175,7 +173,7 @@ internal static class LsVerb
             }
             finally
             {
-                Log.CloseAndFlush();
+                await Log.CloseAndFlushAsync();
             }
         });
 
