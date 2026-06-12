@@ -83,7 +83,7 @@ The system SHALL retrieve file sizes from the chunk index `original-size` field 
 - **AND** the error SHALL instruct the user to run the explicit chunk-index repair command
 
 ### Requirement: Recursive flag
-The `ListQuery` SHALL accept a `Recursive` property (default `true`). When `Recursive=true`, the system SHALL perform a full depth-first tree walk, streaming all entries in all subdirectories. When `Recursive=false`, the system SHALL stream only the immediate children of the target directory (one level deep). `Recursive` and `Prefix` are orthogonal: `Prefix` navigates to the starting directory, `Recursive` controls depth.
+The `ListQuery` SHALL accept a `Recursive` property (default `true`). When `Recursive=true`, the system SHALL perform a full breadth-first tree walk: each directory's entries — files first, then subdirectories — stream out in full before any subdirectory is descended, so the shallow structure of a large repository appears before deep subtrees. When `Recursive=false`, the system SHALL stream only the immediate children of the target directory (one level deep). `Recursive` and `Prefix` are orthogonal: `Prefix` navigates to the starting directory, `Recursive` controls depth.
 
 #### Scenario: Recursive listing (default)
 - **WHEN** `ListQuery` is executed with `Recursive=true` (or default)
