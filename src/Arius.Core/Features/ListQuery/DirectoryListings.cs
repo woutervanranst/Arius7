@@ -57,30 +57,30 @@ internal static class LocalDirectoryReader
         try
         {
             foreach (var subdirectory in fileSystem.EnumerateDirectories(directory))
-                subdirectories.Add(subdirectory.Path.Name);
+                subdirectories.Add(subdirectory.Name);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Could not enumerate subdirectories of: {Directory}", directory);
         }
 
-        IReadOnlyList<LocalFileEntry> fileEntries;
+        IReadOnlyList<RelativePath> filePaths;
         try
         {
             // Immediate children only: nested files are handled when their own directory is walked,
             // which keeps memory bounded by directory width.
-            fileEntries = fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly)
-                .OrderBy(file => file.Path.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
+            filePaths = fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly)
+                .OrderBy(file => file.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
                 .ToList();
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Could not enumerate files in: {Directory}", directory);
-            fileEntries = [];
+            filePaths = [];
         }
 
         var files = PairFiles(
-            fileEntries,
+            filePaths,
             fileSystem.FileExists,
             path =>
             {
@@ -97,18 +97,18 @@ internal static class LocalDirectoryReader
     /// on disk; <paramref name="stat"/> is only consulted for existing binaries.
     /// </summary>
     internal static Dictionary<PathSegment, LocalFile> PairFiles(
-        IEnumerable<LocalFileEntry> fileEntries,
+        IEnumerable<RelativePath> filePaths,
         Func<RelativePath, bool> fileExists,
         Func<RelativePath, (long Size, DateTimeOffset Created, DateTimeOffset Modified)> stat)
     {
         var files = new Dictionary<PathSegment, LocalFile>();
-        var enumeratedPaths = fileEntries.Select(file => file.Path).ToHashSet();
+        var enumeratedPaths = filePaths.ToHashSet();
 
-        foreach (var file in fileEntries)
+        foreach (var path in filePaths)
         {
-            if (file.Path.IsPointerPath())
+            if (path.IsPointerPath())
             {
-                var binaryPath = file.Path.ToBinaryPath();
+                var binaryPath = path.ToBinaryPath();
                 var binaryName = binaryPath.Name;
 
                 // The binary was already recorded (possibly under a case-variant pointer name):
@@ -129,11 +129,11 @@ internal static class LocalDirectoryReader
             }
             else
             {
-                var (size, created, modified) = stat(file.Path);
-                files[file.Path.Name] = new LocalFile(
-                    file.Path.Name,
+                var (size, created, modified) = stat(path);
+                files[path.Name] = new LocalFile(
+                    path.Name,
                     BinaryExists: true,
-                    PointerExists: enumeratedPaths.Contains(file.Path.ToPointerPath()),
+                    PointerExists: enumeratedPaths.Contains(path.ToPointerPath()),
                     size, created, modified);
             }
         }

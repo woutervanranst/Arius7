@@ -288,14 +288,8 @@ public class ListQueryHandlerTests
     {
         var files = new[]
         {
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
-            }
+            RelativePath.Parse("docs/shared.txt"),
+            RelativePath.Parse("docs/shared.txt.POINTER.ARIUS")
         };
 
         var result = LocalDirectoryReader.PairFiles(
@@ -316,18 +310,9 @@ public class ListQueryHandlerTests
     {
         var files = new[]
         {
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/shared.txt.pointer.arius")
-            },
-            new LocalFileEntry
-            {
-                Path = RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
-            }
+            RelativePath.Parse("docs/shared.txt"),
+            RelativePath.Parse("docs/shared.txt.pointer.arius"),
+            RelativePath.Parse("docs/pointer-only.txt.pointer.arius")
         };
 
         var result = LocalDirectoryReader.PairFiles(
