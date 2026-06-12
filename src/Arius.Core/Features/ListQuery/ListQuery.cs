@@ -2,6 +2,8 @@ using Mediator;
 
 namespace Arius.Core.Features.ListQuery;
 
+// --- QUERY
+
 /// <summary>
 /// Mediator stream query: list repository entries in a snapshot.
 /// </summary>
@@ -38,6 +40,23 @@ public sealed record ListQueryOptions
     public string? LocalPath { get; init; }
 }
 
+
+// --- RESPONSE
+
+/// <summary>
+/// Base type for entries emitted by the streaming repository listing.
+/// </summary>
+public abstract record RepositoryEntry(RelativePath RelativePath, RepositoryEntryState State);
+
+/// <summary>
+/// A file entry emitted by the repository listing.
+/// </summary>
+public sealed record RepositoryFileEntry(RelativePath RelativePath, RepositoryEntryState State, ContentHash? ContentHash, long? OriginalSize, DateTimeOffset? Created, DateTimeOffset? Modified) : RepositoryEntry(RelativePath, State);
+
+/// <summary>
+/// A directory entry emitted by the repository listing.
+/// </summary>
+public sealed record RepositoryDirectoryEntry(RelativePath RelativePath, RepositoryEntryState State, FileTreeHash? TreeHash) : RepositoryEntry(RelativePath, State);
 
 /// <summary>
 /// Where an entry exists (local disk and/or the repository on blob storage) and, for repository
@@ -78,29 +97,3 @@ public enum RepositoryEntryState
     /// </summary>
     RepositoryRehydrating = RepositoryArchived | (1 << 6),
 }
-
-/// <summary>
-/// Base type for entries emitted by the streaming repository listing.
-/// </summary>
-public abstract record RepositoryEntry(RelativePath RelativePath, RepositoryEntryState State);
-
-/// <summary>
-/// A file entry emitted by the repository listing.
-/// </summary>
-public sealed record RepositoryFileEntry(
-    RelativePath RelativePath,
-    RepositoryEntryState State,
-    ContentHash? ContentHash,
-    long? OriginalSize,
-    DateTimeOffset? Created,
-    DateTimeOffset? Modified)
-    : RepositoryEntry(RelativePath, State);
-
-/// <summary>
-/// A directory entry emitted by the repository listing.
-/// </summary>
-public sealed record RepositoryDirectoryEntry(
-    RelativePath RelativePath,
-    RepositoryEntryState State,
-    FileTreeHash? TreeHash)
-    : RepositoryEntry(RelativePath, State);
