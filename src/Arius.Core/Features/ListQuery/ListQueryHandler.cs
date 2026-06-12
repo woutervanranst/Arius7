@@ -45,13 +45,6 @@ public sealed class ListQueryHandler(
     string accountName,
     string containerName) : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
-    private readonly IChunkIndexService _index = index;
-    private readonly IFileTreeService _fileTreeService = fileTreeService;
-    private readonly ISnapshotService _snapshotSvc = snapshotSvc;
-    private readonly ILogger<ListQueryHandler> _logger = logger;
-    private readonly string _accountName = accountName;
-    private readonly string _containerName = containerName;
-
     public async IAsyncEnumerable<RepositoryEntry> Handle(
         ListQuery command,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -61,8 +54,8 @@ public sealed class ListQueryHandler(
         _logger.LogInformation("[ls] Start: account={Account} container={Container} version={Version} prefix={Prefix} filter={Filter} recursive={Recursive} localPath={LocalPath}", _accountName, _containerName, opts.Version ?? "latest", opts.Prefix is { } loggedPrefix ? loggedPrefix : "(none)", opts.Filter ?? "(none)", opts.Recursive, opts.LocalPath ?? "(none)");
 
         // Resolve the snapshot and descend to the prefix directory.
-        _logger.LogInformation("[phase] resolve-snapshot");
-        var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+        logger.LogInformation("[phase] resolve-snapshot");
+        var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
         if (snapshot is null)
         {
             throw new InvalidOperationException(
@@ -76,7 +69,7 @@ public sealed class ListQueryHandler(
         var (treeHash, startDirectory) = await ResolveStartingPointAsync(snapshot.RootHash, opts.Prefix, cancellationToken);
 
         // Walk, accumulating summary counters as entries stream past.
-        _logger.LogInformation("[phase] walk");
+        logger.LogInformation("[phase] walk");
         var stopwatch           = Stopwatch.StartNew();
         var directoryCount      = 0;
         var bothCount           = 0; // in the repository and (pointer and/or binary) on disk
@@ -161,7 +154,7 @@ public sealed class ListQueryHandler(
         if (treeHash is not { } hash)
             return RemoteDirectoryListing.Empty; // local-only directory: nothing remote to read
 
-        var treeEntries = await _fileTreeService.ReadAsync(hash, cancellationToken).ConfigureAwait(false);
+        var treeEntries = await fileTreeService.ReadAsync(hash, cancellationToken).ConfigureAwait(false);
         return RemoteDirectoryListing.From(treeEntries);
     }
 
@@ -171,7 +164,7 @@ public sealed class ListQueryHandler(
         if (localFileSystem is null || !directory.ExistsLocally || !localFileSystem.DirectoryExists(directory.Path))
             return LocalDirectoryListing.Empty;
 
-        return LocalDirectoryReader.Read(localFileSystem, directory.Path, _logger);
+        return LocalDirectoryReader.Read(localFileSystem, directory.Path, logger);
     }
 
     // ── Merge: remote is the reference sequence, local overlays it ────────────
@@ -203,7 +196,7 @@ public sealed class ListQueryHandler(
         IReadOnlyDictionary<ContentHash, ShardEntry> indexEntries = new Dictionary<ContentHash, ShardEntry>();
         if (pairs.Count > 0)
         {
-            indexEntries = await _index.LookupAsync(
+            indexEntries = await index.LookupAsync(
                 pairs.Select(pair => pair.Remote.ContentHash).Distinct(),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -308,7 +301,7 @@ public sealed class ListQueryHandler(
                 break;
             }
 
-            var treeEntries = await _fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
+            var treeEntries = await fileTreeService.ReadAsync(currentHash.Value, cancellationToken);
 
             var nextDirectory = treeEntries
                 .OfType<DirectoryEntry>()
