@@ -4,6 +4,8 @@ namespace Arius.Core.Shared;
 
 internal class AsyncLazy<T> : Lazy<Task<T>>
 {
+    // Reference: https://devblogs.microsoft.com/dotnet/asynclazyt/
+
     public AsyncLazy(Func<T> valueFactory) :
         base(() => Task.Factory.StartNew(valueFactory))
     { }
