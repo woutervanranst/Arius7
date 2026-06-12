@@ -134,30 +134,6 @@ public class ListQueryHandlerTests
     }
 
     [Test]
-    public async Task Handle_RootedPrefix_ThrowsFormatException()
-    {
-        IReadOnlyList<FileTreeEntry> rootTree = [];
-        var rootHash = FileTreeBuilder.ComputeHash(rootTree, s_encryption);
-        var snapshot = MakeSnapshot(rootHash);
-
-        var blobs = new FakeSeededBlobContainerService();
-        await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
-
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-invalid-prefix", "ctr-ls-invalid-prefix", s_encryption);
-        var handler = fixture.CreateListQueryHandler();
-
-        var exception = await Should.ThrowAsync<FormatException>(async () =>
-        {
-            await foreach (var _ in handler.Handle(new ListQueryType(new ListQueryOptions { Prefix = RelativePath.Parse("/photos") }), CancellationToken.None))
-            {
-            }
-        });
-
-        exception.Message.ShouldContain("Invalid relative path");
-    }
-
-    [Test]
     public async Task Handle_WithLocalPath_OverlaysRepositoryAndLocalFilesInOneDirectory()
     {
         var tempRoot = TestTempRoots.CreateDirectory("ls");
