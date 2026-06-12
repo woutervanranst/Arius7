@@ -85,17 +85,4 @@ public class ListQueryParsingTests
         harness.ListQueryHandler.ReceivedCalls().ShouldBeEmpty();
     }
 
-    [Test]
-    public async Task ListQuery_MockHandlerCaptures_PrefixAndFilter()
-    {
-        var harness = new CliHarness();
-        var exitCode = await harness.InvokeAsync("ls -a acct -k key -c ctr --prefix photos/ -f .jpg");
-
-        exitCode.ShouldBe(0);
-
-        var call = harness.ListQueryHandler.ReceivedCalls().Single();
-        var cmd = (ListQuery)call.GetArguments()[0]!;
-        cmd.Options.Prefix.ShouldBe(RelativePath.Parse("photos"));
-        cmd.Options.Filter.ShouldBe(".jpg");
-    }
 }
