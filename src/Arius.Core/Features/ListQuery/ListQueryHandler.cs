@@ -144,6 +144,7 @@ public sealed class ListQueryHandler(
         }
     }
 
+
     // ── Read: the two halves of the mirror ────────────────────────────────────
 
     /// <summary>Remote half of the read step: load the directory's persisted filetree node.</summary>
@@ -164,6 +165,7 @@ public sealed class ListQueryHandler(
 
         return LocalDirectoryReader.Read(localFileSystem, directory.Path, logger);
     }
+
 
     // ── Merge: remote is the reference sequence, local overlays it ────────────
 
