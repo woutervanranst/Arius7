@@ -17,16 +17,15 @@ using Arius.Core.Shared.Extensions;
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Restores files from a snapshot to a local directory, as a streaming, memory-bounded Mediator command
-/// handler that scales to repositories with millions of file entries. The tree walk is breadth-first and
-/// composed as a single <see cref="IAsyncEnumerable{T}"/> — Walk → Route → Resolve — mirroring
-/// <c>ListQueryHandler</c>; the only channel is the pass-2 download fan-out.
+/// Restores files from a snapshot to a local director.
+/// The tree walk is breadth-first and  composed as a single
+/// <see cref="IAsyncEnumerable{T}"/> — Walk → Route → Resolve — mirroring <c>ListQueryHandler</c>
 ///
 /// A cost estimate and rehydration confirmation must be shown <em>before</em> any download (cancelling
 /// must download nothing), so the tree is walked twice. <see cref="IFileTreeService.ReadAsync"/> is
 /// cache-backed, so the second walk is cheap.
 ///
-/// ## Stages (numbered to match the <c>// ── Stage N ──</c> banners in <see cref="Handle"/>)
+/// ## Stages
 ///
 /// 1. **Resolve snapshot** — pick the requested (or latest) snapshot; bail if none.
 /// 2. **Classify** (walk #1) — Walk → Route → Resolve, accumulating one <see cref="ChunkClassification"/>
@@ -528,25 +527,32 @@ public sealed class RestoreCommandHandler(
 
                 if (localHash == file.ContentHash)
                 {
-                    if (skipped is not null) Interlocked.Increment(ref skipped.Value);
+                    if (skipped is not null) 
+                        Interlocked.Increment(ref skipped.Value);
+
                     if (emitEvents)
                     {
                         logger.LogInformation("[route] {Path} -> skip (identical)", file.RelativePath);
                         await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), cancellationToken);
                         await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.SkipIdentical, s.Length), cancellationToken);
                     }
+
                     return false;
                 }
-
-                // Exists with a different hash and no --overwrite → keep the local copy.
-                if (skipped is not null) Interlocked.Increment(ref skipped.Value);
-                if (emitEvents)
+                else
                 {
-                    logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
-                    await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), cancellationToken);
-                    await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, s.Length), cancellationToken);
+                    // Exists with a different hash and no --overwrite → keep the local copy.
+                    if (skipped is not null)
+                        Interlocked.Increment(ref skipped.Value);
+
+                    if (emitEvents)
+                    {
+                        logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                        await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length),                               cancellationToken);
+                        await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, s.Length), cancellationToken);
+                    }
+                    return false;
                 }
-                return false;
             }
 
             if (emitEvents)
