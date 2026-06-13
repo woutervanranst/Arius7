@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 
-namespace Arius.Core.Shared;
+namespace Arius.Core.Shared.Extensions;
 
 internal static class AsyncEnumerableExtensions
 {

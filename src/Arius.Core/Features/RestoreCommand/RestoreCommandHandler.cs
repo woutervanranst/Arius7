@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 using System.Formats.Tar;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Arius.Core.Shared.Extensions;
 
 namespace Arius.Core.Features.RestoreCommand;
 
