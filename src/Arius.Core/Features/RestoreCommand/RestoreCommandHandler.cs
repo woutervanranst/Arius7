@@ -53,7 +53,16 @@ namespace Arius.Core.Features.RestoreCommand;
 /// | `resolvedChannel` | Resolve (1)   | classify/grouper (1)| bounded (N)         | `ResolvedFile` (file + its index entry).       |
 /// | `chunkChannel`    | Grouper (1)   | Download (×N)       | bounded (workers)   | Pass 2 only; download backpressures grouping.  |
 /// </summary>
-public sealed class RestoreCommandHandler
+public sealed class RestoreCommandHandler(
+    IEncryptionService encryption,
+    IChunkIndexService index,
+    IChunkStorageService chunkStorage,
+    IFileTreeService fileTreeService,
+    ISnapshotService snapshotSvc,
+    IMediator mediator,
+    ILogger<RestoreCommandHandler> logger,
+    string accountName,
+    string containerName)
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
     // ── Concurrency knobs ──────────────────────────────────────────────────────
@@ -65,38 +74,6 @@ public sealed class RestoreCommandHandler
 
     // ── Dependencies ───────────────────────────────────────────────────────────
 
-    private readonly IEncryptionService             _encryption;
-    private readonly IChunkIndexService             _index;
-    private readonly IChunkStorageService           _chunkStorage;
-    private readonly IFileTreeService               _fileTreeService;
-    private readonly ISnapshotService               _snapshotSvc;
-    private readonly IMediator                      _mediator;
-    private readonly ILogger<RestoreCommandHandler> _logger;
-    private readonly string                         _accountName;
-    private readonly string                         _containerName;
-
-    public RestoreCommandHandler(
-        IEncryptionService             encryption,
-        IChunkIndexService             index,
-        IChunkStorageService           chunkStorage,
-        IFileTreeService               fileTreeService,
-        ISnapshotService               snapshotSvc,
-        IMediator                      mediator,
-        ILogger<RestoreCommandHandler> logger,
-        string                         accountName,
-        string                         containerName)
-    {
-        _encryption      = encryption;
-        _index           = index;
-        _chunkStorage    = chunkStorage;
-        _fileTreeService = fileTreeService;
-        _snapshotSvc     = snapshotSvc;
-        _mediator        = mediator;
-        _logger          = logger;
-        _accountName     = accountName;
-        _containerName   = containerName;
-    }
-
     /// <summary>
     /// Executes the end-to-end restore pipeline for the provided <see cref="RestoreCommand"/>. See the
     /// type-level documentation for the two-pass stage/channel breakdown.
@@ -106,15 +83,15 @@ public sealed class RestoreCommandHandler
         var opts = command.Options;
 
         // ── Operation start marker ────────────────────────────────────────────
-        _logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}", opts.RootDirectory, _accountName, _containerName, opts.Version ?? "latest", opts.Overwrite);
+        logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}", opts.RootDirectory, accountName, containerName, opts.Version ?? "latest", opts.Overwrite);
 
         try
         {
             var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
 
             // ── Step 1: Resolve snapshot ──────────────────────────────────────
-            _logger.LogInformation("[phase] resolve-snapshot");
-            var snapshot = await _snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
+            logger.LogInformation("[phase] resolve-snapshot");
+            var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
             if (snapshot is null)
             {
                 return new RestoreResult
@@ -129,15 +106,15 @@ public sealed class RestoreCommandHandler
                 };
             }
 
-            _logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
+            logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
 
             // ── Pass 1: Classify (streaming, bounded) ─────────────────────────
-            _logger.LogInformation("[phase] classify");
+            logger.LogInformation("[phase] classify");
             var skipped        = new StrongBox<long>(0);
             var classification = new Dictionary<ChunkHash, ChunkClassification>();
             var fileCount      = await ClassifyAsync(fs, snapshot.RootHash, opts, classification, skipped, cancellationToken);
 
-            _logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
+            logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
 
             // Counts + byte sums from the (bounded) classification map.
             var availableCount = 0;
@@ -162,15 +139,15 @@ public sealed class RestoreCommandHandler
             }
             var tarChunks = classification.Count - largeChunks;
 
-            await _mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, fileCount), cancellationToken);
-            await _mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
-            await _mediator.Publish(new RestoreStartedEvent(fileCount), cancellationToken);
+            await mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, fileCount), cancellationToken);
+            await mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
+            await mediator.Publish(new RestoreStartedEvent(fileCount), cancellationToken);
 
-            _logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", classification.Count, largeChunks, tarChunks);
-            await _mediator.Publish(new ChunkResolutionCompleteEvent(classification.Count, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
+            logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", classification.Count, largeChunks, tarChunks);
+            await mediator.Publish(new ChunkResolutionCompleteEvent(classification.Count, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
 
-            _logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, 0, needsCount, pendingCount);
-            await _mediator.Publish(new RehydrationStatusEvent(availableCount, 0, needsCount, pendingCount), cancellationToken);
+            logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, 0, needsCount, pendingCount);
+            await mediator.Publish(new RehydrationStatusEvent(availableCount, 0, needsCount, pendingCount), cancellationToken);
 
             // ── Step 6: Cost estimation and confirmation ──────────────────────
             var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
@@ -209,7 +186,7 @@ public sealed class RestoreCommandHandler
 
             if (availableCount > 0)
             {
-                _logger.LogInformation("[phase] download");
+                logger.LogInformation("[phase] download");
                 filesRestored = await DownloadAsync(fs, snapshot.RootHash, opts, classification, rerouteToRehydration, cancellationToken);
             }
 
@@ -231,17 +208,17 @@ public sealed class RestoreCommandHandler
                 {
                     try
                     {
-                        await _chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
+                        await chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
                         if (classification.TryGetValue(chunkHash, out var cc))
                             totalRehydrateBytes += cc.CompressedSize;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to start rehydration for chunk {ChunkHash}", chunkHash);
+                        logger.LogWarning(ex, "Failed to start rehydration for chunk {ChunkHash}", chunkHash);
                     }
                 }
 
-                await _mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
+                await mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
             }
 
             var totalPending = chunksToRehydrate;
@@ -249,19 +226,19 @@ public sealed class RestoreCommandHandler
             // ── Step 9: Cleanup ALL rehydrated blobs in the container ─────────
             if (totalPending == 0)
             {
-                await using var cleanupPlan = await _chunkStorage.PlanRehydratedCleanupAsync(cancellationToken);
+                await using var cleanupPlan = await chunkStorage.PlanRehydratedCleanupAsync(cancellationToken);
                 if (cleanupPlan.ChunkCount > 0)
                 {
                     if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
                     {
                         var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
-                        _logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
-                        await _mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
+                        logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
+                        await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
                     }
                 }
             }
 
-            _logger.LogInformation("[restore] Done: restored={Restored} skipped={Skipped} pendingRehydration={Pending}", filesRestored, skipped.Value, totalPending);
+            logger.LogInformation("[restore] Done: restored={Restored} skipped={Skipped} pendingRehydration={Pending}", filesRestored, skipped.Value, totalPending);
 
             return new RestoreResult
             {
@@ -273,7 +250,7 @@ public sealed class RestoreCommandHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Restore pipeline failed");
+            logger.LogError(ex, "Restore pipeline failed");
             return new RestoreResult
             {
                 Success                  = false,
@@ -299,7 +276,7 @@ public sealed class RestoreCommandHandler
         StrongBox<long>                          skipped,
         CancellationToken                        cancellationToken)
     {
-        var rehydratedState = await _chunkStorage.ListRehydratedChunksAsync(cancellationToken);
+        var rehydratedState = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
 
         var fileCount = 0;
         var pipeline  = StartResolvePipeline(fs, rootHash, opts, emitEvents: true, skipped, cancellationToken);
@@ -444,11 +421,11 @@ public sealed class RestoreCommandHandler
                 new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = token },
                 async (chunk, ct) =>
                 {
-                    _logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunk.ChunkHash.Short8, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize.Bytes().Humanize());
+                    logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunk.ChunkHash.Short8, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize.Bytes().Humanize());
 
                     // Publish the start event before invoking the tar progress factory: the CLI's
                     // ChunkDownloadStarted handler populates the metadata that CreateTarBundleDownloadProgress reads.
-                    await _mediator.Publish(new ChunkDownloadStartedEvent(chunk.ChunkHash, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize, chunk.OriginalSize), ct);
+                    await mediator.Publish(new ChunkDownloadStartedEvent(chunk.ChunkHash, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize, chunk.OriginalSize), ct);
 
                     try
                     {
@@ -458,7 +435,7 @@ public sealed class RestoreCommandHandler
                             {
                                 await RestoreLargeFileAsync(chunk.ChunkHash, file, fs, opts, chunk.CompressedSize, ct);
                                 Interlocked.Increment(ref filesRestored);
-                                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, chunk.OriginalSize), ct);
+                                await mediator.Publish(new FileRestoredEvent(file.RelativePath, chunk.OriginalSize), ct);
                             }
                         }
                         else
@@ -475,7 +452,7 @@ public sealed class RestoreCommandHandler
                     {
                         // Stale classification (e.g. external tier change): the blob is still archived.
                         // Re-route to the rehydration path rather than faulting the run.
-                        _logger.LogWarning("[download] Chunk {ChunkHash} is archived despite classification; re-routing to rehydration", chunk.ChunkHash.Short8);
+                        logger.LogWarning("[download] Chunk {ChunkHash} is archived despite classification; re-routing to rehydration", chunk.ChunkHash.Short8);
                         rerouteToRehydration.TryAdd(chunk.ChunkHash, true);
                     }
                 });
@@ -595,7 +572,7 @@ public sealed class RestoreCommandHandler
             if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix.Value))
                 continue;
 
-            var entries     = await _fileTreeService.ReadAsync(treeHash, cancellationToken);
+            var entries     = await fileTreeService.ReadAsync(treeHash, cancellationToken);
             var childDirectories = new List<(FileTreeHash, RelativePath)>();
 
             foreach (var entry in entries)
@@ -623,8 +600,8 @@ public sealed class RestoreCommandHandler
                         {
                             emittedSinceLastEvent = 0;
                             lastEmit = now;
-                            _logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", total);
-                            await _mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
+                            logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", total);
+                            await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
                         }
                     }
                 }
@@ -636,7 +613,7 @@ public sealed class RestoreCommandHandler
         }
 
         if (emitProgress && total > 0)
-            await _mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
+            await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
     }
 
     private static bool IsPathRelevant(RelativePath currentPath, RelativePath targetPrefix)
@@ -673,16 +650,16 @@ public sealed class RestoreCommandHandler
                     {
                         // Hash the local file to check whether it already matches.
                         await using var s = fs.OpenRead(file.RelativePath);
-                        var localHash = await _encryption.ComputeHashAsync(s, ct);
+                        var localHash = await encryption.ComputeHashAsync(s, ct);
 
                         if (localHash == file.ContentHash)
                         {
                             if (skipped is not null) Interlocked.Increment(ref skipped.Value);
                             if (emitEvents)
                             {
-                                _logger.LogInformation("[route] {Path} -> skip (identical)", file.RelativePath);
-                                await _mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), ct);
-                                await _mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.SkipIdentical, s.Length), ct);
+                                logger.LogInformation("[route] {Path} -> skip (identical)", file.RelativePath);
+                                await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), ct);
+                                await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.SkipIdentical, s.Length), ct);
                             }
                             return;
                         }
@@ -691,23 +668,23 @@ public sealed class RestoreCommandHandler
                         if (skipped is not null) Interlocked.Increment(ref skipped.Value);
                         if (emitEvents)
                         {
-                            _logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
-                            await _mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), ct);
-                            await _mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, s.Length), ct);
+                            logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                            await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), ct);
+                            await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, s.Length), ct);
                         }
                         return;
                     }
 
                     if (emitEvents)
                     {
-                        _logger.LogInformation("[route] {Path} -> overwrite", file.RelativePath);
-                        await _mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.Overwrite, fs.GetFileSize(file.RelativePath)), ct);
+                        logger.LogInformation("[route] {Path} -> overwrite", file.RelativePath);
+                        await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.Overwrite, fs.GetFileSize(file.RelativePath)), ct);
                     }
                 }
                 else if (emitEvents)
                 {
-                    _logger.LogInformation("[route] {Path} -> new", file.RelativePath);
-                    await _mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.New, 0), ct);
+                    logger.LogInformation("[route] {Path} -> new", file.RelativePath);
+                    await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.New, 0), ct);
                 }
 
                 await writer.WriteAsync(file, ct);
@@ -728,7 +705,7 @@ public sealed class RestoreCommandHandler
             if (batch.Count == 0)
                 return;
 
-            var entries = await _index.LookupAsync(batch.Select(f => f.ContentHash).Distinct(), cancellationToken);
+            var entries = await index.LookupAsync(batch.Select(f => f.ContentHash).Distinct(), cancellationToken);
 
             List<FileToRestore>? missing = null;
             foreach (var file in batch)
@@ -773,7 +750,7 @@ public sealed class RestoreCommandHandler
     {
         {
             var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
-            await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+            await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
             await using var fileStream   = fs.CreateFile(file.RelativePath);
 
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
@@ -808,7 +785,7 @@ public sealed class RestoreCommandHandler
         var restored = 0;
 
         var progress = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
-        await using var payloadStream = await _chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
+        await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         var tarReader = new TarReader(payloadStream, leaveOpen: false);
 
         while (await tarReader.GetNextEntryAsync(copyData: false, cancellationToken) is { } tarEntry)
@@ -853,13 +830,13 @@ public sealed class RestoreCommandHandler
                     fs.SetTimestamps(pointerPath, file.Created, file.Modified);
                 }
 
-                await _mediator.Publish(new FileRestoredEvent(file.RelativePath, fs.GetFileSize(file.RelativePath)), cancellationToken);
+                await mediator.Publish(new FileRestoredEvent(file.RelativePath, fs.GetFileSize(file.RelativePath)), cancellationToken);
                 restored++;
             }
         }
 
         // Emit completion event for tar bundles so the CLI can remove the TrackedDownload.
-        await _mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, compressedSize), cancellationToken);
+        await mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, compressedSize), cancellationToken);
 
         return restored;
     }
