@@ -25,11 +25,12 @@ internal sealed record ResolvedFile(
 );
 
 /// <summary>
-/// Per-chunk classification accumulated during pass 1 (keyed by distinct <see cref="ChunkHash"/>).
-/// <see cref="RefCount"/> is the number of to-restore files referencing the chunk; pass 2 uses it to
+/// Mutable per-chunk accumulator built during classify (keyed by distinct <see cref="ChunkHash"/>).
+/// <see cref="RefCount"/> is the number of to-restore files referencing the chunk; download uses it to
 /// flush a tar group once all its files have arrived. For tar chunks the sizes are summed across files.
+/// A class (not a record) because it is mutated in place through the classification map.
 /// </summary>
-internal sealed record ChunkClassification
+internal sealed class ChunkClassification
 {
     public required bool                 IsLargeChunk   { get; init; }
     public required ChunkHydrationStatus Status         { get; set; }
