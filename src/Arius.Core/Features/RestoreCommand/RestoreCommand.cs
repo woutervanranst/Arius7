@@ -3,11 +3,13 @@ using Mediator;
 
 namespace Arius.Core.Features.RestoreCommand;
 
-// ── Task 10.1: Mediator RestoreCommand ────────────────────────────────────────
+// ── COMMAND ────────────────────────────────────────
 
 /// <summary>
-/// Options controlling the restore pipeline.
+/// Mediator command: restore files from blob storage to a local directory.
 /// </summary>
+public sealed record RestoreCommand(RestoreOptions Options) : ICommand<RestoreResult>;
+
 public sealed record RestoreOptions
 {
     /// <summary>Local directory to restore files into.</summary>
@@ -31,14 +33,14 @@ public sealed record RestoreOptions
     public bool NoPointers { get; init; } = false;
 
     /// <summary>
-    /// Task 10.6: Optional callback invoked with the cost estimate before rehydration begins.
+    /// Optional callback invoked with the cost estimate before rehydration begins.
     /// Return the desired <see cref="RehydratePriority"/> to proceed, or <c>null</c> to cancel.
     /// When this callback is <c>null</c>, all archive-tier chunks are rehydrated using Standard priority without confirmation.
     /// </summary>
     public Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>>? ConfirmRehydration { get; init; }
 
     /// <summary>
-    /// Task 10.10: Optional callback invoked after a full restore when there are blobs to clean up.
+    /// Optional callback invoked after a full restore when there are blobs to clean up.
     /// Return <c>true</c> to delete the rehydrated chunks, <c>false</c> to keep them.
     /// When <c>null</c>, blobs are retained.
     /// </summary>
@@ -63,11 +65,8 @@ public sealed record RestoreOptions
     public Action<Func<int>>? OnDownloadQueueReady { get; init; }
 }
 
-/// <summary>
-/// Mediator command: restore files from blob storage to a local directory.
-/// </summary>
-public sealed record RestoreCommand(RestoreOptions Options)
-    : ICommand<RestoreResult>;
+
+// ── RESULT ────────────────────────────────────────
 
 /// <summary>
 /// Result returned by <see cref="RestoreCommand"/>.

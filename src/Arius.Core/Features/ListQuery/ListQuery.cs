@@ -41,7 +41,7 @@ public sealed record ListQueryOptions
 }
 
 
-// -- RESULT
+// --- RESULT
 
 /// <summary>
 /// Base type for entries emitted by the streaming repository listing.
