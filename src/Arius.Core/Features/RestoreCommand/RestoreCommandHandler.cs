@@ -269,12 +269,12 @@ public sealed class RestoreCommandHandler(
     /// map (status, summed sizes, refcount). Returns the number of files that need restoring.
     /// </summary>
     private async Task<int> ClassifyAsync(
-        RelativeFileSystem                       fs,
-        FileTreeHash                             rootHash,
-        RestoreOptions                           opts,
+        RelativeFileSystem                         fs,
+        FileTreeHash                               rootHash,
+        RestoreOptions                             opts,
         Dictionary<ChunkHash, ChunkClassification> classification,
-        StrongBox<long>                          skipped,
-        CancellationToken                        cancellationToken)
+        StrongBox<long>                            skipped,
+        CancellationToken                          cancellationToken)
     {
         var rehydratedState = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
 
