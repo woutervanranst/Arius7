@@ -24,11 +24,7 @@ internal static class AsyncEnumerableExtensions
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxDegreeOfParallelism);
 
-        var output = Channel.CreateBounded<T>(new BoundedChannelOptions(maxDegreeOfParallelism)
-        {
-            SingleWriter = false,
-            SingleReader = true
-        });
+        var output = Channel.CreateBounded<T>(new BoundedChannelOptions(maxDegreeOfParallelism) { SingleWriter = false, SingleReader = true });
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
