@@ -51,7 +51,7 @@ internal sealed record ChunkToRestore(
     long                        OriginalSize
 );
 
-// ── Task 10.6: Cost estimation model ─────────────────────────────────────────
+// ── Cost estimation model ─────────────────────────────────────────
 
 /// <summary>
 /// Full cost breakdown for a restore operation, emitted before rehydration begins.
@@ -102,12 +102,10 @@ public sealed record RestoreCostEstimate
     // ── Computed totals ───────────────────────────────────────────────────────
 
     /// <summary>Total estimated cost at Standard priority.</summary>
-    public double TotalStandard =>
-        RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost;
+    public double TotalStandard => RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost;
 
     /// <summary>Total estimated cost at High priority.</summary>
-    public double TotalHigh =>
-        RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost;
+    public double TotalHigh => RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost;
 }
 
 // ── Download kind enum ────────────────────────────────────────────────────────
