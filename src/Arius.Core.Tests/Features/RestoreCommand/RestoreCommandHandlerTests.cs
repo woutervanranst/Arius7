@@ -449,7 +449,7 @@ public class RestoreCommandHandlerTests
             $"ctr-restore-scattered-tar-{Guid.NewGuid():N}");
 
         // Three distinct small files at scattered tree paths — they bundle into a single tar chunk,
-        // but the restore walk visits them far apart (sorted depth-first). The refcount-flush grouper
+        // but the restore walk visits them far apart (breadth-first). The refcount-flush grouper
         // must still download the tar exactly once.
         var paths = new[]
         {
