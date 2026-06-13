@@ -1,7 +1,7 @@
+using Arius.Core.Shared.Extensions;
 using System.Threading.Channels;
-using Arius.Core.Shared;
 
-namespace Arius.Core.Tests.Shared;
+namespace Arius.Core.Tests.Shared.Extensions;
 
 public class ChannelReaderExtensionsTests
 {

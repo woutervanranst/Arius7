@@ -1,6 +1,6 @@
-using Arius.Core.Shared;
+using Arius.Core.Shared.Extensions;
 
-namespace Arius.Core.Tests.Shared;
+namespace Arius.Core.Tests.Shared.Extensions;
 
 public class AsyncEnumerableExtensionsTests
 {
