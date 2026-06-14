@@ -234,6 +234,15 @@ public async IAsyncEnumerable<Order> StreamOrdersAsync(
 - Use linked CancellationTokenSource for timeouts
 - `ref struct` locals can exist inside `async` methods in C# 13, but they still cannot live across an `await` boundary
 
+### IAsyncEnumerable (C# 14+)
+
+- On .NET 10+, prefer the built-in `System.Linq.AsyncEnumerable` operators for straightforward `IAsyncEnumerable<T>` filtering, projection, batching, and terminal queries.
+- Use operators such as `Chunk`, `Distinct`, `DistinctBy`, `Select`, `Where`, `AnyAsync`, `CountAsync`, and `FirstAsync` when they replace boilerplate `await foreach` loops cleanly.
+- Keep manual `async IAsyncEnumerable<T>` iterators when the control flow is the behavior: multiple `yield return` branches, stateful streaming, or precise progress / exception timing.
+- Preserve cancellation explicitly: use `.WithCancellation(cancellationToken)` at enumeration sites, pass `cancellationToken` to terminal async LINQ operators, and keep `[EnumeratorCancellation]` on iterator methods.
+- Avoid `ToListAsync` / `ToArrayAsync` unless the caller actually needs a buffered result.
+- Do not add `System.Linq.Async` for new .NET 10 code. For multitargeting older TFMs, prefer `System.Linq.AsyncEnumerable`. When upgrading old Ix code, migrate `SelectAwait`-style calls to the built-in operator names and overloads.
+
 ### Span<T> and Memory<T>
 
 Use `Span<T>` for synchronous zero-allocation operations, `Memory<T>` for async, and `ArrayPool<T>` for large temporary buffers.
@@ -244,7 +253,7 @@ See [performance-and-api-design.md](performance-and-api-design.md) for complete 
 
 ---
 
-### C# 14 Ergonomics
+### C# 14 / .NET 10 Ergonomics
 
 - Use null-conditional assignment (`customer?.Order = order`) for simple null-guarded writes. Keep explicit `if` statements when the assignment body is complex enough to hide work.
 - Use `field` backed properties for simple accessor validation or normalization without a manual backing field. If the accessor logic becomes non-trivial, or the backing field must be shared across members, declare the field explicitly.
