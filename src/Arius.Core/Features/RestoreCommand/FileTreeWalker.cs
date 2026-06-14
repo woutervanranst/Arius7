@@ -4,7 +4,7 @@ using Arius.Core.Shared.FileTree;
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Breadth-first traversal over persisted remote filetree nodes for restore.
+/// Breadth-first traversal over snapshot filetree nodes for restore.
 /// </summary>
 internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
 {
