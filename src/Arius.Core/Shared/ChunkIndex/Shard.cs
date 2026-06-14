@@ -11,6 +11,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// The tier is the storage tier of the chunk blob at archive time (wire values: hot=1, cool=2, cold=3, archive=4);
 /// it is a hint — a lifecycle policy or rehydration may change the actual tier afterwards.
 /// </summary>
+[SharedWithinAssembly]
 internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, long OriginalSize, long CompressedSize, BlobTier StorageTierHint)
 {
     public bool IsLargeChunk => ChunkHash.Parse(ContentHash) == ChunkHash;
