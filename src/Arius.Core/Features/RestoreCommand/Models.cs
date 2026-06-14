@@ -6,6 +6,15 @@ namespace Arius.Core.Features.RestoreCommand;
 // ── Internal pipeline models ──────────────────────────────────────────────────
 
 /// <summary>
+/// A <see cref="FileToRestore"/> paired with its resolved chunk-index entry (the Resolve stage's output).
+/// Carries the index entry so downstream stages need not re-look-up the chunk.
+/// </summary>
+internal sealed record ResolvedFile(
+    FileToRestore File,
+    ShardEntry IndexEntry
+);
+
+/// <summary>
 /// A file entry collected during tree traversal that needs to be restored.
 /// </summary>
 internal sealed record FileToRestore(
@@ -13,15 +22,6 @@ internal sealed record FileToRestore(
     ContentHash    ContentHash,
     DateTimeOffset Created,
     DateTimeOffset Modified
-);
-
-/// <summary>
-/// A <see cref="FileToRestore"/> paired with its resolved chunk-index entry (the Resolve stage's output).
-/// Carries the index entry so downstream stages need not re-look-up the chunk.
-/// </summary>
-internal sealed record ResolvedFile(
-    FileToRestore File,
-    ShardEntry    IndexEntry
 );
 
 /// <summary>
