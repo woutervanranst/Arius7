@@ -113,7 +113,42 @@ public sealed class RestoreCommandHandler(
             var classification  = new Dictionary<ChunkHash, ChunkClassification>();
             var fileCount       = 0;
 
-            await foreach (var resolved in StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: true, skipped, cancellationToken))
+#pragma warning disable S3267
+            await foreach (var resolved in StreamResolvedFilesAsync(
+                               fs,
+                               snapshot.RootHash,
+                               opts,
+                               onTraversalProgress: async (filesFound, ct) =>
+                               {
+                                   logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", filesFound);
+                                   await mediator.Publish(new TreeTraversalProgressEvent(filesFound), ct);
+                               },
+                               onFinalTraversalProgress: (filesFound, ct) => mediator.Publish(new TreeTraversalProgressEvent(filesFound), ct),
+                               onSkipIdentical: async (file, fileSize, ct) =>
+                               {
+                                   logger.LogInformation("[route] {Path} -> skip (identical)", file.RelativePath);
+                                   await mediator.Publish(new FileSkippedEvent(file.RelativePath, fileSize),                            ct);
+                                   await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.SkipIdentical, fileSize), ct);
+                               },
+                               onKeepLocalDiffers: async (file, fileSize, ct) =>
+                               {
+                                   logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
+                                   await mediator.Publish(new FileSkippedEvent(file.RelativePath, fileSize),                               ct);
+                                   await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, fileSize), ct);
+                               },
+                               onOverwrite: async (file, fileSize, ct) =>
+                               {
+                                   logger.LogInformation("[route] {Path} -> overwrite", file.RelativePath);
+                                   await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.Overwrite, fileSize), ct);
+                               },
+                               onNew: async (file, ct) =>
+                               {
+                                   logger.LogInformation("[route] {Path} -> new", file.RelativePath);
+                                   await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.New, 0), ct);
+                               },
+                               skipped: skipped,
+                               cancellationToken: cancellationToken))
+#pragma warning restore S3267
             {
                 fileCount++;
                 var entry     = resolved.IndexEntry;
@@ -233,7 +268,18 @@ public sealed class RestoreCommandHandler(
                     var openTars = new Dictionary<ChunkHash, List<FileToRestore>>();
                     try
                     {
-                        await foreach (var resolved in StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, token))
+                        await foreach (var resolved in StreamResolvedFilesAsync(
+                                           fs,
+                                           snapshot.RootHash,
+                                           opts,
+                                           onTraversalProgress: null,
+                                           onFinalTraversalProgress: null,
+                                           onSkipIdentical: null,
+                                           onKeepLocalDiffers: null,
+                                           onOverwrite: null,
+                                           onNew: null,
+                                           skipped: null,
+                                           cancellationToken: token))
                         {
                             var chunkHash = resolved.IndexEntry.ChunkHash;
                             if (!classification.TryGetValue(chunkHash, out var cc) || cc.Status != ChunkHydrationStatus.Available)
@@ -307,7 +353,15 @@ public sealed class RestoreCommandHandler(
                                 var filesByContentHash = chunk.Files
                                     .GroupBy(f => f.ContentHash)
                                     .ToDictionary(g => g.Key, g => g.ToList());
-                                var restored = await RestoreTarBundleAsync(chunk.ChunkHash, filesByContentHash, fs, opts, chunk.CompressedSize, ct);
+                                var restored = await RestoreTarBundleAsync(
+                                    chunkHash: chunk.ChunkHash,
+                                    filesNeeded: filesByContentHash,
+                                    fs: fs,
+                                    opts: opts,
+                                    compressedSize: chunk.CompressedSize,
+                                    onFileRestored: (file, fileSize, ct) => mediator.Publish(new FileRestoredEvent(file.RelativePath, fileSize), ct),
+                                    onChunkDownloadCompleted: (chunkHash, restored, compressedSize, ct) => mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, compressedSize), ct),
+                                    cancellationToken: ct);
                                 Interlocked.Add(ref filesRestored, restored);
                             }
                         }
@@ -415,18 +469,23 @@ public sealed class RestoreCommandHandler(
     /// subject to overwrite/skip rules, paired with the chunk-index entry needed to restore them.
     /// </summary>
     private IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
-        RelativeFileSystem fs,
-        FileTreeHash       rootHash,
-        RestoreOptions     opts,
-        bool               emitEvents,
-        StrongBox<long>?   skipped,
-        CancellationToken  cancellationToken)
+        RelativeFileSystem                                       fs,
+        FileTreeHash                                             rootHash,
+        RestoreOptions                                           opts,
+        Func<int, CancellationToken, ValueTask>?                 onTraversalProgress,
+        Func<int, CancellationToken, ValueTask>?                 onFinalTraversalProgress,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onSkipIdentical,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onKeepLocalDiffers,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onOverwrite,
+        Func<FileToRestore, CancellationToken, ValueTask>?       onNew,
+        StrongBox<long>?                                         skipped,
+        CancellationToken                                        cancellationToken)
         => ResolveAsync(
-               WalkAsync(rootHash, opts.TargetPath, emitProgress: emitEvents, cancellationToken)
+               WalkAsync(rootHash, opts.TargetPath, onTraversalProgress, onFinalTraversalProgress, cancellationToken)
                    .WhereParallelAsync(
-                       RouteWorkers,
-                       (file, ct) => ShouldRestoreAsync(file, fs, opts, emitEvents, skipped, ct),
-                       cancellationToken),
+                        RouteWorkers,
+                        (file, ct) => ShouldRestoreAsync(file, fs, opts, onSkipIdentical, onKeepLocalDiffers, onOverwrite, onNew, skipped, ct),
+                        cancellationToken),
                cancellationToken);
 
     // ── Stage A: Walk (breadth-first, like ListQueryHandler) ──────────────────
@@ -436,9 +495,10 @@ public sealed class RestoreCommandHandler(
     /// (or all files when <c>null</c>) and emits restore-specific traversal progress.
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
-        FileTreeHash  rootHash,
-        RelativePath? targetPrefix,
-        bool          emitProgress,
+        FileTreeHash                            rootHash,
+        RelativePath?                           targetPrefix,
+        Func<int, CancellationToken, ValueTask>? onProgress,
+        Func<int, CancellationToken, ValueTask>? onFinalProgress,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var total                 = 0;
@@ -452,21 +512,20 @@ public sealed class RestoreCommandHandler(
             total++;
             emittedSinceLastEvent++;
 
-            if (emitProgress)
+            if (onProgress is not null)
             {
                 var now = DateTimeOffset.UtcNow;
                 if (emittedSinceLastEvent >= 10 || (now - lastEmit).TotalMilliseconds >= 100)
                 {
                     emittedSinceLastEvent = 0;
                     lastEmit = now;
-                    logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", total);
-                    await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
+                    await onProgress(total, cancellationToken);
                 }
             }
         }
 
-        if (emitProgress && total > 0)
-            await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
+        if (onFinalProgress is not null && total > 0)
+            await onFinalProgress(total, cancellationToken);
     }
 
     // ── Stage B: Route (conflict check) ──────────────────────────────────────────
@@ -474,16 +533,19 @@ public sealed class RestoreCommandHandler(
     /// <summary>
     /// Decides one file's fate against the local filesystem and returns whether it should be restored:
     /// skip identical files, keep locally-differing files unless <c>--overwrite</c>, otherwise restore.
-    /// Per-file events are emitted only when <paramref name="emitEvents"/> is set (classify pass).
+    /// Per-file events are emitted only when route callbacks are set (classify pass).
     /// Runs on multiple route workers, so <paramref name="skipped"/> is updated with <see cref="Interlocked"/>.
     /// </summary>
     private async ValueTask<bool> ShouldRestoreAsync(
-        FileToRestore      file,
-        RelativeFileSystem fs,
-        RestoreOptions     opts,
-        bool               emitEvents,
-        StrongBox<long>?   skipped,
-        CancellationToken  cancellationToken)
+        FileToRestore                                         file,
+        RelativeFileSystem                                    fs,
+        RestoreOptions                                        opts,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onSkipIdentical,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onKeepLocalDiffers,
+        Func<FileToRestore, long, CancellationToken, ValueTask>? onOverwrite,
+        Func<FileToRestore, CancellationToken, ValueTask>?       onNew,
+        StrongBox<long>?                                      skipped,
+        CancellationToken                                     cancellationToken)
     {
         if (fs.FileExists(file.RelativePath))
         {
@@ -498,12 +560,7 @@ public sealed class RestoreCommandHandler(
                     if (skipped is not null) 
                         Interlocked.Increment(ref skipped.Value);
 
-                    if (emitEvents)
-                    {
-                        logger.LogInformation("[route] {Path} -> skip (identical)", file.RelativePath);
-                        await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length), cancellationToken);
-                        await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.SkipIdentical, s.Length), cancellationToken);
-                    }
+                    await (onSkipIdentical?.Invoke(file, s.Length, cancellationToken) ?? ValueTask.CompletedTask);
 
                     return false;
                 }
@@ -513,26 +570,17 @@ public sealed class RestoreCommandHandler(
                     if (skipped is not null)
                         Interlocked.Increment(ref skipped.Value);
 
-                    if (emitEvents)
-                    {
-                        logger.LogInformation("[route] {Path} -> keep (local differs, no --overwrite)", file.RelativePath);
-                        await mediator.Publish(new FileSkippedEvent(file.RelativePath, s.Length),                               cancellationToken);
-                        await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.KeepLocalDiffers, s.Length), cancellationToken);
-                    }
+                    await (onKeepLocalDiffers?.Invoke(file, s.Length, cancellationToken) ?? ValueTask.CompletedTask);
+
                     return false;
                 }
             }
 
-            if (emitEvents)
-            {
-                logger.LogInformation("[route] {Path} -> overwrite", file.RelativePath);
-                await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.Overwrite, fs.GetFileSize(file.RelativePath)), cancellationToken);
-            }
+            await (onOverwrite?.Invoke(file, fs.GetFileSize(file.RelativePath), cancellationToken) ?? ValueTask.CompletedTask);
         }
-        else if (emitEvents)
+        else
         {
-            logger.LogInformation("[route] {Path} -> new", file.RelativePath);
-            await mediator.Publish(new FileRoutedEvent(file.RelativePath, RestoreRoute.New, 0), cancellationToken);
+            await (onNew?.Invoke(file, cancellationToken) ?? ValueTask.CompletedTask);
         }
 
         return true;
@@ -635,6 +683,8 @@ public sealed class RestoreCommandHandler(
         RelativeFileSystem                           fs,
         RestoreOptions                               opts,
         long                                         compressedSize,
+        Func<FileToRestore, long, CancellationToken, ValueTask> onFileRestored,
+        Func<ChunkHash, int, long, CancellationToken, ValueTask> onChunkDownloadCompleted,
         CancellationToken                            cancellationToken)
     {
         var restored = 0;
@@ -685,13 +735,13 @@ public sealed class RestoreCommandHandler(
                     fs.SetTimestamps(pointerPath, file.Created, file.Modified);
                 }
 
-                await mediator.Publish(new FileRestoredEvent(file.RelativePath, fs.GetFileSize(file.RelativePath)), cancellationToken);
+                await onFileRestored(file, fs.GetFileSize(file.RelativePath), cancellationToken);
                 restored++;
             }
         }
 
         // Emit completion event for tar bundles so the CLI can remove the TrackedDownload.
-        await mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, compressedSize), cancellationToken);
+        await onChunkDownloadCompleted(chunkHash, restored, compressedSize, cancellationToken);
 
         return restored;
     }
