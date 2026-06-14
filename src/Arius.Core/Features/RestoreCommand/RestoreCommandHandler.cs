@@ -429,11 +429,11 @@ public sealed class RestoreCommandHandler(
                        cancellationToken),
                cancellationToken);
 
-    // ── Stage A: Walk (breadth-first, mirrors ListQueryHandler) ──────────────────
+    // ── Stage A: Walk (breadth-first, like ListQueryHandler) ──────────────────
 
     /// <summary>
-    /// Breadth-first walk of the snapshot's FileTree, yielding one <see cref="FileToRestore"/> per file that
-    /// matches <paramref name="targetPrefix"/> (or all files when <c>null</c>).
+    /// Yields one <see cref="FileToRestore"/> per remote file that matches <paramref name="targetPrefix"/>
+    /// (or all files when <c>null</c>) and emits restore-specific traversal progress.
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
         FileTreeHash  rootHash,
@@ -445,58 +445,28 @@ public sealed class RestoreCommandHandler(
         var emittedSinceLastEvent = 0;
         var lastEmit              = DateTimeOffset.UtcNow;
 
-        var pending = new Queue<(FileTreeHash TreeHash, RelativePath Path)>();
-        pending.Enqueue((rootHash, RelativePath.Root));
-
-        while (pending.Count > 0)
+        var walker = new FileTreeWalker(fileTreeService);
+        await foreach (var file in walker.WalkFilesAsync(rootHash, targetPrefix, cancellationToken).ConfigureAwait(false))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var (treeHash, currentPath) = pending.Dequeue();
+            yield return file;
+            total++;
+            emittedSinceLastEvent++;
 
-            // Skip entire subtrees that cannot match the prefix filter.
-            if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix.Value))
-                continue;
-
-            var entries = await fileTreeService.ReadAsync(treeHash, cancellationToken);
-
-            // Files first…
-            foreach (var fileEntry in entries.OfType<FileEntry>())
+            if (emitProgress)
             {
-                var entryPath = currentPath / fileEntry.Name;
-                if (targetPrefix is not null && !entryPath.StartsWith(targetPrefix.Value))
-                    continue;
-
-                yield return new FileToRestore(entryPath, fileEntry.ContentHash, fileEntry.Created, fileEntry.Modified);
-                total++;
-                emittedSinceLastEvent++;
-
-                if (emitProgress)
+                var now = DateTimeOffset.UtcNow;
+                if (emittedSinceLastEvent >= 10 || (now - lastEmit).TotalMilliseconds >= 100)
                 {
-                    var now = DateTimeOffset.UtcNow;
-                    if (emittedSinceLastEvent >= 10 || (now - lastEmit).TotalMilliseconds >= 100)
-                    {
-                        emittedSinceLastEvent = 0;
-                        lastEmit = now;
-                        logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", total);
-                        await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
-                    }
+                    emittedSinceLastEvent = 0;
+                    lastEmit = now;
+                    logger.LogDebug("[tree] Traversal progress: {FilesFound} files discovered", total);
+                    await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
                 }
             }
-
-            // …then enqueue subdirectories (the queue is the breadth-first worklist).
-            foreach (var directoryEntry in entries.OfType<DirectoryEntry>())
-                pending.Enqueue((directoryEntry.FileTreeHash, currentPath / directoryEntry.Name));
         }
 
         if (emitProgress && total > 0)
             await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
-    }
-
-    private static bool IsPathRelevant(RelativePath currentPath, RelativePath targetPrefix)
-    {
-        return currentPath == RelativePath.Root
-            || targetPrefix.StartsWith(currentPath)
-            || currentPath.StartsWith(targetPrefix);
     }
 
     // ── Stage B: Route (conflict check) ──────────────────────────────────────────
