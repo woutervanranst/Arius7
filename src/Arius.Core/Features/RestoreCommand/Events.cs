@@ -4,44 +4,44 @@ namespace Arius.Core.Features.RestoreCommand;
 
 // ── Progress events ───────────────────────────────────────────────────────────
 
-/// <summary>Emitted when restore begins with file count.</summary>
+/// <summary>Emitted after classify has counted the selected files and restore work begins.</summary>
 public sealed record RestoreStartedEvent(int TotalFiles) : INotification;
 
-/// <summary>Emitted when a single file has been restored to disk.</summary>
+/// <summary>Emitted after one binary file has been written to disk.</summary>
 public sealed record FileRestoredEvent(RelativePath RelativePath, long FileSize) : INotification;
 
-/// <summary>Emitted when a file was skipped (already present with matching hash).</summary>
+/// <summary>Emitted when a selected file is not restored because the local copy is kept.</summary>
 public sealed record FileSkippedEvent(RelativePath RelativePath, long FileSize) : INotification;
 
-/// <summary>Emitted when rehydration has been kicked off for some chunks.</summary>
+/// <summary>Emitted after restore requests rehydration for archive-tier chunks.</summary>
 public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : INotification;
 
-/// <summary>Emitted after snapshot resolution and tree traversal gives the file count.</summary>
+/// <summary>Emitted after restore resolves the snapshot and counts selected files.</summary>
 public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, FileTreeHash RootHash, int FileCount) : INotification;
 
-/// <summary>Emitted after all file entries are collected from the tree.</summary>
+/// <summary>Emitted after the classify pass has walked all selected files.</summary>
 public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification;
 
-/// <summary>Emitted periodically during tree traversal with the cumulative count of files discovered.</summary>
+/// <summary>Emitted during the classify walk with the cumulative number of selected files discovered.</summary>
 public sealed record TreeTraversalProgressEvent(int FilesFound) : INotification;
 
-/// <summary>Route decision for each file during restore conflict check.</summary>
+/// <summary>Local conflict decision made for a selected restore file.</summary>
 public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 
-/// <summary>Emitted for each file's route decision during restore.</summary>
+/// <summary>Emitted during classify when a selected file is routed.</summary>
 public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
-/// <summary>Emitted after chunk index lookups complete.</summary>
+/// <summary>Emitted after selected files have been grouped by resolved chunk.</summary>
 public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
 
-/// <summary>Emitted after rehydration availability check completes.</summary>
+/// <summary>Emitted after classify determines chunk hydration status.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
-/// <summary>Emitted when a chunk download begins.</summary>
+/// <summary>Emitted before downloading one available chunk.</summary>
 public sealed record ChunkDownloadStartedEvent(ChunkHash ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize) : INotification;
 
-/// <summary>Emitted after a tar bundle has been fully downloaded and extracted.</summary>
+/// <summary>Emitted after a tar chunk has been downloaded and all selected entries are restored.</summary>
 public sealed record ChunkDownloadCompletedEvent(ChunkHash ChunkHash, int FilesRestored, long CompressedSize) : INotification;
 
-/// <summary>Emitted after rehydrated blob cleanup finishes.</summary>
+/// <summary>Emitted after confirmed rehydrated chunk cleanup finishes.</summary>
 public sealed record CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification;

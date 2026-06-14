@@ -9,8 +9,9 @@ using System.Runtime.CompilerServices;
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Streams the shared restore file pipeline: Walk -> Route -> Resolve.
-/// Used by restore's classify and download passes so the handler can focus on orchestration.
+/// Streams the selected files that restore should write by composing Walk -> Route -> Resolve.
+/// The classify pass uses this stream to count and classify chunks; the download pass uses it to group
+/// available chunks without buffering the full file list.
 /// </summary>
 internal sealed class RestoreFilePipeline(
     IEncryptionService encryption,
@@ -23,8 +24,8 @@ internal sealed class RestoreFilePipeline(
     private const int ResolveBatchSize = 32;
 
     /// <summary>
-    /// All files from the selected snapshot/target path that the restore command intends to bring back locally,
-    /// subject to overwrite/skip rules, paired with the chunk-index entry needed to restore them.
+    /// Streams selected snapshot files that should be restored locally, after applying overwrite/skip rules,
+    /// paired with the chunk-index entry required to read their content.
     /// </summary>
     public async IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
         RelativeFileSystem fs,
@@ -46,8 +47,8 @@ internal sealed class RestoreFilePipeline(
     }
 
     /// <summary>
-    /// Yields one <see cref="FileToRestore"/> per remote file that matches <paramref name="targetPrefix"/>
-    /// (or all files when <c>null</c>) and emits restore-specific traversal progress.
+    /// Walks the snapshot filetree breadth-first and yields files under <paramref name="targetPrefix"/>,
+    /// or every file when no target path is supplied. Optionally emits traversal progress.
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
         FileTreeHash  rootHash,
@@ -84,10 +85,9 @@ internal sealed class RestoreFilePipeline(
     }
 
     /// <summary>
-    /// Decides one file's fate against the local filesystem and returns whether it should be restored:
-    /// skip identical files, keep locally-differing files unless <c>--overwrite</c>, otherwise restore.
-    /// Per-file events are emitted only when <paramref name="emitEvents"/> is set (classify pass).
-    /// Runs on multiple route workers, so <paramref name="skipped"/> is updated with <see cref="Interlocked"/>.
+    /// Applies restore conflict rules for one file and returns whether it should continue to Resolve.
+    /// Existing identical files and locally-different files without overwrite are skipped; missing files
+    /// and overwrite-enabled files continue. Route events are emitted only during the classify pass.
     /// </summary>
     private async ValueTask<bool> ShouldRestoreAsync(
         FileToRestore      file,

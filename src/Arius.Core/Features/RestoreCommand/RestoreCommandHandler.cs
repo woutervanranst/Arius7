@@ -16,35 +16,35 @@ using System.Threading.Channels;
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Restores files from a snapshot to a local director.
-/// The tree walk is breadth-first and  composed as a single
-/// <see cref="IAsyncEnumerable{T}"/> — Walk → Route → Resolve — mirroring <c>ListQueryHandler</c>
+/// Orchestrates restore from a repository snapshot into a local directory.
+/// The handler owns snapshot selection, chunk classification, confirmation, download, rehydration,
+/// and cleanup. <see cref="RestoreFilePipeline"/> owns the shared Walk -> Route -> Resolve file stream
+/// used by both restore passes.
 ///
-/// A cost estimate and rehydration confirmation must be shown <em>before</em> any download (cancelling
-/// must download nothing), so the tree is walked twice. <see cref="IFileTreeService.ReadAsync"/> is
-/// cache-backed, so the second walk is cheap.
+/// Restore must classify archive-tier chunks and ask for rehydration confirmation <em>before</em> any
+/// download starts, so cancellation never writes files. The repository tree is therefore walked twice;
+/// <see cref="IFileTreeService.ReadAsync"/> is cache-backed, so the second walk is cheap.
 ///
 /// ## Stages
 ///
-/// 1. **Resolve snapshot** — pick the requested (or latest) snapshot; bail if none.
-/// 2. **Classify** (walk #1) — Walk → Route → Resolve, accumulating one <see cref="ChunkClassification"/>
-///    per distinct chunk (hydration status, summed sizes, refcount). Memory is O(distinct chunks), not
-///    O(files). Rehydration state comes from a single rehydrated-prefix listing plus each chunk's index
-///    <c>StorageTierHint</c> — no per-chunk blob calls.
-/// 3. **Confirm** — publish the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>;
-///    cancel returns without downloading.
-/// 4. **Download** (walk #2, events suppressed) — a grouper dispatches work to download workers: large
-///    files (chunk hash == content hash) stream 1:1 immediately; tar bundles buffer per chunk and flush
-///    the instant their refcount is met (each tar downloaded exactly once). A blob still archived at
-///    download time (a stale classification) is re-routed to rehydration rather than faulting the run.
-/// 5. **Rehydrate** — request rehydration for archive-tier chunks (skipping ones already pending).
-/// 6. **Cleanup** — when nothing is pending, optionally delete leftover rehydrated blobs.
+/// 1. **Resolve snapshot** - choose the requested snapshot, or the latest snapshot when no version is supplied.
+/// 2. **Classify** (walk #1) - run Walk -> Route -> Resolve and build one <see cref="ChunkClassification"/>
+///    per distinct chunk. Memory is O(distinct chunks), not O(files). Rehydration state comes from one
+///    rehydrated-prefix listing plus each chunk's index <c>StorageTierHint</c>; there are no per-chunk
+///    storage calls.
+/// 3. **Confirm** - publish the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>.
+///    Cancellation exits before any download starts.
+/// 4. **Download** (walk #2, events suppressed) - group routed files by chunk and download each available
+///    chunk once. Large chunks restore one file immediately; tar chunks restore after all selected files
+///    for the chunk are known. A chunk that is still archived at download time is re-routed to rehydration.
+/// 5. **Rehydrate** - request rehydration for archive-tier chunks, skipping chunks already pending.
+/// 6. **Cleanup** - when nothing is pending, optionally delete leftover rehydrated chunk blobs.
 ///
 /// ## Pipeline (shared by stages 2 &amp; 4)
 ///
-/// Walk (BFS) ─► Route (conflict check, ×N parallel) ─► Resolve (batched chunk-index lookup), composed
-/// as one <see cref="IAsyncEnumerable{T}"/> of <see cref="ResolvedFile"/> via
-/// <see cref="WhereParallelAsync"/>. Pass 1 emits per-file/progress events; pass 2 suppresses them.
+/// <see cref="RestoreFilePipeline"/> composes breadth-first Walk, parallel Route conflict checks, and
+/// batched Resolve chunk-index lookups as one <see cref="IAsyncEnumerable{T}"/> of <see cref="ResolvedFile"/>.
+/// The classify pass emits route/progress events; the download pass suppresses them.
 ///
 /// ## Channels
 ///
@@ -439,7 +439,7 @@ public sealed class RestoreCommandHandler(
     // ── Tar bundle restore ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Downloads a tar bundle and extracts only the entries whose content-hash matches
+    /// Downloads a tar chunk and extracts only the entries whose content hash matches
     /// <paramref name="filesNeeded"/>. Returns the number of files written to disk.
     /// </summary>
     private async Task<int> RestoreTarBundleAsync(
