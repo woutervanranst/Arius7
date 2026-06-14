@@ -1,7 +1,7 @@
-using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Extensions;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -12,7 +12,6 @@ using System.Collections.Concurrent;
 using System.Formats.Tar;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Arius.Core.Shared.Extensions;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -403,20 +402,24 @@ public sealed class RestoreCommandHandler(
     /// All files from the selected snapshot/target path that the restore command intends to bring back locally,
     /// subject to overwrite/skip rules, paired with the chunk-index entry needed to restore them.
     /// </summary>
-    private IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
+    private async IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
         RelativeFileSystem fs,
         FileTreeHash       rootHash,
         RestoreOptions     opts,
         bool               emitEvents,
         StrongBox<long>?   skipped,
-        CancellationToken  cancellationToken)
-        => ResolveAsync(
-               WalkAsync(rootHash, opts.TargetPath, emitProgress: emitEvents, cancellationToken)
-                   .WhereParallelAsync(
-                       RouteWorkers,
-                       (file, ct) => ShouldRestoreAsync(file, fs, opts, emitEvents, skipped, ct),
-                       cancellationToken),
-               cancellationToken);
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var files = WalkAsync(rootHash, opts.TargetPath, emitProgress: emitEvents, cancellationToken)
+            .WhereParallelAsync(
+                RouteWorkers,
+                (file, ct) => ShouldRestoreAsync(file, fs, opts, emitEvents, skipped, ct),
+                cancellationToken);
+
+        await foreach (var batch in files.Chunk(ResolveBatchSize).WithCancellation(cancellationToken))
+            await foreach (var resolved in ResolveBatchAsync(batch, cancellationToken))
+                yield return resolved;
+    }
 
     // ── Pipeline: Walk (breadth-first, like ListQueryHandler) ───────
 
@@ -528,19 +531,6 @@ public sealed class RestoreCommandHandler(
     }
 
     // ── Pipeline: Resolve (batched chunk-index lookup) ──────────────
-
-    /// <summary>
-    /// Buffers up to <see cref="ResolveBatchSize"/> files into one chunk-index lookup, yielding each file
-    /// paired with its index entry. Throws if the snapshot references a content hash missing from the index.
-    /// </summary>
-    private async IAsyncEnumerable<ResolvedFile> ResolveAsync(
-        IAsyncEnumerable<FileToRestore> files,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var batch in files.Chunk(ResolveBatchSize).WithCancellation(cancellationToken))
-            await foreach (var resolved in ResolveBatchAsync(batch, cancellationToken))
-                yield return resolved;
-    }
 
     private async IAsyncEnumerable<ResolvedFile> ResolveBatchAsync(
         IReadOnlyList<FileToRestore> batch,
