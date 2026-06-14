@@ -580,25 +580,13 @@ public sealed class RestoreCommandHandler(
         IAsyncEnumerable<FileToRestore> files,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var batch = new List<FileToRestore>(ResolveBatchSize);
-
-        await foreach (var file in files.WithCancellation(cancellationToken))
-        {
-            batch.Add(file);
-            if (batch.Count >= ResolveBatchSize)
-            {
-                await foreach (var resolved in ResolveBatchAsync(batch, cancellationToken))
-                    yield return resolved;
-                batch.Clear();
-            }
-        }
-
-        await foreach (var resolved in ResolveBatchAsync(batch, cancellationToken))
-            yield return resolved;
+        await foreach (var batch in files.Chunk(ResolveBatchSize).WithCancellation(cancellationToken))
+            await foreach (var resolved in ResolveBatchAsync(batch, cancellationToken))
+                yield return resolved;
     }
 
     private async IAsyncEnumerable<ResolvedFile> ResolveBatchAsync(
-        List<FileToRestore> batch,
+        IReadOnlyList<FileToRestore> batch,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (batch.Count == 0)
