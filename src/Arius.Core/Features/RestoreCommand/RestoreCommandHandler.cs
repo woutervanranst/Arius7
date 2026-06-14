@@ -411,9 +411,8 @@ public sealed class RestoreCommandHandler(
     // ── Pipeline: Walk → Route → Resolve, composed as one stream ─────────────────
 
     /// <summary>
-    /// Streams the files to restore as Walk → Route → Resolve composed into one <see cref="IAsyncEnumerable{T}"/>.
-    /// <paramref name="emitEvents"/> is <c>true</c> only for the classify pass (avoids double-publishing
-    /// per-file / progress events on the download re-walk).
+    /// All files from the selected snapshot/target path that the restore command intends to bring back locally,
+    /// subject to overwrite/skip rules, paired with the chunk-index entry needed to restore them.
     /// </summary>
     private IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
         RelativeFileSystem fs,
@@ -434,8 +433,7 @@ public sealed class RestoreCommandHandler(
 
     /// <summary>
     /// Breadth-first walk of the snapshot tree, yielding one <see cref="FileToRestore"/> per file that
-    /// matches <paramref name="targetPrefix"/> (or all files when <c>null</c>). Memory is bounded by the
-    /// directory width plus the traversal frontier, not by the file count.
+    /// matches <paramref name="targetPrefix"/> (or all files when <c>null</c>).
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
         FileTreeHash  rootHash,
