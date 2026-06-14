@@ -33,7 +33,7 @@ internal static class ChannelReaderExtensions
             while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 var batch = new List<T>(maxBatchSize);
-                while (batch.Count < maxBatchSize && reader.TryRead(out var item))
+                while (batch.Count < maxBatchSize && reader.TryRead(out var item)) // greedy: if there is one item in the Channel, read the entire channel
                     batch.Add(item);
 
                 if (batch.Count > 0)
