@@ -147,14 +147,8 @@ public sealed class RestoreCommandHandler(
             logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
 
             // Counts + byte sums from the (bounded) classification map.
-            var availableCount = 0;
-            var needsCount     = 0;
-            var pendingCount   = 0;
-            var largeChunks    = 0;
-            long totalOriginalBytes   = 0;
-            long totalCompressedBytes = 0;
-            long downloadBytes        = 0;
-            long rehydrationBytes     = 0;
+            int availableCount = 0, needsCount = 0, pendingCount = 0, largeChunks = 0;
+            long totalOriginalBytes = 0, totalCompressedBytes = 0, downloadBytes = 0, rehydrationBytes = 0;
             foreach (var cc in classification.Values)
             {
                 if (cc.IsLargeChunk) largeChunks++;
@@ -242,7 +236,7 @@ public sealed class RestoreCommandHandler(
                             if (cc.IsLargeChunk)
                             {
                                 await chunkChannel.Writer.WriteAsync(
-                                    new ChunkToRestore(chunkHash, IsLargeChunk: true, new[] { resolved.File }, cc.CompressedSize, cc.OriginalSize),
+                                    new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], cc.CompressedSize, cc.OriginalSize),
                                     token);
                                 continue;
                             }
