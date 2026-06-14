@@ -231,7 +231,7 @@ public sealed class RestoreCommandHandler(
                         {
                             var chunkHash = resolved.IndexEntry.ChunkHash;
                             if (!classification.TryGetValue(chunkHash, out var cc) || cc.Status != ChunkHydrationStatus.Available)
-                                continue; // not downloadable now (rehydration handled by Stage 5)
+                                continue; // not downloadable now; rehydration is handled after downloads
 
                             if (cc.IsLargeChunk)
                             {
@@ -396,7 +396,8 @@ public sealed class RestoreCommandHandler(
         }
     }
 
-    // ── Pipeline: Walk → Route → Resolve, composed as one stream ─────────────────
+
+    // ── Pipeline: Walk → Route → Resolve used for Stage 2 (Classify) & Stage 4 (Download) composed as one stream ─────────────────
 
     /// <summary>
     /// All files from the selected snapshot/target path that the restore command intends to bring back locally,
@@ -417,7 +418,7 @@ public sealed class RestoreCommandHandler(
                        cancellationToken),
                cancellationToken);
 
-    // ── Stage A: Walk (breadth-first, like ListQueryHandler) ──────────────────
+    // ── Pipeline: Walk (breadth-first, like ListQueryHandler) ───────
 
     /// <summary>
     /// Yields one <see cref="FileToRestore"/> per remote file that matches <paramref name="targetPrefix"/>
@@ -457,7 +458,7 @@ public sealed class RestoreCommandHandler(
             await mediator.Publish(new TreeTraversalProgressEvent(total), cancellationToken);
     }
 
-    // ── Stage B: Route (conflict check) ──────────────────────────────────────────
+    // ── Pipeline: Route (conflict check) ────────────────────────────
 
     /// <summary>
     /// Decides one file's fate against the local filesystem and returns whether it should be restored:
@@ -526,7 +527,7 @@ public sealed class RestoreCommandHandler(
         return true;
     }
 
-    // ── Stage C: Resolve (batched chunk-index lookup) ────────────────────────────
+    // ── Pipeline: Resolve (batched chunk-index lookup) ──────────────
 
     /// <summary>
     /// Buffers up to <see cref="ResolveBatchSize"/> files into one chunk-index lookup, yielding each file
@@ -568,6 +569,9 @@ public sealed class RestoreCommandHandler(
             throw new InvalidOperationException($"Snapshot references {missing.Count} content hash(es) that are missing from the chunk index: {sample}. Run the explicit chunk-index repair command and retry restore.");
         }
     }
+
+    // ── Pipeline: Walk → Route → Resolve END
+
 
     private static ChunkHydrationStatus ClassifyChunk(ChunkHash chunkHash, ShardEntry entry, IReadOnlyDictionary<ChunkHash, bool> rehydratedState)
     {
