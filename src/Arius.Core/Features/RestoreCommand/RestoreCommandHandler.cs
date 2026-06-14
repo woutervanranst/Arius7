@@ -219,7 +219,7 @@ public sealed class RestoreCommandHandler(
                 // grouper — otherwise it would block forever writing to the bounded chunk channel that the
                 // faulted workers stopped draining.
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var token = cts.Token;
+                var ct = cts.Token;
 
                 // ── Grouper ×1: large files dispatch immediately; tar groups flush at refcount ──
                 var grouperTask = Task.Run(async () =>
@@ -227,7 +227,7 @@ public sealed class RestoreCommandHandler(
                     var openTars = new Dictionary<ChunkHash, List<FileToRestore>>();
                     try
                     {
-                        await foreach (var resolved in StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, token))
+                        await foreach (var resolved in StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, ct))
                         {
                             var chunkHash = resolved.IndexEntry.ChunkHash;
                             if (!classification.TryGetValue(chunkHash, out var cc) || cc.Status != ChunkHydrationStatus.Available)
@@ -235,9 +235,7 @@ public sealed class RestoreCommandHandler(
 
                             if (cc.IsLargeChunk)
                             {
-                                await chunkChannel.Writer.WriteAsync(
-                                    new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], cc.CompressedSize, cc.OriginalSize),
-                                    token);
+                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], cc.CompressedSize, cc.OriginalSize), ct);
                                 continue;
                             }
 
@@ -249,9 +247,7 @@ public sealed class RestoreCommandHandler(
                             if (list.Count >= cc.RefCount)
                             {
                                 openTars.Remove(chunkHash);
-                                await chunkChannel.Writer.WriteAsync(
-                                    new ChunkToRestore(chunkHash, IsLargeChunk: false, list, cc.CompressedSize, cc.OriginalSize),
-                                    token);
+                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: false, list, cc.CompressedSize, cc.OriginalSize), ct);
                             }
                         }
 
@@ -259,9 +255,7 @@ public sealed class RestoreCommandHandler(
                         foreach (var (chunkHash, list) in openTars)
                         {
                             var cc = classification[chunkHash];
-                            await chunkChannel.Writer.WriteAsync(
-                                new ChunkToRestore(chunkHash, IsLargeChunk: false, list, cc.CompressedSize, cc.OriginalSize),
-                                token);
+                            await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: false, list, cc.CompressedSize, cc.OriginalSize), ct);
                         }
 
                         chunkChannel.Writer.Complete();
@@ -274,8 +268,8 @@ public sealed class RestoreCommandHandler(
 
                 // ── Download workers ×N ──
                 var downloadTask = Parallel.ForEachAsync(
-                    chunkChannel.Reader.ReadAllAsync(token),
-                    new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = token },
+                    chunkChannel.Reader.ReadAllAsync(ct),
+                    new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = ct },
                     async (chunk, ct) =>
                     {
                         logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunk.ChunkHash.Short8, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize.Bytes().Humanize());
