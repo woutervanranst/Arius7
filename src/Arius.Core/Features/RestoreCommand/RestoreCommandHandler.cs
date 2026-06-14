@@ -432,7 +432,7 @@ public sealed class RestoreCommandHandler(
     // ── Stage A: Walk (breadth-first, mirrors ListQueryHandler) ──────────────────
 
     /// <summary>
-    /// Breadth-first walk of the snapshot tree, yielding one <see cref="FileToRestore"/> per file that
+    /// Breadth-first walk of the snapshot's FileTree, yielding one <see cref="FileToRestore"/> per file that
     /// matches <paramref name="targetPrefix"/> (or all files when <c>null</c>).
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
