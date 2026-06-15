@@ -356,7 +356,7 @@ public class FileTreeServiceTests
         var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         await fixture.FileTreeService.EnsureStoredAsync(payload);
 
-        blobs.Uploaded.ShouldContain(BlobPaths.FileTreePath(payload.Hash));
+        blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreePath(payload.Hash));
     }
 
     private static async Task<byte[]> ReadBlobBytesAsync(FakeInMemoryBlobContainerService blobs, RelativePath blobName)
