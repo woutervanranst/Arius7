@@ -1,4 +1,5 @@
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 using Arius.Core.Tests.Shared.Streaming;
 using Arius.Tests.Shared.Compression;
@@ -390,6 +391,56 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeFalse();
         result.OriginalSize.ShouldBe(content.Length);
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_SkipsRoundTripVerification_ForCodecThatDoesNotRequireIt()
+    {
+        // The zstd path verifies the stored chunk round-trips (see the wrong-hash test above); the legacy
+        // gzip codec opts out (RequireRoundTripVerification == false), so ChunkStorageService skips the tee.
+        // With verification skipped, an upload under a hash the content does NOT produce is recorded as-is
+        // rather than failing loudly — proving the verification is gated on the codec's flag.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), new GZipCompressionService());
+        var content = new byte[4096];
+        Random.Shared.NextBytes(content);
+        var wrongHash = ChunkHash.Parse("0000000000000000000000000000000000000000000000000000000000000000");
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: wrongHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(wrongHash))).Exists.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_GZipCodec_RoundTripsThroughUploadAndDownload()
+    {
+        // A full compress→encrypt→upload→download→decrypt→decompress cycle on the legacy gzip codec,
+        // exercising the no-verifier upload path and proving ChunkStorageService both writes and reads gzip.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), new GZipCompressionService());
+        var content = new byte[4096];
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHashOf(content);
+
+        await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        await using var download = await service.DownloadAsync(chunkHash);
+        var restored = new MemoryStream();
+        await download.CopyToAsync(restored);
+        restored.ToArray().ShouldBe(content);
     }
 
 }

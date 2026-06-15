@@ -14,6 +14,13 @@ public class ZstdCompressionServiceTests
     private static readonly ICompressionService Sut = TestCompression.Instance;
 
     [Test]
+    public void RequiresRoundTripVerification()
+    {
+        // zstd is the newer encoder, so chunk uploads verify it round-trips inline. (Contrast gzip.)
+        Sut.RequireRoundTripVerification.ShouldBeTrue();
+    }
+
+    [Test]
     [Arguments(0)]
     [Arguments(1)]
     [Arguments(100)]

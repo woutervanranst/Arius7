@@ -70,7 +70,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         try
         {
             long storedSize;
-            ContentHash verifiedHash;
+            ContentHash? verifiedHash = null;
 
             await using (var writeStream = await blobs.OpenWriteAsync(blobName, contentType, cancellationToken))
             {
@@ -79,9 +79,17 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
 
                 // Inline round-trip verification: tee the compressed bytes to (a) the encrypt→upload chain
                 // and (b) a decompress→hash pipe, so we prove the chunk is restorable before recording it.
-                await using var verifier = new RoundTripVerifier(compression, encryption, cancellationToken);
-                var teeStream         = new TeeStream(encryptionStream, verifier.Sink);
-                var compressionStream = compression.WrapForCompression(teeStream, leaveOpen: false);
+                // Only codecs that ask for it pay this cost (zstd does; the trusted BCL gzip path does not).
+                await using var verifier = compression.RequireRoundTripVerification
+                    ? new RoundTripVerifier(compression, encryption, cancellationToken)
+                    : null;
+
+                // With a verifier, tee the compressed bytes to it as well; without one, compress straight
+                // into the encryption chain. leaveOpen so the encryption stream is disposed once, explicitly.
+                var compressionTarget = verifier is null
+                    ? (Stream)encryptionStream
+                    : new TeeStream(encryptionStream, verifier.Sink);
+                var compressionStream = compression.WrapForCompression(compressionTarget, leaveOpen: true);
 
                 var progressStream = progress is null
                     ? null
@@ -97,20 +105,21 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 var source = progressStream ?? content;
                 await source.CopyToAsync(compressionStream, cancellationToken);
 
-                await compressionStream.DisposeAsync();  // finalize the zstd frame → tee → encryption + verifier
-                verifiedHash = await verifier.CompleteAsync(cancellationToken); // hash of the decompressed bytes
+                await compressionStream.DisposeAsync();  // finalize the frame → (tee →) encryption (+ verifier)
+                if (verifier is not null)
+                    verifiedHash = await verifier.CompleteAsync(cancellationToken); // hash of the decompressed bytes
                 await encryptionStream.DisposeAsync();   // NOTE: leave Dispose to get a correct BytesWritten
                 storedSize = countingStream.BytesWritten;
             }
 
-            if (verifiedHash != ContentHash.Parse(chunkHash))
+            if (verifiedHash is { } restoredHash && restoredHash != ContentHash.Parse(chunkHash))
             {
                 // Compression did not round-trip — the stored frame is not restorable. Fail loudly and
                 // remove the unusable blob rather than recording an unrecoverable chunk.
                 await blobs.DeleteAsync(blobName, cancellationToken);
                 throw new InvalidDataException(
                     $"Chunk {chunkHash.Short8} failed compression round-trip verification " +
-                    $"(restored hash {verifiedHash.Short8} ≠ {chunkHash.Short8}); the blob was not recorded.");
+                    $"(restored hash {restoredHash.Short8} ≠ {chunkHash.Short8}); the blob was not recorded.");
             }
 
             var metadata = new Dictionary<string, string>

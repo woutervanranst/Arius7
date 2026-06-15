@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using ZstdSharp;
 using ZstdSharp.Unsafe;
 
@@ -12,10 +11,11 @@ namespace Arius.Core.Shared.Compression;
 [SharedWithinAssembly]
 internal sealed class ZstdCompressionService : ICompressionService
 {
-    // Magic numbers at the start of a compressed frame (little-endian on disk).
+    // Magic number at the start of a zstd frame (little-endian on disk).
     private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD]; // 0xFD2FB528
-    private const byte GZipMagic0 = 0x1F;
-    private const byte GZipMagic1 = 0x8B;
+
+    // Legacy "+gzip" blobs are decoded by the gzip codec; reads delegate to it when a gzip frame is detected.
+    private static readonly GZipCompressionService LegacyGzip = new();
 
     /// <summary>
     /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller
@@ -27,6 +27,13 @@ internal sealed class ZstdCompressionService : ICompressionService
     private readonly int _level;
 
     public ZstdCompressionService(int compressionLevel = DefaultCompressionLevel) => _level = compressionLevel;
+
+    /// <summary>
+    /// zstd is verified inline on every chunk upload: it is the newer encoder, so we prove each frame
+    /// round-trips at archive time (while the source is still on disk) rather than discovering an encoder
+    /// bug on a future restore.
+    /// </summary>
+    public bool RequireRoundTripVerification => true;
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
     {
@@ -135,8 +142,9 @@ internal sealed class ZstdCompressionService : ICompressionService
             if (read >= ZstdMagic.Length && header.AsSpan(0, ZstdMagic.Length).SequenceEqual(ZstdMagic))
                 return new DecompressionStream(prefixed, leaveOpen: false);
 
-            if (read >= 2 && header[0] == GZipMagic0 && header[1] == GZipMagic1)
-                return new GZipStream(prefixed, CompressionMode.Decompress, leaveOpen: false);
+            // Legacy "+gzip" blob: hand the un-peeked stream to the gzip codec to decode.
+            if (GZipCompressionService.IsGZipHeader(header.AsSpan(0, read)))
+                return LegacyGzip.WrapForDecompression(prefixed, leaveOpen: false);
 
             throw new InvalidDataException("Unrecognized compression format; expected a zstd or gzip frame header.");
         }
