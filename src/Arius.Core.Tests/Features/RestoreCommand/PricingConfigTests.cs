@@ -39,7 +39,8 @@ public class PricingConfigTests
             chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1,
             chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes,
+            bytesNeedingRehydration: OneGBBytes,
+            bytesPendingRehydration: 0,
             downloadBytes: 0);
 
         estimate.RetrievalCostStandard.ShouldBe(3.0);
@@ -59,14 +60,16 @@ public class PricingConfigTests
             chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1,
             chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes,
+            bytesNeedingRehydration: OneGBBytes,
+            bytesPendingRehydration: 0,
             downloadBytes: 0);
         var estimate = new RestoreCostCalculator(suppliedPricing).Compute(
             chunksAvailable: 0,
             chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1,
             chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes,
+            bytesNeedingRehydration: OneGBBytes,
+            bytesPendingRehydration: 0,
             downloadBytes: 0);
 
         estimate.RetrievalCostStandard.ShouldBe(7.0);

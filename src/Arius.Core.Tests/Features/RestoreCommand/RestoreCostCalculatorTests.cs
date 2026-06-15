@@ -30,7 +30,7 @@ public class RestoreCostCalculatorTests
         var estimate = calculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9);
     }
@@ -43,7 +43,7 @@ public class RestoreCostCalculatorTests
         var estimate = calculator.Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.RetrievalCostStandard.ShouldBeGreaterThan(0);
         estimate.RetrievalCostHigh.ShouldBeGreaterThan(estimate.RetrievalCostStandard);
@@ -57,7 +57,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.RetrievalCostStandard.ShouldBe(1.0, tolerance: 1e-9); // 1 GB * 1.0 EUR/GB
     }
@@ -68,7 +68,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.RetrievalCostHigh.ShouldBe(5.0, tolerance: 1e-9);  // 1 GB * 5.0 EUR/GB
     }
@@ -80,7 +80,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_000, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.ReadOpsCostStandard.ShouldBe(2.0, tolerance: 1e-9);
     }
@@ -92,7 +92,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 10_001, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.ReadOpsCostStandard.ShouldBe(2.0002, tolerance: 1e-9);
     }
@@ -104,7 +104,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.ReadOpsCostStandard.ShouldBe(0.0002, tolerance: 1e-9);
     }
@@ -116,7 +116,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 5_000, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.WriteOpsCost.ShouldBe(0.05, tolerance: 1e-9);
     }
@@ -128,7 +128,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.StorageCost.ShouldBe(0.5, tolerance: 1e-9); // 0.5 * 3
     }
@@ -139,7 +139,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0,
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0,
             monthsStored: 3.0);
 
         estimate.StorageCost.ShouldBe(1.5, tolerance: 1e-9);
@@ -151,7 +151,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 5, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 0, chunksPendingRehydration: 0,
-            rehydrationBytes: 0, downloadBytes: OneGBBytes);
+            bytesNeedingRehydration: 0, bytesPendingRehydration: 0, downloadBytes: OneGBBytes);
 
         estimate.RetrievalCostStandard.ShouldBe(0.0);
         estimate.RetrievalCostHigh.ShouldBe(0.0);
@@ -164,6 +164,24 @@ public class RestoreCostCalculatorTests
     }
 
     [Test]
+    public void PendingOnlyChunks_ReportPendingBytesButDoNotAddRehydrationCost()
+    {
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 0, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 0, chunksPendingRehydration: 1,
+            bytesNeedingRehydration: 0, bytesPendingRehydration: OneGBBytes, downloadBytes: 0);
+
+        estimate.BytesNeedingRehydration.ShouldBe(0);
+        estimate.BytesPendingRehydration.ShouldBe(OneGBBytes);
+        estimate.RetrievalCostStandard.ShouldBe(0.0);
+        estimate.RetrievalCostHigh.ShouldBe(0.0);
+        estimate.ReadOpsCostStandard.ShouldBe(0.0);
+        estimate.ReadOpsCostHigh.ShouldBe(0.0);
+        estimate.WriteOpsCost.ShouldBe(0.0);
+        estimate.StorageCost.ShouldBe(0.0);
+    }
+
+    [Test]
     public void TotalStandard_SumsAllComponents()
     {
         // 1 GB, 1 blob → opsUnits = 1/10000 = 0.0001
@@ -171,7 +189,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.TotalStandard.ShouldBe(1.50021, tolerance: 1e-9);
     }
@@ -183,7 +201,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 1, chunksPendingRehydration: 0,
-            rehydrationBytes: OneGBBytes, downloadBytes: 0);
+            bytesNeedingRehydration: OneGBBytes, bytesPendingRehydration: 0, downloadBytes: 0);
 
         estimate.TotalHigh.ShouldBe(5.50101, tolerance: 1e-9);
     }
@@ -194,7 +212,7 @@ public class RestoreCostCalculatorTests
         var estimate = new RestoreCostCalculator(_pricing).Compute(
             chunksAvailable: 0, chunksAlreadyRehydrated: 0,
             chunksNeedingRehydration: 5, chunksPendingRehydration: 3,
-            rehydrationBytes: 2 * OneGBBytes, downloadBytes: OneGBBytes);
+            bytesNeedingRehydration: 2 * OneGBBytes, bytesPendingRehydration: 0, downloadBytes: OneGBBytes);
 
         estimate.TotalHigh.ShouldBeGreaterThanOrEqualTo(estimate.TotalStandard);
     }

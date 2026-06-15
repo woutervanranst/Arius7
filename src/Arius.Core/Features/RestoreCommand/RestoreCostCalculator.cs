@@ -17,7 +17,8 @@ internal sealed class RestoreCostCalculator(PricingConfig? pricing)
     /// <param name="chunksAlreadyRehydrated">Archive-tier chunk count with ready rehydrated copies.</param>
     /// <param name="chunksNeedingRehydration">Archive-tier chunk count that needs rehydration.</param>
     /// <param name="chunksPendingRehydration">Archive-tier chunk count with rehydration already pending.</param>
-    /// <param name="rehydrationBytes">Compressed bytes that require rehydration or are already pending.</param>
+    /// <param name="bytesNeedingRehydration">Compressed bytes that require a new rehydration request.</param>
+    /// <param name="bytesPendingRehydration">Compressed bytes already pending rehydration.</param>
     /// <param name="downloadBytes">Compressed bytes available for immediate download.</param>
     /// <param name="monthsStored">Storage duration assumed for rehydrated chunk copies.</param>
     public RestoreCostEstimate Compute(
@@ -25,12 +26,13 @@ internal sealed class RestoreCostCalculator(PricingConfig? pricing)
         int            chunksAlreadyRehydrated,
         int            chunksNeedingRehydration,
         int            chunksPendingRehydration,
-        long           rehydrationBytes,
+        long           bytesNeedingRehydration,
+        long           bytesPendingRehydration,
         long           downloadBytes,
         double         monthsStored = 1.0)
     {
-        var numberOfBlobs = chunksNeedingRehydration + chunksPendingRehydration;
-        var totalGB       = rehydrationBytes / (1024.0 * 1024.0 * 1024.0);
+        var numberOfBlobs = chunksNeedingRehydration;
+        var totalGB       = bytesNeedingRehydration / (1024.0 * 1024.0 * 1024.0);
         var opsUnits      = numberOfBlobs / 10_000.0;
 
         return new RestoreCostEstimate
@@ -39,7 +41,8 @@ internal sealed class RestoreCostCalculator(PricingConfig? pricing)
             ChunksAlreadyRehydrated  = chunksAlreadyRehydrated,
             ChunksNeedingRehydration = chunksNeedingRehydration,
             ChunksPendingRehydration = chunksPendingRehydration,
-            RehydrationBytes         = rehydrationBytes,
+            BytesNeedingRehydration  = bytesNeedingRehydration,
+            BytesPendingRehydration  = bytesPendingRehydration,
             DownloadBytes            = downloadBytes,
 
             // Retrieval cost: per GB from archive
@@ -159,8 +162,11 @@ public sealed record RestoreCostEstimate
     /// <summary>Archive-tier chunks with rehydration already pending.</summary>
     public required int ChunksPendingRehydration { get; init; }
 
-    /// <summary>Total compressed bytes that require rehydration or are already pending.</summary>
-    public required long RehydrationBytes { get; init; }
+    /// <summary>Total compressed bytes that require a new rehydration request.</summary>
+    public required long BytesNeedingRehydration { get; init; }
+
+    /// <summary>Total compressed bytes already pending rehydration.</summary>
+    public required long BytesPendingRehydration { get; init; }
 
     /// <summary>Total compressed bytes available for immediate download.</summary>
     public required long DownloadBytes { get; init; }
