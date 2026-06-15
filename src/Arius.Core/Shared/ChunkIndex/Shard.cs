@@ -4,8 +4,8 @@ namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
 /// One line in a chunk index shard file.
-/// Large-file format (content-hash == chunk-hash): <c>content-hash            original-size chunk-size tier-hint</c>
-/// Small-file format (content-hash != chunk-hash): <c>content-hash chunk-hash original-size chunk-size tier-hint</c>
+/// Large-file chunk format (content-hash == chunk-hash): <c>content-hash            original-size chunk-size tier-hint</c>
+/// Small-file chunk format (content-hash != chunk-hash): <c>content-hash chunk-hash original-size chunk-size tier-hint</c>
 /// All hashes are lowercase hex strings (SHA256 = 64 chars).
 /// Field count is the discriminator: 4 fields = large file, 5 fields = small file.
 /// 

@@ -220,10 +220,10 @@ public sealed class RestoreCommandHandler(
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 var ct = cts.Token;
 
-                // ── Grouper ×1: large files dispatch immediately; tar groups flush after walk #2 ──
+                // ── Grouper ×1: large files dispatch immediately; group files to restore per TAR ──
                 var grouperTask = Task.Run(async () =>
                 {
-                    var openTars = new Dictionary<ChunkHash, OpenTarChunk>();
+                    var tarChunks = new Dictionary<ChunkHash, OpenTarChunk>();
                     try
                     {
                         await foreach (var resolved in filesToRestore.GetStreamAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, ct))
@@ -235,18 +235,23 @@ public sealed class RestoreCommandHandler(
 
                             if (entry.IsLargeChunk)
                             {
-                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], entry.ChunkSize, entry.OriginalSize), ct);
-                                continue;
+                                // Large Chunk: enqueue for download immediately
+                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], entry.ChunkSize, entry.OriginalSize), ct); // TODO if we restore a duplicate large file - can we optimize?
                             }
+                            else
+                            {
+                                // Small Chunk in TAR: build a list of all chunks across all TARs first
+                                if (!tarChunks.TryGetValue(chunkHash, out var tar))
+                                    tarChunks[chunkHash] = tar = new OpenTarChunk();
 
-                            if (!openTars.TryGetValue(chunkHash, out var tar))
-                                openTars[chunkHash] = tar = new OpenTarChunk();
-                            tar.Files.Add(resolved.File);
-                            tar.CompressedSize = entry.ChunkSize;
-                            tar.OriginalSize   += entry.OriginalSize;
+                                tar.Files.Add(resolved.File);
+                                tar.CompressedSize =  entry.ChunkSize;
+                                tar.OriginalSize   += entry.OriginalSize;
+                            }
                         }
 
-                        foreach (var (chunkHash, tar) in openTars)
+                        // Once we've seen all TARs, enqueue each TAR chunk with files that need to be restored from the tar
+                        foreach (var (chunkHash, tar) in tarChunks)
                             await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: false, tar.Files, tar.CompressedSize, tar.OriginalSize), ct);
 
                         chunkChannel.Writer.Complete();
@@ -332,6 +337,8 @@ public sealed class RestoreCommandHandler(
                     try
                     {
                         await chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
+                        logger.LogInformation("[rehydrate] TODO");
+
                         if (chunksNeedingRehydration.TryGetValue(chunkHash, out var classifiedSize))
                             totalRehydrateBytes += classifiedSize;
                         else if (rerouteToRehydration.TryGetValue(chunkHash, out var reroutedSize))
@@ -396,13 +403,7 @@ public sealed class RestoreCommandHandler(
 
     // ── Large file restore ───────────────────────────────────────────────────────
 
-    private async Task RestoreLargeFileAsync(
-        ChunkHash          chunkHash,
-        FileToRestore      file,
-        RelativeFileSystem fs,
-        RestoreOptions     opts,
-        long               compressedSize,
-        CancellationToken  cancellationToken)
+    private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
     {
         var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
         await using (var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
@@ -429,19 +430,13 @@ public sealed class RestoreCommandHandler(
     /// Downloads a tar chunk and extracts only the entries whose content hash matches
     /// <paramref name="filesNeeded"/>. Returns the number of files written to disk.
     /// </summary>
-    private async Task<int> RestoreTarBundleAsync(
-        ChunkHash                                    chunkHash,
-        Dictionary<ContentHash, List<FileToRestore>> filesNeeded,
-        RelativeFileSystem                           fs,
-        RestoreOptions                               opts,
-        long                                         compressedSize,
-        CancellationToken                            cancellationToken)
+    private async Task<int> RestoreTarBundleAsync(ChunkHash chunkHash, Dictionary<ContentHash, List<FileToRestore>> filesNeeded, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
     {
         var restored = 0;
 
-        var progress = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
+        var             progress      = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
         await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-        using var tarReader = new TarReader(payloadStream, leaveOpen: true);
+        await using var tarReader     = new TarReader(payloadStream, leaveOpen: true);
 
         while (await tarReader.GetNextEntryAsync(copyData: false, cancellationToken) is { } tarEntry)
         {
