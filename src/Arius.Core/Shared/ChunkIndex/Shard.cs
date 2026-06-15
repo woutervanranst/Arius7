@@ -4,15 +4,19 @@ namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
 /// One line in a chunk index shard file.
-/// Large-file format (content-hash == chunk-hash): <c>&lt;content-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt; &lt;tier&gt;\n</c>
-/// Small-file format (content-hash != chunk-hash): <c>&lt;content-hash&gt; &lt;chunk-hash&gt; &lt;original-size&gt; &lt;compressed-size&gt; &lt;tier&gt;\n</c>
+/// Large-file format (content-hash == chunk-hash): <c>content-hash            original-size chunk-size tier-hint</c>
+/// Small-file format (content-hash != chunk-hash): <c>content-hash chunk-hash original-size chunk-size tier-hint</c>
 /// All hashes are lowercase hex strings (SHA256 = 64 chars).
 /// Field count is the discriminator: 4 fields = large file, 5 fields = small file.
-/// The tier is the storage tier of the chunk blob at archive time (wire values: hot=1, cool=2, cold=3, archive=4);
-/// it is a hint — a lifecycle policy or rehydration may change the actual tier afterwards.
+/// 
+/// <c>chunk-size</c> is the byte count of the stored chunk blob:
+///   for large chunks, that is the large chunk blob itself;
+///   for tar-bundled files, that is the parent tar chunk blob.
+/// The tier-hint is the storage tier of the chunk blob at archive time (wire values: hot=1, cool=2, cold=3, archive=4);
+/// it is a hint — a lifecycle policy or rehydration may change the actual tier out of our control.
 /// </summary>
 [SharedWithinAssembly]
-internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, long OriginalSize, long CompressedSize, BlobTier StorageTierHint)
+internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, long OriginalSize, long ChunkSize, BlobTier StorageTierHint)
 {
     public bool IsLargeChunk => ChunkHash.Parse(ContentHash) == ChunkHash;
 
@@ -25,8 +29,8 @@ internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, 
     /// </summary>
     public string Serialize() =>
         IsLargeChunk
-            ? $"{ContentHash} {OriginalSize} {CompressedSize} {SerializeTier(StorageTierHint)}"
-            : $"{ContentHash} {ChunkHash} {OriginalSize} {CompressedSize} {SerializeTier(StorageTierHint)}";
+            ? $"{ContentHash} {OriginalSize} {ChunkSize} {SerializeTier(StorageTierHint)}"
+            : $"{ContentHash} {ChunkHash} {OriginalSize} {ChunkSize} {SerializeTier(StorageTierHint)}";
 
     /// <summary>
     /// Parses a single shard line. Returns <c>null</c> on blank or comment lines.
@@ -45,13 +49,13 @@ internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, 
                 ContentHash:     ContentHash.Parse(parts[0]),
                 ChunkHash:       ChunkHash.Parse(parts[0]),              // large file: chunk-hash == content-hash
                 OriginalSize:    long.Parse(parts[1]),
-                CompressedSize:  long.Parse(parts[2]),
+                ChunkSize:       long.Parse(parts[2]),
                 StorageTierHint: ParseTier(parts[3], line)),
             5 => new ShardEntry(
                 ContentHash:     ContentHash.Parse(parts[0]),
                 ChunkHash:       ChunkHash.Parse(parts[1]),
                 OriginalSize:    long.Parse(parts[2]),
-                CompressedSize:  long.Parse(parts[3]),
+                ChunkSize:       long.Parse(parts[3]),
                 StorageTierHint: ParseTier(parts[4], line)),
             _ => throw new FormatException($"Invalid shard entry (expected 4 or 5 fields): '{line}'")
         };

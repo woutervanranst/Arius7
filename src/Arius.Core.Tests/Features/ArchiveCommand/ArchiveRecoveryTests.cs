@@ -594,9 +594,9 @@ public class ArchiveRecoveryTests
                 ? uploadTarAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
                 : throw new NotSupportedException();
 
-        public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long compressedSize, CancellationToken cancellationToken = default)
+        public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long chunkSize, CancellationToken cancellationToken = default)
             => uploadThinAsync is not null
-                ? uploadThinAsync(contentHash, parentChunkHash, originalSize, compressedSize, cancellationToken)
+                ? uploadThinAsync(contentHash, parentChunkHash, originalSize, chunkSize, cancellationToken)
                 : throw new NotSupportedException();
 
         public Task<Stream> DownloadAsync(ChunkHash chunkHash, IProgress<long>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

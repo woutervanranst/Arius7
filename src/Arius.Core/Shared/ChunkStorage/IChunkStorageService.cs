@@ -20,7 +20,7 @@ public interface IChunkStorageService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Uploads a tar bundle chunk blob and returns the stored chunk metadata needed for proportional thin entries.
+    /// Uploads a tar bundle chunk blob and returns the stored chunk metadata needed for thin entries.
     /// </summary>
     Task<ChunkUploadResult> UploadTarAsync(
         ChunkHash chunkHash,
@@ -37,7 +37,7 @@ public interface IChunkStorageService
         ContentHash contentHash,
         ChunkHash parentChunkHash,
         long originalSize,
-        long compressedSize,
+        long chunkSize,
         CancellationToken cancellationToken = default);
 
     /// <summary>

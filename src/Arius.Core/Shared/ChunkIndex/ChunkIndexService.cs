@@ -359,10 +359,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
-        // Pass 1: collect tar blob tiers. A thin chunk's data lives in its parent tar (the thin
+        // Pass 1: collect tar blob metadata. A thin chunk's data lives in its parent tar (the thin
         // stub itself is always uploaded Cool), so its tier hint must come from the tar blob.
         // Memory is bounded by the tar count, not the file count.
-        var tarTiers = new Dictionary<ChunkHash, BlobTier>();
+        var tarMetadata = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -372,7 +372,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 && ariusType == BlobMetadataKeys.TypeTar
                 && ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash))
             {
-                tarTiers[tarHash] = item.Tier ?? BlobTier.Hot;
+                tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
             }
         }
 
@@ -385,7 +385,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             cancellationToken.ThrowIfCancellationRequested();
             listedChunkCount++;
 
-            var entry = CreateRepairEntry(item, tarTiers);
+            var entry = CreateRepairEntry(item, tarMetadata);
             if (entry is null)
                 continue;
 
@@ -433,8 +433,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// Converts a chunk blob listing item into a rebuildable shard entry when that blob contributes to the chunk index.
     /// </summary>
     /// <param name="item">The listed chunk blob.</param>
+    /// <param name="tarMetadata"></param>
     /// <returns>The rebuilt shard entry, or <see langword="null"/> when the blob should not appear in the chunk index.</returns>
-    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
+    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
     {
         var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
         if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
@@ -443,7 +444,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarTiers),
+            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarMetadata),
             BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
             _                          => null,
         };
@@ -452,11 +453,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            var compressedSize = ReadChunkSize(item);
-            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize, item.Tier ?? BlobTier.Hot);
+            var chunkSize      = ReadChunkSize(item);
+            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
         }
 
-        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
+        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
         {
             var contentHash = ContentHash.Parse(item.Name.Name.ToString());
             if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
@@ -465,24 +466,23 @@ internal sealed class ChunkIndexService : IChunkIndexService
             // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
             // A parent tar absent from the listing means the repository is broken — fail the repair
             // rather than persisting a guessed (hydrated) tier.
-            if (!tarTiers.TryGetValue(parentChunkHash, out var tarTier))
+            if (!tarMetadata.TryGetValue(parentChunkHash, out var parentTar))
                 throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
 
-            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize, tarTier);
+            var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, parentTar.ChunkSize, parentTar.Tier);
         }
-
-        static long ReadChunkSize(BlobListItem item)
-            => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-                ? size
-                : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
         static long ReadRequiredLongMetadata(BlobListItem item, string key)
             => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
                 ? parsed
                 : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
     }
+
+    private static long ReadChunkSize(BlobListItem item)
+        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+            ? size
+            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
     // -- Local Repair Marker -------------------------------------------------
 

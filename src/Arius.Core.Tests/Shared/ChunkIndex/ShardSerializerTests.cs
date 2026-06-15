@@ -64,7 +64,7 @@ public class ShardSerializerTests
         var loaded = ShardSerializer.Deserialize(bytes, svc);
 
         loaded.TryLookup(FakeContentHash('c'), out var e).ShouldBeTrue();
-        e!.CompressedSize.ShouldBe(40);
+        e!.ChunkSize.ShouldBe(40);
         e.StorageTierHint.ShouldBe(BlobTier.Cool);
     }
 
@@ -86,7 +86,7 @@ public class ShardSerializerTests
         var loaded = ShardSerializer.Deserialize(stream, svc);
 
         loaded.TryLookup(FakeContentHash('8'), out var e).ShouldBeTrue();
-        e!.CompressedSize.ShouldBe(40);
+        e!.ChunkSize.ShouldBe(40);
     }
 
     private static Shard CreateShard(params ShardEntry[] entries)

@@ -274,7 +274,7 @@ public class RestoreCommandHandlerTests
 
             var validHash = ContentHash.Parse(encryption.ComputeHash("healthy"u8).ToString());
             var chunkHash = ChunkHash.Parse(validHash);
-            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, CompressedSize: 7, BlobTier.Cool));
+            index.AddEntry(new ShardEntry(validHash, chunkHash, OriginalSize: 7, ChunkSize: 7, BlobTier.Cool));
 
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes($"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
             blobs.AddBlob(BlobPaths.FileTreePath(rootHash),             await CompressAsync(invalidTreePayload));
@@ -496,6 +496,107 @@ public class RestoreCommandHandlerTests
     }
 
     [Test]
+    public async Task Handle_ArchivedTarTarget_EstimatesFullTarChunkRehydrationSize()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-tar-rehydrate-size-{Guid.NewGuid():N}",
+            $"ctr-restore-tar-rehydrate-size-{Guid.NewGuid():N}");
+
+        var targetPath = RelativePath.Parse("selected/tiny.bin");
+        await fixture.LocalFileSystem.WriteAllBytesAsync(targetPath, [1, 2, 3], CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("other/large-small-file.bin"), Enumerable.Repeat((byte)7, 128 * 1024).ToArray(), CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalDirectory.ToString(),
+                UploadTier         = BlobTier.Archive,
+                SmallFileThreshold = 1024 * 1024,
+                TarTargetSize      = 1024 * 1024,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        var tarChunk = await FindSingleChunkBlobAsync(blobs, BlobMetadataKeys.TypeTar);
+        var tarMetadata = await blobs.GetMetadataAsync(tarChunk);
+        var tarCompressedSize = tarMetadata.ContentLength.ShouldNotBeNull();
+
+        RestoreCostEstimate? capturedEstimate = null;
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPath    = targetPath,
+                Overwrite     = true,
+                ConfirmRehydration = (estimate, _) =>
+                {
+                    capturedEstimate = estimate;
+                    return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
+                },
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        capturedEstimate.ShouldNotBeNull();
+        capturedEstimate!.ChunksNeedingRehydration.ShouldBe(1);
+        capturedEstimate.BytesNeedingRehydration.ShouldBe(tarCompressedSize);
+
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<RehydrationStartedEvent>(e => e.ChunkCount == 1 && e.TotalBytes == tarCompressedSize),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Handle_AvailableTarTarget_ReportsFullTarChunkDownloadSize()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-tar-download-size-{Guid.NewGuid():N}",
+            $"ctr-restore-tar-download-size-{Guid.NewGuid():N}");
+
+        var targetPath = RelativePath.Parse("selected/tiny.bin");
+        await fixture.LocalFileSystem.WriteAllBytesAsync(targetPath, [1, 2, 3], CancellationToken.None);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("other/large-small-file.bin"), Enumerable.Repeat((byte)7, 128 * 1024).ToArray(), CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalDirectory.ToString(),
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+                TarTargetSize      = 1024 * 1024,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        var tarChunk = await FindSingleChunkBlobAsync(blobs, BlobMetadataKeys.TypeTar);
+        var tarMetadata = await blobs.GetMetadataAsync(tarChunk);
+        var tarCompressedSize = tarMetadata.ContentLength.ShouldNotBeNull();
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPath    = targetPath,
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(1);
+
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<ChunkDownloadStartedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.CompressedSize == tarCompressedSize),
+            Arg.Any<CancellationToken>());
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<ChunkDownloadCompletedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.CompressedSize == tarCompressedSize),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task Handle_DownloadFailure_FailsGracefullyWithoutDeadlock()
     {
         await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
@@ -706,6 +807,22 @@ public class RestoreCommandHandlerTests
         }
 
         return output.ToArray();
+    }
+
+    private static async Task<RelativePath> FindSingleChunkBlobAsync(IBlobContainerService blobs, string ariusType)
+    {
+        RelativePath? match = null;
+        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksPrefix))
+        {
+            var metadata = await blobs.GetMetadataAsync(item.Name);
+            if (!metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var type) || type != ariusType)
+                continue;
+
+            match.ShouldBeNull($"expected exactly one {ariusType} chunk blob");
+            match = item.Name;
+        }
+
+        return match.ShouldNotBeNull($"expected one {ariusType} chunk blob");
     }
 
 }
