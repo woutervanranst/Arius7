@@ -350,6 +350,29 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
+    public async Task Archive_WritesPointerWithBinaryTimestamps()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        await WriteRandomFileAsync(fixture, relativePath, 128);
+
+        var expectedCreated = new DateTimeOffset(2021, 6, 15, 10, 30, 0, TimeSpan.Zero);
+        var expectedModified = new DateTimeOffset(2024, 12, 25, 18, 0, 0, TimeSpan.Zero);
+        fixture.LocalFileSystem.SetTimestamps(relativePath, expectedCreated, expectedModified);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var pointerPath = relativePath.ToPointerPath();
+        fixture.LocalFileSystem.FileExists(pointerPath).ShouldBeTrue();
+
+        var pointerTimestamps = fixture.LocalFileSystem.GetTimestamps(pointerPath);
+        if (!OperatingSystem.IsLinux())
+            pointerTimestamps.Created.ShouldBe(expectedCreated);
+        pointerTimestamps.Modified.ShouldBe(expectedModified);
+    }
+
+    [Test]
     public async Task Archive_RemoveLocal_DeletesDeduplicatedBinaryToo()
     {
         // Two files with identical content: one is uploaded, the other deduplicates against it within

@@ -242,7 +242,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         {
             await using var session         = stagingSession;
             using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
-            var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
+            var             pendingPointers = new ConcurrentBag<PendingPointerWrite>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
 
             // In-flight set: content hashes already queued/uploaded in this run
@@ -577,7 +577,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     // Once the files are captured in the FileTree, we can write the pointers & delete them
                     if (!opts.NoPointers && pair.Binary is not null)
-                        pendingPointers.Add((pair.RelativePath, entry.ContentHash));
+                        pendingPointers.Add(new PendingPointerWrite(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified));
 
                     if (opts.RemoveLocal && pair.Binary is not null)
                         pendingDeletes.Add(pair.RelativePath);
@@ -649,15 +649,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 ? Task.CompletedTask
                 : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
-                    var (path, hash) = item;
                     try
                     {
-                        await fs.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
+                        await PointerFileFormat.WriteAsync(fs, item.BinaryPath, item.Hash, item.Created, item.Modified, ct);
                     }
                     catch (Exception ex) when (!ct.IsCancellationRequested)
                     {
                         // A pointer write that fails for one file must not fault the whole stage.
-                        _logger.LogWarning(ex, "Failed to write pointer file: {Path}", path.ToPointerPath());
+                        _logger.LogWarning(ex, "Failed to write pointer file: {Path}", item.BinaryPath.ToPointerPath());
                     }
                 });
 

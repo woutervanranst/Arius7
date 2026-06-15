@@ -417,11 +417,7 @@ public sealed class RestoreCommandHandler(
 
         // Create pointer file.
         if (!opts.NoPointers)
-        {
-            var pointerPath = file.RelativePath.ToPointerPath();
-            await fs.WriteAllTextAsync(pointerPath, file.ContentHash.ToString(), cancellationToken);
-            fs.SetTimestamps(pointerPath, file.Created, file.Modified);
-        }
+            await PointerFileFormat.WriteAsync(fs, file.RelativePath, file.ContentHash, file.Created, file.Modified, cancellationToken);
     }
 
     // ── Tar bundle restore ─────────────────────────────────────────────────────────
@@ -474,11 +470,7 @@ public sealed class RestoreCommandHandler(
 
                 // Create pointer file.
                 if (!opts.NoPointers)
-                {
-                    var pointerPath = file.RelativePath.ToPointerPath();
-                    await fs.WriteAllTextAsync(pointerPath, contentHash.ToString(), cancellationToken);
-                    fs.SetTimestamps(pointerPath, file.Created, file.Modified);
-                }
+                    await PointerFileFormat.WriteAsync(fs, file.RelativePath, contentHash, file.Created, file.Modified, cancellationToken);
 
                 await mediator.Publish(new FileRestoredEvent(file.RelativePath, fs.GetFileSize(file.RelativePath)), cancellationToken);
                 restored++;
