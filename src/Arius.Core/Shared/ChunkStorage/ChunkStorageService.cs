@@ -1,4 +1,5 @@
-using System.IO.Compression;
+using System.IO.Pipelines;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.Streaming;
@@ -6,7 +7,7 @@ using Arius.Core.Shared.Streaming;
 namespace Arius.Core.Shared.ChunkStorage;
 
 [SharedWithinAssembly]
-internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncryptionService encryption) : IChunkStorageService
+internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncryptionService encryption, ICompressionService compression) : IChunkStorageService
 {
     // --- UPLOAD 
 
@@ -69,12 +70,19 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         try
         {
             long storedSize;
+            ContentHash verifiedHash;
 
             await using (var writeStream = await blobs.OpenWriteAsync(blobName, contentType, cancellationToken))
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = encryption.WrapForEncryption(countingStream);
-                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.SmallestSize, leaveOpen: true);
+
+                // Inline round-trip verification: tee the compressed bytes to (a) the encrypt→upload chain
+                // and (b) a decompress→hash pipe, so we prove the chunk is restorable before recording it.
+                await using var verifier = new RoundTripVerifier(compression, encryption, cancellationToken);
+                var teeStream         = new TeeStream(encryptionStream, verifier.Sink);
+                var compressionStream = compression.WrapForCompression(teeStream, leaveOpen: false);
+
                 var progressStream = progress is null
                     ? null
                     : new ProgressStream(content, new CallbackProgress(bytesRead =>
@@ -87,11 +95,22 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                     }));
 
                 var source = progressStream ?? content;
-                await source.CopyToAsync(gzipStream, cancellationToken);
+                await source.CopyToAsync(compressionStream, cancellationToken);
 
-                await gzipStream.DisposeAsync(); // NOTE: leave Dispose to get a correct BytesWritten
-                await encryptionStream.DisposeAsync();
+                await compressionStream.DisposeAsync();  // finalize the zstd frame → tee → encryption + verifier
+                verifiedHash = await verifier.CompleteAsync(cancellationToken); // hash of the decompressed bytes
+                await encryptionStream.DisposeAsync();   // NOTE: leave Dispose to get a correct BytesWritten
                 storedSize = countingStream.BytesWritten;
+            }
+
+            if (verifiedHash != ContentHash.Parse(chunkHash))
+            {
+                // Compression did not round-trip — the stored frame is not restorable. Fail loudly and
+                // remove the unusable blob rather than recording an unrecoverable chunk.
+                await blobs.DeleteAsync(blobName, cancellationToken);
+                throw new InvalidDataException(
+                    $"Chunk {chunkHash.Short8} failed compression round-trip verification " +
+                    $"(restored hash {verifiedHash.Short8} ≠ {chunkHash.Short8}); the blob was not recorded.");
             }
 
             var metadata = new Dictionary<string, string>
@@ -185,8 +204,8 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         var download            = await blobs.DownloadAsync(blobName, cancellationToken);
         var progressOrRawStream = progress is null ? download.Stream : new ProgressStream(download.Stream, progress);
         var decryptStream       = encryption.WrapForDecryption(progressOrRawStream);
-        var gzipStream          = new GZipStream(decryptStream, CompressionMode.Decompress);
-        return new ChunkDownloadStream(gzipStream);
+        var decompressStream    = compression.WrapForDecompression(decryptStream);
+        return new ChunkDownloadStream(decompressStream);
 
 
         async Task<RelativePath> SelectReadableChunkBlobAsync(ChunkHash chunkHash, CancellationToken cancellationToken)
@@ -251,6 +270,120 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     private sealed class CallbackProgress(Action<long> callback) : IProgress<long>
     {
         public void Report(long value) => callback(value);
+    }
+
+    /// <summary>
+    /// Write-only stream that forwards every write to two destinations: the primary (encrypt→upload)
+    /// and the round-trip verifier's sink. Lets us verify the compressed output while it streams to
+    /// blob storage, without re-reading the source or buffering the whole chunk. Both targets are left
+    /// open — the caller disposes the primary (for byte counting) and the verifier owns the sink.
+    /// </summary>
+    private sealed class TeeStream : Stream
+    {
+        private readonly Stream _primary;
+        private readonly Stream _secondary;
+
+        public TeeStream(Stream primary, Stream secondary)
+        {
+            _primary   = primary;
+            _secondary = secondary;
+        }
+
+        public override bool CanRead  => false;
+        public override bool CanSeek  => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override int  Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            _primary.Write(buffer);
+            _secondary.Write(buffer);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await _primary.WriteAsync(buffer, cancellationToken);
+            await _secondary.WriteAsync(buffer, cancellationToken);
+        }
+
+        public override void Flush()
+        {
+            _primary.Flush();
+            _secondary.Flush();
+        }
+
+        public override async Task FlushAsync(CancellationToken cancellationToken)
+        {
+            await _primary.FlushAsync(cancellationToken);
+            await _secondary.FlushAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Decompresses the compressed bytes written to <see cref="Sink"/> on a background task and hashes
+    /// the result, so an upload can confirm the chunk round-trips before recording it. A bounded pipe
+    /// supplies backpressure so memory stays flat regardless of chunk size.
+    /// </summary>
+    private sealed class RoundTripVerifier : IAsyncDisposable
+    {
+        private const int PauseWriterThreshold  = 1 << 20; // ≤ ~1 MiB of compressed bytes buffered in-flight
+        private const int ResumeWriterThreshold = 1 << 19;
+
+        private readonly Pipe _pipe;
+        private readonly Task<ContentHash> _hashTask;
+        private bool _writerCompleted;
+
+        public RoundTripVerifier(ICompressionService compression, IEncryptionService encryption, CancellationToken cancellationToken)
+        {
+            _pipe = new Pipe(new PipeOptions(
+                pauseWriterThreshold:      PauseWriterThreshold,
+                resumeWriterThreshold:     ResumeWriterThreshold,
+                useSynchronizationContext: false));
+
+            Sink = _pipe.Writer.AsStream(leaveOpen: true); // the writer is completed explicitly, not via Sink disposal
+
+            _hashTask = Task.Run(async () =>
+            {
+                await using var reader     = _pipe.Reader.AsStream();
+                await using var decompress = compression.WrapForDecompression(reader, leaveOpen: true);
+                return await encryption.ComputeHashAsync(decompress, cancellationToken);
+            }, cancellationToken);
+        }
+
+        /// <summary>The tee's secondary target: compressed bytes written here are decompressed and hashed.</summary>
+        public Stream Sink { get; }
+
+        public async Task<ContentHash> CompleteAsync(CancellationToken cancellationToken)
+        {
+            await CompleteWriterAsync();
+            return await _hashTask.WaitAsync(cancellationToken);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            // Release both ends so an early-exit/faulted path can't leave the background task hanging.
+            await CompleteWriterAsync();
+            try { await _hashTask; } catch { /* the real failure is surfaced by CompleteAsync */ }
+            await _pipe.Reader.CompleteAsync();
+        }
+
+        private async ValueTask CompleteWriterAsync()
+        {
+            if (_writerCompleted)
+                return;
+
+            _writerCompleted = true;
+            await _pipe.Writer.CompleteAsync();
+        }
     }
 
     /// <summary>

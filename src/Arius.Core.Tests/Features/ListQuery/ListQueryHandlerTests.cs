@@ -5,6 +5,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
@@ -35,7 +36,7 @@ public class ListQueryHandlerTests
 
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-1", "ctr-ls-test-1", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(ContentHashFor("readme"), FakeChunkHash('c'), 123, 50, BlobTier.Cool));
@@ -87,7 +88,7 @@ public class ListQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
         await SeedTreeAsync(blobs, docsTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-2", "ctr-ls-test-2", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(FakeContentHash('e'), FakeChunkHash('1'), 456, 200, BlobTier.Cool));
@@ -120,7 +121,7 @@ public class ListQueryHandlerTests
         await SeedTreeAsync(blobs, rootTree);
         await SeedTreeAsync(blobs, photosTree);
         await SeedTreeAsync(blobs, photoshopTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-segments", "ctr-ls-segments", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(FakeContentHash('1'), FakeChunkHash('3'), 10, 5, BlobTier.Cool));
@@ -160,7 +161,7 @@ public class ListQueryHandlerTests
 
             var blobs = new FakeSeededBlobContainerService();
             await SeedTreeAsync(blobs, rootTree);
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-test-3", "ctr-ls-test-3", s_encryption);
             fixture.Index.AddEntry(new ShardEntry(ContentHashFor("repository-only"), FakeChunkHash('4'), 10, 5, BlobTier.Cool));
@@ -226,7 +227,7 @@ public class ListQueryHandlerTests
             var blobs = new FakeSeededBlobContainerService();
             await SeedTreeAsync(blobs, rootTree);
             await SeedTreeAsync(blobs, docsTree);
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-prefix-local", "ctr-ls-prefix-local", s_encryption);
             fixture.Index.AddEntry(new ShardEntry(ContentHashFor("repository-only"), FakeChunkHash('4'), 10, 5, BlobTier.Cool));
@@ -328,7 +329,7 @@ public class ListQueryHandlerTests
 
             var blobs = new FakeSeededBlobContainerService();
             await SeedTreeAsync(blobs, rootTree);
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-local-recursive", "ctr-ls-local-recursive", s_encryption);
             var handler = fixture.CreateListQueryHandler();
@@ -386,9 +387,9 @@ public class ListQueryHandlerTests
     public async Task Handle_MissingContainer_DoesNotAttemptToCreateContainer()
     {
         var blobs = new ThrowOnCreateBlobContainerService("ls");
-        var fileTreeService = new FileTreeService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
-        var snapshotSvc = new SnapshotService(blobs, s_encryption, "acct-ls-missing", "ctr-ls-missing");
-        using var index = new ChunkIndexService(blobs, s_encryption, snapshotSvc, "acct-ls-missing", "ctr-ls-missing");
+        var fileTreeService = new FileTreeService(blobs, s_encryption, TestCompression.Instance, "acct-ls-missing", "ctr-ls-missing");
+        var snapshotSvc = new SnapshotService(blobs, s_encryption, TestCompression.Instance, "acct-ls-missing", "ctr-ls-missing");
+        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, snapshotSvc, "acct-ls-missing", "ctr-ls-missing");
         var logger = new FakeLogger<ListQueryHandler>();
         var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, "acct-ls-missing", "ctr-ls-missing");
 
@@ -417,7 +418,7 @@ public class ListQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
         await SeedTreeAsync(blobs, childTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-33-nr", "ctr-33-nr", s_encryption);
         var handler = fixture.CreateListQueryHandler();
@@ -450,7 +451,7 @@ public class ListQueryHandlerTests
 
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-36", "ctr-36", s_encryption);
         var handler = fixture.CreateListQueryHandler();
@@ -491,7 +492,7 @@ public class ListQueryHandlerTests
             await SeedTreeAsync(blobs, rootTree);
             await SeedTreeAsync(blobs, repositoryLocalTree);
             await SeedTreeAsync(blobs, repositoryOnlyTree);
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
             await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-38", "ctr-38", s_encryption);
             var handler = fixture.CreateListQueryHandler();
@@ -532,7 +533,7 @@ public class ListQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
         await SeedTreeAsync(blobs, childTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-39", "ctr-39", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(ContentHashFor("known"), FakeChunkHash('b'), 999, 500, BlobTier.Cool));
@@ -568,7 +569,7 @@ public class ListQueryHandlerTests
 
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-tier", "ctr-ls-tier", s_encryption);
         fixture.Index.AddEntry(new ShardEntry(ContentHashFor("hot"), FakeChunkHash('1'), 10, 5, BlobTier.Hot));
@@ -611,7 +612,7 @@ public class ListQueryHandlerTests
 
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, rootTree);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-310b", "ctr-310b", s_encryption);
         var handler = fixture.CreateListQueryHandler();
@@ -647,7 +648,7 @@ public class ListQueryHandlerTests
         }
 
         var snapshot = MakeSnapshot(currentHash);
-        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption));
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, s_encryption, TestCompression.Instance));
 
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-311", "ctr-311", s_encryption);
         var handler = fixture.CreateListQueryHandler();

@@ -12,7 +12,7 @@ public static class BlobMetadataKeys
     /// <summary>Original uncompressed file size in bytes (for large and thin chunks).</summary>
     public const string OriginalSize       = "original_size";
 
-    /// <summary>Compressed (encrypted+gzipped) blob body size in bytes (for large and tar chunks).</summary>
+    /// <summary>Compressed (encrypted+compressed) blob body size in bytes (for large and tar chunks).</summary>
     public const string ChunkSize         = "chunk_size";
 
     /// <summary>Parent tar chunk hash for a thin chunk.</summary>
@@ -32,35 +32,38 @@ public static class BlobMetadataKeys
 [SharedWithinAssembly]
 internal static class ContentTypes
 {
-    // ── Chunk content types (GCM encrypted — new default) ──────────────────────
-    public const string LargeGcmEncrypted = "application/aes256gcm+gzip";
-    public const string TarGcmEncrypted   = "application/aes256gcm+tar+gzip";
+    // NOTE: content types are informational only (the read path auto-detects gzip vs zstd from the
+    // frame header). New blobs are written as zstd; "+gzip" variants remain for reading legacy blobs.
+
+    // ── Chunk content types (GCM encrypted — new default, zstd) ─────────────────
+    public const string LargeGcmEncrypted = "application/aes256gcm+zstd";
+    public const string TarGcmEncrypted   = "application/aes256gcm+tar+zstd";
 
     // ── Chunk content types (CBC encrypted — legacy) ────────────────────────────
     public const string LargeCbcEncrypted = "application/aes256cbc+gzip";
     public const string TarCbcEncrypted   = "application/aes256cbc+tar+gzip";
 
     // ── Chunk content types (plaintext) ────────────────────────────────────────
-    public const string LargePlaintext = "application/gzip";
-    public const string TarPlaintext   = "application/tar+gzip";
+    public const string LargePlaintext = "application/zstd";
+    public const string TarPlaintext   = "application/tar+zstd";
 
     // ── Thin pointer ───────────────────────────────────────────────────────────
     public const string Thin           = "text/plain; charset=utf-8";
 
     // ── File tree ──────────────────────────────────────────────────────────────
-    public const string FileTreeGcmEncrypted = "application/aes256gcm+gzip";
+    public const string FileTreeGcmEncrypted = "application/aes256gcm+zstd";
     public const string FileTreeCbcEncrypted = "application/aes256cbc+gzip";
-    public const string FileTreePlaintext    = "application/gzip";
+    public const string FileTreePlaintext    = "application/zstd";
 
     // ── Snapshot manifest ──────────────────────────────────────────────────────
-    public const string SnapshotGcmEncrypted = "application/aes256gcm+gzip";
+    public const string SnapshotGcmEncrypted = "application/aes256gcm+zstd";
     public const string SnapshotCbcEncrypted = "application/aes256cbc+gzip";
-    public const string SnapshotPlaintext    = "application/gzip";
+    public const string SnapshotPlaintext    = "application/zstd";
 
     // ── Chunk index shard ──────────────────────────────────────────────────────
-    public const string ChunkIndexGcmEncrypted = "application/aes256gcm+gzip";
+    public const string ChunkIndexGcmEncrypted = "application/aes256gcm+zstd";
     public const string ChunkIndexCbcEncrypted = "application/aes256cbc+gzip";
-    public const string ChunkIndexPlaintext    = "application/gzip";
+    public const string ChunkIndexPlaintext    = "application/zstd";
 }
 
 /// <summary>

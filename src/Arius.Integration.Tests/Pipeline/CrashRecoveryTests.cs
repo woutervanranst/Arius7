@@ -6,6 +6,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,9 +39,9 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
     {
         var mediator = Substitute.For<IMediator>();
         var logger = new FakeLogger<ArchiveCommandHandler>();
-        var snapshot = new SnapshotService(blobService, encryption, Account, containerName);
+        var snapshot = new SnapshotService(blobService, encryption, TestCompression.Instance, Account, containerName);
         return new ArchiveCommandHandler(
-            blobService, encryption, index, new ChunkStorageService(blobService, encryption), new FileTreeService(blobService, encryption, Account, containerName), snapshot, mediator,
+            blobService, encryption, index, new ChunkStorageService(blobService, encryption, TestCompression.Instance), new FileTreeService(blobService, encryption, TestCompression.Instance, Account, containerName), snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,
             Account, containerName);
@@ -63,7 +64,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Large uploads run in parallel, so the fault can leave multiple chunk bodies
         // present before any metadata write becomes visible.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, TestCompression.Instance, new SnapshotService(faultingService, fix.Encryption, TestCompression.Instance, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions
@@ -115,7 +116,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // Crash after the tar chunk upload completes but before thin chunks are written.
         // Completed upload #1 = tar chunk metadata write; then the next completed upload faults.
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 1);
-        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, TestCompression.Instance, new SnapshotService(faultingService, fix.Encryption, TestCompression.Instance, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions
@@ -159,7 +160,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         //   completed upload #2 = UploadAsync for small.txt thin chunk
         //   completed upload #3 = UploadAsync for the index shard  ← crash here
         var faultingService = new FaultingBlobService(fix.BlobContainer, throwAfterN: 2);
-        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, new SnapshotService(faultingService, fix.Encryption, Account, fix.Container.Name), Account, fix.Container.Name);
+        var faultingIndex   = new ChunkIndexService(faultingService, fix.Encryption, TestCompression.Instance, new SnapshotService(faultingService, fix.Encryption, TestCompression.Instance, Account, fix.Container.Name), Account, fix.Container.Name);
         var handler1 = MakeArchiveHandler(faultingService, fix.Encryption, faultingIndex, fix.Container.Name);
 
         var opts = new ArchiveCommandOptions

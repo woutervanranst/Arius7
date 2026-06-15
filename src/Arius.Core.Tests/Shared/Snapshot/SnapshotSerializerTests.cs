@@ -1,5 +1,6 @@
 using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Compression;
 
 namespace Arius.Core.Tests.Shared.Snapshot;
 
@@ -22,10 +23,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.0.0"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
         bytes.ShouldNotBeEmpty();
 
-        var back = await SnapshotSerializer.DeserializeAsync(bytes, enc);
+        var back = await SnapshotSerializer.DeserializeAsync(bytes, enc, TestCompression.Instance);
 
         back.Timestamp.ShouldBe(ts);
         back.RootHash.ShouldBe(manifest.RootHash);
@@ -49,8 +50,8 @@ public class SnapshotSerializerTests
             AriusVersion = "2.0.0-test"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc);
-        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
+        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc, TestCompression.Instance);
 
         back.RootHash.ShouldBe(manifest.RootHash);
         back.FileCount.ShouldBe(7);
@@ -71,12 +72,12 @@ public class SnapshotSerializerTests
             AriusVersion = "1.2.3"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
 
         using var compressed = new MemoryStream(bytes);
-        await using var gzip = new System.IO.Compression.GZipStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+        await using var decompressed = TestCompression.Instance.WrapForDecompression(compressed);
         using var json = new MemoryStream();
-        await gzip.CopyToAsync(json);
+        await decompressed.CopyToAsync(json);
 
         System.Text.Encoding.UTF8.GetString(json.ToArray()).ShouldContain($"\"rootHash\":\"{rootHash}\"");
     }

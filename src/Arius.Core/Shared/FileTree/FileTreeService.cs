@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.IO.Compression;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -28,6 +28,7 @@ internal sealed class FileTreeService : IFileTreeService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
+    private readonly ICompressionService   _compression;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
     private readonly RelativeFileSystem    _snapshotCacheFileSystem;
     private readonly ILogger<FileTreeService> _logger;
@@ -46,12 +47,14 @@ internal sealed class FileTreeService : IFileTreeService
     public FileTreeService(
         IBlobContainerService blobs,
         IEncryptionService    encryption,
+        ICompressionService   compression,
         string                accountName,
         string                containerName,
         ILogger<FileTreeService>? logger = null)
     {
         _blobs           = blobs;
         _encryption      = encryption;
+        _compression     = compression;
         _logger          = logger ?? NullLogger<FileTreeService>.Instance;
         var diskCacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(accountName, containerName);
         var snapshotCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
@@ -200,9 +203,9 @@ internal sealed class FileTreeService : IFileTreeService
         var ms        = new MemoryStream();
 
         await using (var encStream = _encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
+        await using (var compressionStream = _compression.WrapForCompression(encStream))
         {
-            await gzipStream.WriteAsync(plaintext, cancellationToken);
+            await compressionStream.WriteAsync(plaintext, cancellationToken);
         }
 
         return ms.ToArray();
@@ -210,10 +213,10 @@ internal sealed class FileTreeService : IFileTreeService
 
     private async Task<IReadOnlyList<FileTreeEntry>> DeserializeStorageAsync(Stream source, CancellationToken cancellationToken)
     {
-        await using var decStream  = _encryption.WrapForDecryption(source);
-        await using var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var       ms         = new MemoryStream();
-        await gzipStream.CopyToAsync(ms, cancellationToken);
+        await using var decStream         = _encryption.WrapForDecryption(source);
+        await using var decompressStream  = _compression.WrapForDecompression(decStream);
+        using var       ms                = new MemoryStream();
+        await decompressStream.CopyToAsync(ms, cancellationToken);
         return FileTreeSerializer.Deserialize(ms.ToArray());
     }
 

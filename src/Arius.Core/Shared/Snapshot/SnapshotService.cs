@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 
@@ -51,6 +52,7 @@ internal sealed class SnapshotService : ISnapshotService
 {
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
+    private readonly ICompressionService   _compression;
     private readonly RelativeFileSystem    _diskCacheFileSystem;
 
     /// <summary>
@@ -72,11 +74,13 @@ internal sealed class SnapshotService : ISnapshotService
     public SnapshotService(
         IBlobContainerService blobs,
         IEncryptionService    encryption,
+        ICompressionService   compression,
         string                accountName,
         string                containerName)
     {
         _blobs        = blobs;
         _encryption   = encryption;
+        _compression  = compression;
         var diskCacheRoot = RepositoryLocalStatePaths.GetSnapshotCacheRoot(accountName, containerName);
         _diskCacheFileSystem = new RelativeFileSystem(diskCacheRoot);
         _diskCacheFileSystem.CreateDirectory(RelativePath.Root);
@@ -117,8 +121,8 @@ internal sealed class SnapshotService : ISnapshotService
         // Write-through: disk first (plain JSON)
         await WriteToDiskAsync(manifest, cancellationToken);
 
-        // Then Azure (gzip + optional encrypt)
-        var bytes    = await SnapshotSerializer.SerializeAsync(manifest, _encryption, cancellationToken);
+        // Then Azure (compress + optional encrypt)
+        var bytes    = await SnapshotSerializer.SerializeAsync(manifest, _encryption, _compression, cancellationToken);
         var blobName = BlobPaths.SnapshotPath(ts);
 
         await _blobs.UploadAsync(
@@ -217,7 +221,7 @@ internal sealed class SnapshotService : ISnapshotService
         await using var stream = download.Stream;
         var ms = new MemoryStream();
         await stream.CopyToAsync(ms, cancellationToken);
-        return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, cancellationToken);
+        return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, _compression, cancellationToken);
     }
 
     private static PathSegment GetSnapshotFileName(RelativePath blobName) =>

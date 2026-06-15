@@ -4,6 +4,7 @@ using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 
@@ -237,9 +238,9 @@ public class FileTreeServiceTests
         (await File.ReadAllBytesAsync(diskPath)).ShouldBe(expectedPlaintext);
 
         var blobBytes = await ReadBlobBytesAsync(blobs, BlobPaths.FileTreePath(payload.Hash));
-        await using var gzipStream = new GZipStream(new MemoryStream(blobBytes), CompressionMode.Decompress);
+        await using var decompressedStream = TestCompression.Instance.WrapForDecompression(new MemoryStream(blobBytes));
         using var plaintextStream = new MemoryStream();
-        await gzipStream.CopyToAsync(plaintextStream);
+        await decompressedStream.CopyToAsync(plaintextStream);
         plaintextStream.ToArray().ShouldBe(expectedPlaintext);
     }
 

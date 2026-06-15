@@ -1,14 +1,14 @@
-using System.IO.Compression;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 
 namespace Arius.Core.Shared.Snapshot;
 
 /// <summary>
 /// Serialization/deserialization for the snapshot blob payload stored in remote blob storage.
-/// This serializer is for the Azure wire format only: JSON → gzip → optional encrypt.
+/// This serializer is for the Azure wire format only: JSON → compress → optional encrypt.
 /// </summary>
 internal static class SnapshotSerializer
 {
@@ -24,18 +24,19 @@ internal static class SnapshotSerializer
     // ── Serialize ─────────────────────────────────────────────────────────────
 
     public static async Task<byte[]> SerializeAsync(
-        SnapshotManifest  manifest,
+        SnapshotManifest   manifest,
         IEncryptionService encryption,
+        ICompressionService compression,
         CancellationToken  cancellationToken = default)
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(manifest, s_options);
         var ms   = new MemoryStream();
 
-        // gzip first, then optional encrypt
-        await using (var encStream = encryption.WrapForEncryption(ms))
-        await using (var gzip     = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
+        // compress first, then optional encrypt
+        await using (var encStream         = encryption.WrapForEncryption(ms))
+        await using (var compressionStream = compression.WrapForCompression(encStream))
         {
-            await gzip.WriteAsync(json, cancellationToken);
+            await compressionStream.WriteAsync(json, cancellationToken);
         }
 
         return ms.ToArray();
@@ -44,15 +45,16 @@ internal static class SnapshotSerializer
     // ── Deserialize ───────────────────────────────────────────────────────────
 
     public static async Task<SnapshotManifest> DeserializeAsync(
-        byte[]             bytes,
-        IEncryptionService encryption,
-        CancellationToken  cancellationToken = default)
+        byte[]              bytes,
+        IEncryptionService  encryption,
+        ICompressionService compression,
+        CancellationToken   cancellationToken = default)
     {
-        var             ms        = new MemoryStream(bytes);
-        await using var decStream = encryption.WrapForDecryption(ms);
-        await using var gzip      = new GZipStream(decStream, CompressionMode.Decompress);
-        var             plain     = new MemoryStream();
-        await gzip.CopyToAsync(plain, cancellationToken);
+        var             ms         = new MemoryStream(bytes);
+        await using var decStream  = encryption.WrapForDecryption(ms);
+        await using var decompress = compression.WrapForDecompression(decStream);
+        var             plain      = new MemoryStream();
+        await decompress.CopyToAsync(plain, cancellationToken);
         plain.Position = 0;
 
         return JsonSerializer.Deserialize<SnapshotManifest>(plain.ToArray(), s_options)

@@ -6,6 +6,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
@@ -86,13 +87,13 @@ public class RestoreCommandHandlerTests
         {
             var       blobs           = new ThrowOnCreateBlobContainerService("restore");
             var       encryption      = new PlaintextPassthroughService();
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
-            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, TestCompression.Instance, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, TestCompression.Instance, accountName, containerName);
             var       mediator        = Substitute.For<IMediator>();
             var       logger          = new FakeLogger<RestoreCommandHandler>();
 
-            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption, TestCompression.Instance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
 
             var result = await handler.Handle(
                 new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
@@ -265,9 +266,9 @@ public class RestoreCommandHandlerTests
 
         try
         {
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
-            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, TestCompression.Instance, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, TestCompression.Instance, accountName, containerName);
 
             var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-broken"u8).ToString());
             var snapshot = new SnapshotManifest
@@ -286,9 +287,9 @@ public class RestoreCommandHandlerTests
             var invalidTreePayload = System.Text.Encoding.UTF8.GetBytes($"not-a-hash F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} broken.txt\n{validHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} healthy.txt\n");
             blobs.AddBlob(BlobPaths.FileTreePath(rootHash),             await CompressAsync(invalidTreePayload));
             blobs.AddBlob(BlobPaths.ChunkPath(chunkHash),               await CompressAsync("healthy"u8.ToArray()));
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption, TestCompression.Instance));
 
-            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption, TestCompression.Instance), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 

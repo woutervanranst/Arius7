@@ -35,7 +35,7 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
@@ -56,7 +56,7 @@ public class ArchiveRecoveryTests
         var result = await ArchiveAsync(fixture, uploadTier);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
@@ -109,7 +109,7 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
 
-        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         blobs.RequestedBlobNames.Clear();
 
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
@@ -135,7 +135,7 @@ public class ArchiveRecoveryTests
         (await fixture.Snapshot.ResolveAsync()).ShouldBeNull();
 
         blobs.FailChunkIndexUploads = false;
-        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
         await resumedIndex.FlushAsync();
         var ex = await Should.ThrowAsync<InvalidOperationException>(() => resumedIndex.LookupAsync(contentHash));
@@ -184,7 +184,7 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         observedMissingDuringUpload.ShouldBeTrue();
-        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
@@ -236,7 +236,7 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         observedMissingDuringThinUpload.ShouldBeTrue();
-        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService((FakeInMemoryBlobContainerService)fixture.BlobContainer, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
@@ -516,7 +516,7 @@ public class ArchiveRecoveryTests
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
-        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
         (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(largeContent)))!.StorageTierHint.ShouldBe(uploadTier);
         (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(smallContent)))!.StorageTierHint.ShouldBe(uploadTier);
     }

@@ -4,6 +4,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
@@ -45,17 +46,19 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var encryption = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
-        var snapshot   = new SnapshotService(blobContainer, encryption, accountName, containerName);
-        var index      = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
+        var encryption  = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
+        var compression = TestCompression;
+        var snapshot    = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
+        var index       = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
             BlobContainer                = blobContainer,
             Encryption                   = encryption,
+            Compression                  = compression,
             Index                        = index,
-            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
-            FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
+            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption, compression),
+            FileTreeService              = new FileTreeService(blobContainer, encryption, compression, accountName, containerName),
             Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
@@ -83,16 +86,18 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var snapshot = new SnapshotService(blobContainer, encryption, accountName, containerName);
-        var index    = new ChunkIndexService(blobContainer, encryption, snapshot, accountName, containerName);
+        var compression = TestCompression;
+        var snapshot = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
+        var index    = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
         return ValueTask.FromResult(new RepositoryTestFixture
         {
             BlobContainer                = blobContainer,
             Encryption                   = encryption,
+            Compression                  = compression,
             Index                        = index,
-            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption),
-            FileTreeService              = new FileTreeService(blobContainer, encryption, accountName, containerName),
+            ChunkStorage                 = new ChunkStorageService(blobContainer, encryption, compression),
+            FileTreeService              = new FileTreeService(blobContainer, encryption, compression, accountName, containerName),
             Snapshot                     = snapshot,
             ChunkIndexCacheDirectory     = chunkIndexCacheDirectory,
             FileTreeCacheDirectory       = fileTreeCacheDirectory,
@@ -165,6 +170,12 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Encryption service used for repository serialization and chunk payloads.</summary>
     public required IEncryptionService Encryption { get; init; }
 
+    /// <summary>Compression service used for repository serialization and chunk payloads.</summary>
+    public required ICompressionService Compression { get; init; }
+
+    /// <summary>Shared zstd compression at a fast level — correctness is independent of level, so tests stay quick.</summary>
+    private static ICompressionService TestCompression => new ZstdCompressionService(compressionLevel: 1);
+
     /// <summary>Chunk index service used for content-to-chunk lookup and mutation.</summary>
     public required ChunkIndexService Index { get; init; }
 
@@ -228,7 +239,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     private ChunkIndexService CreateChunkIndexService()
     {
-        var index = new ChunkIndexService(BlobContainer, Encryption, Snapshot, AccountName, ContainerName);
+        var index = new ChunkIndexService(BlobContainer, Encryption, Compression, Snapshot, AccountName, ContainerName);
         _ownedIndexes.Add(index);
         return index;
     }
