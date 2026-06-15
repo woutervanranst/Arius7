@@ -126,7 +126,6 @@ public class ChunkStorageServiceReadTests
         var result = await plan.ExecuteAsync(CancellationToken.None);
 
         result.DeletedChunkCount.ShouldBe(2);
-        result.FreedBytes.ShouldBe(plan.TotalBytes);
         (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(firstChunkHash))).Exists.ShouldBeFalse();
         (await blobs.GetMetadataAsync(BlobPaths.ChunkRehydratedPath(secondChunkHash))).Exists.ShouldBeFalse();
     }
@@ -146,6 +145,5 @@ public class ChunkStorageServiceReadTests
         var result = await executeTask;
 
         result.DeletedChunkCount.ShouldBe(2);
-        result.FreedBytes.ShouldBe(7);
     }
 }

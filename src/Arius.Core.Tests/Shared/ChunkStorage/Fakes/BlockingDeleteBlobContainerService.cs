@@ -15,13 +15,7 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
     public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default)
         => AsyncEnumerable(prefix, cancellationToken);
 
-    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
-        => Task.FromResult(blobName switch
-        {
-            var name when name == BlobPaths.ChunkRehydratedPath(FakeChunkHash('a')) => new BlobMetadata { Exists = true, ContentLength = 3 },
-            var name when name == BlobPaths.ChunkRehydratedPath(FakeChunkHash('b')) => new BlobMetadata { Exists = true, ContentLength = 4 },
-            _ => new BlobMetadata { Exists = false }
-        });
+    public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public async Task DeleteAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {

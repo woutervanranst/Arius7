@@ -41,4 +41,4 @@ public sealed record ChunkDownloadStartedEvent(ChunkHash ChunkHash, string Type,
 public sealed record ChunkDownloadCompletedEvent(ChunkHash ChunkHash, int FilesRestored, long ChunkSize) : INotification;
 
 /// <summary>Emitted after confirmed rehydrated chunk cleanup finishes.</summary>
-public sealed record CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification;
+public sealed record CleanupCompleteEvent(int ChunksDeleted) : INotification;

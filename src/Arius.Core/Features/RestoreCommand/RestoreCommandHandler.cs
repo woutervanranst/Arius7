@@ -357,8 +357,8 @@ public sealed class RestoreCommandHandler(
                 if (cleanupPlan.ChunkCount > 0 && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
                 {
                     var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
-                    logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
-                    await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
+                    logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s)", cleanupResult.DeletedChunkCount);
+                    await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount), cancellationToken);
                 }
             }
 

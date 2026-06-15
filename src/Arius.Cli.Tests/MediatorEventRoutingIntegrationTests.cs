@@ -131,7 +131,7 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new Arius.Core.Features.RestoreCommand.FileSkippedEvent(RelativePath.Parse("c.txt"), 500L));
 
         // Cleanup of rehydrated blobs finished. Handler is intentionally a no-op (reserved), so there is nothing to assert.
-        await mediator.Publish(new CleanupCompleteEvent(3, 1800));
+        await mediator.Publish(new CleanupCompleteEvent(3));
 
         // Verify ProgressState was updated (grouped by the event that set each value)
 

@@ -233,19 +233,16 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         public async Task<RehydratedChunkCleanupResult> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             var deleted = 0;
-            long freed = 0;
 
             await Parallel.ForEachAsync(blobNames, new ParallelOptions { MaxDegreeOfParallelism = DeleteWorkers, CancellationToken = cancellationToken },
                 async (blobName, ct) =>
                 {
-                    var meta = await blobs.GetMetadataAsync(blobName, ct);
                     await blobs.DeleteAsync(blobName, ct);
 
                     Interlocked.Increment(ref deleted);
-                    Interlocked.Add(ref freed, meta.ContentLength ?? 0);
                 });
 
-            return new RehydratedChunkCleanupResult(deleted, freed);
+            return new RehydratedChunkCleanupResult(deleted);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
