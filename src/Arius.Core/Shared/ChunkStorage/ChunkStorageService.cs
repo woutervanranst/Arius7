@@ -70,26 +70,23 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         try
         {
             long storedSize;
-            ContentHash? verifiedHash = null;
+            ContentHash? verifiedHash;
 
             await using (var writeStream = await blobs.OpenWriteAsync(blobName, contentType, cancellationToken))
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = encryption.WrapForEncryption(countingStream);
 
-                // Inline round-trip verification: tee the compressed bytes to (a) the encrypt→upload chain
-                // and (b) a decompress→hash pipe, so we prove the chunk is restorable before recording it.
-                // Only codecs that ask for it pay this cost (zstd does; the trusted BCL gzip path does not).
-                await using var verifier = compression.RequireRoundTripVerification
+                // Verify the stored chunk round-trips before recording it — but only for codecs that ask for it
+                // (zstd does; the trusted BCL gzip path uses a no-op verifier). The verifier's sink receives a tee
+                // of the compressed bytes, decompresses them on a background task, and re-hashes; the no-op verifier
+                // simply discards them. leaveOpen so the encryption stream is disposed once, explicitly.
+                await using IUploadVerifier verifier = compression.RequireRoundTripVerification
                     ? new RoundTripVerifier(compression, encryption, cancellationToken)
-                    : null;
+                    : new NoopVerifier();
 
-                // With a verifier, tee the compressed bytes to it as well; without one, compress straight
-                // into the encryption chain. leaveOpen so the encryption stream is disposed once, explicitly.
-                var compressionTarget = verifier is null
-                    ? (Stream)encryptionStream
-                    : new TeeStream(encryptionStream, verifier.Sink);
-                var compressionStream = compression.WrapForCompression(compressionTarget, leaveOpen: true);
+                var teeStream         = new TeeStream(encryptionStream, verifier.Sink);
+                var compressionStream = compression.WrapForCompression(teeStream, leaveOpen: true);
 
                 var progressStream = progress is null
                     ? null
@@ -105,9 +102,8 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 var source = progressStream ?? content;
                 await source.CopyToAsync(compressionStream, cancellationToken);
 
-                await compressionStream.DisposeAsync();  // finalize the frame → (tee →) encryption (+ verifier)
-                if (verifier is not null)
-                    verifiedHash = await verifier.CompleteAsync(cancellationToken); // hash of the decompressed bytes
+                await compressionStream.DisposeAsync();  // finalize the frame → tee → encryption (+ verifier)
+                verifiedHash = await verifier.CompleteAsync(cancellationToken); // restored hash, or null when not verified
                 await encryptionStream.DisposeAsync();   // NOTE: leave Dispose to get a correct BytesWritten
                 storedSize = countingStream.BytesWritten;
             }
@@ -338,11 +334,36 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     }
 
     /// <summary>
+    /// Verifies (or, for trusted codecs, doesn't) that an uploading chunk round-trips. Compressed bytes are
+    /// tee'd into <see cref="Sink"/> as they stream to blob storage; <see cref="CompleteAsync"/> returns the
+    /// hash the stored chunk decompresses to, or <c>null</c> when this verifier does not verify.
+    /// </summary>
+    private interface IUploadVerifier : IAsyncDisposable
+    {
+        /// <summary>The tee's secondary target: compressed bytes written here are verified (or discarded).</summary>
+        Stream Sink { get; }
+
+        /// <summary>Finalizes verification; returns the restored hash to compare, or <c>null</c> when not verified.</summary>
+        Task<ContentHash?> CompleteAsync(CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// A verifier for codecs Arius already trusts to round-trip (the BCL gzip path): it discards the tee'd bytes
+    /// and reports no hash, so the upload records the chunk without an inline check.
+    /// </summary>
+    private sealed class NoopVerifier : IUploadVerifier
+    {
+        public Stream Sink => Stream.Null;
+        public Task<ContentHash?> CompleteAsync(CancellationToken cancellationToken) => Task.FromResult<ContentHash?>(null);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Decompresses the compressed bytes written to <see cref="Sink"/> on a background task and hashes
     /// the result, so an upload can confirm the chunk round-trips before recording it. A bounded pipe
     /// supplies backpressure so memory stays flat regardless of chunk size.
     /// </summary>
-    private sealed class RoundTripVerifier : IAsyncDisposable
+    private sealed class RoundTripVerifier : IUploadVerifier
     {
         private const int PauseWriterThreshold  = 1 << 20; // ≤ ~1 MiB of compressed bytes buffered in-flight
         private const int ResumeWriterThreshold = 1 << 19;
@@ -371,7 +392,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         /// <summary>The tee's secondary target: compressed bytes written here are decompressed and hashed.</summary>
         public Stream Sink { get; }
 
-        public async Task<ContentHash> CompleteAsync(CancellationToken cancellationToken)
+        public async Task<ContentHash?> CompleteAsync(CancellationToken cancellationToken)
         {
             await CompleteWriterAsync();
             return await _hashTask.WaitAsync(cancellationToken);
