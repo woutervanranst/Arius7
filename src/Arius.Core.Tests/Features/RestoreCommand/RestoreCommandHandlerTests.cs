@@ -1,5 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.FileTree;
@@ -72,6 +73,106 @@ public class RestoreCommandHandlerTests
         fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
         fixture.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe([1, 2, 3]);
         fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Restore_AvailableContent_EmitsConsistentPhaseTimingLogs()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-phase-{Guid.NewGuid():N}",
+            $"ctr-restore-phase-{Guid.NewGuid():N}");
+
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("docs/readme.txt"), [1, 2, 3], CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Cool,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+
+        var messages = fixture.RestoreLogs
+            .GetSnapshot(clear: false)
+            .Select(static record => record.Message)
+            .ToArray();
+
+        var phases = messages
+            .Where(static message => message.StartsWith("[phase] ", StringComparison.Ordinal))
+            .Select(static message => message[8..])
+            .ToArray();
+
+        phases.ShouldBe([
+            "resolve-snapshot",
+            "classify",
+            "download"
+        ]);
+        messages.ShouldContain(static message => message.StartsWith("[restore] Start:", StringComparison.Ordinal));
+        messages.ShouldContain(static message => message.StartsWith("[restore] Done:", StringComparison.Ordinal));
+        messages.ShouldNotContain(static message => message.Contains("TODO", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Handle_ArchivedContent_EmitsConfirmAndRehydratePhaseLogs()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-rehydrate-phase-{Guid.NewGuid():N}",
+            $"ctr-restore-rehydrate-phase-{Guid.NewGuid():N}");
+
+        var content = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("archive/file.bin"), content, CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Archive,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+                ConfirmRehydration = (_, _) => Task.FromResult<RehydratePriority?>(RehydratePriority.Standard),
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+
+        var messages = fixture.RestoreLogs
+            .GetSnapshot(clear: false)
+            .Select(static record => record.Message)
+            .ToArray();
+
+        var phases = messages
+            .Where(static message => message.StartsWith("[phase] ", StringComparison.Ordinal))
+            .Select(static message => message[8..])
+            .ToArray();
+
+        phases.ShouldBe([
+            "resolve-snapshot",
+            "classify",
+            "confirm-rehydration",
+            "rehydrate"
+        ]);
+        messages.ShouldContain(static message => message.StartsWith("[rehydration] Requested:", StringComparison.Ordinal));
     }
 
     [Test]
@@ -306,6 +407,107 @@ public class RestoreCommandHandlerTests
 
             restoreFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task Handle_UnresolvedSnapshotContentHash_LogsChunkIndexRepairGuidance()
+    {
+        var blobs         = new FakeSeededBlobContainerService();
+        var encryption    = new PlaintextPassthroughService();
+        var mediator      = Substitute.For<IMediator>();
+        var logger        = new FakeLogger<RestoreCommandHandler>();
+        var accountName   = $"acct-restore-missing-index-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-missing-index-{Guid.NewGuid():N}";
+        var restoreRootDirectory = TestTempRoots.CreateDirectory("restore-missing-index");
+        var restoreFileSystem = new RelativeFileSystem(restoreRootDirectory);
+
+        restoreFileSystem.CreateDirectory(RelativePath.Root);
+        RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
+
+        try
+        {
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-missing-index"u8).ToString());
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp    = DateTimeOffset.UtcNow,
+                RootHash     = rootHash,
+                FileCount    = 1,
+                TotalSize    = 7,
+                AriusVersion = "test"
+            };
+
+            var missingHash = ContentHash.Parse(encryption.ComputeHash("missing"u8).ToString());
+            var fileTreePayload = System.Text.Encoding.UTF8.GetBytes($"{missingHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} missing.txt\n");
+            blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(fileTreePayload));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+
+            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
+
+            result.Success.ShouldBeFalse();
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("Run the explicit chunk-index repair command");
+
+            var messages = logger.Collector
+                .GetSnapshot(clear: false)
+                .Select(static record => record.Message)
+                .ToArray();
+
+            messages.ShouldContain(static message =>
+                message.StartsWith("[chunk] Chunk-index resolution failed: category=unresolved-snapshot-content;", StringComparison.Ordinal) &&
+                message.Contains("Run the explicit chunk-index repair command and retry restore", StringComparison.Ordinal));
+            messages.ShouldContain(static message => message.StartsWith("[restore] Failure:", StringComparison.Ordinal));
+        }
+        finally
+        {
+            RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
+
+            restoreFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Handle_CorruptChunkIndexShard_LogsChunkIndexRepairGuidance()
+    {
+        var contentHash = ContentHash.Parse(new string('a', 64));
+
+        await AssertRestoreChunkIndexFailureLogAsync(
+            contentHash,
+            seedBlobs: async (blobs, rootHash, snapshot, encryption) =>
+            {
+                blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes($"{contentHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} corrupt.txt\n")));
+                blobs.AddBlob(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)), [1, 2, 3]);
+                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+            },
+            expectedCategory: "corrupt",
+            expectedGuidance: "Run the explicit chunk-index repair command and retry restore");
+    }
+
+    [Test]
+    public async Task Handle_IncompleteChunkIndexRepair_LogsRepairGuidance()
+    {
+        var contentHash = ContentHash.Parse(new string('b', 64));
+
+        await AssertRestoreChunkIndexFailureLogAsync(
+            contentHash,
+            seedBlobs: async (blobs, rootHash, snapshot, encryption) =>
+            {
+                blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes($"{contentHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} repair-marker.txt\n")));
+                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+            },
+            beforeHandle: (repositoryRoot, cancellationToken) =>
+            {
+                var repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
+                repositoryFileSystem.CreateDirectory(RelativePath.Root);
+                return repositoryFileSystem.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], cancellationToken);
+            },
+            expectedCategory: "repair-incomplete",
+            expectedGuidance: "Rerun the explicit chunk-index repair command before retrying restore");
     }
 
     [Test]
@@ -814,6 +1016,70 @@ public class RestoreCommandHandlerTests
         }
 
         return output.ToArray();
+    }
+
+    private static async Task AssertRestoreChunkIndexFailureLogAsync(
+        ContentHash contentHash,
+        Func<FakeSeededBlobContainerService, FileTreeHash, SnapshotManifest, PlaintextPassthroughService, Task> seedBlobs,
+        string expectedCategory,
+        string expectedGuidance,
+        Func<LocalDirectory, CancellationToken, Task>? beforeHandle = null)
+    {
+        var blobs         = new FakeSeededBlobContainerService();
+        var encryption    = new PlaintextPassthroughService();
+        var mediator      = Substitute.For<IMediator>();
+        var logger        = new FakeLogger<RestoreCommandHandler>();
+        var accountName   = $"acct-restore-index-failure-{Guid.NewGuid():N}";
+        var containerName = $"ctr-restore-index-failure-{Guid.NewGuid():N}";
+        var restoreRootDirectory = TestTempRoots.CreateDirectory("restore-index-failure");
+        var restoreFileSystem = new RelativeFileSystem(restoreRootDirectory);
+
+        restoreFileSystem.CreateDirectory(RelativePath.Root);
+        RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
+
+        try
+        {
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+
+            var rootHash = FileTreeHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"root-{contentHash.Short8}")).ToString());
+            var snapshot = new SnapshotManifest
+            {
+                Timestamp    = DateTimeOffset.UtcNow,
+                RootHash     = rootHash,
+                FileCount    = 1,
+                TotalSize    = 7,
+                AriusVersion = "test"
+            };
+
+            await seedBlobs(blobs, rootHash, snapshot, encryption);
+
+            if (beforeHandle is not null)
+                await beforeHandle(RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName), CancellationToken.None);
+
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+
+            var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
+
+            result.Success.ShouldBeFalse();
+
+            var messages = logger.Collector
+                .GetSnapshot(clear: false)
+                .Select(static record => record.Message)
+                .ToArray();
+
+            messages.ShouldContain(message =>
+                message.StartsWith($"[chunk] Chunk-index resolution failed: category={expectedCategory};", StringComparison.Ordinal) &&
+                message.Contains(expectedGuidance, StringComparison.Ordinal));
+            messages.ShouldContain(static message => message.StartsWith("[restore] Failure:", StringComparison.Ordinal));
+        }
+        finally
+        {
+            RepositoryTestFixture.DeleteLocalCacheDirectory(accountName, containerName);
+
+            restoreFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
     }
 
     private static async Task<RelativePath> FindSingleChunkBlobAsync(IBlobContainerService blobs, string ariusType)
