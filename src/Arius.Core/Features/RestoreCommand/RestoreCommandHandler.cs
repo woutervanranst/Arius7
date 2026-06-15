@@ -107,7 +107,7 @@ public sealed class RestoreCommandHandler(
             var  filesToRestore           = new RestoreFilePipeline(encryption, index, fileTreeService, mediator, logger);
             var  rehydratedState          = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
             var  skipped                  = new StrongBox<long>(0);
-            int  fileCount                = 0, availableCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
+            int  fileCount                = 0, availableCount       = 0, rehydratedCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
             long totalOriginalBytes       = 0, totalCompressedBytes = 0, downloadBytes         = 0, rehydrationBytes        = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
@@ -129,7 +129,10 @@ public sealed class RestoreCommandHandler(
                     switch (status)
                     {
                         case ChunkHydrationStatus.Available:
-                            availableCount++;
+                            if (rehydratedState.ContainsKey(chunkHash))
+                                rehydratedCount++;
+                            else
+                                availableCount++;
                             break;
                         case ChunkHydrationStatus.NeedsRehydration:
                             needsRehydrationCount++;
@@ -172,13 +175,13 @@ public sealed class RestoreCommandHandler(
             logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}", totalChunks, largeChunks, tarChunks);
             await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
 
-            logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, 0, needsRehydrationCount, pendingRehydrationCount);
-            await mediator.Publish(new RehydrationStatusEvent(availableCount, 0, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
+            logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount);
+            await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
 
             // ── Stage 3: Cost estimate + confirm rehydration ──────────────────────
             var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
                 chunksAvailable:          availableCount,
-                chunksAlreadyRehydrated:  0,
+                chunksAlreadyRehydrated:  rehydratedCount,
                 chunksNeedingRehydration: needsRehydrationCount,
                 chunksPendingRehydration: pendingRehydrationCount,
                 rehydrationBytes:         rehydrationBytes,
@@ -210,7 +213,7 @@ public sealed class RestoreCommandHandler(
             var rerouteToRehydration = new ConcurrentDictionary<ChunkHash, long>();
             long filesRestored       = 0;
 
-            if (availableCount > 0)
+            if (availableCount + rehydratedCount > 0)
             {
                 logger.LogInformation("[phase] download");
 
