@@ -408,13 +408,13 @@ public sealed class RestoreCommandHandler(
     private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
     {
         var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
-        await using (var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
-        await using (var fileStream = fs.CreateFile(file.RelativePath))
+        await using (var sourceStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
+        await using (var binaryFileStream = fs.CreateFile(file.RelativePath))
         {
-            await payloadStream.CopyToAsync(fileStream, cancellationToken);
+            await sourceStream.CopyToAsync(binaryFileStream, cancellationToken);
         }
 
-        // Set file timestamps from tree metadata (after the stream is closed).
+        // Set binary file timestamps from tree metadata (after the stream is closed).
         fs.SetTimestamps(file.RelativePath, file.Created, file.Modified);
 
         // Create pointer file.
