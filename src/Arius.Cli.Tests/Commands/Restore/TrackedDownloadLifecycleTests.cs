@@ -16,7 +16,7 @@ public class TrackedDownloadLifecycleTests
 
         // Simulate CreateLargeFileDownloadProgress adding a TrackedDownload for a large file
         // Key is RelativePath (the identifier passed from RestoreCommandHandler for large files)
-        var td = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", compressedSize: 25_400_000, originalSize: 50_000_000);
+        var td = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", chunkSize: 25_400_000, originalSize: 50_000_000);
         state.TrackedDownloads.TryAdd("photos/sunset.jpg", td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
@@ -35,7 +35,7 @@ public class TrackedDownloadLifecycleTests
         await handler.Handle(new FileRestoredEvent(RelativePath.Parse("photos/sunset.jpg"), 50_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("photos/sunset.jpg").ShouldBeFalse("TrackedDownload should be removed after FileRestoredEvent");
-        state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+        state.RestoreBytesDownloaded.ShouldBe(25_400_000L, "RestoreBytesDownloaded should be incremented by ChunkSize");
         state.FilesRestored.ShouldBe(1L);
         state.BytesRestored.ShouldBe(50_000_000L);
     }
@@ -47,7 +47,7 @@ public class TrackedDownloadLifecycleTests
         var chunkHash = FakeChunkHash('a').ToString();
 
         // Simulate CreateTarBundleDownloadProgress adding a TrackedDownload for a tar bundle
-        var td = new TrackedDownload(chunkHash, DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", compressedSize: 15_200_000, originalSize: 847_000);
+        var td = new TrackedDownload(chunkHash, DownloadKind.TarBundle, "TAR bundle (3 files, 847 KB)", chunkSize: 15_200_000, originalSize: 847_000);
         state.TrackedDownloads.TryAdd(chunkHash, td);
 
         state.TrackedDownloads.Count.ShouldBe(1);
@@ -62,7 +62,7 @@ public class TrackedDownloadLifecycleTests
         await handler.Handle(new ChunkDownloadCompletedEvent(FakeChunkHash('a'), 3, 15_200_000), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey(chunkHash).ShouldBeFalse("TrackedDownload should be removed after ChunkDownloadCompletedEvent");
-        state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by CompressedSize");
+        state.RestoreBytesDownloaded.ShouldBe(15_200_000L, "RestoreBytesDownloaded should be incremented by ChunkSize");
     }
 
     [Test]

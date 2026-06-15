@@ -20,7 +20,7 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
             && td.Kind == DownloadKind.LargeFile
             && state.TrackedDownloads.TryRemove(relativePath, out var removed))
         {
-            state.AddRestoreBytesDownloaded(removed.CompressedSize);
+            state.AddRestoreBytesDownloaded(removed.ChunkSize);
         }
 
         return ValueTask.CompletedTask;
@@ -109,7 +109,7 @@ public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotif
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
         state.SetChunkResolution(notification.TotalChunks, notification.LargeCount, notification.TarCount);
-        state.SetRestoreTotalCompressedBytes(notification.TotalCompressedBytes);
+        state.SetRestoreTotalChunkBytes(notification.TotalChunkBytes);
         return ValueTask.CompletedTask;
     }
 }
@@ -150,7 +150,7 @@ public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotifi
     public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
     {
         state.TrackedDownloads.TryRemove(notification.ChunkHash.ToString(), out _);
-        state.AddRestoreBytesDownloaded(notification.CompressedSize);
+        state.AddRestoreBytesDownloaded(notification.ChunkSize);
         return ValueTask.CompletedTask;
     }
 }

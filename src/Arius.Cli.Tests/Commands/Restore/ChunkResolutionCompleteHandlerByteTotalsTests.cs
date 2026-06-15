@@ -15,12 +15,12 @@ public class ChunkResolutionCompleteHandlerByteTotalsTests
         var handler = new ChunkResolutionCompleteHandler(state);
 
         await handler.Handle(
-            new ChunkResolutionCompleteEvent(10, 5, 5, TotalCompressedBytes: 200_000_000),
+            new ChunkResolutionCompleteEvent(10, 5, 5, TotalChunkBytes: 200_000_000),
             CancellationToken.None);
 
         state.RestoreTotalChunks.ShouldBe(10);
         state.LargeChunkCount.ShouldBe(5);
         state.TarChunkCount.ShouldBe(5);
-        state.RestoreTotalCompressedBytes.ShouldBe(200_000_000L);
+        state.RestoreTotalChunkBytes.ShouldBe(200_000_000L);
     }
 }

@@ -17,9 +17,9 @@ internal sealed class RestoreCostCalculator(PricingConfig? pricing)
     /// <param name="chunksAlreadyRehydrated">Archive-tier chunk count with ready rehydrated copies.</param>
     /// <param name="chunksNeedingRehydration">Archive-tier chunk count that needs rehydration.</param>
     /// <param name="chunksPendingRehydration">Archive-tier chunk count with rehydration already pending.</param>
-    /// <param name="bytesNeedingRehydration">Compressed bytes that require a new rehydration request.</param>
-    /// <param name="bytesPendingRehydration">Compressed bytes already pending rehydration.</param>
-    /// <param name="downloadBytes">Compressed bytes available for immediate download.</param>
+    /// <param name="bytesNeedingRehydration">Chunk bytes that require a new rehydration request.</param>
+    /// <param name="bytesPendingRehydration">Chunk bytes already pending rehydration.</param>
+    /// <param name="downloadBytes">Chunk bytes available for immediate download.</param>
     /// <param name="monthsStored">Storage duration assumed for rehydrated chunk copies.</param>
     public RestoreCostEstimate Compute(
         int            chunksAvailable,
@@ -162,13 +162,13 @@ public sealed record RestoreCostEstimate
     /// <summary>Archive-tier chunks with rehydration already pending.</summary>
     public required int ChunksPendingRehydration { get; init; }
 
-    /// <summary>Total compressed bytes that require a new rehydration request.</summary>
+    /// <summary>Total chunk bytes that require a new rehydration request.</summary>
     public required long BytesNeedingRehydration { get; init; }
 
-    /// <summary>Total compressed bytes already pending rehydration.</summary>
+    /// <summary>Total chunk bytes already pending rehydration.</summary>
     public required long BytesPendingRehydration { get; init; }
 
-    /// <summary>Total compressed bytes available for immediate download.</summary>
+    /// <summary>Total chunk bytes available for immediate download.</summary>
     public required long DownloadBytes { get; init; }
 
     // ── Per-component cost fields ─────────────────────────────────────────────

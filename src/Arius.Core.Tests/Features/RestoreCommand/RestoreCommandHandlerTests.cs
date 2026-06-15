@@ -528,7 +528,7 @@ public class RestoreCommandHandlerTests
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         var tarChunk = await FindSingleChunkBlobAsync(blobs, BlobMetadataKeys.TypeTar);
         var tarMetadata = await blobs.GetMetadataAsync(tarChunk);
-        var tarCompressedSize = tarMetadata.ContentLength.ShouldNotBeNull();
+        var tarChunkSize = tarMetadata.ContentLength.ShouldNotBeNull();
 
         RestoreCostEstimate? capturedEstimate = null;
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
@@ -548,10 +548,10 @@ public class RestoreCommandHandlerTests
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
         capturedEstimate.ShouldNotBeNull();
         capturedEstimate!.ChunksNeedingRehydration.ShouldBe(1);
-        capturedEstimate.BytesNeedingRehydration.ShouldBe(tarCompressedSize);
+        capturedEstimate.BytesNeedingRehydration.ShouldBe(tarChunkSize);
 
         await fixture.Mediator.Received(1).Publish(
-            Arg.Is<RehydrationStartedEvent>(e => e.ChunkCount == 1 && e.TotalBytes == tarCompressedSize),
+            Arg.Is<RehydrationStartedEvent>(e => e.ChunkCount == 1 && e.TotalBytes == tarChunkSize),
             Arg.Any<CancellationToken>());
     }
 
@@ -581,7 +581,7 @@ public class RestoreCommandHandlerTests
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         var tarChunk = await FindSingleChunkBlobAsync(blobs, BlobMetadataKeys.TypeTar);
         var tarMetadata = await blobs.GetMetadataAsync(tarChunk);
-        var tarCompressedSize = tarMetadata.ContentLength.ShouldNotBeNull();
+        var tarChunkSize = tarMetadata.ContentLength.ShouldNotBeNull();
 
         var restoreResult = await fixture.CreateRestoreHandler().Handle(
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
@@ -596,10 +596,10 @@ public class RestoreCommandHandlerTests
         restoreResult.FilesRestored.ShouldBe(1);
 
         await fixture.Mediator.Received(1).Publish(
-            Arg.Is<ChunkDownloadStartedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.CompressedSize == tarCompressedSize),
+            Arg.Is<ChunkDownloadStartedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.ChunkSize == tarChunkSize),
             Arg.Any<CancellationToken>());
         await fixture.Mediator.Received(1).Publish(
-            Arg.Is<ChunkDownloadCompletedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.CompressedSize == tarCompressedSize),
+            Arg.Is<ChunkDownloadCompletedEvent>(e => e.ChunkHash == ChunkHash.Parse(tarChunk.Name.ToString()) && e.ChunkSize == tarChunkSize),
             Arg.Any<CancellationToken>());
     }
 

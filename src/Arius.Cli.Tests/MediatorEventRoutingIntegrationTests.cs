@@ -155,7 +155,7 @@ public class MediatorEventRoutingIntegrationTests
         state.RestoreTotalChunks.ShouldBe(3);
         state.LargeChunkCount.ShouldBe(1);
         state.TarChunkCount.ShouldBe(1);
-        state.RestoreTotalCompressedBytes.ShouldBe(1800L);
+        state.RestoreTotalChunkBytes.ShouldBe(1800L);
 
         // RehydrationStatusEvent
         state.ChunksAvailable.ShouldBe(1);

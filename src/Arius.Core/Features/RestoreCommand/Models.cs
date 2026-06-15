@@ -29,7 +29,7 @@ internal sealed class OpenTarChunk
 {
     public List<FileToRestore> Files { get; } = [];
 
-    public long CompressedSize { get; set; }
+    public long ChunkSize { get; set; }
 
     public long OriginalSize { get; set; }
 }
@@ -39,11 +39,11 @@ internal sealed class OpenTarChunk
 /// every selected file mapped to the chunk.
 /// </summary>
 internal sealed record ChunkToRestore(
-    ChunkHash                   ChunkHash,
-    bool                        IsLargeChunk,
+    ChunkHash                    ChunkHash,
+    bool                         IsLargeChunk,
     IReadOnlyList<FileToRestore> Files,
-    long                        CompressedSize,
-    long                        OriginalSize
+    long                         ChunkSize,
+    long                         OriginalSize
 );
 
 // ── Download kind enum ────────────────────────────────────────────────────────

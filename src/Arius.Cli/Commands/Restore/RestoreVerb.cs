@@ -134,16 +134,16 @@ internal static class RestoreVerb
                         return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                     },
 
-                    CreateLargeFileDownloadProgress = (relativePath, compressedSize) =>
+                    CreateLargeFileDownloadProgress = (relativePath, chunkSize) =>
                     {
                         var key = relativePath.ToString();
-                        var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, compressedSize, originalSize: 0);
+                        var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, chunkSize, originalSize: 0);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
                         return new Progress<long>(tracked.SetBytesDownloaded);
                     },
 
-                    CreateTarBundleDownloadProgress = (chunkHash, compressedSize) =>
+                    CreateTarBundleDownloadProgress = (chunkHash, chunkSize) =>
                     {
                         var key = chunkHash.ToString();
                         string displayName;
@@ -159,7 +159,7 @@ internal static class RestoreVerb
                             displayName = $"TAR bundle ({key[..8]}...)";
                         }
 
-                        var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, compressedSize, originalSize);
+                        var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, chunkSize, originalSize);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
                         return new Progress<long>(tracked.SetBytesDownloaded);
@@ -413,19 +413,19 @@ internal static class RestoreVerb
             if (queueDepth > 0 && !allDone)
                 countStr += $"  [dim]({queueDepth:N0} queued)[/]";
 
-            var totalCompressed = state.RestoreTotalCompressedBytes;
+            var totalChunkBytes = state.RestoreTotalChunkBytes;
             var bytesDownloaded = state.RestoreBytesDownloaded;
             var totalOriginal   = state.RestoreTotalOriginalSize;
 
-            if (totalCompressed > 0)
+            if (totalChunkBytes > 0)
             {
-                var fraction = (double)bytesDownloaded / totalCompressed;
+                var fraction = (double)bytesDownloaded / totalChunkBytes;
                 var pct      = (int)Math.Round(fraction * 100);
                 var bar      = DisplayHelpers.RenderProgressBar(fraction, 16);
 
                 lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%"));
 
-                var (dlCur, dlTot, dlUnit) = DisplayHelpers.SplitSizePair(bytesDownloaded, totalCompressed);
+                var (dlCur, dlTot, dlUnit) = DisplayHelpers.SplitSizePair(bytesDownloaded, totalChunkBytes);
                 var origStr = totalOriginal.Bytes().Humanize();
 
                 lines.Add(new Markup($"                 [dim]({dlCur} / {dlTot} {dlUnit} download, {origStr} original)[/]"));
@@ -448,13 +448,13 @@ internal static class RestoreVerb
 
                 foreach (var dl in activeDownloads)
                 {
-                    var fraction = dl.CompressedSize > 0
-                        ? (double)dl.BytesDownloaded / dl.CompressedSize
+                    var fraction = dl.ChunkSize > 0
+                        ? (double)dl.BytesDownloaded / dl.ChunkSize
                         : 0.0;
                     var pctVal = (int)Math.Round(fraction * 100);
                     var bar    = DisplayHelpers.RenderProgressBar(fraction, 12);
                     var name   = DisplayHelpers.TruncateAndLeftJustify(dl.DisplayName, 35);
-                    var (cur, tot, unit) = DisplayHelpers.SplitSizePair(dl.BytesDownloaded, dl.CompressedSize);
+                    var (cur, tot, unit) = DisplayHelpers.SplitSizePair(dl.BytesDownloaded, dl.ChunkSize);
 
                     rowData.Add((name, bar, pctVal + "%", cur, tot, unit));
                 }

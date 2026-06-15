@@ -108,7 +108,7 @@ public sealed class RestoreCommandHandler(
             var  rehydratedState          = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
             var  skipped                  = new StrongBox<long>(0);
             int  fileCount                = 0, availableCount       = 0, rehydratedCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
-            long totalOriginalBytes       = 0, totalCompressedBytes = 0, downloadBytes         = 0, bytesNeedingRehydration = 0, bytesPendingRehydration = 0;
+            long totalOriginalBytes       = 0, totalChunkBytes = 0, downloadBytes         = 0, bytesNeedingRehydration = 0, bytesPendingRehydration = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
 
@@ -148,7 +148,7 @@ public sealed class RestoreCommandHandler(
                 if (!firstSeen)
                     continue;
 
-                totalCompressedBytes += entry.ChunkSize;
+                totalChunkBytes += entry.ChunkSize;
                 switch (status)
                 {
                     case ChunkHydrationStatus.Available:
@@ -171,7 +171,7 @@ public sealed class RestoreCommandHandler(
             await mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
 
             logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}", totalChunks, largeChunks, tarChunks);
-            await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalCompressedBytes), cancellationToken);
+            await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalChunkBytes), cancellationToken);
 
             logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount);
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
@@ -247,14 +247,14 @@ public sealed class RestoreCommandHandler(
                                     tarChunks[chunkHash] = tar = new OpenTarChunk();
 
                                 tar.Files.Add(resolved.File);
-                                tar.CompressedSize =  entry.ChunkSize;
+                                tar.ChunkSize    =  entry.ChunkSize;
                                 tar.OriginalSize   += entry.OriginalSize;
                             }
                         }
 
                         // Once we've seen all TARs, enqueue each TAR chunk with files that need to be restored from the tar
                         foreach (var (chunkHash, tar) in tarChunks)
-                            await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: false, tar.Files, tar.CompressedSize, tar.OriginalSize), ct);
+                            await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: false, tar.Files, tar.ChunkSize, tar.OriginalSize), ct);
 
                         chunkChannel.Writer.Complete();
                     }
@@ -270,11 +270,11 @@ public sealed class RestoreCommandHandler(
                     new ParallelOptions { MaxDegreeOfParallelism = DownloadWorkers, CancellationToken = ct },
                     async (chunk, ct) =>
                     {
-                        logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), compressed={Compressed})", chunk.ChunkHash.Short8, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize.Bytes().Humanize());
+                        logger.LogInformation("[download] Chunk {ChunkHash} ({Type}, {FileCount} file(s), size={ChunkSize})", chunk.ChunkHash.Short8, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.ChunkSize.Bytes().Humanize());
 
                         // Publish the start event before invoking the tar progress factory: the CLI's
                         // ChunkDownloadStarted handler populates the metadata that CreateTarBundleDownloadProgress reads.
-                        await mediator.Publish(new ChunkDownloadStartedEvent(chunk.ChunkHash, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.CompressedSize, chunk.OriginalSize), ct);
+                        await mediator.Publish(new ChunkDownloadStartedEvent(chunk.ChunkHash, chunk.IsLargeChunk ? "large" : "tar", chunk.Files.Count, chunk.ChunkSize, chunk.OriginalSize), ct);
 
                         try
                         {
@@ -282,13 +282,13 @@ public sealed class RestoreCommandHandler(
                             {
                                 foreach (var file in chunk.Files)
                                 {
-                                    await RestoreLargeFileAsync(chunk.ChunkHash, file, fs, opts, chunk.CompressedSize, chunk.OriginalSize, ct);
+                                    await RestoreLargeFileAsync(chunk.ChunkHash, file, fs, opts, chunk.ChunkSize, chunk.OriginalSize, ct);
                                     Interlocked.Increment(ref filesRestored);
                                 }
                             }
                             else
                             {
-                                var restored = await RestoreTarBundleAsync(chunk.ChunkHash, chunk.Files, fs, opts, chunk.CompressedSize, ct);
+                                var restored = await RestoreTarBundleAsync(chunk.ChunkHash, chunk.Files, fs, opts, chunk.ChunkSize, ct);
                                 Interlocked.Add(ref filesRestored, restored);
                             }
                         }
@@ -297,7 +297,7 @@ public sealed class RestoreCommandHandler(
                             // Stale classification (e.g. external tier change): restore expected this chunk to
                             // be readable now, but download proved the blob is still archived.
                             logger.LogWarning(ex, "[download] Chunk {ChunkHash} is out of sync with StorageTierHint and in an offline tier. Re-routing to rehydration. This will have an extra cost-effect.", chunk.ChunkHash.Short8);
-                            rerouteToRehydration.TryAdd(chunk.ChunkHash, chunk.CompressedSize);
+                            rerouteToRehydration.TryAdd(chunk.ChunkHash, chunk.ChunkSize);
                         }
                     });
 
@@ -400,9 +400,9 @@ public sealed class RestoreCommandHandler(
 
     // ── Large file restore ───────────────────────────────────────────────────────
 
-    private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, long originalSize, CancellationToken cancellationToken)
+    private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long chunkSize, long originalSize, CancellationToken cancellationToken)
     {
-        var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
+        var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, chunkSize);
         await using (var sourceStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
         await using (var binaryFileStream = fs.CreateFile(file.RelativePath))
         {
@@ -425,7 +425,7 @@ public sealed class RestoreCommandHandler(
     /// Downloads a tar chunk and extracts only the entries whose content hash matches
     /// <paramref name="filesNeeded"/>. Returns the number of files written to disk.
     /// </summary>
-    private async Task<int> RestoreTarBundleAsync(ChunkHash chunkHash, IReadOnlyList<FileToRestore> filesNeeded, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
+    private async Task<int> RestoreTarBundleAsync(ChunkHash chunkHash, IReadOnlyList<FileToRestore> filesNeeded, RelativeFileSystem fs, RestoreOptions opts, long chunkSize, CancellationToken cancellationToken)
     {
         var restored = 0;
         
@@ -434,7 +434,7 @@ public sealed class RestoreCommandHandler(
             .GroupBy(f => f.ContentHash)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var             progress      = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
+        var             progress      = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, chunkSize);
         await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
         await using var tarReader     = new TarReader(payloadStream, leaveOpen: true);
 
@@ -482,7 +482,7 @@ public sealed class RestoreCommandHandler(
         }
 
         // Emit completion event for tar bundles so the CLI can remove the TrackedDownload.
-        await mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, compressedSize), cancellationToken);
+        await mediator.Publish(new ChunkDownloadCompletedEvent(chunkHash, restored, chunkSize), cancellationToken);
 
         return restored;
     }

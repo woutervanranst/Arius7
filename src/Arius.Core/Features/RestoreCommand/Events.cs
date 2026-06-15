@@ -29,16 +29,16 @@ public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
 /// <summary>Emitted after classify has counted the distinct chunks needed by selected files.</summary>
-public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalCompressedBytes = 0) : INotification;
+public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalChunkBytes = 0) : INotification;
 
 /// <summary>Emitted after classify determines chunk hydration status.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
 /// <summary>Emitted before downloading one available chunk.</summary>
-public sealed record ChunkDownloadStartedEvent(ChunkHash ChunkHash, string Type, int FileCount, long CompressedSize, long OriginalSize) : INotification;
+public sealed record ChunkDownloadStartedEvent(ChunkHash ChunkHash, string Type, int FileCount, long ChunkSize, long OriginalSize) : INotification;
 
 /// <summary>Emitted after a tar chunk has been downloaded and all selected entries are restored.</summary>
-public sealed record ChunkDownloadCompletedEvent(ChunkHash ChunkHash, int FilesRestored, long CompressedSize) : INotification;
+public sealed record ChunkDownloadCompletedEvent(ChunkHash ChunkHash, int FilesRestored, long ChunkSize) : INotification;
 
 /// <summary>Emitted after confirmed rehydrated chunk cleanup finishes.</summary>
 public sealed record CleanupCompleteEvent(int ChunksDeleted, long BytesFreed) : INotification;

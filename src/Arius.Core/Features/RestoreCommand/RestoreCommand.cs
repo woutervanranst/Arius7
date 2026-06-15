@@ -50,13 +50,13 @@ public sealed record RestoreOptions
 
     /// <summary>
     /// Optional factory that creates an <see cref="IProgress{T}"/> for a large-chunk download.
-    /// Parameters: (relativePath, compressedSize). When <c>null</c>, byte-level progress is not reported.
+    /// Parameters: (relativePath, chunkSize). When <c>null</c>, byte-level progress is not reported.
     /// </summary>
     public Func<RelativePath, long, IProgress<long>>? CreateLargeFileDownloadProgress { get; init; }
 
     /// <summary>
     /// Optional factory that creates an <see cref="IProgress{T}"/> for a tar-chunk download.
-    /// Parameters: (chunkHash, compressedSize). When <c>null</c>, byte-level progress is not reported.
+    /// Parameters: (chunkHash, chunkSize). When <c>null</c>, byte-level progress is not reported.
     /// </summary>
     public Func<ChunkHash, long, IProgress<long>>? CreateTarBundleDownloadProgress { get; init; }
 
