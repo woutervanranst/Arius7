@@ -596,7 +596,7 @@ public sealed class ProgressState
 
     // ── Restore: file counts ─────────────────────────────────────────────────
 
-    /// <summary>Total files to restore (set at restore start).</summary>
+    /// <summary>Total files to restore.</summary>
     public int RestoreTotalFiles => (int)Interlocked.Read(ref _restoreTotalFiles);
     private long _restoreTotalFiles;
 

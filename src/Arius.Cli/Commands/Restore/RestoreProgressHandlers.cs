@@ -2,18 +2,6 @@ using Arius.Core.Features.RestoreCommand;
 
 namespace Arius.Cli.Commands.Restore;
 
-// ── RestoreStartedHandler ─────────────────────────────────────────────────────
-
-/// <summary>Sets <see cref="ProgressState.RestoreTotalFiles"/> when restore begins.</summary>
-public sealed class RestoreStartedHandler(ProgressState state) : INotificationHandler<RestoreStartedEvent>
-{
-    public ValueTask Handle(RestoreStartedEvent notification, CancellationToken cancellationToken)
-    {
-        state.SetRestoreTotalFiles(notification.TotalFiles);
-        return ValueTask.CompletedTask;
-    }
-}
-
 // ── FileRestoredHandler ───────────────────────────────────────────────────────
 
 /// <summary>
@@ -121,7 +109,6 @@ public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotif
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
         state.SetChunkResolution(notification.TotalChunks, notification.LargeCount, notification.TarCount);
-        state.SetTreeTraversalComplete(state.RestoreTotalFiles, notification.TotalOriginalBytes);
         state.SetRestoreTotalCompressedBytes(notification.TotalCompressedBytes);
         return ValueTask.CompletedTask;
     }

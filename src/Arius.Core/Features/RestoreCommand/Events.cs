@@ -4,9 +4,6 @@ namespace Arius.Core.Features.RestoreCommand;
 
 // ── Progress events ───────────────────────────────────────────────────────────
 
-/// <summary>Emitted after classify has counted the selected files and restore work begins.</summary>
-public sealed record RestoreStartedEvent(int TotalFiles) : INotification;
-
 /// <summary>Emitted after one binary file has been written to disk.</summary>
 public sealed record FileRestoredEvent(RelativePath RelativePath, long FileSize) : INotification;
 
@@ -16,8 +13,8 @@ public sealed record FileSkippedEvent(RelativePath RelativePath, long FileSize) 
 /// <summary>Emitted after restore requests rehydration for archive-tier chunks.</summary>
 public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : INotification;
 
-/// <summary>Emitted after restore resolves the snapshot and counts selected files.</summary>
-public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, FileTreeHash RootHash, int FileCount) : INotification;
+/// <summary>Emitted after restore resolves the snapshot.</summary>
+public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, FileTreeHash RootHash) : INotification;
 
 /// <summary>Emitted after the classify pass has walked all selected files.</summary>
 public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification;
@@ -32,7 +29,7 @@ public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
 /// <summary>Emitted after classify has counted the distinct chunks needed by selected files.</summary>
-public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
+public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalCompressedBytes = 0) : INotification;
 
 /// <summary>Emitted after classify determines chunk hydration status.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;

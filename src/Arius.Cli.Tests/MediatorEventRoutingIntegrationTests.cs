@@ -99,11 +99,8 @@ public class MediatorEventRoutingIntegrationTests
 
         var snapshotTime = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
-        // Publish all restore notification events in pipeline order
-        await mediator.Publish(new RestoreStartedEvent(10));   // restore begins; expected file count known up front
-
-        // Snapshot resolved: records the snapshot timestamp + root hash (handler ignores the file-count arg).
-        await mediator.Publish(new SnapshotResolvedEvent(snapshotTime, FakeFileTreeHash('e'), 10));
+        // Snapshot resolved: records the snapshot timestamp + root hash.
+        await mediator.Publish(new SnapshotResolvedEvent(snapshotTime, FakeFileTreeHash('e')));
 
         // Tree traversal: progress ticks up as entries are discovered, then completes with the final count + total size.
         await mediator.Publish(new TreeTraversalProgressEvent(7));
@@ -114,9 +111,8 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileRoutedEvent(RelativePath.Parse("b.txt"), RestoreRoute.New, 2000L));
         await mediator.Publish(new FileRoutedEvent(RelativePath.Parse("c.txt"), RestoreRoute.SkipIdentical, 500L));
 
-        // Chunk index lookups done: group/large/tar counts + byte totals. The handler re-stamps the original
-        // size set above (it calls SetTreeTraversalComplete again), so keep that value consistent (3500).
-        await mediator.Publish(new ChunkResolutionCompleteEvent(3, 1, 1, 3500, 1800));
+        // Chunk index lookups done: total/large/tar chunk counts + compressed byte total.
+        await mediator.Publish(new ChunkResolutionCompleteEvent(3, 1, 1, 1800));
 
         // Rehydration: availability check, then the request is kicked off for 4 chunks (2048 bytes total).
         await mediator.Publish(new RehydrationStatusEvent(1, 0, 2, 1));
@@ -139,7 +135,7 @@ public class MediatorEventRoutingIntegrationTests
 
         // Verify ProgressState was updated (grouped by the event that set each value)
 
-        // RestoreStartedEvent (TreeTraversalCompleteEvent/ChunkResolutionCompleteEvent re-stamp the same value)
+        // TreeTraversalCompleteEvent
         state.RestoreTotalFiles.ShouldBe(10);
 
         // SnapshotResolvedEvent
