@@ -443,4 +443,63 @@ public class ChunkStorageServiceUploadTests
         restored.ToArray().ShouldBe(content);
     }
 
+    [Test]
+    public async Task UploadLargeAsync_NonVerifyingCodec_RoundTripsEncryptedMultiBlockContent()
+    {
+        // The riskiest combination this change introduces: the no-verifier upload path (verifier == null,
+        // compression streams straight into the encryption chain with leaveOpen:true) under real AES-GCM, where
+        // the encryption stream must be disposed exactly once so its auth tag is flushed before BytesWritten is
+        // read. Use content larger than the 80 KiB CopyToAsync buffer so the frame spans multiple writes.
+        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
+        var content = new byte[200_000];
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.StoredSize.ShouldBeGreaterThan(0L);
+
+        await using var download = await service.DownloadAsync(chunkHash);
+        var restored = new MemoryStream();
+        await download.CopyToAsync(restored);
+        restored.ToArray().ShouldBe(content);
+    }
+
+    [Test]
+    public async Task DownloadAsync_ReadsLegacyGZipBlob_ThroughProductionZstdCodec()
+    {
+        // Back-compat guarantee after extracting gzip decode into GZipCompressionService: a blob written by the
+        // gzip era (gzip codec) must still decode when read through the production-registered zstd codec, whose
+        // auto-detect now delegates legacy frames to GZipCompressionService — exercised end-to-end via the full
+        // ChunkStorageService download stack.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var encryption = new PlaintextPassthroughService();
+        var legacyWriter = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
+        var productionReader = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
+        var content = new byte[4096];
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHashOf(content);
+
+        await legacyWriter.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cold,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        await using var download = await productionReader.DownloadAsync(chunkHash);
+        var restored = new MemoryStream();
+        await download.CopyToAsync(restored);
+        restored.ToArray().ShouldBe(content);
+    }
+
 }
