@@ -45,6 +45,18 @@ namespace Arius.Core.Features.RestoreCommand;
 /// batched Resolve chunk-index lookups as one <see cref="IAsyncEnumerable{T}"/> of <see cref="ResolvedFile"/>.
 /// The classify pass emits route/progress events; the download pass suppresses them.
 ///
+/// ```
+/// Resolve snapshot ─► Walk #1 ─► Route ─► Resolve ─► Classify ─┬─► Confirm rehydration ─┐
+///                                                              └────────────────────────┤
+///                                                                                       ▼
+///                                                                           Walk #2 ─► Route ─► Resolve ─► Grouper ─┬─► Large chunk queue ─┐
+///                                                                                                                   └─► Tar chunk groups ──┤
+///                                                                                                                                          ├─► Download workers ─┬─► restore large files ─┐
+///                                                                                                                                          │                     └─► extract tar entries ─┤
+///                                                                                                                                          │                                              ├─► Rehydrate needed/rerouted chunks ─► Cleanup ─► done
+///                                                                                                                                          └─► archived/pending chunks skipped ───────────┘
+/// ```
+///
 /// ## Channels
 ///
 /// | Channel        | Writer      | Reader        | Capacity          | Notes                                    |
