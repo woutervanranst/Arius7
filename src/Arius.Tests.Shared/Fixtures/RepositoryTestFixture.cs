@@ -206,6 +206,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 
+    public FakeLogCollector RestoreLogs => _restoreLogger.Collector;
+
 
     // --- COMMAND HELPERS ---
 

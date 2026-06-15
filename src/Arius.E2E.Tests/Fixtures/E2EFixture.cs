@@ -2,6 +2,7 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Encryption;
 using Arius.Tests.Shared.Fixtures;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace Arius.E2E.Tests.Fixtures;
 
@@ -45,6 +46,7 @@ internal sealed class E2EFixture : IAsyncDisposable
     internal LocalDirectory        RestoreDirectory  => Repository.RestoreDirectory;
     internal RelativeFileSystem    LocalFileSystem   => Repository.LocalFileSystem;
     internal RelativeFileSystem    RestoreFileSystem => Repository.RestoreFileSystem;
+    internal FakeLogCollector      RestoreLogs       => Repository.RestoreLogs;
 
     public static async Task<E2EFixture> CreateAsync(IBlobContainerService blobContainer, string accountName, string containerName, BlobTier defaultTier, string? passphrase = null, LocalDirectory? tempRoot = null, CancellationToken cancellationToken = default)
     {

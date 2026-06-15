@@ -299,9 +299,12 @@ public sealed class RestoreCommandHandler(
                         }
                         catch (BlobArchivedException ex) when (!ct.IsCancellationRequested)
                         {
-                            // Stale classification (e.g. external tier change): the blob is still archived.
-                            // Re-route to the rehydration path rather than faulting the run.
-                            logger.LogWarning(ex, "[download] Chunk {ChunkHash} is archived despite classification; re-routing to rehydration", chunk.ChunkHash.Short8);
+                            // Stale classification (e.g. external tier change): restore expected this chunk to
+                            // be readable now, but download proved the blob is still archived.
+                            logger.LogWarning(
+                                ex,
+                                "[download] Chunk {ChunkHash} is out of sync with StorageTierHint and in an offline tier. Re-routing to rehydration. This will have an extra cost-effect.",
+                                chunk.ChunkHash.Short8);
                             rerouteToRehydration.TryAdd(chunk.ChunkHash, chunk.CompressedSize);
                         }
                     });

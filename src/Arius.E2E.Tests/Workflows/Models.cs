@@ -22,4 +22,5 @@ internal sealed record ArchiveTierWorkflowOutcome(
     int ReadyFilesRestored,
     int ReadyPendingChunks,
     int CleanupDeletedChunks,
-    int PendingRehydratedBlobCount);
+    int PendingRehydratedBlobCount,
+    string? UnexpectedOnlineTierWarning);
