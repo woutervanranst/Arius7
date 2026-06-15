@@ -123,16 +123,14 @@ internal static class RestoreVerb
                     ConfirmRehydration = async (estimate, cancellationToken) =>
                     {
                         questionTcs.TrySetResult(estimate);
-                        using var reg = cancellationToken.Register(
-                            () => answerTcs.TrySetCanceled(cancellationToken));
+                        await using var reg = cancellationToken.Register(() => answerTcs.TrySetCanceled(cancellationToken));
                         return await answerTcs.Task.ConfigureAwait(false);
                     },
 
                     ConfirmCleanup = async (count, bytes, cancellationToken) =>
                     {
                         cleanupQuestionTcs.TrySetResult((count, bytes));
-                        using var reg = cancellationToken.Register(
-                            () => cleanupAnswerTcs.TrySetCanceled(cancellationToken));
+                        await using var reg = cancellationToken.Register(() => cleanupAnswerTcs.TrySetCanceled(cancellationToken));
                         return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                     },
 
@@ -142,7 +140,7 @@ internal static class RestoreVerb
                         var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, compressedSize, originalSize: 0);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
-                        return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                        return new Progress<long>(tracked.SetBytesDownloaded);
                     },
 
                     CreateTarBundleDownloadProgress = (chunkHash, compressedSize) =>
@@ -164,7 +162,7 @@ internal static class RestoreVerb
                         var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, compressedSize, originalSize);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
-                        return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                        return new Progress<long>(tracked.SetBytesDownloaded);
                     },
 
                     OnDownloadQueueReady = getter => restoreProgress.DownloadQueueDepth = getter,
@@ -195,8 +193,7 @@ internal static class RestoreVerb
                         if (!questionTcs.Task.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
                         {
                             var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
-                            var doCleanup = AnsiConsole.Confirm(
-                                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                            var doCleanup = AnsiConsole.Confirm($"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
                             cleanupAnswerTcs.TrySetResult(doCleanup);
                             result = await pipelineTask.ConfigureAwait(false);
                         }
@@ -237,21 +234,21 @@ internal static class RestoreVerb
                                 costTable.AddColumn(new TableColumn("High Priority").RightAligned());
 
                                 costTable.AddRow("Data retrieval",
-                                    $"\u20ac {estimate.RetrievalCostStandard:F4}",
-                                    $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                                    $"€ {estimate.RetrievalCostStandard:F4}",
+                                    $"€ {estimate.RetrievalCostHigh:F4}");
                                 costTable.AddRow("Read operations",
-                                    $"\u20ac {estimate.ReadOpsCostStandard:F4}",
-                                    $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                                    $"€ {estimate.ReadOpsCostStandard:F4}",
+                                    $"€ {estimate.ReadOpsCostHigh:F4}");
                                 costTable.AddRow("Write operations",
-                                    $"\u20ac {estimate.WriteOpsCost:F4}",
-                                    $"\u20ac {estimate.WriteOpsCost:F4}");
+                                    $"€ {estimate.WriteOpsCost:F4}",
+                                    $"€ {estimate.WriteOpsCost:F4}");
                                 costTable.AddRow("Storage (1 month)",
-                                    $"\u20ac {estimate.StorageCost:F4}",
-                                    $"\u20ac {estimate.StorageCost:F4}");
+                                    $"€ {estimate.StorageCost:F4}",
+                                    $"€ {estimate.StorageCost:F4}");
                                 costTable.AddEmptyRow();
                                 costTable.AddRow("[bold]Total[/]",
-                                    $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
-                                    $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                                    $"[bold]€ {estimate.TotalStandard:F4}[/]",
+                                    $"[bold]€ {estimate.TotalHigh:F4}[/]");
                                 AnsiConsole.Write(costTable);
 
                                 var choice = AnsiConsole.Prompt(
