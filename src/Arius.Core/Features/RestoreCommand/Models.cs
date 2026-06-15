@@ -23,7 +23,7 @@ internal sealed record FileToRestore(
 );
 
 /// <summary>
-/// In-progress tar chunk group built during download pass #2 and flushed after the walk completes.
+/// In-progress tar chunk built during download pass #2 and flushed after the walk completes.
 /// </summary>
 internal sealed class OpenTarChunk
 {
@@ -35,7 +35,7 @@ internal sealed class OpenTarChunk
 }
 
 /// <summary>
-/// A closed chunk group dispatched to a download worker. Large chunks contain one file; tar chunks contain
+/// A chunk dispatched to a download worker. Large chunks contain one file; tar chunks contain
 /// every selected file mapped to the chunk.
 /// </summary>
 internal sealed record ChunkToRestore(

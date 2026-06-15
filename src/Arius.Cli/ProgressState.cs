@@ -656,9 +656,9 @@ public sealed class ProgressState
 
     // ── Restore: chunk resolution and rehydration status ─────────────────────
 
-    /// <summary>Number of distinct chunk groups (unique content hashes) to download.</summary>
-    public int ChunkGroups => (int)Interlocked.Read(ref _chunkGroups);
-    private long _chunkGroups;
+    /// <summary>Number of distinct chunks selected for restore.</summary>
+    public int RestoreTotalChunks => (int)Interlocked.Read(ref _restoreTotalChunks);
+    private long _restoreTotalChunks;
 
     /// <summary>Number of large-file chunks.</summary>
     public int LargeChunkCount => (int)Interlocked.Read(ref _largeChunkCount);
@@ -669,9 +669,9 @@ public sealed class ProgressState
     private long _tarChunkCount;
 
     /// <summary>Sets chunk resolution counts.</summary>
-    public void SetChunkResolution(int chunkGroups, int largeCount, int tarCount)
+    public void SetChunkResolution(int totalChunks, int largeCount, int tarCount)
     {
-        Interlocked.Exchange(ref _chunkGroups, chunkGroups);
+        Interlocked.Exchange(ref _restoreTotalChunks, totalChunks);
         Interlocked.Exchange(ref _largeChunkCount, largeCount);
         Interlocked.Exchange(ref _tarChunkCount, tarCount);
     }

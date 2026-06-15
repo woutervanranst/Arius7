@@ -19,7 +19,7 @@ public class ChunkResolutionCompleteHandlerByteTotalsTests
             new ChunkResolutionCompleteEvent(10, 5, 5, TotalOriginalBytes: 500_000_000, TotalCompressedBytes: 200_000_000),
             CancellationToken.None);
 
-        state.ChunkGroups.ShouldBe(10);
+        state.RestoreTotalChunks.ShouldBe(10);
         state.LargeChunkCount.ShouldBe(5);
         state.TarChunkCount.ShouldBe(5);
         state.RestoreTotalOriginalSize.ShouldBe(500_000_000L);

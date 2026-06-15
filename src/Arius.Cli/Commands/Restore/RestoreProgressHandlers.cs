@@ -120,7 +120,7 @@ public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotif
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
-        state.SetChunkResolution(notification.ChunkGroups, notification.LargeCount, notification.TarCount);
+        state.SetChunkResolution(notification.TotalChunks, notification.LargeCount, notification.TarCount);
         state.SetTreeTraversalComplete(state.RestoreTotalFiles, notification.TotalOriginalBytes);
         state.SetRestoreTotalCompressedBytes(notification.TotalCompressedBytes);
         return ValueTask.CompletedTask;

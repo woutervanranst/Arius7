@@ -387,7 +387,7 @@ internal static class RestoreVerb
             var dispTotal = state.RouteNew + state.RouteSkipIdentical
                             + state.RouteOverwrite + state.RouteKeepLocalDiffers;
             var routeStarted = dispTotal > 0;
-            var checkedComplete = state.ChunkGroups > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
+            var checkedComplete = state.RestoreTotalChunks > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
 
             string checkedSymbol;
             if (checkedComplete && (routeStarted || total == 0))
