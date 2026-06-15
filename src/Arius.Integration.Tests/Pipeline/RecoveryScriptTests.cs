@@ -113,7 +113,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find the chunk blob name — list chunks/ prefix
         var chunkBlobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             chunkBlobs.Add(item.Name);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -170,7 +170,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find the chunk blob name — list chunks/ prefix
         var chunkBlobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             chunkBlobs.Add(item.Name);
         chunkBlobs.Count.ShouldBe(1);
         var chunkBlobName = chunkBlobs[0];
@@ -230,7 +230,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find tar chunk blob
         var chunkBlobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var blob = item.Name;
             var meta = await fix.BlobContainer.GetMetadataAsync(blob);
@@ -315,7 +315,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         // Find tar chunk blob
         var chunkBlobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var blob = item.Name;
             var meta = await fix.BlobContainer.GetMetadataAsync(blob);

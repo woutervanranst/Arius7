@@ -182,7 +182,7 @@ public interface IBlobContainerService
     /// </summary>
     IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath      prefix,
-        bool              includeMetadata   = false,
+        bool              includeMetadata,
         CancellationToken cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────

@@ -629,7 +629,7 @@ public class RestoreCommandHandlerTests
         // Delete one chunk blob so its download throws BlobNotFoundException mid-pipeline.
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         RelativePath? victim = null;
-        await foreach (var item in ((IBlobContainerService)blobs).ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in ((IBlobContainerService)blobs).ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             victim = item.Name;
             break;
@@ -819,7 +819,7 @@ public class RestoreCommandHandlerTests
     private static async Task<RelativePath> FindSingleChunkBlobAsync(IBlobContainerService blobs, string ariusType)
     {
         RelativePath? match = null;
-        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var metadata = await blobs.GetMetadataAsync(item.Name);
             if (!metadata.Metadata.TryGetValue(BlobMetadataKeys.AriusType, out var type) || type != ariusType)

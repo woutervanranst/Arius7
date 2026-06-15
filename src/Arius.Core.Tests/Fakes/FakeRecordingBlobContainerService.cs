@@ -40,7 +40,7 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
         return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.ContainsKey(blobName) });
     }
 
-    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var blobName in _remoteBlobs.Keys
                      .Where(name => name.StartsWith(prefix))

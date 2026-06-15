@@ -80,7 +80,7 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
         // The large-file path writes metadata in a separate call after OpenWrite completes,
         // so a concurrent fault can leave uploaded chunk bodies without arius-type metadata.
         var blobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             blobs.Add(item.Name);
         blobs.ShouldNotBeEmpty("at least one chunk should have been uploaded before the crash");
 

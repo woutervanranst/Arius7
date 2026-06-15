@@ -182,7 +182,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata = false,
+        bool includeMetadata,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var item in _container.GetBlobsAsync(

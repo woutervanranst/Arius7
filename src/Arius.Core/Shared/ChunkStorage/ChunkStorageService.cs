@@ -169,12 +169,11 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         var  blobNames  = new List<RelativePath>();
         long totalBytes = 0;
 
-        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken: cancellationToken))
+        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
             var blobName = item.Name;
             blobNames.Add(blobName);
-            var meta = await blobs.GetMetadataAsync(blobName, cancellationToken);
-            totalBytes += meta.ContentLength ?? 0;
+            totalBytes += item.ContentLength ?? 0;
         }
 
         return new RehydratedChunkCleanupPlan(blobs, blobNames, totalBytes);
@@ -207,7 +206,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     public async Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(CancellationToken cancellationToken = default)
     {
         var rehydrated = new Dictionary<ChunkHash, bool>();
-        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, cancellationToken: cancellationToken))
+        await foreach (var item in blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: false, cancellationToken: cancellationToken))
         {
             // The rehydrated blob name is "chunks-rehydrated/{chunkHash}"; the final segment is the hash.
             if (!ChunkHash.TryParse(item.Name.Name.ToString(), out var chunkHash))

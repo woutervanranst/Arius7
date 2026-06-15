@@ -270,7 +270,7 @@ internal sealed class FileTreeService : IFileTreeService
 
         // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
         var remoteSnapshots = new List<PathSegment>();
-        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false, cancellationToken: cancellationToken))
         {
             var name = item.Name;
             if (name != RelativePath.Root)
@@ -309,7 +309,7 @@ internal sealed class FileTreeService : IFileTreeService
         _logger.LogInformation("Snapshot mismatch (local {Local}, remote {Remote}); materializing filetree markers", latestLocal?.ToString() ?? "(none)", latestRemote?.ToString() ?? "(none)");
 
         var createdCount = 0;
-        await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, cancellationToken: cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.FileTreesPrefix, includeMetadata: false, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
 

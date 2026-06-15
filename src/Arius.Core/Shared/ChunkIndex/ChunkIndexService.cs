@@ -412,7 +412,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // Delete stale shards
         var deletedStaleShardCount = 0;
         await Parallel.ForEachAsync(
-            _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, cancellationToken: cancellationToken),
+            _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, includeMetadata: false, cancellationToken: cancellationToken),
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
             async (item, ct) =>
             {

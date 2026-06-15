@@ -100,7 +100,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata = false,
+        bool includeMetadata,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         _requestedBlobNames.Enqueue(prefix);

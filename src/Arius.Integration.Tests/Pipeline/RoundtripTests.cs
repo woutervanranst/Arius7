@@ -224,13 +224,13 @@ public class RoundtripTests(AzuriteFixture azurite)
         var first = await fix.ArchiveAsync();
         first.Success.ShouldBeTrue(first.ErrorMessage);
 
-        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
+        var snapshotCountAfterFirst = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false).CountAsync();
         snapshotCountAfterFirst.ShouldBe(1);
 
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false).CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);
@@ -251,7 +251,7 @@ public class RoundtripTests(AzuriteFixture azurite)
         var second = await fix.ArchiveAsync();
         second.Success.ShouldBeTrue(second.ErrorMessage);
 
-        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix).CountAsync();
+        var snapshotCountAfterSecond = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false).CountAsync();
         snapshotCountAfterSecond.ShouldBe(1);
         second.RootHash.ShouldBe(first.RootHash);
         second.SnapshotTime.ShouldBe(first.SnapshotTime);
@@ -661,7 +661,7 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         // Find the chunk blob and verify chunk-size metadata was set by the streaming chain
         var blobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             blobs.Add(item.Name);
         blobs.Count.ShouldBe(1);
 

@@ -36,7 +36,7 @@ internal sealed class ContentTypeCapturingBlobContainerService : IBlobContainerS
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         _inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default) =>
         _inner.ListAsync(prefix, includeMetadata, cancellationToken);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) =>
