@@ -327,9 +327,9 @@ public sealed class RestoreCommandHandler(
                 .Concat(rerouteToRehydration.Keys)
                 .Distinct()
                 .ToList();
-            var chunksToRehydrate = chunksToRequest.Count + pendingRehydrationCount;
+            var totalPending = chunksToRequest.Count + pendingRehydrationCount;
 
-            if (chunksToRehydrate > 0)
+            if (chunksToRequest.Count > 0)
             {
                 long totalRehydrateBytes = 0;
                 foreach (var chunkHash in chunksToRequest)
@@ -348,11 +348,8 @@ public sealed class RestoreCommandHandler(
                     }
                 }
 
-                if (chunksToRequest.Count > 0)
-                    await mediator.Publish(new RehydrationStartedEvent(chunksToRequest.Count, totalRehydrateBytes), cancellationToken);
+                await mediator.Publish(new RehydrationStartedEvent(chunksToRequest.Count, totalRehydrateBytes), cancellationToken);
             }
-
-            var totalPending = chunksToRehydrate;
 
             // ── Stage 6: Cleanup ALL rehydrated blobs in the container ────────────
             if (totalPending == 0)
