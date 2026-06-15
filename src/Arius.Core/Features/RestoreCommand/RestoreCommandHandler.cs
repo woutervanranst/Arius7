@@ -80,9 +80,6 @@ public sealed class RestoreCommandHandler(
 
         try
         {
-            var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
-            var filePipeline = new RestoreFilePipeline(encryption, index, fileTreeService, mediator, logger);
-
             // ── Stage 1: Resolve snapshot ─────────────────────────────────────────
             logger.LogInformation("[phase] resolve-snapshot");
             var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
@@ -106,12 +103,14 @@ public sealed class RestoreCommandHandler(
             // Stream Walk → Route → Resolve and fold every resolved file into a per-distinct-chunk map.
             // Rehydration state is one prefix listing; each chunk's status is decided from it + tier hint.
             logger.LogInformation("[phase] classify");
+            var fs           = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
+            var filesToRestore = new RestoreFilePipeline(encryption, index, fileTreeService, mediator, logger);
             var rehydratedState = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
             var skipped         = new StrongBox<long>(0);
             var classification  = new Dictionary<ChunkHash, ChunkClassification>();
             var fileCount       = 0;
 
-            await foreach (var resolved in filePipeline.StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: true, skipped, cancellationToken))
+            await foreach (var resolved in filesToRestore.GetStreamAsync(fs, snapshot.RootHash, opts, emitEvents: true, skipped, cancellationToken))
             {
                 fileCount++;
                 var entry     = resolved.IndexEntry;
@@ -225,7 +224,7 @@ public sealed class RestoreCommandHandler(
                     var openTars = new Dictionary<ChunkHash, List<FileToRestore>>();
                     try
                     {
-                        await foreach (var resolved in filePipeline.StreamResolvedFilesAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, ct))
+                        await foreach (var resolved in filesToRestore.GetStreamAsync(fs, snapshot.RootHash, opts, emitEvents: false, skipped: null, ct))
                         {
                             var chunkHash = resolved.IndexEntry.ChunkHash;
                             if (!classification.TryGetValue(chunkHash, out var cc) || cc.Status != ChunkHydrationStatus.Available)

@@ -27,7 +27,7 @@ internal sealed class RestoreFilePipeline(
     /// Streams selected snapshot files that should be restored locally, after applying overwrite/skip rules,
     /// paired with the chunk-index entry required to read their content.
     /// </summary>
-    public async IAsyncEnumerable<ResolvedFile> StreamResolvedFilesAsync(
+    public async IAsyncEnumerable<ResolvedFile> GetStreamAsync(
         RelativeFileSystem fs,
         FileTreeHash       rootHash,
         RestoreOptions     opts,
