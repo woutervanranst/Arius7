@@ -248,7 +248,7 @@ public class ChunkIndexLocalStoreTests
         var shmPath = RelativePath.Parse("cache.sqlite-shm");
 
         store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
-        SqliteConnection.ClearAllPools();
+        ClearPool(root);
         fileSystem.WriteAllBytesAsync(walPath, [1], CancellationToken.None).GetAwaiter().GetResult();
         fileSystem.WriteAllBytesAsync(shmPath, [2], CancellationToken.None).GetAwaiter().GetResult();
 
@@ -274,7 +274,7 @@ public class ChunkIndexLocalStoreTests
         var store = new ChunkIndexLocalStore(root);
         var fileSystem = new RelativeFileSystem(root);
 
-        SqliteConnection.ClearAllPools();
+        ClearPool(root);
         fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
         var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.FindEntry(FakeContentHash('a')));
@@ -291,7 +291,7 @@ public class ChunkIndexLocalStoreTests
         var fileSystem = new RelativeFileSystem(root);
         store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
-        SqliteConnection.ClearAllPools();
+        ClearPool(root);
         fileSystem.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
         var ex = Should.Throw<ChunkIndexLocalStoreException>(() => store.UpsertPendingFlush(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool)));
@@ -309,5 +309,17 @@ public class ChunkIndexLocalStoreTests
         }.ToString());
         connection.Open();
         return connection;
+    }
+
+    private static void ClearPool(LocalDirectory root)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = root.Resolve(RelativePath.Parse("cache.sqlite")),
+            Pooling    = true,
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
     }
 }

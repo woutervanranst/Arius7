@@ -491,7 +491,7 @@ internal sealed class ChunkIndexLocalStore
         {
             lock (_localStateGate)
             {
-                SqliteConnection.ClearAllPools();
+                ClearConnectionPool();
                 var replacedFiles = 0;
                 foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
                 {
@@ -593,6 +593,12 @@ internal sealed class ChunkIndexLocalStore
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         return connection;
+    }
+
+    private void ClearConnectionPool()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        SqliteConnection.ClearPool(connection);
     }
 
     private static bool HasPendingFlushEntries(SqliteConnection connection)

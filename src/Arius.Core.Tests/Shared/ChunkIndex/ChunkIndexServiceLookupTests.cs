@@ -309,7 +309,7 @@ public class ChunkIndexServiceLookupTests
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var cache = new RelativeFileSystem(cacheRoot);
-        SqliteConnection.ClearAllPools();
+        ClearPool(repositoryKey);
         await cache.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None);
 
         var ex = await Should.ThrowAsync<ChunkIndexLocalStoreException>(() => index.LookupAsync(contentHash));
@@ -351,7 +351,7 @@ public class ChunkIndexServiceLookupTests
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var cache = new RelativeFileSystem(cacheRoot);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
-        SqliteConnection.ClearAllPools();
+        ClearPool(repositoryKey);
         cache.WriteAllBytesAsync(RelativePath.Parse("cache.sqlite"), [0x6E, 0x6F, 0x74, 0x2D, 0x61, 0x2D, 0x64, 0x62], CancellationToken.None).GetAwaiter().GetResult();
 
         var ex = Should.Throw<ChunkIndexLocalStoreException>(() => index.AddEntry(new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool)));
@@ -434,4 +434,16 @@ public class ChunkIndexServiceLookupTests
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
+
+    private static void ClearPool(string repositoryKey)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey).Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
+    }
 }
