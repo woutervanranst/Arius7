@@ -146,6 +146,13 @@ public class RestoreCommandHandlerTests
         restoreResult.FilesRestored.ShouldBe(2);
         fixture.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("archives/duplicates/binary-a.bin")).ShouldBe(content);
         fixture.RestoreFileSystem.ReadAllBytes(RelativePath.Parse("nested/deep/a/b/c/binary-b.bin")).ShouldBe(content);
+
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<FileRestoredEvent>(e => e.RelativePath == RelativePath.Parse("archives/duplicates/binary-a.bin") && e.FileSize == content.Length),
+            Arg.Any<CancellationToken>());
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<FileRestoredEvent>(e => e.RelativePath == RelativePath.Parse("nested/deep/a/b/c/binary-b.bin") && e.FileSize == content.Length),
+            Arg.Any<CancellationToken>());
     }
 
     [Test]

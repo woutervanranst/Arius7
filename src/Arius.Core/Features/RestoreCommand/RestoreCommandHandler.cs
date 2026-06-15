@@ -282,18 +282,13 @@ public sealed class RestoreCommandHandler(
                             {
                                 foreach (var file in chunk.Files)
                                 {
-                                    await RestoreLargeFileAsync(chunk.ChunkHash, file, fs, opts, chunk.CompressedSize, ct);
+                                    await RestoreLargeFileAsync(chunk.ChunkHash, file, fs, opts, chunk.CompressedSize, chunk.OriginalSize, ct);
                                     Interlocked.Increment(ref filesRestored);
-                                    await mediator.Publish(new FileRestoredEvent(file.RelativePath, chunk.OriginalSize), ct);
                                 }
                             }
                             else
                             {
-                                // Multiple files may share the same content hash (duplicates), so use a lookup.
-                                var filesByContentHash = chunk.Files
-                                    .GroupBy(f => f.ContentHash)
-                                    .ToDictionary(g => g.Key, g => g.ToList());
-                                var restored = await RestoreTarBundleAsync(chunk.ChunkHash, filesByContentHash, fs, opts, chunk.CompressedSize, ct);
+                                var restored = await RestoreTarBundleAsync(chunk.ChunkHash, chunk.Files, fs, opts, chunk.CompressedSize, ct);
                                 Interlocked.Add(ref filesRestored, restored);
                             }
                         }
@@ -405,7 +400,7 @@ public sealed class RestoreCommandHandler(
 
     // ── Large file restore ───────────────────────────────────────────────────────
 
-    private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
+    private async Task RestoreLargeFileAsync(ChunkHash chunkHash, FileToRestore file, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, long originalSize, CancellationToken cancellationToken)
     {
         var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
         await using (var sourceStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
@@ -420,6 +415,8 @@ public sealed class RestoreCommandHandler(
         // Create pointer file.
         if (!opts.NoPointers)
             await PointerFileFormat.WriteAsync(fs, file.RelativePath, file.ContentHash, file.Created, file.Modified, cancellationToken);
+
+        await mediator.Publish(new FileRestoredEvent(file.RelativePath, originalSize), cancellationToken);
     }
 
     // ── Tar bundle restore ─────────────────────────────────────────────────────────
@@ -428,9 +425,14 @@ public sealed class RestoreCommandHandler(
     /// Downloads a tar chunk and extracts only the entries whose content hash matches
     /// <paramref name="filesNeeded"/>. Returns the number of files written to disk.
     /// </summary>
-    private async Task<int> RestoreTarBundleAsync(ChunkHash chunkHash, Dictionary<ContentHash, List<FileToRestore>> filesNeeded, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
+    private async Task<int> RestoreTarBundleAsync(ChunkHash chunkHash, IReadOnlyList<FileToRestore> filesNeeded, RelativeFileSystem fs, RestoreOptions opts, long compressedSize, CancellationToken cancellationToken)
     {
         var restored = 0;
+        
+        // Multiple files may share the same content hash (duplicates), so use a lookup.
+        var filesByContentHash = filesNeeded
+            .GroupBy(f => f.ContentHash)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var             progress      = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
         await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
@@ -441,7 +443,7 @@ public sealed class RestoreCommandHandler(
             if (!ContentHash.TryParse(tarEntry.Name, out var contentHash))
                 throw new FormatException($"Invalid tar entry name '{tarEntry.Name}' in chunk '{chunkHash}'.");
 
-            if (!filesNeeded.TryGetValue(contentHash, out var filesForHash))
+            if (!filesByContentHash.TryGetValue(contentHash, out var filesForHash))
                 continue; // not needed for this restore — skip
 
             RelativePath? sourcePath = null;
