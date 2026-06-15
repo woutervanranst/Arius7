@@ -427,9 +427,9 @@ public class RestoreCommandHandlerTests
 
         try
         {
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
-            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, TestCompression.Instance, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, TestCompression.Instance, accountName, containerName);
 
             var rootHash = FileTreeHash.Parse(encryption.ComputeHash("root-missing-index"u8).ToString());
             var snapshot = new SnapshotManifest
@@ -444,9 +444,9 @@ public class RestoreCommandHandlerTests
             var missingHash = ContentHash.Parse(encryption.ComputeHash("missing"u8).ToString());
             var fileTreePayload = System.Text.Encoding.UTF8.GetBytes($"{missingHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} missing.txt\n");
             blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(fileTreePayload));
-            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption, TestCompression.Instance));
 
-            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption, TestCompression.Instance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 
@@ -483,7 +483,7 @@ public class RestoreCommandHandlerTests
             {
                 blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes($"{contentHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} corrupt.txt\n")));
                 blobs.AddBlob(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)), [1, 2, 3]);
-                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption, TestCompression.Instance));
             },
             expectedCategory: "corrupt",
             expectedGuidance: "Run the explicit chunk-index repair command and retry restore");
@@ -499,7 +499,7 @@ public class RestoreCommandHandlerTests
             seedBlobs: async (blobs, rootHash, snapshot, encryption) =>
             {
                 blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes($"{contentHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} repair-marker.txt\n")));
-                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption));
+                blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption, TestCompression.Instance));
             },
             beforeHandle: (repositoryRoot, cancellationToken) =>
             {
@@ -1040,9 +1040,9 @@ public class RestoreCommandHandlerTests
 
         try
         {
-            var       snapshotSvc     = new SnapshotService(blobs, encryption, accountName, containerName);
-            using var index           = new ChunkIndexService(blobs, encryption, snapshotSvc, accountName, containerName);
-            var       fileTreeService = new FileTreeService(blobs, encryption, accountName, containerName);
+            var       snapshotSvc     = new SnapshotService(blobs, encryption, TestCompression.Instance, accountName, containerName);
+            using var index           = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshotSvc, accountName, containerName);
+            var       fileTreeService = new FileTreeService(blobs, encryption, TestCompression.Instance, accountName, containerName);
 
             var rootHash = FileTreeHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"root-{contentHash.Short8}")).ToString());
             var snapshot = new SnapshotManifest
@@ -1059,7 +1059,7 @@ public class RestoreCommandHandlerTests
             if (beforeHandle is not null)
                 await beforeHandle(RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName), CancellationToken.None);
 
-            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(encryption, index, new ChunkStorageService(blobs, encryption, TestCompression.Instance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 

@@ -86,6 +86,43 @@ public class ZstdCompressionServiceTests
         await Should.ThrowAsync<InvalidDataException>(async () => await DecompressAsync([0x00, 0x11, 0x22, 0x33, 0x44]));
     }
 
+    [Test]
+    public async Task Decompress_RoundTrips_ViaByteArrayReadOverloads()
+    {
+        // CopyToAsync drives the Span/Memory read overloads; some callers still use the byte[]-array
+        // Read/ReadAsync overloads, so exercise those decode paths explicitly.
+        var original = new byte[20_000];
+        Random.Shared.NextBytes(original);
+        var compressed = await CompressAsync(original);
+
+        (await ReadAllViaByteArrayAsync(compressed)).ShouldBe(original);
+        ReadAllViaByteArraySync(compressed).ShouldBe(original);
+    }
+
+    private static async Task<byte[]> ReadAllViaByteArrayAsync(byte[] compressed)
+    {
+        await using var source     = new MemoryStream(compressed);
+        await using var decompress = Sut.WrapForDecompression(source, leaveOpen: true);
+        var output = new MemoryStream();
+        var buffer = new byte[4096];
+        int read;
+        while ((read = await decompress.ReadAsync(buffer, 0, buffer.Length)) > 0)
+            output.Write(buffer, 0, read);
+        return output.ToArray();
+    }
+
+    private static byte[] ReadAllViaByteArraySync(byte[] compressed)
+    {
+        using var source     = new MemoryStream(compressed);
+        using var decompress = Sut.WrapForDecompression(source, leaveOpen: true);
+        var output = new MemoryStream();
+        var buffer = new byte[4096];
+        int read;
+        while ((read = decompress.Read(buffer, 0, buffer.Length)) > 0)
+            output.Write(buffer, 0, read);
+        return output.ToArray();
+    }
+
     private static async Task<byte[]> CompressAsync(byte[] data)
     {
         var ms = new MemoryStream();

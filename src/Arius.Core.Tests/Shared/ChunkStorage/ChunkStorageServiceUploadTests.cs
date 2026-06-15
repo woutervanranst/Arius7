@@ -343,4 +343,53 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(RetryThinParentChunkHash.ToString());
     }
 
+    [Test]
+    public async Task UploadLargeAsync_EncryptedRepository_TagsBlobWithGcmEncryptedContentType()
+    {
+        // With a passphrase the service encrypts, so the blob must carry the encrypted content type
+        // (the plaintext tests only exercise the unencrypted branch). The inline round-trip
+        // verification still runs against the pre-encryption compressed bytes and must pass.
+        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var blobs = new ContentTypeCapturingBlobContainerService();
+        var service = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
+        var content = new byte[4096];
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        blobs.LastOpenWriteContentType.ShouldBe(ContentTypes.LargeGcmEncrypted);
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_RewindsContent_WhenSourceIsNotAtStart()
+    {
+        // A source handed in mid-stream must be rewound to position 0 and read in full; the round-trip
+        // verifier only reproduces the chunk hash if every byte from the start was compressed.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var content = new byte[4096];
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHashOf(content);
+        var source = new MemoryStream(content) { Position = 1234 };
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: source,
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeFalse();
+        result.OriginalSize.ShouldBe(content.Length);
+    }
+
 }
