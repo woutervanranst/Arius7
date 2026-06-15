@@ -134,7 +134,7 @@ public class ChunkIndexServiceArchiveScenarioTests
         ChunkIndexDownloads(blobs).ShouldBe(0); // all P1 cache hits
 
         // White-box: the persisted prefixes are recorded at snapshot "s1" and the uploaded remote ETag.
-        SqliteConnection.ClearAllPools();
+        ClearPool(account);
         var store = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(account, account));
         store.IsPrefixAtSnapshotVersion(prefixAa, "s1").ShouldBeTrue();
         store.IsPrefixAtSnapshotVersion(prefixBb, "s1").ShouldBeTrue();
@@ -340,7 +340,7 @@ public class ChunkIndexServiceArchiveScenarioTests
         }
 
         // White-box — "aa" was re-stamped to "s2" while keeping the unchanged remote identity A1 (revalidated, not reloaded).
-        SqliteConnection.ClearAllPools();
+        ClearPool(machineB);
         var store = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(machineB, machineB));
         store.IsPrefixAtSnapshotVersion(first.PrefixAa, "s2").ShouldBeTrue();
         store.IsPrefixAtETag(first.PrefixAa, aaEtagA1).ShouldBeTrue();
@@ -473,4 +473,16 @@ public class ChunkIndexServiceArchiveScenarioTests
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";
+
+    private static void ClearPool(string repositoryKey)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey).Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
+    }
 }

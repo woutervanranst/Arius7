@@ -242,7 +242,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        SqliteConnection.ClearAllPools();
+        ClearChunkIndexPool(accountName, containerName);
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -265,5 +265,17 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             index.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    private static void ClearChunkIndexPool(string accountName, string containerName)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName).Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
     }
 }

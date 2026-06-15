@@ -118,7 +118,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         var databasePath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite"));
         var walPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-wal"));
         var shmPath = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite-shm"));
-        SqliteConnection.ClearAllPools();
+        ClearPool(Account, containerName);
         if (File.Exists(walPath))
             File.Delete(walPath);
         if (File.Exists(shmPath))
@@ -130,5 +130,17 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 
         ex.Message.ShouldContain("Delete the local chunk-index cache directory");
         ex.Message.ShouldContain("repair command");
+    }
+
+    private static void ClearPool(string accountName, string containerName)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName).Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
     }
 }
