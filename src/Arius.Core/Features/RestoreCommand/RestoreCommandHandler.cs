@@ -16,11 +16,11 @@ namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
 /// Orchestrates restore from a repository snapshot into a local directory.
-/// The handler owns snapshot selection, chunk classification, confirmation, download, rehydration,
+/// The handler owns snapshot selection, chunk availability classification, confirmation, download, rehydration,
 /// and cleanup. <see cref="RestoreFilePipeline"/> owns the shared Walk -> Route -> Resolve file stream
 /// used by both restore passes.
 ///
-/// Restore must classify archive-tier chunks and ask for rehydration confirmation <em>before</em> any
+/// Restore must classify archive-tier chunks and ask for any required rehydration confirmation <em>before</em> any
 /// download starts, so cancellation never writes files. The repository tree is therefore walked twice;
 /// <see cref="IFileTreeService.ReadAsync"/> is cache-backed, so the second walk is cheap.
 ///
@@ -31,8 +31,9 @@ namespace Arius.Core.Features.RestoreCommand;
 ///    counters. Only chunks that need a rehydration request are retained. Rehydration state comes from one
 ///    rehydrated-prefix listing plus each chunk's index <c>StorageTierHint</c>; there are no per-chunk
 ///    storage calls.
-/// 3. **Confirm** - compute the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>.
-///    Cancellation exits before any download starts.
+/// 3. **Confirm** - when rehydration is needed, compute the cost estimate and invoke
+///    <see cref="RestoreOptions.ConfirmRehydration"/> if supplied. Cancellation exits before any download starts;
+///    a missing callback means Standard priority is used.
 /// 4. **Download** (walk #2, events suppressed) - group routed files by chunk and download available
 ///    chunks. Large chunks restore one file immediately; tar chunks restore after the second walk completes.
 ///    A chunk that is still archived at download time is re-routed to rehydration.
@@ -43,7 +44,19 @@ namespace Arius.Core.Features.RestoreCommand;
 ///
 /// <see cref="RestoreFilePipeline"/> composes breadth-first Walk, parallel Route conflict checks, and
 /// batched Resolve chunk-index lookups as one <see cref="IAsyncEnumerable{T}"/> of <see cref="ResolvedFile"/>.
-/// The classify pass emits route/progress events; the download pass suppresses them.
+/// The classification pass emits route/progress events; the download pass suppresses them.
+///
+/// ```
+/// Resolve snapshot ─► Walk #1 ─► Route ─► Resolve ─► Classify ─┬─► Confirm rehydration ─┐
+///                                                              └────────────────────────┤
+///                                                                                       ▼
+///                                                                           Walk #2 ─► Route ─► Resolve ─► Grouper ─┬─► Large chunk queue ─┐
+///                                                                                                                   └─► Tar chunk groups ──┤
+///                                                                                                                                          ├─► Download workers ─┬─► restore large files ─┐
+///                                                                                                                                          │                     └─► extract tar entries ─┤
+///                                                                                                                                          │                                              ├─► Rehydrate needed/rerouted chunks ─► Cleanup ─► done
+///                                                                                                                                          └─► archived/pending chunks skipped ───────────┘
+/// ```
 ///
 /// ## Channels
 ///
@@ -69,13 +82,13 @@ public sealed class RestoreCommandHandler(
 
     /// <summary>
     /// Executes the end-to-end restore pipeline for the provided <see cref="RestoreCommand"/>. See the
-    /// type-level documentation for the numbered stage / pipeline / channel breakdown.
+    /// type-level documentation for the numbered stage, pipeline, and channel breakdown.
     /// </summary>
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
         var opts = command.Options;
 
-        logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} overwrite={Overwrite}", opts.RootDirectory, accountName, containerName, opts.Version ?? "latest", opts.Overwrite);
+        logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} targetPath={TargetPath} overwrite={Overwrite} noPointers={NoPointers}", opts.RootDirectory, accountName, containerName, opts.Version ?? "latest", opts.TargetPath?.ToString() ?? "(all)", opts.Overwrite, opts.NoPointers);
 
         try
         {
@@ -84,15 +97,19 @@ public sealed class RestoreCommandHandler(
             var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);
             if (snapshot is null)
             {
+                var errorMessage = opts.Version is null
+                    ? "No snapshots found in this repository."
+                    : $"Snapshot '{opts.Version}' not found.";
+
+                logger.LogInformation("[restore] Failure: {Error}", errorMessage);
+
                 return new RestoreResult
                 {
                     Success                  = false,
                     FilesRestored            = 0,
                     FilesSkipped             = 0,
                     ChunksPendingRehydration = 0,
-                    ErrorMessage             = opts.Version is null
-                        ? "No snapshots found in this repository."
-                        : $"Snapshot '{opts.Version}' not found."
+                    ErrorMessage             = errorMessage
                 };
             }
 
@@ -165,21 +182,22 @@ public sealed class RestoreCommandHandler(
                 }
             }
 
-            logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
+            logger.LogInformation("[tree] Traversal complete: {Count} file(s) selected, originalSize={OriginalSize}", fileCount, totalOriginalBytes.Bytes().Humanize());
             var tarChunks = totalChunks - largeChunks;
 
             await mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
 
-            logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}", totalChunks, largeChunks, tarChunks);
+            logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}, storedSize={StoredSize}", totalChunks, largeChunks, tarChunks, totalChunkBytes.Bytes().Humanize());
             await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalChunkBytes), cancellationToken);
 
-            logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount);
+            logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending} downloadSize={DownloadSize} rehydrateSize={RehydrateSize} pendingSize={PendingSize}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount, downloadBytes.Bytes().Humanize(), bytesNeedingRehydration.Bytes().Humanize(), bytesPendingRehydration.Bytes().Humanize());
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
 
             // ── Stage 3: Cost estimate + confirm rehydration ──────────────────────
             var rehydratePriority = RehydratePriority.Standard;
             if (needsRehydrationCount > 0 && opts.ConfirmRehydration is not null)
             {
+                logger.LogInformation("[phase] confirm-rehydration");
                 var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
                     chunksAvailable:          availableCount,
                     chunksAlreadyRehydrated:  rehydratedCount,
@@ -193,6 +211,9 @@ public sealed class RestoreCommandHandler(
                 if (chosenPriority is null)
                 {
                     // User cancelled rehydration — exit without downloading or rehydrating.
+                    logger.LogInformation("[rehydration] Confirmation cancelled: pending={Pending} rehydrateSize={RehydrateSize}", needsRehydrationCount + pendingRehydrationCount, bytesNeedingRehydration.Bytes().Humanize());
+                    logger.LogInformation("[restore] Done: restored=0 skipped={Skipped} pendingRehydration={Pending}", skipped.Value, needsRehydrationCount + pendingRehydrationCount);
+
                     return new RestoreResult
                     {
                         Success                  = true,
@@ -328,22 +349,24 @@ public sealed class RestoreCommandHandler(
 
             if (chunksToRehydrate.Count > 0)
             {
+                logger.LogInformation("[phase] rehydrate");
                 long totalRehydrateBytes = 0;
                 foreach (var chunkHash in chunksToRehydrate)
                 {
+                    var rehydrateSize = 0L;
+                    if (!chunksNeedingRehydration.TryGetValue(chunkHash, out rehydrateSize))
+                        rerouteToRehydration.TryGetValue(chunkHash, out rehydrateSize);
+
                     try
                     {
                         await chunkStorage.StartRehydrationAsync(chunkHash, rehydratePriority, cancellationToken);
-                        logger.LogInformation("[rehydrate] TODO");
+                        logger.LogInformation("[rehydration] Requested: chunk={ChunkHash} priority={Priority} size={Size}", chunkHash.Short8, rehydratePriority, rehydrateSize.Bytes().Humanize());
 
-                        if (chunksNeedingRehydration.TryGetValue(chunkHash, out var classifiedSize))
-                            totalRehydrateBytes += classifiedSize;
-                        else if (rerouteToRehydration.TryGetValue(chunkHash, out var reroutedSize))
-                            totalRehydrateBytes += reroutedSize;
+                        totalRehydrateBytes += rehydrateSize;
                     }
                     catch (Exception ex)
                     {
-                        logger.LogWarning(ex, "Failed to start rehydration for chunk {ChunkHash}", chunkHash);
+                        logger.LogWarning(ex, "[rehydration] Request failed: chunk={ChunkHash} size={Size}", chunkHash.Short8, rehydrateSize.Bytes().Humanize());
                     }
                 }
 
@@ -353,11 +376,13 @@ public sealed class RestoreCommandHandler(
             // ── Stage 6: Cleanup ALL rehydrated blobs in the container ────────────
             if (totalPending == 0 && opts.ConfirmCleanup is not null)
             {
+                logger.LogInformation("[phase] cleanup");
                 await using var cleanupPlan = await chunkStorage.PlanRehydratedCleanupAsync(cancellationToken);
+                logger.LogInformation("[cleanup] Plan: chunks={Chunks} size={Size}", cleanupPlan.ChunkCount, cleanupPlan.TotalBytes.Bytes().Humanize());
                 if (cleanupPlan.ChunkCount > 0 && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
                 {
                     var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
-                    logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s)", cleanupResult.DeletedChunkCount);
+                    logger.LogInformation("[cleanup] Deleted: chunks={ChunksDeleted} plannedSize={Size}", cleanupResult.DeletedChunkCount, cleanupPlan.TotalBytes.Bytes().Humanize());
                     await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount), cancellationToken);
                 }
             }
@@ -374,7 +399,24 @@ public sealed class RestoreCommandHandler(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Restore pipeline failed");
+            switch (ex)
+            {
+                case ChunkIndexCorruptException:
+                    logger.LogInformation("[chunk] Chunk-index resolution failed: category=corrupt; action=Run the explicit chunk-index repair command and retry restore; error={Error}", ex.Message);
+                    break;
+                case ChunkIndexRepairIncompleteException:
+                    logger.LogInformation("[chunk] Chunk-index resolution failed: category=repair-incomplete; action=Rerun the explicit chunk-index repair command before retrying restore; error={Error}", ex.Message);
+                    break;
+                case ChunkIndexLocalStoreException:
+                    logger.LogInformation("[chunk] Chunk-index resolution failed: category=local-cache; action=Delete the local chunk-index cache directory or run the explicit chunk-index repair command; error={Error}", ex.Message);
+                    break;
+                case InvalidOperationException when ex.Message.Contains("missing from the chunk index", StringComparison.OrdinalIgnoreCase):
+                    logger.LogInformation("[chunk] Chunk-index resolution failed: category=unresolved-snapshot-content; action=Run the explicit chunk-index repair command and retry restore; error={Error}", ex.Message);
+                    break;
+            }
+
+            logger.LogError(ex, "[restore] Failure: {Error}", ex.Message);
+
             return new RestoreResult
             {
                 Success                  = false,

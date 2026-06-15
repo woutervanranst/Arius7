@@ -16,22 +16,22 @@ public sealed record RehydrationStartedEvent(int ChunkCount, long TotalBytes) : 
 /// <summary>Emitted after restore resolves the snapshot.</summary>
 public sealed record SnapshotResolvedEvent(DateTimeOffset Timestamp, FileTreeHash RootHash) : INotification;
 
-/// <summary>Emitted after the classify pass has walked all selected files.</summary>
+/// <summary>Emitted after the classification pass has walked all selected files.</summary>
 public sealed record TreeTraversalCompleteEvent(int FileCount, long TotalOriginalSize) : INotification;
 
-/// <summary>Emitted during the classify walk with the cumulative number of selected files discovered.</summary>
+/// <summary>Emitted during the classification walk with the cumulative number of selected files discovered.</summary>
 public sealed record TreeTraversalProgressEvent(int FilesFound) : INotification;
 
 /// <summary>Local conflict decision made for a selected restore file.</summary>
 public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 
-/// <summary>Emitted during classify when a selected file is routed.</summary>
+/// <summary>Emitted during classification when a selected file is routed.</summary>
 public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
-/// <summary>Emitted after classify has counted the distinct chunks needed by selected files.</summary>
+/// <summary>Emitted after classification has counted the distinct chunks needed by selected files.</summary>
 public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalChunkBytes = 0) : INotification;
 
-/// <summary>Emitted after classify determines chunk hydration status.</summary>
+/// <summary>Emitted after classification determines chunk hydration status.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;
 
 /// <summary>Emitted before downloading one available chunk.</summary>

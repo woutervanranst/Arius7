@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// SQLite-backed local chunk-index cache for remote-backed shard data and pending local flush entries.
+/// SQLite-backed local chunk-index store for remote-backed shard entries, prefix validation state, and pending local flush entries.
 /// </summary>
 internal sealed class ChunkIndexLocalStore
 {
@@ -95,7 +95,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix is already recorded for the specified snapshot version.
+    /// Returns whether the prefix has already been validated for the specified snapshot version.
     /// </summary>
     public bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion)
     {
@@ -117,7 +117,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote blob identity.
+    /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote shard identity.
     /// </summary>
     public bool IsPrefixAtETag(PathSegment prefix, string etag)
     {
@@ -163,7 +163,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns prefixes represented by any local chunk-index row.
+    /// Returns prefixes represented by any local chunk-index entry.
     /// </summary>
     public IEnumerable<PathSegment> GetStoredPrefixes()
     {
@@ -187,7 +187,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Streams all entries currently stored for <paramref name="prefix"/>.
+    /// Streams all locally stored entries for <paramref name="prefix"/>, including remote-backed and pending-flush rows.
     /// </summary>
     public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
     {
@@ -234,7 +234,7 @@ internal sealed class ChunkIndexLocalStore
     // -- PENDING FLUSH WRITES -------------------------------------------------
 
     /// <summary>
-    /// Records a newly discovered entry as pending local flush until it is uploaded to the remote chunk index.
+    /// Records a newly discovered entry as pending local flush until it is uploaded to remote shard blobs.
     /// </summary>
     public void UpsertPendingFlush(ShardEntry entry)
     {
@@ -295,7 +295,7 @@ internal sealed class ChunkIndexLocalStore
     // -- REMOTE-BACKED CACHE --------------------------------------------------
 
     /// <summary>
-    /// Records a known remote-backed entry, typically during explicit repair from remote chunk blobs.
+    /// Records a known remote-backed entry, typically during explicit repair from authoritative chunk blobs.
     /// </summary>
     public void UpsertRemoteBacked(ShardEntry entry)
     {
@@ -376,7 +376,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks the prefix validated for the specified snapshot without changing remote-backed cached rows.
+    /// Marks the prefix validated for the specified snapshot without changing cached remote-backed entries.
     /// </summary>
     public void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion)
     {
@@ -395,7 +395,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Promotes loaded prefixes from one snapshot version to another while preserving recorded remote state.
+    /// Promotes loaded-prefix validation from one snapshot version to another while preserving recorded remote state.
     /// </summary>
     public void PromoteToSnapshotVersion(string oldSnapshotVersion, string newSnapshotVersion)
     {
@@ -419,7 +419,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks pending flush shard state synchronized by clearing pending flush rows and validating uploaded prefixes for the specified snapshot.
+    /// Marks uploaded pending entries as synchronized by clearing pending-flush flags and validating uploaded prefixes for the specified snapshot.
     /// </summary>
     public void MarkPendingFlushesSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion)
     {

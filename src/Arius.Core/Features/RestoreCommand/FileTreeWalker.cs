@@ -8,6 +8,10 @@ namespace Arius.Core.Features.RestoreCommand;
 /// </summary>
 internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
 {
+    /// <summary>
+    /// Walks snapshot filetrees breadth-first and yields files under <paramref name="targetPrefix"/>,
+    /// or all files when no target path is supplied.
+    /// </summary>
     public async IAsyncEnumerable<FileToRestore> WalkFilesAsync(
         FileTreeHash rootHash,
         RelativePath? targetPrefix,

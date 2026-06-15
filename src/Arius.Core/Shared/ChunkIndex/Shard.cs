@@ -3,7 +3,7 @@ using Arius.Core.Shared.Storage;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// One line in a chunk index shard file.
+/// One entry in a chunk-index shard file.
 /// Large-file chunk format (content-hash == chunk-hash): <c>content-hash            original-size chunk-size tier-hint</c>
 /// Small-file chunk format (content-hash != chunk-hash): <c>content-hash chunk-hash original-size chunk-size tier-hint</c>
 /// All hashes are lowercase hex strings (SHA256 = 64 chars).
@@ -89,7 +89,7 @@ internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, 
 }
 
 /// <summary>
-/// An in-memory shard: a collection of <see cref="ShardEntry"/> keyed by content-hash.
+/// Mutable in-memory representation of one chunk-index shard, keyed by content hash.
 /// </summary>
 internal sealed class Shard
 {
@@ -108,12 +108,12 @@ internal sealed class Shard
     // ── Mutation ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Adds or replaces an entry in this owned mutable shard page.
+    /// Adds or replaces an entry in this shard.
     /// </summary>
     public void AddOrUpdate(ShardEntry entry) => _entries[entry.ContentHash] = entry;
 
     /// <summary>
-    /// Adds or replaces entries in this owned mutable shard page. Duplicate content hashes use last-writer-wins order.
+    /// Adds or replaces entries in this shard. Duplicate content hashes use last-writer-wins order.
     /// </summary>
     public void AddOrUpdateRange(IEnumerable<ShardEntry> entries)
     {
