@@ -589,6 +589,55 @@ public class RestoreCommandHandlerTests
         fixture.RestoreFileSystem.FileExists(relativePath).ShouldBeFalse();
     }
 
+    [Test]
+    public async Task Handle_ReadyRehydratedChunk_ReportsRehydratedStatus()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-rehydrated-status-{Guid.NewGuid():N}",
+            $"ctr-restore-rehydrated-status-{Guid.NewGuid():N}");
+
+        var relativePath = RelativePath.Parse("archive/rehydrated.bin");
+        var content      = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Archive,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var contentHash = fixture.Encryption.ComputeHash(content);
+        var chunkHash   = ChunkHash.Parse(contentHash);
+        var blobs       = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        var download    = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
+        await using (download.Stream)
+        await using (var rehydrated = new MemoryStream())
+        {
+            await download.Stream.CopyToAsync(rehydrated);
+            blobs.SeedBlob(BlobPaths.ChunkRehydratedPath(chunkHash), rehydrated.ToArray(), BlobTier.Cool);
+        }
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(1);
+
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<RehydrationStatusEvent>(e => e.Available == 0 && e.Rehydrated == 1 && e.NeedsRehydration == 0 && e.Pending == 0),
+            Arg.Any<CancellationToken>());
+    }
+
     private static async Task<byte[]> CompressAsync(byte[] plaintext)
     {
         using var output = new MemoryStream();
