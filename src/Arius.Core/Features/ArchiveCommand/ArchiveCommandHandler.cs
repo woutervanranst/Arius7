@@ -531,21 +531,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             compressedSize = uploadResult.StoredSize;
 
-                    var proportionalFactor = sealedTar.UncompressedSize > 0
-                        ? (double)compressedSize / sealedTar.UncompressedSize
-                        : 1.0;
-
                     // Parallel thin chunk creation for each entry
                     await Parallel.ForEachAsync(
                         sealedTar.Entries,
                         new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
                         async (entry, entryCt) =>
                         {
-                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
+                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, compressedSize, entryCt);
 
                             // The tar blob's tier governs all of its thin entries.
-                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, opts.UploadTier), entryCt);
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, compressedSize, opts.UploadTier), entryCt);
                             await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
                         });
 

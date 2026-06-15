@@ -16,7 +16,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
         => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
 
-    public async Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long compressedSize, CancellationToken cancellationToken = default)
+    public async Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long chunkSize, CancellationToken cancellationToken = default)
     {
         var blobName = BlobPaths.ThinChunkPath(contentHash);
         var metadata = new Dictionary<string, string>
@@ -24,7 +24,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
             [BlobMetadataKeys.AriusType]       = BlobMetadataKeys.TypeThin,
             [BlobMetadataKeys.ParentChunkHash] = parentChunkHash.ToString(),
             [BlobMetadataKeys.OriginalSize]    = originalSize.ToString(),
-            [BlobMetadataKeys.CompressedSize]  = compressedSize.ToString(),
+            [BlobMetadataKeys.ChunkSize]       = chunkSize.ToString(),
         };
 
         retry:

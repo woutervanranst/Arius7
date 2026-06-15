@@ -145,23 +145,22 @@ public sealed class RestoreCommandHandler(
                     }
                 }
 
-                var includeBytes = !entry.IsLargeChunk || firstSeen;
-                if (!includeBytes)
+                totalOriginalBytes += entry.OriginalSize;
+                if (!firstSeen)
                     continue;
 
-                totalOriginalBytes   += entry.OriginalSize;
-                totalCompressedBytes += entry.CompressedSize;
+                totalCompressedBytes += entry.ChunkSize;
                 switch (status)
                 {
                     case ChunkHydrationStatus.Available:
-                        downloadBytes += entry.CompressedSize;
+                        downloadBytes += entry.ChunkSize;
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
-                        bytesNeedingRehydration             += entry.CompressedSize;
-                        chunksNeedingRehydration[chunkHash] += entry.CompressedSize;
+                        bytesNeedingRehydration             += entry.ChunkSize;
+                        chunksNeedingRehydration[chunkHash] += entry.ChunkSize;
                         break;
                     case ChunkHydrationStatus.RehydrationPending:
-                        bytesPendingRehydration += entry.CompressedSize;
+                        bytesPendingRehydration += entry.ChunkSize;
                         break;
                 }
             }
@@ -241,14 +240,14 @@ public sealed class RestoreCommandHandler(
 
                             if (entry.IsLargeChunk)
                             {
-                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], entry.CompressedSize, entry.OriginalSize), ct);
+                                await chunkChannel.Writer.WriteAsync(new ChunkToRestore(chunkHash, IsLargeChunk: true, [resolved.File], entry.ChunkSize, entry.OriginalSize), ct);
                                 continue;
                             }
 
                             if (!openTars.TryGetValue(chunkHash, out var tar))
                                 openTars[chunkHash] = tar = new OpenTarChunk();
                             tar.Files.Add(resolved.File);
-                            tar.CompressedSize += entry.CompressedSize;
+                            tar.CompressedSize = entry.ChunkSize;
                             tar.OriginalSize   += entry.OriginalSize;
                         }
 

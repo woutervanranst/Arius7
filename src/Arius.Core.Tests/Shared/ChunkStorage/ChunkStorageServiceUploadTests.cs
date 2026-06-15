@@ -235,7 +235,7 @@ public class ChunkStorageServiceUploadTests
             contentHash: ThinContentHash,
             parentChunkHash: ThinParentChunkHash,
             originalSize: 512,
-            compressedSize: 111,
+            chunkSize: 111,
             cancellationToken: CancellationToken.None);
 
         created.ShouldBeTrue();
@@ -245,7 +245,7 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.AriusType].ShouldBe(BlobMetadataKeys.TypeThin);
         metadata.Metadata[BlobMetadataKeys.ParentChunkHash].ShouldBe(ThinParentChunkHash.ToString());
         metadata.Metadata[BlobMetadataKeys.OriginalSize].ShouldBe("512");
-        metadata.Metadata[BlobMetadataKeys.CompressedSize].ShouldBe("111");
+        metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe("111");
         metadata.Tier.ShouldBe(BlobTier.Cool);
 
         var download = await blobs.DownloadAsync(BlobPaths.ThinChunkPath(ThinContentHash));
@@ -274,7 +274,7 @@ public class ChunkStorageServiceUploadTests
             contentHash: ExistingThinContentHash,
             parentChunkHash: ExistingThinParentChunkHash,
             originalSize: 123,
-            compressedSize: 45,
+            chunkSize: 45,
             cancellationToken: CancellationToken.None);
 
         created.ShouldBeFalse();
@@ -294,7 +294,7 @@ public class ChunkStorageServiceUploadTests
             contentHash: RetryThinContentHash,
             parentChunkHash: RetryThinParentChunkHash,
             originalSize: 789,
-            compressedSize: 222,
+            chunkSize: 222,
             cancellationToken: CancellationToken.None);
 
         created.ShouldBeTrue();
