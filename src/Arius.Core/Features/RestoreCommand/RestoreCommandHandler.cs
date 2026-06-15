@@ -129,6 +129,7 @@ public sealed class RestoreCommandHandler(
                     switch (status)
                     {
                         case ChunkHydrationStatus.Available:
+                            // NOTE: we _may_ undercount available if the StorageTierHint is not in sync with actual blob storage
                             if (rehydratedState.ContainsKey(chunkHash))
                                 rehydratedCount++;
                             else
@@ -151,6 +152,7 @@ public sealed class RestoreCommandHandler(
                 switch (status)
                 {
                     case ChunkHydrationStatus.Available:
+                        // NOTE: we _may_ undercount available if the StorageTierHint is not in sync with actual blob storage
                         downloadBytes += entry.ChunkSize;
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
