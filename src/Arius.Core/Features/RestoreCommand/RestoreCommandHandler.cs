@@ -98,6 +98,7 @@ public sealed class RestoreCommandHandler(
             }
 
             logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
+            await mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash), cancellationToken);
 
             // ── Stage 2: Classify (walk #1, streaming + bounded) ──────────────────
             // Stream Walk → Route → Resolve and fold every resolved file into counters.
@@ -168,12 +169,10 @@ public sealed class RestoreCommandHandler(
             logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
             var tarChunks = totalChunks - largeChunks;
 
-            await mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, fileCount), cancellationToken);
             await mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
-            await mediator.Publish(new RestoreStartedEvent(fileCount), cancellationToken);
 
             logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}", totalChunks, largeChunks, tarChunks);
-            await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
+            await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalCompressedBytes), cancellationToken);
 
             logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount);
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
