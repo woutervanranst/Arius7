@@ -1,5 +1,4 @@
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.ChunkStorage;
 
 namespace Arius.Core.Features.RestoreCommand;
 
@@ -24,18 +23,15 @@ internal sealed record FileToRestore(
 );
 
 /// <summary>
-/// Mutable per-chunk restore plan built during classify and keyed by <see cref="ChunkHash"/>.
-/// <see cref="RefCount"/> is the number of selected files referencing the chunk; download uses it to
-/// close a tar group once all selected files for that chunk have arrived. Tar chunk sizes are summed
-/// across selected files. A class is used because the handler mutates the accumulator in place.
+/// In-progress tar chunk group built during download pass #2 and flushed after the walk completes.
 /// </summary>
-internal sealed class ChunkClassification
+internal sealed class OpenTarChunk
 {
-    public required bool                 IsLargeChunk   { get; init; }
-    public required ChunkHydrationStatus Status         { get; set; }
-    public          long                 CompressedSize { get; set; }
-    public          long                 OriginalSize   { get; set; }
-    public          int                  RefCount       { get; set; }
+    public List<FileToRestore> Files { get; } = [];
+
+    public long CompressedSize { get; set; }
+
+    public long OriginalSize { get; set; }
 }
 
 /// <summary>
