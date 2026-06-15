@@ -320,16 +320,16 @@ public sealed class RestoreCommandHandler(
             // ── Stage 5: Kick off rehydration for archive-tier chunks ─────────────
             // Chunks already pending are not re-requested (StartCopyFromUri 409s on an archived blob that
             // already has a pending copy); re-routed chunks (stale-classification download failures) are.
-            var chunksToRequest = chunksNeedingRehydration.Keys
+            var chunksToRehydrate = chunksNeedingRehydration.Keys
                 .Concat(rerouteToRehydration.Keys)
                 .Distinct()
                 .ToList();
-            var totalPending = chunksToRequest.Count + pendingRehydrationCount;
+            var totalPending = chunksToRehydrate.Count + pendingRehydrationCount;
 
-            if (chunksToRequest.Count > 0)
+            if (chunksToRehydrate.Count > 0)
             {
                 long totalRehydrateBytes = 0;
-                foreach (var chunkHash in chunksToRequest)
+                foreach (var chunkHash in chunksToRehydrate)
                 {
                     try
                     {
@@ -347,7 +347,7 @@ public sealed class RestoreCommandHandler(
                     }
                 }
 
-                await mediator.Publish(new RehydrationStartedEvent(chunksToRequest.Count, totalRehydrateBytes), cancellationToken);
+                await mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate.Count, totalRehydrateBytes), cancellationToken);
             }
 
             // ── Stage 6: Cleanup ALL rehydrated blobs in the container ────────────
