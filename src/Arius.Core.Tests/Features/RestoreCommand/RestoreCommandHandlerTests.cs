@@ -638,6 +638,65 @@ public class RestoreCommandHandlerTests
             Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task Handle_PendingRehydratedChunk_DoesNotPromptOrPublishRehydrationStarted()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-pending-rehydrated-{Guid.NewGuid():N}",
+            $"ctr-restore-pending-rehydrated-{Guid.NewGuid():N}");
+
+        var relativePath = RelativePath.Parse("archive/pending.bin");
+        var content      = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Archive,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
+
+        var contentHash = fixture.Encryption.ComputeHash(content);
+        var chunkHash   = ChunkHash.Parse(contentHash);
+        var blobs       = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        var download    = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
+        await using (download.Stream)
+        await using (var rehydrated = new MemoryStream())
+        {
+            await download.Stream.CopyToAsync(rehydrated);
+            blobs.SeedBlob(BlobPaths.ChunkRehydratedPath(chunkHash), rehydrated.ToArray(), BlobTier.Archive);
+        }
+
+        var confirmCalled = false;
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                Overwrite     = true,
+                ConfirmRehydration = (_, _) =>
+                {
+                    confirmCalled = true;
+                    return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
+                },
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.ChunksPendingRehydration.ShouldBe(1);
+        confirmCalled.ShouldBeFalse("chunks already pending rehydration should not ask for a new rehydration priority");
+
+        await fixture.Mediator.Received(1).Publish(
+            Arg.Is<RehydrationStatusEvent>(e => e.Available == 0 && e.Rehydrated == 0 && e.NeedsRehydration == 0 && e.Pending == 1),
+            Arg.Any<CancellationToken>());
+        await fixture.Mediator.DidNotReceive().Publish(
+            Arg.Any<RehydrationStartedEvent>(),
+            Arg.Any<CancellationToken>());
+    }
+
     private static async Task<byte[]> CompressAsync(byte[] plaintext)
     {
         using var output = new MemoryStream();

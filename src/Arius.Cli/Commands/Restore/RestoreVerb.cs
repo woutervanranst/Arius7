@@ -215,10 +215,10 @@ internal static class RestoreVerb
                                 "-");
                             summaryTable.AddRow("[yellow]Needs rehydration[/]",
                                 estimate.ChunksNeedingRehydration.ToString(),
-                                estimate.RehydrationBytes.Bytes().Humanize());
+                                estimate.BytesNeedingRehydration.Bytes().Humanize());
                             summaryTable.AddRow("[dim]Rehydration pending[/]",
                                 estimate.ChunksPendingRehydration.ToString(),
-                                "-");
+                                estimate.BytesPendingRehydration.Bytes().Humanize());
                             AnsiConsole.Write(summaryTable);
 
                             RehydratePriority? priority;

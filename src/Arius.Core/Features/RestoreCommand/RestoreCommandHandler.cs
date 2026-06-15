@@ -109,7 +109,7 @@ public sealed class RestoreCommandHandler(
             var  rehydratedState          = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
             var  skipped                  = new StrongBox<long>(0);
             int  fileCount                = 0, availableCount       = 0, rehydratedCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
-            long totalOriginalBytes       = 0, totalCompressedBytes = 0, downloadBytes         = 0, rehydrationBytes        = 0;
+            long totalOriginalBytes       = 0, totalCompressedBytes = 0, downloadBytes         = 0, bytesNeedingRehydration = 0, bytesPendingRehydration = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
 
@@ -157,11 +157,11 @@ public sealed class RestoreCommandHandler(
                         downloadBytes += entry.CompressedSize;
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
-                        rehydrationBytes                    += entry.CompressedSize;
+                        bytesNeedingRehydration             += entry.CompressedSize;
                         chunksNeedingRehydration[chunkHash] += entry.CompressedSize;
                         break;
                     case ChunkHydrationStatus.RehydrationPending:
-                        rehydrationBytes += entry.CompressedSize;
+                        bytesPendingRehydration += entry.CompressedSize;
                         break;
                 }
             }
@@ -183,11 +183,12 @@ public sealed class RestoreCommandHandler(
                 chunksAlreadyRehydrated:  rehydratedCount,
                 chunksNeedingRehydration: needsRehydrationCount,
                 chunksPendingRehydration: pendingRehydrationCount,
-                rehydrationBytes:         rehydrationBytes,
+                bytesNeedingRehydration:  bytesNeedingRehydration,
+                bytesPendingRehydration:  bytesPendingRehydration,
                 downloadBytes:            downloadBytes);
 
             var rehydratePriority = RehydratePriority.Standard;
-            if (needsRehydrationCount > 0 || pendingRehydrationCount > 0)
+            if (needsRehydrationCount > 0)
             {
                 if (opts.ConfirmRehydration is not null)
                 {
@@ -348,7 +349,8 @@ public sealed class RestoreCommandHandler(
                     }
                 }
 
-                await mediator.Publish(new RehydrationStartedEvent(chunksToRehydrate, totalRehydrateBytes), cancellationToken);
+                if (chunksToRequest.Count > 0)
+                    await mediator.Publish(new RehydrationStartedEvent(chunksToRequest.Count, totalRehydrateBytes), cancellationToken);
             }
 
             var totalPending = chunksToRehydrate;
