@@ -360,8 +360,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _localStore.RecreateDatabase(backupExisting: true);
 
         // Pass 1: collect tar blob metadata. A thin chunk's data lives in its parent tar (the thin
-        // stub itself is always uploaded Cool), so its tier hint must come from the tar blob.
-        // Memory is bounded by the tar count, not the file count.
+        // stub itself is always uploaded Cool), so its tier hint and chunk size must come from the
+        // tar blob. Keeping this as a separate listing avoids buffering unresolved thin chunks or
+        // doing per-thin remote lookups; memory stays bounded by the tar count, not the file count.
         var tarMetadata = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
@@ -376,7 +377,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
         }
 
-        // Pass 2: rebuild the entries.
+        // Pass 2: rebuild the entries once all parent tar metadata is known.
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
 
