@@ -264,8 +264,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         foreach (var index in _ownedIndexes)
             index.Dispose();
 
-        SqliteConnection.ClearAllPools();
-
         return ValueTask.CompletedTask;
     }
 }
