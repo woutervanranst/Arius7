@@ -4,8 +4,7 @@ using Arius.Core.Shared.Encryption;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Handles shard serialization with gzip compression and optional encryption.
-/// Task 4.3.
+/// Serializes chunk-index shards with gzip compression and optional encryption.
 /// </summary>
 internal static class ShardSerializer
 {

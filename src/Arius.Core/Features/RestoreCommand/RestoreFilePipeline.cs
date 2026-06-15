@@ -10,7 +10,7 @@ namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
 /// Streams the selected files that restore should write by composing Walk -> Route -> Resolve.
-/// The classify pass uses this stream to count and classify chunks; the download pass uses it to group
+/// The classification pass uses this stream to count chunks and classify availability; the download pass uses it to group
 /// available chunks without buffering the full file list.
 /// </summary>
 internal sealed class RestoreFilePipeline(
@@ -87,7 +87,7 @@ internal sealed class RestoreFilePipeline(
     /// <summary>
     /// Applies restore conflict rules for one file and returns whether it should continue to Resolve.
     /// Existing identical files and locally-different files without overwrite are skipped; missing files
-    /// and overwrite-enabled files continue. Route events are emitted only during the classify pass.
+    /// and overwrite-enabled files continue. Route events are emitted only during the classification pass.
     /// </summary>
     private async ValueTask<bool> ShouldRestoreAsync(
         FileToRestore      file,

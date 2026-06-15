@@ -16,11 +16,11 @@ namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
 /// Orchestrates restore from a repository snapshot into a local directory.
-/// The handler owns snapshot selection, chunk classification, confirmation, download, rehydration,
+/// The handler owns snapshot selection, chunk availability classification, confirmation, download, rehydration,
 /// and cleanup. <see cref="RestoreFilePipeline"/> owns the shared Walk -> Route -> Resolve file stream
 /// used by both restore passes.
 ///
-/// Restore must classify archive-tier chunks and ask for rehydration confirmation <em>before</em> any
+/// Restore must classify archive-tier chunks and ask for any required rehydration confirmation <em>before</em> any
 /// download starts, so cancellation never writes files. The repository tree is therefore walked twice;
 /// <see cref="IFileTreeService.ReadAsync"/> is cache-backed, so the second walk is cheap.
 ///
@@ -31,8 +31,9 @@ namespace Arius.Core.Features.RestoreCommand;
 ///    counters. Only chunks that need a rehydration request are retained. Rehydration state comes from one
 ///    rehydrated-prefix listing plus each chunk's index <c>StorageTierHint</c>; there are no per-chunk
 ///    storage calls.
-/// 3. **Confirm** - compute the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>.
-///    Cancellation exits before any download starts.
+/// 3. **Confirm** - when rehydration is needed, compute the cost estimate and invoke
+///    <see cref="RestoreOptions.ConfirmRehydration"/> if supplied. Cancellation exits before any download starts;
+///    a missing callback means Standard priority is used.
 /// 4. **Download** (walk #2, events suppressed) - group routed files by chunk and download available
 ///    chunks. Large chunks restore one file immediately; tar chunks restore after the second walk completes.
 ///    A chunk that is still archived at download time is re-routed to rehydration.
@@ -43,7 +44,7 @@ namespace Arius.Core.Features.RestoreCommand;
 ///
 /// <see cref="RestoreFilePipeline"/> composes breadth-first Walk, parallel Route conflict checks, and
 /// batched Resolve chunk-index lookups as one <see cref="IAsyncEnumerable{T}"/> of <see cref="ResolvedFile"/>.
-/// The classify pass emits route/progress events; the download pass suppresses them.
+/// The classification pass emits route/progress events; the download pass suppresses them.
 ///
 /// ```
 /// Resolve snapshot ─► Walk #1 ─► Route ─► Resolve ─► Classify ─┬─► Confirm rehydration ─┐
@@ -81,7 +82,7 @@ public sealed class RestoreCommandHandler(
 
     /// <summary>
     /// Executes the end-to-end restore pipeline for the provided <see cref="RestoreCommand"/>. See the
-    /// type-level documentation for the numbered stage / pipeline / channel breakdown.
+    /// type-level documentation for the numbered stage, pipeline, and channel breakdown.
     /// </summary>
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
