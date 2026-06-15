@@ -20,7 +20,7 @@ public class BlobListItemTests
                 [BlobMetadataKeys.ParentChunkHash] = FakeChunkHash('b').ToString(),
             });
 
-        var items = await blobs.ListAsync(BlobPaths.ChunksPrefix).ToListAsync();
+        var items = await blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false).ToListAsync();
 
         items.Count.ShouldBe(1);
         items[0].Name.ShouldBe(blobName);

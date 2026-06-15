@@ -52,7 +52,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
         // Find the tar blob (which is what the restore pipeline downloads / rehydrates).
         // Small files are bundled into tar chunks; the thin chunk is just a pointer to the tar.
         RelativePath? chunkBlobName = null;
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var name = item.Name;
             var meta = await fix.BlobContainer.GetMetadataAsync(name);
@@ -253,7 +253,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // After cleanup, no rehydrated blobs should remain
         var rehydratedAfter = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: false))
             rehydratedAfter.Add(item.Name);
         rehydratedAfter.ShouldBeEmpty("rehydrated blob should be deleted after cleanup");
     }
@@ -292,7 +292,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // Verify both blobs exist in chunks-rehydrated/
         var rehydratedBefore = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: false))
             rehydratedBefore.Add(item.Name);
         rehydratedBefore.Count.ShouldBe(2, "both rehydrated blobs should exist before restore");
 
@@ -330,7 +330,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
         // After cleanup, no rehydrated blobs should remain
         var rehydratedAfter = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: false))
             rehydratedAfter.Add(item.Name);
         rehydratedAfter.ShouldBeEmpty("all rehydrated blobs should be deleted after cleanup");
     }

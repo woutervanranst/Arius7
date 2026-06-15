@@ -123,29 +123,27 @@ internal static class RestoreVerb
                     ConfirmRehydration = async (estimate, cancellationToken) =>
                     {
                         questionTcs.TrySetResult(estimate);
-                        using var reg = cancellationToken.Register(
-                            () => answerTcs.TrySetCanceled(cancellationToken));
+                        await using var reg = cancellationToken.Register(() => answerTcs.TrySetCanceled(cancellationToken));
                         return await answerTcs.Task.ConfigureAwait(false);
                     },
 
                     ConfirmCleanup = async (count, bytes, cancellationToken) =>
                     {
                         cleanupQuestionTcs.TrySetResult((count, bytes));
-                        using var reg = cancellationToken.Register(
-                            () => cleanupAnswerTcs.TrySetCanceled(cancellationToken));
+                        await using var reg = cancellationToken.Register(() => cleanupAnswerTcs.TrySetCanceled(cancellationToken));
                         return await cleanupAnswerTcs.Task.ConfigureAwait(false);
                     },
 
-                    CreateLargeFileDownloadProgress = (relativePath, compressedSize) =>
+                    CreateLargeFileDownloadProgress = (relativePath, chunkSize) =>
                     {
                         var key = relativePath.ToString();
-                        var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, compressedSize, originalSize: 0);
+                        var tracked = new TrackedDownload(key, DownloadKind.LargeFile, key, chunkSize, originalSize: 0);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
-                        return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                        return new Progress<long>(tracked.SetBytesDownloaded);
                     },
 
-                    CreateTarBundleDownloadProgress = (chunkHash, compressedSize) =>
+                    CreateTarBundleDownloadProgress = (chunkHash, chunkSize) =>
                     {
                         var key = chunkHash.ToString();
                         string displayName;
@@ -161,11 +159,13 @@ internal static class RestoreVerb
                             displayName = $"TAR bundle ({key[..8]}...)";
                         }
 
-                        var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, compressedSize, originalSize);
+                        var tracked = new TrackedDownload(key, DownloadKind.TarBundle, displayName, chunkSize, originalSize);
                         restoreProgress.TrackedDownloads[key] = tracked;
 
-                        return new Progress<long>(bytes => tracked.SetBytesDownloaded(bytes));
+                        return new Progress<long>(tracked.SetBytesDownloaded);
                     },
+
+                    OnDownloadQueueReady = getter => restoreProgress.DownloadQueueDepth = getter,
                 };
 
                 RestoreResult? result = null;
@@ -193,8 +193,7 @@ internal static class RestoreVerb
                         if (!questionTcs.Task.IsCompleted && cleanupQuestionTcs.Task.IsCompleted)
                         {
                             var (count, bytes) = await cleanupQuestionTcs.Task.ConfigureAwait(false);
-                            var doCleanup = AnsiConsole.Confirm(
-                                $"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
+                            var doCleanup = AnsiConsole.Confirm($"Delete {count} rehydrated chunk(s) ({bytes.Bytes().Humanize()}) from Azure?");
                             cleanupAnswerTcs.TrySetResult(doCleanup);
                             result = await pipelineTask.ConfigureAwait(false);
                         }
@@ -216,10 +215,10 @@ internal static class RestoreVerb
                                 "-");
                             summaryTable.AddRow("[yellow]Needs rehydration[/]",
                                 estimate.ChunksNeedingRehydration.ToString(),
-                                estimate.RehydrationBytes.Bytes().Humanize());
+                                estimate.BytesNeedingRehydration.Bytes().Humanize());
                             summaryTable.AddRow("[dim]Rehydration pending[/]",
                                 estimate.ChunksPendingRehydration.ToString(),
-                                "-");
+                                estimate.BytesPendingRehydration.Bytes().Humanize());
                             AnsiConsole.Write(summaryTable);
 
                             RehydratePriority? priority;
@@ -235,21 +234,21 @@ internal static class RestoreVerb
                                 costTable.AddColumn(new TableColumn("High Priority").RightAligned());
 
                                 costTable.AddRow("Data retrieval",
-                                    $"\u20ac {estimate.RetrievalCostStandard:F4}",
-                                    $"\u20ac {estimate.RetrievalCostHigh:F4}");
+                                    $"€ {estimate.RetrievalCostStandard:F4}",
+                                    $"€ {estimate.RetrievalCostHigh:F4}");
                                 costTable.AddRow("Read operations",
-                                    $"\u20ac {estimate.ReadOpsCostStandard:F4}",
-                                    $"\u20ac {estimate.ReadOpsCostHigh:F4}");
+                                    $"€ {estimate.ReadOpsCostStandard:F4}",
+                                    $"€ {estimate.ReadOpsCostHigh:F4}");
                                 costTable.AddRow("Write operations",
-                                    $"\u20ac {estimate.WriteOpsCost:F4}",
-                                    $"\u20ac {estimate.WriteOpsCost:F4}");
+                                    $"€ {estimate.WriteOpsCost:F4}",
+                                    $"€ {estimate.WriteOpsCost:F4}");
                                 costTable.AddRow("Storage (1 month)",
-                                    $"\u20ac {estimate.StorageCost:F4}",
-                                    $"\u20ac {estimate.StorageCost:F4}");
+                                    $"€ {estimate.StorageCost:F4}",
+                                    $"€ {estimate.StorageCost:F4}");
                                 costTable.AddEmptyRow();
                                 costTable.AddRow("[bold]Total[/]",
-                                    $"[bold]\u20ac {estimate.TotalStandard:F4}[/]",
-                                    $"[bold]\u20ac {estimate.TotalHigh:F4}[/]");
+                                    $"[bold]€ {estimate.TotalStandard:F4}[/]",
+                                    $"[bold]€ {estimate.TotalHigh:F4}[/]");
                                 AnsiConsole.Write(costTable);
 
                                 var choice = AnsiConsole.Prompt(
@@ -382,20 +381,20 @@ internal static class RestoreVerb
 
         // ── Stage 2: Checking / Checked ───────────────────────────────────────
         {
-            var dispTotal = state.DispositionNew + state.DispositionSkipIdentical
-                            + state.DispositionOverwrite + state.DispositionKeepLocalDiffers;
-            var dispositionStarted = dispTotal > 0;
-            var checkedComplete = state.ChunkGroups > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
+            var dispTotal = state.RouteNew + state.RouteSkipIdentical
+                            + state.RouteOverwrite + state.RouteKeepLocalDiffers;
+            var routeStarted = dispTotal > 0;
+            var checkedComplete = state.RestoreTotalChunks > 0 || done > 0 || (state.TreeTraversalComplete && total == 0);
 
             string checkedSymbol;
-            if (checkedComplete && (dispositionStarted || total == 0))
+            if (checkedComplete && (routeStarted || total == 0))
                 checkedSymbol = "[green]●[/]";
-            else if (dispositionStarted)
+            else if (routeStarted)
                 checkedSymbol = "[yellow]○[/]";
             else
                 checkedSymbol = "[dim]○[/]";
 
-            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.DispositionNew:N0} new, {state.DispositionSkipIdentical:N0} identical, {state.DispositionOverwrite:N0} overwrite, {state.DispositionKeepLocalDiffers:N0} kept"));
+            lines.Add(new Markup($"  {checkedSymbol} Checked      {state.RouteNew:N0} new, {state.RouteSkipIdentical:N0} identical, {state.RouteOverwrite:N0} overwrite, {state.RouteKeepLocalDiffers:N0} kept"));
         }
 
         // ── Stage 3: Restoring ────────────────────────────────────────────────
@@ -410,19 +409,23 @@ internal static class RestoreVerb
 
             var countStr = state.TreeTraversalComplete ? $"{done:N0}/{total:N0} files" : $"{done:N0} files";
 
-            var totalCompressed = state.RestoreTotalCompressedBytes;
+            var queueDepth = state.DownloadQueueDepth?.Invoke() ?? 0;
+            if (queueDepth > 0 && !allDone)
+                countStr += $"  [dim]({queueDepth:N0} queued)[/]";
+
+            var totalChunkBytes = state.RestoreTotalChunkBytes;
             var bytesDownloaded = state.RestoreBytesDownloaded;
             var totalOriginal   = state.RestoreTotalOriginalSize;
 
-            if (totalCompressed > 0)
+            if (totalChunkBytes > 0)
             {
-                var fraction = (double)bytesDownloaded / totalCompressed;
+                var fraction = (double)bytesDownloaded / totalChunkBytes;
                 var pct      = (int)Math.Round(fraction * 100);
                 var bar      = DisplayHelpers.RenderProgressBar(fraction, 16);
 
                 lines.Add(new Markup($"  {restoringSymbol} Restoring    {countStr}  {bar}  {pct}%"));
 
-                var (dlCur, dlTot, dlUnit) = DisplayHelpers.SplitSizePair(bytesDownloaded, totalCompressed);
+                var (dlCur, dlTot, dlUnit) = DisplayHelpers.SplitSizePair(bytesDownloaded, totalChunkBytes);
                 var origStr = totalOriginal.Bytes().Humanize();
 
                 lines.Add(new Markup($"                 [dim]({dlCur} / {dlTot} {dlUnit} download, {origStr} original)[/]"));
@@ -445,13 +448,13 @@ internal static class RestoreVerb
 
                 foreach (var dl in activeDownloads)
                 {
-                    var fraction = dl.CompressedSize > 0
-                        ? (double)dl.BytesDownloaded / dl.CompressedSize
+                    var fraction = dl.ChunkSize > 0
+                        ? (double)dl.BytesDownloaded / dl.ChunkSize
                         : 0.0;
                     var pctVal = (int)Math.Round(fraction * 100);
                     var bar    = DisplayHelpers.RenderProgressBar(fraction, 12);
                     var name   = DisplayHelpers.TruncateAndLeftJustify(dl.DisplayName, 35);
-                    var (cur, tot, unit) = DisplayHelpers.SplitSizePair(dl.BytesDownloaded, dl.CompressedSize);
+                    var (cur, tot, unit) = DisplayHelpers.SplitSizePair(dl.BytesDownloaded, dl.ChunkSize);
 
                     rowData.Add((name, bar, pctVal + "%", cur, tot, unit));
                 }

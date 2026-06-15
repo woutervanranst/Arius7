@@ -99,8 +99,8 @@ internal sealed class LocalFileEnumerator
     {
         try
         {
-            var content = fileSystem.ReadAllText(path).Trim();
-            if (!ContentHash.TryParse(content, out var hash))
+            var content = fileSystem.ReadAllText(path);
+            if (!PointerFileFormat.TryParseHash(content, out var hash))
             {
                 _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path);
                 return null;

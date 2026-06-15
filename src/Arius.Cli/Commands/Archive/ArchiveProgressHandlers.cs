@@ -183,7 +183,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
         if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash), out var paths))
             foreach (var path in paths)
                 state.RemoveFile(path);
-        state.IncrementChunksUploaded(notification.CompressedSize);
+        state.IncrementChunksUploaded(notification.StoredSize);
         return ValueTask.CompletedTask;
     }
 }
@@ -203,7 +203,7 @@ public sealed class TarBundleUploadedHandler(ProgressState state) : INotificatio
             state.TrackedTars.TryRemove(entry.Key, out _);
 
         state.IncrementTarsUploaded();
-        state.IncrementChunksUploaded(notification.CompressedSize);
+        state.IncrementChunksUploaded(notification.StoredSize);
         return ValueTask.CompletedTask;
     }
 }

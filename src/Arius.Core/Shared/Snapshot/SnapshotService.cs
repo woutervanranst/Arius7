@@ -141,7 +141,7 @@ internal sealed class SnapshotService : ISnapshotService
     public async Task<IReadOnlyList<RelativePath>> ListBlobNamesAsync(CancellationToken cancellationToken = default)
     {
         var names = new List<RelativePath>();
-        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false, cancellationToken: cancellationToken))
             names.Add(item.Name);
 
         names.Sort((a, b) => ParseTimestamp(a).CompareTo(ParseTimestamp(b)));

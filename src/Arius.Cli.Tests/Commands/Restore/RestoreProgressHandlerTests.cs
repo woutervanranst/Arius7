@@ -10,17 +10,6 @@ namespace Arius.Cli.Tests.Commands.Restore;
 public class RestoreProgressHandlerTests
 {
     [Test]
-    public async Task RestoreStartedHandler_SetsRestoreTotalFiles()
-    {
-        var state   = new ProgressState();
-        var handler = new RestoreStartedHandler(state);
-
-        await handler.Handle(new RestoreStartedEvent(1000), CancellationToken.None);
-
-        state.RestoreTotalFiles.ShouldBe(1000);
-    }
-
-    [Test]
     public async Task FileRestoredHandler_IncrementsFilesRestored()
     {
         var state   = new ProgressState();

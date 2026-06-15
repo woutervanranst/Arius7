@@ -15,9 +15,6 @@ public static class BlobMetadataKeys
     /// <summary>Compressed (encrypted+gzipped) blob body size in bytes (for large and tar chunks).</summary>
     public const string ChunkSize         = "chunk_size";
 
-    /// <summary>Proportional compressed size estimate for this file within a tar bundle (for thin chunks).</summary>
-    public const string CompressedSize    = "compressed_size";
-
     /// <summary>Parent tar chunk hash for a thin chunk.</summary>
     public const string ParentChunkHash   = "parent_chunk_hash";
 

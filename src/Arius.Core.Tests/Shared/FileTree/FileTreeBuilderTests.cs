@@ -345,7 +345,7 @@ public class FileTreeBuilderTests
         firstBlobs.Uploaded.Count.ShouldBeGreaterThan(0);
 
         var blobs2 = new FakeRecordingBlobContainerService();
-        foreach (var blobName in firstBlobs.Uploaded)
+        foreach (var blobName in firstBlobs.Uploaded.Keys)
             blobs2.SeedRemoteBlob(blobName);
 
         await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs2, accountName, containerName, s_enc);

@@ -9,7 +9,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Disk-backed chunk index cache.
+/// Repository chunk-index service backed by remote shard blobs and a local SQLite cache.
+/// Pending local entries always win over cached remote-backed entries until <see cref="FlushAsync"/> uploads them.
 /// </summary>
 [SharedWithinAssembly]
 internal sealed class ChunkIndexService : IChunkIndexService
@@ -33,12 +34,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// <summary>
     /// Creates a chunk-index service for one repository and its local cache state.
     /// </summary>
-    /// <param name="blobs">Blob storage used for chunk-index shard reads and writes.</param>
-    /// <param name="encryption">Encryption used when serializing and deserializing shards.</param>
-    /// <param name="snapshotService">Snapshot service used to validate local cache state against the latest snapshot.</param>
-    /// <param name="accountName">Storage account name used to derive local repository state paths.</param>
-    /// <param name="containerName">Container name used to derive local repository state paths.</param>
-    /// <param name="loggerFactory"></param>
+    /// <param name="blobs">Blob storage used for remote chunk-index shard reads and writes.</param>
+    /// <param name="encryption">Encryption used when serializing and deserializing shard blobs.</param>
+    /// <param name="snapshotService">Snapshot service used to identify the latest snapshot for cache validation.</param>
+    /// <param name="accountName">Storage account name used to derive the local repository state path.</param>
+    /// <param name="containerName">Container name used to derive the local repository state path.</param>
+    /// <param name="loggerFactory">Optional logger factory for chunk-index and local-store diagnostics.</param>
     public ChunkIndexService(
         IBlobContainerService blobs,
         IEncryptionService encryption,
@@ -69,7 +70,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Lookup --------------------------------------------------------------
 
     /// <summary>
-    /// Resolves chunk-index entries for the specified content hashes.
+    /// Resolves chunk-index entries for the specified content hashes, loading and validating remote-backed prefixes as needed.
     /// </summary>
     /// <param name="contentHashes">Content hashes to resolve.</param>
     /// <param name="cancellationToken">Cancellation token for the lookup.</param>
@@ -133,7 +134,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Resolves the chunk-index entry for a single content hash.
+    /// Resolves the chunk-index entry for a single content hash, loading and validating its remote-backed prefix as needed.
     /// </summary>
     /// <param name="contentHash">The content hash to resolve.</param>
     /// <param name="cancellationToken">Cancellation token for the lookup.</param>
@@ -153,7 +154,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Promotes all loaded prefixes validated against the current snapshot version to the specified snapshot version.
+    /// Marks loaded prefixes already validated against the current snapshot as valid for the newly published snapshot.
     /// </summary>
     public async Task PromoteToSnapshotVersionAsync(string newSnapshotVersion)
     {
@@ -169,10 +170,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Synchronization -----------------------------------------------------
 
     /// <summary>
-    /// Ensures the specified prefix is loaded into the local cache and recorded against the latest snapshot version.
+    /// Ensures the specified prefix has been validated against remote state for the latest snapshot version.
     /// </summary>
     /// <param name="prefix">The shard prefix to synchronize.</param>
-    /// <param name="latestSnapshotVersion">The snapshot version that the local cache must be recorded against.</param>
+    /// <param name="latestSnapshotVersion">The snapshot version that the prefix validation is recorded against.</param>
     /// <param name="cancellationToken">Cancellation token for the synchronization.</param>
     private async Task EnsurePrefixLoadedAndSynchronizedAsync(PathSegment prefix, string latestSnapshotVersion, CancellationToken cancellationToken)
     {
@@ -233,7 +234,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- AddEntry ------------------------------------------------------------
 
     /// <summary>
-    /// Records a newly discovered or uploaded chunk-index entry as pending local flush state.
+    /// Records a newly discovered chunk-index entry as pending local flush state.
     /// </summary>
     /// <param name="entry">The entry to record.</param>
     public void AddEntry(ShardEntry entry)
@@ -259,7 +260,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Flush & Upload ---------------------------------------------------------------
 
     /// <summary>
-    /// Uploads pending local shard state and marks the flushed prefixes as synchronized remote-backed cache.
+    /// Uploads pending local entries into remote shard blobs and marks flushed prefixes as synchronized remote-backed cache.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for the flush.</param>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
@@ -304,7 +305,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Builds the current shard payload for one prefix from local store state.
+    /// Builds the shard payload for one prefix from the current local store state.
     /// </summary>
     /// <param name="prefix">The shard prefix to materialize.</param>
     /// <returns>A shard containing all currently stored entries for the prefix.</returns>
@@ -349,7 +350,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Repair --------------------------------------------------------------
 
     /// <summary>
-    /// Rebuilds the chunk index from chunk blobs and republishes the shard set.
+    /// Rebuilds chunk-index shards from authoritative chunk blobs and deletes stale shard blobs.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for the repair.</param>
     /// <returns>A summary of the repair work that was performed.</returns>
@@ -359,10 +360,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
-        // Pass 1: collect tar blob tiers. A thin chunk's data lives in its parent tar (the thin
-        // stub itself is always uploaded Cool), so its tier hint must come from the tar blob.
-        // Memory is bounded by the tar count, not the file count.
-        var tarTiers = new Dictionary<ChunkHash, BlobTier>();
+        // Pass 1: collect tar blob metadata. A thin chunk's data lives in its parent tar (the thin
+        // stub itself is always uploaded Cool), so its tier hint and chunk size must come from the
+        // tar blob. Keeping this as a separate listing avoids buffering unresolved thin chunks or
+        // doing per-thin remote lookups; memory stays bounded by the tar count, not the file count.
+        var tarMetadata = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -372,11 +374,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 && ariusType == BlobMetadataKeys.TypeTar
                 && ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash))
             {
-                tarTiers[tarHash] = item.Tier ?? BlobTier.Hot;
+                tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
             }
         }
 
-        // Pass 2: rebuild the entries.
+        // Pass 2: rebuild the entries once all parent tar metadata is known.
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
 
@@ -385,7 +387,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             cancellationToken.ThrowIfCancellationRequested();
             listedChunkCount++;
 
-            var entry = CreateRepairEntry(item, tarTiers);
+            var entry = CreateRepairEntry(item, tarMetadata);
             if (entry is null)
                 continue;
 
@@ -412,7 +414,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // Delete stale shards
         var deletedStaleShardCount = 0;
         await Parallel.ForEachAsync(
-            _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, cancellationToken: cancellationToken),
+            _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, includeMetadata: false, cancellationToken: cancellationToken),
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
             async (item, ct) =>
             {
@@ -433,8 +435,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// Converts a chunk blob listing item into a rebuildable shard entry when that blob contributes to the chunk index.
     /// </summary>
     /// <param name="item">The listed chunk blob.</param>
+    /// <param name="tarMetadata">Parent tar chunk tier and size metadata keyed by tar chunk hash.</param>
     /// <returns>The rebuilt shard entry, or <see langword="null"/> when the blob should not appear in the chunk index.</returns>
-    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
+    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
     {
         var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
         if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
@@ -443,7 +446,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         return ariusType switch
         {
             BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarTiers),
+            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarMetadata),
             BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
             _                          => null,
         };
@@ -452,11 +455,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            var compressedSize = ReadChunkSize(item);
-            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, compressedSize, item.Tier ?? BlobTier.Hot);
+            var chunkSize      = ReadChunkSize(item);
+            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
         }
 
-        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, BlobTier> tarTiers)
+        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
         {
             var contentHash = ContentHash.Parse(item.Name.Name.ToString());
             if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
@@ -465,24 +468,23 @@ internal sealed class ChunkIndexService : IChunkIndexService
             // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
             // A parent tar absent from the listing means the repository is broken — fail the repair
             // rather than persisting a guessed (hydrated) tier.
-            if (!tarTiers.TryGetValue(parentChunkHash, out var tarTier))
+            if (!tarMetadata.TryGetValue(parentChunkHash, out var parentTar))
                 throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
 
-            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            var compressedSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.CompressedSize);
-            return new ShardEntry(contentHash, parentChunkHash, originalSize, compressedSize, tarTier);
+            var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+            return new ShardEntry(contentHash, parentChunkHash, originalSize, parentTar.ChunkSize, parentTar.Tier);
         }
-
-        static long ReadChunkSize(BlobListItem item)
-            => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-                ? size
-                : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
         static long ReadRequiredLongMetadata(BlobListItem item, string key)
             => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
                 ? parsed
                 : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
     }
+
+    private static long ReadChunkSize(BlobListItem item)
+        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+            ? size
+            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
     // -- Local Repair Marker -------------------------------------------------
 

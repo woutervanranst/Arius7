@@ -116,7 +116,7 @@ public sealed class ListQueryHandler(
         bool                recursive,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var pending = new Queue<DirectoryToWalk>();
+        var pending = new Queue<DirectoryToWalk>(); // NOTE: refactor to Channel for consistency cf https://github.com/woutervanranst/Arius7/pull/104#discussion_r3415043899
         pending.Enqueue(start);
 
         while (pending.Count > 0)

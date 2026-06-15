@@ -20,7 +20,7 @@ public class FileRestoredHandlerTrackedDownloadTests
         await handler.Handle(new FileRestoredEvent(RelativePath.Parse("videos/movie.mp4"), 200_000_000L), CancellationToken.None);
 
         state.TrackedDownloads.ContainsKey("videos/movie.mp4").ShouldBeFalse("Large file TrackedDownload should be removed");
-        state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add CompressedSize to RestoreBytesDownloaded");
+        state.RestoreBytesDownloaded.ShouldBe(100_000_000L, "Should add ChunkSize to RestoreBytesDownloaded");
     }
 
     [Test]

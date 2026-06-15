@@ -4,6 +4,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Extensions;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -241,7 +242,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         {
             await using var session         = stagingSession;
             using var       stagingWriter   = new FileTreeStagingWriter(stagingSession.StagingRoot);
-            var             pendingPointers = new ConcurrentBag<(RelativePath Path, ContentHash Hash)>();
+            var             pendingPointers = new ConcurrentBag<PendingPointerWrite>();
             var             pendingDeletes  = new ConcurrentBag<RelativePath>();
 
             // In-flight set: content hashes already queued/uploaded in this run
@@ -444,17 +445,17 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         var p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
                         var uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
                         var originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
-                        var compressedSize = uploadResult.StoredSize;
+                        var storedSize     = uploadResult.StoredSize;
 
                         // Enqueue ShardEntry and FileTreeUpdate
                         // so no filesystem access is needed here.
-                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, compressedSize, opts.UploadTier), ct);
+                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, storedSize, opts.UploadTier), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
 
-                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, compressedSize), ct);
+                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize), ct);
 
-                        _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, compressed={Compressed})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), compressedSize.Bytes().Humanize());
+                        _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, stored={Stored})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), storedSize.Bytes().Humanize());
                     }
                 });
 
@@ -528,11 +529,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
                     using var tarStream = new MemoryStream(sealedTar.Content.Array!, sealedTar.Content.Offset, sealedTar.Content.Count, writable: false, publiclyVisible: true);
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
-                    var             compressedSize = uploadResult.StoredSize;
-
-                    var proportionalFactor = sealedTar.UncompressedSize > 0
-                        ? (double)compressedSize / sealedTar.UncompressedSize
-                        : 1.0;
+                    var             storedSize     = uploadResult.StoredSize;
 
                     // Parallel thin chunk creation for each entry
                     await Parallel.ForEachAsync(
@@ -540,16 +537,15 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         new ParallelOptions { MaxDegreeOfParallelism = ThinEntryWorkers, CancellationToken = ct },
                         async (entry, entryCt) =>
                         {
-                            var proportional = (long)(entry.OriginalSize * proportionalFactor);
-                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, entryCt);
+                            await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, storedSize, entryCt);
 
                             // The tar blob's tier governs all of its thin entries.
-                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, proportional, opts.UploadTier), entryCt);
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, storedSize, opts.UploadTier), entryCt);
                             await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
                         });
 
-                    await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, compressedSize, sealedTar.Entries.Count), ct);
-                    _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, compressed={Compressed}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, compressedSize.Bytes().Humanize());
+                    await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, storedSize, sealedTar.Entries.Count), ct);
+                    _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, stored={Stored}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, storedSize.Bytes().Humanize());
                     Interlocked.Add(ref filesUploaded, sealedTar.Entries.Count);
                 });
 
@@ -581,7 +577,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     // Once the files are captured in the FileTree, we can write the pointers & delete them
                     if (!opts.NoPointers && pair.Binary is not null)
-                        pendingPointers.Add((pair.RelativePath, entry.ContentHash));
+                        pendingPointers.Add(new PendingPointerWrite(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified));
 
                     if (opts.RemoveLocal && pair.Binary is not null)
                         pendingDeletes.Add(pair.RelativePath);
@@ -653,15 +649,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 ? Task.CompletedTask
                 : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
-                    var (path, hash) = item;
                     try
                     {
-                        await fs.WriteAllTextAsync(path.ToPointerPath(), hash.ToString(), ct);
+                        await PointerFileFormat.WriteAsync(fs, item.BinaryPath, item.Hash, item.Created, item.Modified, ct);
                     }
                     catch (Exception ex) when (!ct.IsCancellationRequested)
                     {
                         // A pointer write that fails for one file must not fault the whole stage.
-                        _logger.LogWarning(ex, "Failed to write pointer file: {Path}", path.ToPointerPath());
+                        _logger.LogWarning(ex, "Failed to write pointer file: {Path}", item.BinaryPath.ToPointerPath());
                     }
                 });
 

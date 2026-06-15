@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Integration.Tests.Pipeline.Fakes;
 
@@ -27,10 +28,20 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         => inner.OpenWriteAsync(blobName, contentType, ct);
 
     public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken ct = default)
-        => inner.DownloadAsync(blobName, ct);
+    {
+        if (ArchiveTierBlobs.Contains(blobName) || RehydratingBlobs.Contains(blobName))
+            throw new BlobArchivedException(blobName);
+
+        return inner.DownloadAsync(blobName, ct);
+    }
 
     public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken ct = default)
-        => inner.TryDownloadAsync(blobName, ct);
+    {
+        if (ArchiveTierBlobs.Contains(blobName) || RehydratingBlobs.Contains(blobName))
+            throw new BlobArchivedException(blobName);
+
+        return inner.TryDownloadAsync(blobName, ct);
+    }
 
     public async Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken ct = default)
     {
@@ -61,8 +72,25 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return actual;
     }
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken ct = default)
-        => inner.ListAsync(prefix, includeMetadata, ct);
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in inner.ListAsync(prefix, includeMetadata, ct))
+            yield return item;
+
+        if (prefix != BlobPaths.ChunksRehydratedPrefix)
+            yield break;
+
+        foreach (var blobName in RehydratingBlobs.OrderBy(static path => path.ToString(), StringComparer.Ordinal))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            yield return new BlobListItem
+            {
+                Name = BlobPaths.ChunkRehydratedPath(ChunkHash.Parse(blobName.Name.ToString())),
+                Tier = BlobTier.Archive,
+            };
+        }
+    }
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct = default)
@@ -76,6 +104,7 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         CancellationToken ct = default)
     {
         CopyCalls.Add((sourceBlobName, destinationBlobName));
+        RehydratingBlobs.Add(sourceBlobName);
         return Task.CompletedTask;
     }
 

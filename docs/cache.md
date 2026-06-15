@@ -91,8 +91,8 @@ pure local file-system lookups.
 ## ChunkIndexService
 
 **What it caches:** `ShardEntry` records — the mapping from a file's content
-hash to its storage chunk hash, original size, and compressed size. This is the
-deduplication index.
+hash to its storage chunk hash, original size, stored chunk size, and storage
+tier hint. This is the deduplication index.
 
 Entries are grouped into *shards* by the first two hex characters of the
 content hash (256 shards possible). Each shard is a dictionary of all

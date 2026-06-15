@@ -30,7 +30,7 @@ public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;
 
 /// <summary>A chunk upload completed.</summary>
-public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long CompressedSize) : INotification;
+public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long StoredSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
 /// <param name="EntryCount">Number of entries in the sealed tar.</param>
@@ -41,7 +41,7 @@ public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long CompressedSize
 public sealed record TarBundleSealingEvent(int EntryCount, long UncompressedSize, long TarByteSize, ChunkHash TarHash, IReadOnlyList<ContentHash> ContentHashes) : INotification;
 
 /// <summary>A tar bundle was uploaded.</summary>
-public sealed record TarBundleUploadedEvent(ChunkHash TarHash, long CompressedSize, int EntryCount) : INotification;
+public sealed record TarBundleUploadedEvent(ChunkHash TarHash, long StoredSize, int EntryCount) : INotification;
 
 /// <summary>Snapshot creation complete.</summary>
 public sealed record SnapshotCreatedEvent(FileTreeHash RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;

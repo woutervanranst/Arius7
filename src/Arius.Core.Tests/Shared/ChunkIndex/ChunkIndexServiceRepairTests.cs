@@ -37,13 +37,16 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
                 [BlobMetadataKeys.ParentChunkHash] = parentChunkHash.ToString(),
                 [BlobMetadataKeys.OriginalSize] = "10",
-                [BlobMetadataKeys.CompressedSize] = "2",
             });
         blobs.SeedBlob(
             BlobPaths.ChunkPath(parentChunkHash),
             [4, 5],
             BlobTier.Archive,
-            new Dictionary<string, string> { [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar });
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
+                [BlobMetadataKeys.ChunkSize] = "2",
+            });
         blobs.SeedBlob(staleShard, [9], BlobTier.Cool);
         using var index = CreateIndex(blobs, "repair-rebuild");
 
@@ -139,7 +142,6 @@ public class ChunkIndexServiceRepairTests
             {
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
                 [BlobMetadataKeys.OriginalSize] = "10",
-                [BlobMetadataKeys.CompressedSize] = "2",
             });
         using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
@@ -163,7 +165,6 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
                 [BlobMetadataKeys.ParentChunkHash] = FakeChunkHash('c').ToString(), // tar blob not seeded
                 [BlobMetadataKeys.OriginalSize] = "10",
-                [BlobMetadataKeys.CompressedSize] = "2",
             });
         using var index = CreateIndex(blobs, "repair-missing-tar");
 

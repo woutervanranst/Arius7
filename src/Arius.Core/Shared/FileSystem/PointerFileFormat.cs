@@ -1,12 +1,12 @@
 namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
-/// Centralizes Arius pointer-file naming rules for repository-relative paths.
-/// It exists so pointer detection and binary/pointer path conversion stay consistent across features,
-/// with responsibility for applying and removing the <c>.pointer.arius</c> suffix safely.
+/// Centralizes Arius pointer-file format rules.
+/// It exists so pointer naming, content parsing, content writing, and timestamp policy stay consistent
+/// across archive, restore, and local filesystem enumeration.
 /// </summary>
 [SharedWithinAssembly]
-internal static class RelativePathPointerExtensions
+internal static class PointerFileFormat
 {
     /// <summary>
     /// Gets the suffix used for Arius pointer files.
@@ -50,5 +50,23 @@ internal static class RelativePathPointerExtensions
             throw new InvalidOperationException("Pointer path cannot contain the pointer suffix twice.");
 
         return RelativePath.Parse(binaryPath);
+    }
+
+    public static string Serialize(ContentHash hash) => hash.ToString();
+
+    public static bool TryParseHash(string? content, out ContentHash hash) =>
+        ContentHash.TryParse(content?.Trim(), out hash);
+
+    public static async Task WriteAsync(
+        RelativeFileSystem fileSystem,
+        RelativePath        binaryPath,
+        ContentHash         hash,
+        DateTimeOffset      created,
+        DateTimeOffset      modified,
+        CancellationToken   cancellationToken)
+    {
+        var pointerPath = binaryPath.ToPointerPath();
+        await fileSystem.WriteAllTextAsync(pointerPath, Serialize(hash), cancellationToken);
+        fileSystem.SetTimestamps(pointerPath, created, modified);
     }
 }

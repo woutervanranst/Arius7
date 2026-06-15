@@ -1,8 +1,9 @@
-using System.Runtime.ExceptionServices;
-using System.Threading.Channels;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Runtime.ExceptionServices;
+using System.Threading.Channels;
 
 namespace Arius.Core.Shared.FileTree;
 

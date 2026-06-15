@@ -305,13 +305,14 @@ tier. Once rehydration completes and files are restored, these blobs are cleaned
 ### chunk-index/
 
 Deduplication index split into prefix-keyed shards. Each shard is a text file (gzip-compressed, optionally encrypted) where
-each line maps a content-hash to its chunk-hash, sizes, and the chunk's storage tier:
+each line maps a content-hash to its chunk-hash, original size, stored chunk size, and the chunk's storage tier:
 
 ```text
-<content-hash> <chunk-hash> <original-size> <compressed-size> <tier>
+<content-hash> <chunk-hash> <original-size> <chunk-size> <tier>
 ```
 
 For large files, content-hash equals chunk-hash and the chunk-hash field is omitted.
+For tar-bundled files, chunk-size is the full parent tar chunk size, so restore and rehydration estimates reflect the bytes Arius must actually download or rehydrate.
 The tier field records the chunk's storage tier at archive time (`1`=hot, `2`=cool,
 `3`=cold, `4`=archive); it is a hint that lets `ls` report whether a file is readily
 downloadable or archived without contacting each blob. For tar-bundled files, chunk-hash

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Arius.Core.Tests.Fakes;
 
 /// <summary>
@@ -8,18 +10,18 @@ namespace Arius.Core.Tests.Fakes;
 /// </summary>
 internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 {
-    private readonly HashSet<RelativePath> _remoteBlobs = [];
+    private readonly ConcurrentDictionary<RelativePath, byte> _remoteBlobs = new();
 
-    public HashSet<RelativePath> Uploaded { get; } = [];
-    public HashSet<RelativePath> HeadChecked { get; } = [];
+    public ConcurrentDictionary<RelativePath, byte> Uploaded { get; } = new();
+    public ConcurrentDictionary<RelativePath, byte> HeadChecked { get; } = new();
 
-    public void SeedRemoteBlob(RelativePath blobName) => _remoteBlobs.Add(blobName);
+    public void SeedRemoteBlob(RelativePath blobName) => _remoteBlobs.TryAdd(blobName, 0);
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
-        Uploaded.Add(blobName);
+        Uploaded.TryAdd(blobName, 0);
         return Task.FromResult(new UploadResult { ETag = $"recorded:{blobName}" });
     }
 
@@ -34,13 +36,13 @@ internal sealed class FakeRecordingBlobContainerService : IBlobContainerService
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        HeadChecked.Add(blobName);
-        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.Contains(blobName) });
+        HeadChecked.TryAdd(blobName, 0);
+        return Task.FromResult(new BlobMetadata { Exists = _remoteBlobs.ContainsKey(blobName) });
     }
 
-    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        foreach (var blobName in _remoteBlobs
+        foreach (var blobName in _remoteBlobs.Keys
                      .Where(name => name.StartsWith(prefix))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {

@@ -31,7 +31,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetTreeTraversalComplete(10, 100_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
         state.SetChunkResolution(5, 3, 2);
-        state.SetRestoreTotalCompressedBytes(50_000_000);
+        state.SetRestoreTotalChunkBytes(50_000_000);
 
         // Add a large file download in progress (key is RelativePath for large files)
         var td1 = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);
@@ -61,7 +61,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetTreeTraversalComplete(2, 800L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
         state.SetChunkResolution(1, 1, 0);
-        state.SetRestoreTotalCompressedBytes(500);
+        state.SetRestoreTotalChunkBytes(500);
         state.IncrementFilesRestored(400L);
         state.IncrementFilesRestored(400L);
         // No TrackedDownloads
@@ -83,7 +83,7 @@ public class BuildRestoreDisplayActiveDownloadsTests
         state.SetTreeTraversalComplete(10, 100_000_000L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
         state.SetChunkResolution(5, 3, 2);
-        state.SetRestoreTotalCompressedBytes(50_000_000);
+        state.SetRestoreTotalChunkBytes(50_000_000);
 
         // Two downloads with different-length names and sizes
         var td1 = new TrackedDownload("photos/sunset.jpg", DownloadKind.LargeFile, "photos/sunset.jpg", 25_400_000, 50_000_000);

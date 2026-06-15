@@ -1,11 +1,6 @@
 using System.Collections.Immutable;
 
-namespace Arius.Core.Shared;
-
-internal static class IEnumerableExtensions
-{
-    public static bool Empty<T>(this IEnumerable<T> source) => !source.Any();
-}
+namespace Arius.Core.Shared.Extensions;
 
 internal static class StreamExtensions
 {

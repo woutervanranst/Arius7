@@ -38,7 +38,11 @@ internal sealed class RepresentativeAzureArchiveRestoreTests(AzureE2EBackendFixt
         result.WasSkipped.ShouldBeFalse();
         result.ArchiveTierOutcome.ShouldNotBeNull();
         result.ArchiveTierOutcome.PendingRehydratedBlobCount.ShouldBeGreaterThan(0);
-        result.ArchiveTierOutcome.WasCostEstimateCaptured.ShouldBeTrue();
+        result.ArchiveTierOutcome.UnexpectedOnlineTierWarning.ShouldNotBeNull();
+        result.ArchiveTierOutcome.UnexpectedOnlineTierWarning.ShouldContain("out of sync with StorageTierHint");
+        result.ArchiveTierOutcome.UnexpectedOnlineTierWarning.ShouldContain("offline tier");
+        result.ArchiveTierOutcome.UnexpectedOnlineTierWarning.ShouldContain("Re-routing to rehydration");
+        result.ArchiveTierOutcome.UnexpectedOnlineTierWarning.ShouldContain("extra cost-effect");
         result.ArchiveTierOutcome.RerunCopyCalls.ShouldBe(0);
     }
 }

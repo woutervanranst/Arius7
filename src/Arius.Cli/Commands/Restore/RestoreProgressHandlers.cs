@@ -2,18 +2,6 @@ using Arius.Core.Features.RestoreCommand;
 
 namespace Arius.Cli.Commands.Restore;
 
-// ── RestoreStartedHandler ─────────────────────────────────────────────────────
-
-/// <summary>Sets <see cref="ProgressState.RestoreTotalFiles"/> when restore begins.</summary>
-public sealed class RestoreStartedHandler(ProgressState state) : INotificationHandler<RestoreStartedEvent>
-{
-    public ValueTask Handle(RestoreStartedEvent notification, CancellationToken cancellationToken)
-    {
-        state.SetRestoreTotalFiles(notification.TotalFiles);
-        return ValueTask.CompletedTask;
-    }
-}
-
 // ── FileRestoredHandler ───────────────────────────────────────────────────────
 
 /// <summary>
@@ -32,7 +20,7 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
             && td.Kind == DownloadKind.LargeFile
             && state.TrackedDownloads.TryRemove(relativePath, out var removed))
         {
-            state.AddRestoreBytesDownloaded(removed.CompressedSize);
+            state.AddRestoreBytesDownloaded(removed.ChunkSize);
         }
 
         return ValueTask.CompletedTask;
@@ -101,14 +89,14 @@ public sealed class TreeTraversalProgressHandler(ProgressState state) : INotific
     }
 }
 
-// ── FileDispositionHandler ────────────────────────────────────────────────────
+// ── FileRoutedHandler ────────────────────────────────────────────────────
 
-/// <summary>Increments the appropriate disposition tally based on the event's <see cref="RestoreDisposition"/> value.</summary>
-public sealed class FileDispositionHandler(ProgressState state) : INotificationHandler<FileDispositionEvent>
+/// <summary>Increments the appropriate route tally based on the event's <see cref="RestoreRoute"/> value.</summary>
+public sealed class FileRoutedHandler(ProgressState state) : INotificationHandler<FileRoutedEvent>
 {
-    public ValueTask Handle(FileDispositionEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(FileRoutedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementDisposition(notification.Disposition);
+        state.IncrementRoute(notification.Route);
         return ValueTask.CompletedTask;
     }
 }
@@ -120,9 +108,8 @@ public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotif
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
-        state.SetChunkResolution(notification.ChunkGroups, notification.LargeCount, notification.TarCount);
-        state.SetTreeTraversalComplete(state.RestoreTotalFiles, notification.TotalOriginalBytes);
-        state.SetRestoreTotalCompressedBytes(notification.TotalCompressedBytes);
+        state.SetChunkResolution(notification.TotalChunks, notification.LargeCount, notification.TarCount);
+        state.SetRestoreTotalChunkBytes(notification.TotalChunkBytes);
         return ValueTask.CompletedTask;
     }
 }
@@ -163,7 +150,7 @@ public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotifi
     public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
     {
         state.TrackedDownloads.TryRemove(notification.ChunkHash.ToString(), out _);
-        state.AddRestoreBytesDownloaded(notification.CompressedSize);
+        state.AddRestoreBytesDownloaded(notification.ChunkSize);
         return ValueTask.CompletedTask;
     }
 }

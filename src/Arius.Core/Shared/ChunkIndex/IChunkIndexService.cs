@@ -1,7 +1,7 @@
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Public contract for the disk-backed chunk index. Feature handlers depend on this interface
+/// Contract for resolving and publishing repository chunk-index entries. Feature handlers depend on this interface
 /// so the concrete <see cref="ChunkIndexService"/> implementation can stay internal to Arius.Core.
 /// </summary>
 public interface IChunkIndexService : IDisposable
@@ -17,7 +17,7 @@ public interface IChunkIndexService : IDisposable
     internal Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Promotes all loaded prefixes validated against the current snapshot version to the specified snapshot version.
+    /// Marks loaded prefixes already validated against the current snapshot as valid for the newly published snapshot.
     /// </summary>
     internal Task PromoteToSnapshotVersionAsync(string newSnapshotVersion);
 
@@ -32,7 +32,7 @@ public interface IChunkIndexService : IDisposable
     internal void AddEntries(IEnumerable<ShardEntry> entries);
 
     /// <summary>
-    /// Uploads pending local shard state and marks the flushed prefixes as synchronized remote-backed cache.
+    /// Uploads pending local entries into remote shard blobs and marks flushed prefixes as synchronized remote-backed cache.
     /// </summary>
     internal Task FlushAsync(CancellationToken cancellationToken = default);
 
@@ -42,7 +42,7 @@ public interface IChunkIndexService : IDisposable
     internal void InvalidateCaches();
 
     /// <summary>
-    /// Rebuilds the chunk index from chunk blobs and republishes the shard set.
+    /// Rebuilds chunk-index shards from authoritative chunk blobs and deletes stale shard blobs.
     /// </summary>
     internal Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default);
 }

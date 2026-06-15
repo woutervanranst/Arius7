@@ -63,6 +63,16 @@ internal sealed record HashedFilePair(
 );
 
 /// <summary>
+/// Represents a pending archive-time pointer-file write for an archived binary file.
+/// </summary>
+internal sealed record PendingPointerWrite(
+    RelativePath   BinaryPath,
+    ContentHash    Hash,
+    DateTimeOffset Created,
+    DateTimeOffset Modified
+);
+
+/// <summary>
 /// Represents a hashed file pair that still needs chunk upload work.
 /// It exists to separate deduplicated-away files from upload candidates,
 /// with responsibility for carrying the hashed local file data and the byte count needed by upload logic.

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// SQLite-backed local chunk-index cache for remote-backed shard data and pending local flush entries.
+/// SQLite-backed local chunk-index store for remote-backed shard entries, prefix validation state, and pending local flush entries.
 /// </summary>
 internal sealed class ChunkIndexLocalStore
 {
@@ -80,8 +80,8 @@ internal sealed class ChunkIndexLocalStore
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = pendingFlushOnly
-                ? "SELECT content_hash, chunk_hash, original_size, compressed_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash AND pending_flush = 1;"
-                : "SELECT content_hash, chunk_hash, original_size, compressed_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash;";
+                ? "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash AND pending_flush = 1;"
+                : "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash;";
             command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
             using var reader = command.ExecuteReader();
             var entry = reader.Read() ? ReadEntry(reader) : null;
@@ -95,7 +95,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix is already recorded for the specified snapshot version.
+    /// Returns whether the prefix has already been validated for the specified snapshot version.
     /// </summary>
     public bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion)
     {
@@ -117,7 +117,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote blob identity.
+    /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote shard identity.
     /// </summary>
     public bool IsPrefixAtETag(PathSegment prefix, string etag)
     {
@@ -163,7 +163,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns prefixes represented by any local chunk-index row.
+    /// Returns prefixes represented by any local chunk-index entry.
     /// </summary>
     public IEnumerable<PathSegment> GetStoredPrefixes()
     {
@@ -187,7 +187,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Streams all entries currently stored for <paramref name="prefix"/>.
+    /// Streams all locally stored entries for <paramref name="prefix"/>, including remote-backed and pending-flush rows.
     /// </summary>
     public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
     {
@@ -195,7 +195,7 @@ internal sealed class ChunkIndexLocalStore
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT content_hash, chunk_hash, original_size, compressed_size, storage_tier_hint FROM chunk_index_entries WHERE prefix = $prefix;";
+            command.CommandText = "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE prefix = $prefix;";
             command.Parameters.AddWithValue("$prefix", prefix.ToString());
             using var reader = command.ExecuteReader();
             var count = 0;
@@ -234,7 +234,7 @@ internal sealed class ChunkIndexLocalStore
     // -- PENDING FLUSH WRITES -------------------------------------------------
 
     /// <summary>
-    /// Records a newly discovered entry as pending local flush until it is uploaded to the remote chunk index.
+    /// Records a newly discovered entry as pending local flush until it is uploaded to remote shard blobs.
     /// </summary>
     public void UpsertPendingFlush(ShardEntry entry)
     {
@@ -295,7 +295,7 @@ internal sealed class ChunkIndexLocalStore
     // -- REMOTE-BACKED CACHE --------------------------------------------------
 
     /// <summary>
-    /// Records a known remote-backed entry, typically during explicit repair from remote chunk blobs.
+    /// Records a known remote-backed entry, typically during explicit repair from authoritative chunk blobs.
     /// </summary>
     public void UpsertRemoteBacked(ShardEntry entry)
     {
@@ -376,7 +376,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks the prefix validated for the specified snapshot without changing remote-backed cached rows.
+    /// Marks the prefix validated for the specified snapshot without changing cached remote-backed entries.
     /// </summary>
     public void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion)
     {
@@ -395,7 +395,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Promotes loaded prefixes from one snapshot version to another while preserving recorded remote state.
+    /// Promotes loaded-prefix validation from one snapshot version to another while preserving recorded remote state.
     /// </summary>
     public void PromoteToSnapshotVersion(string oldSnapshotVersion, string newSnapshotVersion)
     {
@@ -419,7 +419,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Marks pending flush shard state synchronized by clearing pending flush rows and validating uploaded prefixes for the specified snapshot.
+    /// Marks uploaded pending entries as synchronized by clearing pending-flush flags and validating uploaded prefixes for the specified snapshot.
     /// </summary>
     public void MarkPendingFlushesSynchronized(IEnumerable<(PathSegment Prefix, string Etag)> states, string snapshotVersion)
     {
@@ -491,7 +491,7 @@ internal sealed class ChunkIndexLocalStore
         {
             lock (_localStateGate)
             {
-                SqliteConnection.ClearAllPools();
+                ClearConnectionPool();
                 var replacedFiles = 0;
                 foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
                 {
@@ -556,7 +556,7 @@ internal sealed class ChunkIndexLocalStore
                 content_hash    BLOB NOT NULL PRIMARY KEY,
                 chunk_hash      BLOB NOT NULL,
                 original_size   INTEGER NOT NULL CHECK (original_size >= 0),
-                compressed_size INTEGER NOT NULL CHECK (compressed_size >= 0),
+                chunk_size INTEGER NOT NULL CHECK (chunk_size >= 0),
                 storage_tier_hint INTEGER NOT NULL CHECK (storage_tier_hint BETWEEN 1 AND 4),
                 prefix          TEXT NOT NULL,
                 pending_flush   INTEGER NOT NULL DEFAULT 0 CHECK (pending_flush IN (0, 1)),
@@ -595,6 +595,12 @@ internal sealed class ChunkIndexLocalStore
         return connection;
     }
 
+    private void ClearConnectionPool()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        SqliteConnection.ClearPool(connection);
+    }
+
     private static bool HasPendingFlushEntries(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
@@ -608,24 +614,24 @@ internal sealed class ChunkIndexLocalStore
         command.Transaction = transaction;
         command.CommandText = preservePendingFlushRows
             ? """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, storage_tier_hint, prefix, pending_flush)
-                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $storageTierHint, $prefix, $pendingFlush)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, prefix, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $prefix, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
-                    compressed_size = excluded.compressed_size,
+                    chunk_size = excluded.chunk_size,
                     storage_tier_hint = excluded.storage_tier_hint,
                     prefix = excluded.prefix,
                     pending_flush = excluded.pending_flush
                 WHERE chunk_index_entries.pending_flush = 0;
                 """
             : """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, compressed_size, storage_tier_hint, prefix, pending_flush)
-                VALUES ($contentHash, $chunkHash, $originalSize, $compressedSize, $storageTierHint, $prefix, $pendingFlush)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, prefix, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $prefix, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
-                    compressed_size = excluded.compressed_size,
+                    chunk_size = excluded.chunk_size,
                     storage_tier_hint = excluded.storage_tier_hint,
                     prefix = excluded.prefix,
                     pending_flush = excluded.pending_flush;
@@ -634,7 +640,7 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters.Add("$contentHash", SqliteType.Blob);
         command.Parameters.Add("$chunkHash", SqliteType.Blob);
         command.Parameters.Add("$originalSize", SqliteType.Integer);
-        command.Parameters.Add("$compressedSize", SqliteType.Integer);
+        command.Parameters.Add("$chunkSize", SqliteType.Integer);
         command.Parameters.Add("$storageTierHint", SqliteType.Integer);
         command.Parameters.Add("$prefix", SqliteType.Text);
         command.Parameters.Add("$pendingFlush", SqliteType.Integer).Value = pendingFlush ? 1 : 0;
@@ -646,7 +652,7 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters["$contentHash"].Value = ParseHashBytes(entry.ContentHash.ToString());
         command.Parameters["$chunkHash"].Value = ParseHashBytes(entry.ChunkHash.ToString());
         command.Parameters["$originalSize"].Value = entry.OriginalSize;
-        command.Parameters["$compressedSize"].Value = entry.CompressedSize;
+        command.Parameters["$chunkSize"].Value = entry.ChunkSize;
         command.Parameters["$storageTierHint"].Value = ShardEntry.SerializeTier(entry.StorageTierHint);
         command.Parameters["$prefix"].Value = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash).ToString();
     }

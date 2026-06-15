@@ -114,6 +114,10 @@ public sealed class AzureBlobContainerService : IBlobContainerService
         {
             throw new BlobNotFoundException(blobName);
         }
+        catch (RequestFailedException ex) when (IsBlobArchivedError(ex))
+        {
+            throw new BlobArchivedException(blobName);
+        }
     }
 
     public async Task<DownloadResult?> TryDownloadAsync(
@@ -178,7 +182,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata = false,
+        bool includeMetadata,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var item in _container.GetBlobsAsync(
@@ -298,4 +302,8 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     private static bool IsBlobNotFoundError(RequestFailedException ex) =>
         ex is { Status: 404, ErrorCode: "BlobNotFound" };
+
+    /// <summary>Returns true when a read failed because the blob is still in the archive tier.</summary>
+    private static bool IsBlobArchivedError(RequestFailedException ex) =>
+        ex is { Status: 409, ErrorCode: "BlobArchived" };
 }

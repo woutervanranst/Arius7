@@ -137,7 +137,7 @@ public class BlobStorageServiceTests(AzuriteFixture azurite)
         await svc.UploadAsync(BlobPaths.FileTreePath(fileTreeHash), new MemoryStream([3]), empty, BlobTier.Hot);
 
         var chunks = new List<RelativePath>();
-        await foreach (var item in svc.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in svc.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             chunks.Add(item.Name);
 
         chunks.ShouldContain(BlobPaths.ChunkPath(firstChunkHash));

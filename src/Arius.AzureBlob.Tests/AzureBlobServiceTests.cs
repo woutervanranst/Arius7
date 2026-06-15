@@ -175,7 +175,7 @@ public class AzureBlobServiceTests
         var containerService = await service.OpenContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
 
         var results = new List<string>();
-        await foreach (var item in containerService.ListAsync(BlobPaths.SnapshotsPrefix, cancellationToken: CancellationToken.None))
+        await foreach (var item in containerService.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false, cancellationToken: CancellationToken.None))
         {
             results.Add(item.Name.ToString());
         }
@@ -202,7 +202,7 @@ public class AzureBlobServiceTests
         var containerService = await service.OpenContainerServiceAsync("repo-a", PreflightMode.ReadOnly, CancellationToken.None);
 
         var results = new List<string>();
-        await foreach (var item in containerService.ListAsync(BlobPaths.ChunksPrefix, cancellationToken: CancellationToken.None))
+        await foreach (var item in containerService.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false, cancellationToken: CancellationToken.None))
         {
             results.Add(item.Name.ToString());
         }

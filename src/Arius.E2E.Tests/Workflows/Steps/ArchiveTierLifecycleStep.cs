@@ -4,6 +4,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.E2E.Tests.Fixtures;
 using Arius.Tests.Shared.IO;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
@@ -77,6 +78,11 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         var pendingRehydratedBlobCount = await Helpers.CountBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydratedPrefix, cancellationToken);
         pendingRehydratedBlobCount.ShouldBeGreaterThan(0, $"{Name}: pending restore should stage rehydrated chunk blobs.");
 
+        var unexpectedOnlineTierWarning = state.Fixture.RestoreLogs.GetSnapshot()
+            .Where(record => record.Level == LogLevel.Warning)
+            .Select(record => record.Message)
+            .LastOrDefault(message => message.Contains("out of sync with StorageTierHint", StringComparison.Ordinal));
+
         // 5. Replace the pending staged blob with the preserved readable blob so the next restore
         // observes the post-rehydration path without waiting on Azure's real archive-tier timing.
         await DeleteBlobsAsync(azureBlobContainer, BlobPaths.ChunksRehydratedPrefix, cancellationToken);
@@ -122,7 +128,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
                 readyResult.FilesRestored,
                 readyResult.ChunksPendingRehydration,
                 cleanupDeletedChunks,
-                pendingRehydratedBlobCount);
+                pendingRehydratedBlobCount,
+                unexpectedOnlineTierWarning);
         }
         finally
         {
@@ -173,7 +180,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         {
             var blobNames = new List<RelativePath>();
 
-            await foreach (var item in blobContainer.ListAsync(prefix, cancellationToken: cancellationToken))
+            await foreach (var item in blobContainer.ListAsync(prefix, includeMetadata: false, cancellationToken: cancellationToken))
                 blobNames.Add(item.Name);
 
             foreach (var blobName in blobNames)

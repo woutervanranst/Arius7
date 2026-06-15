@@ -19,7 +19,7 @@ public class ShardTests
         back.ContentHash.ShouldBe(entry.ContentHash);
         back.ChunkHash.ShouldBe(entry.ChunkHash);
         back.OriginalSize.ShouldBe(entry.OriginalSize);
-        back.CompressedSize.ShouldBe(entry.CompressedSize);
+        back.ChunkSize.ShouldBe(entry.ChunkSize);
         back.StorageTierHint.ShouldBe(tier);
     }
 
@@ -37,7 +37,7 @@ public class ShardTests
         back.ContentHash.ShouldBe(entry.ContentHash);
         back.ChunkHash.ShouldBe(entry.ChunkHash);
         back.OriginalSize.ShouldBe(entry.OriginalSize);
-        back.CompressedSize.ShouldBe(entry.CompressedSize);
+        back.ChunkSize.ShouldBe(entry.ChunkSize);
         back.StorageTierHint.ShouldBe(tier);
     }
 
@@ -70,7 +70,7 @@ public class ShardTests
         entry.ContentHash.ShouldBe(ContentHash.Parse(hash));
         entry.ChunkHash.ShouldBe(ChunkHash.Parse(hash));
         entry.OriginalSize.ShouldBe(4200000L);
-        entry.CompressedSize.ShouldBe(1870432L);
+        entry.ChunkSize.ShouldBe(1870432L);
         entry.StorageTierHint.ShouldBe(BlobTier.Hot);
     }
 
@@ -179,7 +179,7 @@ public class ShardTests
         e1.StorageTierHint.ShouldBe(BlobTier.Archive);
 
         loaded.TryLookup(ContentHash.Parse("aaaa000222222222222222222222222222222222222222222222222222222222"), out var e2).ShouldBeTrue();
-        e2!.CompressedSize.ShouldBe(80);
+        e2!.ChunkSize.ShouldBe(80);
         e2.StorageTierHint.ShouldBe(BlobTier.Cool);
     }
 

@@ -45,8 +45,8 @@ public class BuildRestoreDisplayTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(10, 7_000_000L);
         state.SnapshotTimestamp = new DateTimeOffset(2026, 3, 28, 14, 0, 0, TimeSpan.Zero);
-        state.IncrementDisposition(RestoreDisposition.New);
-        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementRoute(RestoreRoute.New);
+        state.IncrementRoute(RestoreRoute.New);
         state.SetChunkResolution(3, 1, 2);
         state.IncrementFilesRestored(1024L);
         state.AddRestoreEvent(RelativePath.Parse("foo/bar.txt"), 1024L, skipped: false);
@@ -59,7 +59,7 @@ public class BuildRestoreDisplayTests
         output.ShouldContain("2026");  // timestamp
         output.ShouldContain("10");    // file count
 
-        // Stage 2: Checked should show disposition tallies
+        // Stage 2: Checked should show route tallies
         output.ShouldContain("Checked");
         output.ShouldContain("2 new");
         output.ShouldContain("0 identical");
@@ -78,8 +78,8 @@ public class BuildRestoreDisplayTests
         var state = new ProgressState();
         state.SetTreeTraversalComplete(2, 800L);
         state.SnapshotTimestamp = DateTimeOffset.UtcNow;
-        state.IncrementDisposition(RestoreDisposition.New);
-        state.IncrementDisposition(RestoreDisposition.New);
+        state.IncrementRoute(RestoreRoute.New);
+        state.IncrementRoute(RestoreRoute.New);
         state.SetChunkResolution(1, 1, 0);
         state.IncrementFilesRestored(500L);
         state.IncrementFilesRestored(300L);
@@ -95,7 +95,7 @@ public class BuildRestoreDisplayTests
     [Test]
     public void BuildRestoreDisplay_ZeroFileRestore_ShowsAllGreenBullets()
     {
-        // A snapshot with 0 files — tree traversal completes, no dispositions, no downloads.
+        // A snapshot with 0 files — tree traversal completes, no routes, no downloads.
         // All stages should show as completed (green ●).
         var state = new ProgressState();
         state.SetTreeTraversalComplete(0, 0L);

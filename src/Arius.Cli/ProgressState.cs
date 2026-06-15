@@ -188,15 +188,15 @@ public sealed class TrackedDownload
     /// <param name="key">Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</param>
     /// <param name="kind">Whether this is a large file or tar bundle download.</param>
     /// <param name="displayName">Human-readable label for display (file path or "TAR bundle (N files, X)").</param>
-    /// <param name="compressedSize">Total compressed download size in bytes.</param>
+    /// <param name="chunkSize">Total chunk download size in bytes.</param>
     /// <param name="originalSize">Sum of original file sizes for this chunk.</param>
-    public TrackedDownload(string key, DownloadKind kind, string displayName, long compressedSize, long originalSize)
+    public TrackedDownload(string key, DownloadKind kind, string displayName, long chunkSize, long originalSize)
     {
-        Key            = key;
-        Kind           = kind;
-        DisplayName    = displayName;
-        CompressedSize = compressedSize;
-        OriginalSize   = originalSize;
+        Key          = key;
+        Kind         = kind;
+        DisplayName  = displayName;
+        ChunkSize    = chunkSize;
+        OriginalSize = originalSize;
     }
 
     /// <summary>Identifier used as dictionary key: RelativePath for large files, chunk hash for tar bundles.</summary>
@@ -208,8 +208,8 @@ public sealed class TrackedDownload
     /// <summary>Human-readable label: file relative path for large files, "TAR bundle (N files, X)" for tar bundles.</summary>
     public string DisplayName { get; }
 
-    /// <summary>Total compressed download size in bytes.</summary>
-    public long CompressedSize { get; }
+    /// <summary>Total chunk download size in bytes.</summary>
+    public long ChunkSize { get; }
 
     /// <summary>Sum of original file sizes for this chunk.</summary>
     public long OriginalSize { get; }
@@ -432,13 +432,13 @@ public sealed class ProgressState
     private long _totalChunks = -1;
 
     /// <summary>
-    /// Record the completion of an uploaded chunk and add its compressed size to the uploaded-byte total.
+    /// Record the completion of an uploaded chunk and add its stored size to the uploaded-byte total.
     /// </summary>
-    /// <param name="compressedSize">Size in bytes of the compressed chunk to add to the uploaded total.</param>
-    public void IncrementChunksUploaded(long compressedSize)
+    /// <param name="storedSize">Stored chunk size in bytes to add to the uploaded total.</param>
+    public void IncrementChunksUploaded(long storedSize)
     {
         Interlocked.Increment(ref _chunksUploaded);
-        Interlocked.Add(ref _bytesUploaded, compressedSize);
+        Interlocked.Add(ref _bytesUploaded, storedSize);
     }
 
     /// <summary>Updates the recorded total number of archive chunks.</summary>
@@ -487,18 +487,18 @@ public sealed class ProgressState
 
     // ── Restore: aggregate byte totals from chunk resolution ─────────────────
 
-    /// <summary>Total compressed download bytes (denominator for aggregate download progress bar).</summary>
-    public long RestoreTotalCompressedBytes => Interlocked.Read(ref _restoreTotalCompressedBytes);
-    private long _restoreTotalCompressedBytes;
+    /// <summary>Total chunk download bytes (denominator for aggregate download progress bar).</summary>
+    public long RestoreTotalChunkBytes => Interlocked.Read(ref _restoreTotalChunkBytes);
+    private long _restoreTotalChunkBytes;
 
-    /// <summary>Sets the total compressed download bytes from chunk resolution.</summary>
-    public void SetRestoreTotalCompressedBytes(long bytes) => Interlocked.Exchange(ref _restoreTotalCompressedBytes, bytes);
+    /// <summary>Sets the total chunk download bytes from chunk resolution.</summary>
+    public void SetRestoreTotalChunkBytes(long bytes) => Interlocked.Exchange(ref _restoreTotalChunkBytes, bytes);
 
-    /// <summary>Cumulative compressed bytes downloaded across all chunks (numerator for aggregate download progress bar).</summary>
+    /// <summary>Cumulative bytes downloaded across all chunks (numerator for aggregate download progress bar).</summary>
     public long RestoreBytesDownloaded => Interlocked.Read(ref _restoreBytesDownloaded);
     private long _restoreBytesDownloaded;
 
-    /// <summary>Adds compressed bytes to the download counter when a chunk completes.</summary>
+    /// <summary>Adds bytes to the download counter when a chunk completes.</summary>
     public void AddRestoreBytesDownloaded(long bytes) => Interlocked.Add(ref _restoreBytesDownloaded, bytes);
 
     // ── Restore: snapshot and tree ───────────────────────────────────────────
@@ -543,47 +543,60 @@ public sealed class ProgressState
         Volatile.Write(ref _treeTraversalComplete, true);
     }
 
-    // ── Restore: disposition tallies ─────────────────────────────────────────
+    // ── Restore: download queue depth (set by pipeline via OnDownloadQueueReady) ──
 
-    /// <summary>Count of files with disposition New (not yet on disk).</summary>
-    public int DispositionNew => (int)Interlocked.Read(ref _dispositionNew);
-    private long _dispositionNew;
+    /// <summary>
+    /// Getter for the download-stage queue depth (chunks resolved and waiting for a worker);
+    /// null until the pipeline sets it via the OnDownloadQueueReady callback.
+    /// </summary>
+    public Func<int>? DownloadQueueDepth
+    {
+        get => Volatile.Read(ref _downloadQueueDepth);
+        set => Volatile.Write(ref _downloadQueueDepth, value);
+    }
+    private Func<int>? _downloadQueueDepth;
+
+    // ── Restore: route tallies ─────────────────────────────────────────
+
+    /// <summary>Count of files with route New (not yet on disk).</summary>
+    public int RouteNew => (int)Interlocked.Read(ref _routeNew);
+    private long _routeNew;
 
     /// <summary>Count of files skipped because local copy is identical.</summary>
-    public int DispositionSkipIdentical => (int)Interlocked.Read(ref _dispositionSkipIdentical);
-    private long _dispositionSkipIdentical;
+    public int RouteSkipIdentical => (int)Interlocked.Read(ref _routeSkipIdentical);
+    private long _routeSkipIdentical;
 
     /// <summary>Count of files overwritten (--overwrite flag set).</summary>
-    public int DispositionOverwrite => (int)Interlocked.Read(ref _dispositionOverwrite);
-    private long _dispositionOverwrite;
+    public int RouteOverwrite => (int)Interlocked.Read(ref _routeOverwrite);
+    private long _routeOverwrite;
 
     /// <summary>Count of files kept because local differs and --overwrite not set.</summary>
-    public int DispositionKeepLocalDiffers => (int)Interlocked.Read(ref _dispositionKeepLocalDiffers);
-    private long _dispositionKeepLocalDiffers;
+    public int RouteKeepLocalDiffers => (int)Interlocked.Read(ref _routeKeepLocalDiffers);
+    private long _routeKeepLocalDiffers;
 
-    /// <summary>Increments the disposition tally for the specified disposition.</summary>
-    public void IncrementDisposition(RestoreDisposition disposition)
+    /// <summary>Increments the route tally for the specified route.</summary>
+    public void IncrementRoute(RestoreRoute route)
     {
-        switch (disposition)
+        switch (route)
         {
-            case RestoreDisposition.New:
-                Interlocked.Increment(ref _dispositionNew);
+            case RestoreRoute.New:
+                Interlocked.Increment(ref _routeNew);
                 break;
-            case RestoreDisposition.SkipIdentical:
-                Interlocked.Increment(ref _dispositionSkipIdentical);
+            case RestoreRoute.SkipIdentical:
+                Interlocked.Increment(ref _routeSkipIdentical);
                 break;
-            case RestoreDisposition.Overwrite:
-                Interlocked.Increment(ref _dispositionOverwrite);
+            case RestoreRoute.Overwrite:
+                Interlocked.Increment(ref _routeOverwrite);
                 break;
-            case RestoreDisposition.KeepLocalDiffers:
-                Interlocked.Increment(ref _dispositionKeepLocalDiffers);
+            case RestoreRoute.KeepLocalDiffers:
+                Interlocked.Increment(ref _routeKeepLocalDiffers);
                 break;
         }
     }
 
     // ── Restore: file counts ─────────────────────────────────────────────────
 
-    /// <summary>Total files to restore (set at restore start).</summary>
+    /// <summary>Total files to restore.</summary>
     public int RestoreTotalFiles => (int)Interlocked.Read(ref _restoreTotalFiles);
     private long _restoreTotalFiles;
 
@@ -643,9 +656,9 @@ public sealed class ProgressState
 
     // ── Restore: chunk resolution and rehydration status ─────────────────────
 
-    /// <summary>Number of distinct chunk groups (unique content hashes) to download.</summary>
-    public int ChunkGroups => (int)Interlocked.Read(ref _chunkGroups);
-    private long _chunkGroups;
+    /// <summary>Number of distinct chunks selected for restore.</summary>
+    public int RestoreTotalChunks => (int)Interlocked.Read(ref _restoreTotalChunks);
+    private long _restoreTotalChunks;
 
     /// <summary>Number of large-file chunks.</summary>
     public int LargeChunkCount => (int)Interlocked.Read(ref _largeChunkCount);
@@ -656,9 +669,9 @@ public sealed class ProgressState
     private long _tarChunkCount;
 
     /// <summary>Sets chunk resolution counts.</summary>
-    public void SetChunkResolution(int chunkGroups, int largeCount, int tarCount)
+    public void SetChunkResolution(int totalChunks, int largeCount, int tarCount)
     {
-        Interlocked.Exchange(ref _chunkGroups, chunkGroups);
+        Interlocked.Exchange(ref _restoreTotalChunks, totalChunks);
         Interlocked.Exchange(ref _largeChunkCount, largeCount);
         Interlocked.Exchange(ref _tarChunkCount, tarCount);
     }

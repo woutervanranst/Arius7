@@ -34,7 +34,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         // Verify exactly one chunk was uploaded
         var blobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
             blobs.Add(item.Name);
         blobs.Count.ShouldBe(1);
 
@@ -81,7 +81,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
 
         // Verify tar chunk was uploaded
         var tarBlobs = new List<RelativePath>();
-        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in fix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var b = item.Name;
             var m = await fix.BlobContainer.GetMetadataAsync(b);
@@ -151,7 +151,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // confirming the mixed-format scenario before restore exercises auto-detection.
         var hasCbc = false;
         var hasGcm = false;
-        await foreach (var item in gcmFix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix))
+        await foreach (var item in gcmFix.BlobContainer.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: false))
         {
             var blobName = item.Name;
             var header = new byte[8];

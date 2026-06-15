@@ -206,6 +206,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 
+    public FakeLogCollector RestoreLogs => _restoreLogger.Collector;
+
 
     // --- COMMAND HELPERS ---
 
@@ -240,7 +242,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        SqliteConnection.ClearAllPools();
+        ClearChunkIndexPool(accountName, containerName);
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -262,8 +264,18 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         foreach (var index in _ownedIndexes)
             index.Dispose();
 
-        SqliteConnection.ClearAllPools();
-
         return ValueTask.CompletedTask;
+    }
+
+    private static void ClearChunkIndexPool(string accountName, string containerName)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName).Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
     }
 }

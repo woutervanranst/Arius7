@@ -28,6 +28,6 @@ internal sealed class FakeMetadataOnlyBlobContainerService : IBlobContainerServi
         return Task.FromResult(Metadata.TryGetValue(blobName, out var metadata) ? metadata : new BlobMetadata { Exists = false });
     }
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("FakeMetadataOnlyBlobContainerService is HEAD-only and does not support blob listing.");
 }
