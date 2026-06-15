@@ -31,8 +31,8 @@ public enum RestoreRoute { New, SkipIdentical, Overwrite, KeepLocalDiffers }
 /// <summary>Emitted during classify when a selected file is routed.</summary>
 public sealed record FileRoutedEvent(RelativePath RelativePath, RestoreRoute Route, long FileSize) : INotification;
 
-/// <summary>Emitted after selected files have been grouped by resolved chunk.</summary>
-public sealed record ChunkResolutionCompleteEvent(int ChunkGroups, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
+/// <summary>Emitted after classify has counted the distinct chunks needed by selected files.</summary>
+public sealed record ChunkResolutionCompleteEvent(int TotalChunks, int LargeCount, int TarCount, long TotalOriginalBytes = 0, long TotalCompressedBytes = 0) : INotification;
 
 /// <summary>Emitted after classify determines chunk hydration status.</summary>
 public sealed record RehydrationStatusEvent(int Available, int Rehydrated, int NeedsRehydration, int Pending) : INotification;

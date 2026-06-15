@@ -107,7 +107,7 @@ public sealed class RestoreCommandHandler(
             var  filesToRestore           = new RestoreFilePipeline(encryption, index, fileTreeService, mediator, logger);
             var  rehydratedState          = await chunkStorage.ListRehydratedChunksAsync(cancellationToken);
             var  skipped                  = new StrongBox<long>(0);
-            int  fileCount                = 0, availableCount       = 0, needsCount    = 0, pendingCount     = 0, largeChunks = 0, chunkGroups = 0;
+            int  fileCount                = 0, availableCount       = 0, needsCount    = 0, pendingCount     = 0, largeChunks = 0, totalChunks = 0;
             long totalOriginalBytes       = 0, totalCompressedBytes = 0, downloadBytes = 0, rehydrationBytes = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
@@ -122,7 +122,7 @@ public sealed class RestoreCommandHandler(
 
                 if (firstSeen)
                 {
-                    chunkGroups++;
+                    totalChunks++;
                     if (entry.IsLargeChunk)
                         largeChunks++;
 
@@ -163,14 +163,14 @@ public sealed class RestoreCommandHandler(
             }
 
             logger.LogInformation("[tree] Traversal complete: {Count} file(s) collected", fileCount);
-            var tarChunks = chunkGroups - largeChunks;
+            var tarChunks = totalChunks - largeChunks;
 
             await mediator.Publish(new SnapshotResolvedEvent(snapshot.Timestamp, snapshot.RootHash, fileCount), cancellationToken);
             await mediator.Publish(new TreeTraversalCompleteEvent(fileCount, totalOriginalBytes), cancellationToken);
             await mediator.Publish(new RestoreStartedEvent(fileCount), cancellationToken);
 
-            logger.LogInformation("[chunk] Resolution: {Groups} chunk group(s), large={Large}, tar={Tar}", chunkGroups, largeChunks, tarChunks);
-            await mediator.Publish(new ChunkResolutionCompleteEvent(chunkGroups, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
+            logger.LogInformation("[chunk] Resolution: {TotalChunks} chunk(s), large={Large}, tar={Tar}", totalChunks, largeChunks, tarChunks);
+            await mediator.Publish(new ChunkResolutionCompleteEvent(totalChunks, largeChunks, tarChunks, totalOriginalBytes, totalCompressedBytes), cancellationToken);
 
             logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending}", availableCount, 0, needsCount, pendingCount);
             await mediator.Publish(new RehydrationStatusEvent(availableCount, 0, needsCount, pendingCount), cancellationToken);

@@ -156,7 +156,7 @@ public class MediatorEventRoutingIntegrationTests
         state.RouteSkipIdentical.ShouldBe(1);
 
         // ChunkResolutionCompleteEvent
-        state.ChunkGroups.ShouldBe(3);
+        state.RestoreTotalChunks.ShouldBe(3);
         state.LargeChunkCount.ShouldBe(1);
         state.TarChunkCount.ShouldBe(1);
         state.RestoreTotalCompressedBytes.ShouldBe(1800L);
