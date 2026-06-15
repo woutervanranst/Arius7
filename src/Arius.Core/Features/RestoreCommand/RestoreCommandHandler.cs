@@ -1,7 +1,6 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.Extensions;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -32,7 +31,7 @@ namespace Arius.Core.Features.RestoreCommand;
 ///    counters. Only chunks that need a rehydration request are retained. Rehydration state comes from one
 ///    rehydrated-prefix listing plus each chunk's index <c>StorageTierHint</c>; there are no per-chunk
 ///    storage calls.
-/// 3. **Confirm** - publish the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>.
+/// 3. **Confirm** - compute the cost estimate and invoke <see cref="RestoreOptions.ConfirmRehydration"/>.
 ///    Cancellation exits before any download starts.
 /// 4. **Download** (walk #2, events suppressed) - group routed files by chunk and download available
 ///    chunks. Large chunks restore one file immediately; tar chunks restore after the second walk completes.
@@ -137,7 +136,6 @@ public sealed class RestoreCommandHandler(
                             break;
                         case ChunkHydrationStatus.NeedsRehydration:
                             needsRehydrationCount++;
-                            chunksNeedingRehydration[chunkHash] = 0;
                             break;
                         case ChunkHydrationStatus.RehydrationPending:
                             pendingRehydrationCount++;
@@ -156,8 +154,8 @@ public sealed class RestoreCommandHandler(
                         downloadBytes += entry.ChunkSize;
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
-                        bytesNeedingRehydration             += entry.ChunkSize;
-                        chunksNeedingRehydration[chunkHash] += entry.ChunkSize;
+                        bytesNeedingRehydration += entry.ChunkSize;
+                        chunksNeedingRehydration[chunkHash] = entry.ChunkSize;
                         break;
                     case ChunkHydrationStatus.RehydrationPending:
                         bytesPendingRehydration += entry.ChunkSize;
@@ -177,35 +175,32 @@ public sealed class RestoreCommandHandler(
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
 
             // ── Stage 3: Cost estimate + confirm rehydration ──────────────────────
-            var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
-                chunksAvailable:          availableCount,
-                chunksAlreadyRehydrated:  rehydratedCount,
-                chunksNeedingRehydration: needsRehydrationCount,
-                chunksPendingRehydration: pendingRehydrationCount,
-                bytesNeedingRehydration:  bytesNeedingRehydration,
-                bytesPendingRehydration:  bytesPendingRehydration,
-                downloadBytes:            downloadBytes);
-
             var rehydratePriority = RehydratePriority.Standard;
-            if (needsRehydrationCount > 0)
+            if (needsRehydrationCount > 0 && opts.ConfirmRehydration is not null)
             {
-                if (opts.ConfirmRehydration is not null)
-                {
-                    var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
-                    if (chosenPriority is null)
-                    {
-                        // User cancelled rehydration — exit without downloading or rehydrating.
-                        return new RestoreResult
-                        {
-                            Success                  = true,
-                            FilesRestored            = 0,
-                            FilesSkipped             = (int)skipped.Value,
-                            ChunksPendingRehydration = needsRehydrationCount + pendingRehydrationCount,
-                        };
-                    }
+                var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
+                    chunksAvailable:          availableCount,
+                    chunksAlreadyRehydrated:  rehydratedCount,
+                    chunksNeedingRehydration: needsRehydrationCount,
+                    chunksPendingRehydration: pendingRehydrationCount,
+                    bytesNeedingRehydration:  bytesNeedingRehydration,
+                    bytesPendingRehydration:  bytesPendingRehydration,
+                    downloadBytes:            downloadBytes);
 
-                    rehydratePriority = chosenPriority.Value;
+                var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
+                if (chosenPriority is null)
+                {
+                    // User cancelled rehydration — exit without downloading or rehydrating.
+                    return new RestoreResult
+                    {
+                        Success                  = true,
+                        FilesRestored            = 0,
+                        FilesSkipped             = (int)skipped.Value,
+                        ChunksPendingRehydration = needsRehydrationCount + pendingRehydrationCount,
+                    };
                 }
+
+                rehydratePriority = chosenPriority.Value;
             }
 
             // ── Stage 4: Download available chunks (walk #2, streaming + bounded) ──
@@ -295,11 +290,11 @@ public sealed class RestoreCommandHandler(
                                 Interlocked.Add(ref filesRestored, restored);
                             }
                         }
-                        catch (BlobArchivedException) when (!ct.IsCancellationRequested)
+                        catch (BlobArchivedException ex) when (!ct.IsCancellationRequested)
                         {
                             // Stale classification (e.g. external tier change): the blob is still archived.
                             // Re-route to the rehydration path rather than faulting the run.
-                            logger.LogWarning("[download] Chunk {ChunkHash} is archived despite classification; re-routing to rehydration", chunk.ChunkHash.Short8);
+                            logger.LogWarning(ex, "[download] Chunk {ChunkHash} is archived despite classification; re-routing to rehydration", chunk.ChunkHash.Short8);
                             rerouteToRehydration.TryAdd(chunk.ChunkHash, chunk.CompressedSize);
                         }
                     });
@@ -352,17 +347,14 @@ public sealed class RestoreCommandHandler(
             }
 
             // ── Stage 6: Cleanup ALL rehydrated blobs in the container ────────────
-            if (totalPending == 0)
+            if (totalPending == 0 && opts.ConfirmCleanup is not null)
             {
                 await using var cleanupPlan = await chunkStorage.PlanRehydratedCleanupAsync(cancellationToken);
-                if (cleanupPlan.ChunkCount > 0)
+                if (cleanupPlan.ChunkCount > 0 && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
                 {
-                    if (opts.ConfirmCleanup is not null && await opts.ConfirmCleanup(cleanupPlan.ChunkCount, cleanupPlan.TotalBytes, cancellationToken))
-                    {
-                        var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
-                        logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
-                        await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
-                    }
+                    var cleanupResult = await cleanupPlan.ExecuteAsync(cancellationToken);
+                    logger.LogInformation("[cleanup] Deleted {ChunksDeleted} rehydrated blob(s), freed {BytesFreed} bytes", cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes);
+                    await mediator.Publish(new CleanupCompleteEvent(cleanupResult.DeletedChunkCount, cleanupResult.FreedBytes), cancellationToken);
                 }
             }
 
@@ -412,11 +404,10 @@ public sealed class RestoreCommandHandler(
         long               compressedSize,
         CancellationToken  cancellationToken)
     {
+        var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
+        await using (var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken))
+        await using (var fileStream = fs.CreateFile(file.RelativePath))
         {
-            var progress = opts.CreateLargeFileDownloadProgress?.Invoke(file.RelativePath, compressedSize);
-            await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-            await using var fileStream   = fs.CreateFile(file.RelativePath);
-
             await payloadStream.CopyToAsync(fileStream, cancellationToken);
         }
 
@@ -450,7 +441,7 @@ public sealed class RestoreCommandHandler(
 
         var progress = opts.CreateTarBundleDownloadProgress?.Invoke(chunkHash, compressedSize);
         await using var payloadStream = await chunkStorage.DownloadAsync(chunkHash, progress, cancellationToken);
-        var tarReader = new TarReader(payloadStream, leaveOpen: false);
+        using var tarReader = new TarReader(payloadStream, leaveOpen: true);
 
         while (await tarReader.GetNextEntryAsync(copyData: false, cancellationToken) is { } tarEntry)
         {
