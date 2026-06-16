@@ -1,4 +1,13 @@
-# MetronicTailwindAngular
+# Arius.Web
+
+## Playwright tests
+
+```
+  cd src/Arius.Web
+  export ARIUS_E2E_ACCOUNT=… ARIUS_E2E_KEY=… ARIUS_E2E_CONTAINER=… ARIUS_E2E_PASSPHRASE=…
+  npm run e2e            # default suite (no backend mutation)
+  ARIUS_E2E_WRITE=1 npm run e2e   # also the real-archive spec
+```
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.13.
 
