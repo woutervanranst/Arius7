@@ -39,6 +39,15 @@ test.describe('archive drawer', () => {
       await page.getByTestId('btn-archive').click();
       await page.getByTestId('drawer-start').click();
       await expect(page.getByText('Archive complete', { exact: false })).toBeVisible({ timeout: 180_000 });
+      await page.getByRole('button', { name: 'Close' }).click();
+
+      // clear localPath so the restore writes to a fresh temp dir (otherwise the files already exist
+      // in the source folder and are correctly skipped as identical), then restore the whole repo
+      await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
+      await page.goto(`/repos/${created.id}/files`);
+      await page.getByTestId('btn-restore').click();
+      await page.getByTestId('drawer-start').click();
+      await expect(page.getByText('Restore complete.')).toBeVisible({ timeout: 150_000 });
     } finally {
       await request.delete(`/api/repos/${created.id}`);
       fs.rmSync(src, { recursive: true, force: true });
