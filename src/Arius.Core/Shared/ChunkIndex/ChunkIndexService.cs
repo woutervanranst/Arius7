@@ -16,7 +16,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 internal sealed class ChunkIndexService : IChunkIndexService
 {
     internal const           int          MinShardPrefixLength       = 2;
-    internal const           int          MaxShardEntryCount         = 10_000;
+    internal const           int          MaxShardEntryCount         = 16; // 10_000; TODO
     internal const           int          FlushWorkers               = 32;
     internal const           int          PrefixLoadWorkers          = 8;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
