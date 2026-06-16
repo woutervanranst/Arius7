@@ -48,7 +48,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
         var encryption  = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
-        var compression = TestCompression;
+        var compression = TestCompression.Instance;
         var snapshot    = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index       = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 

@@ -108,7 +108,7 @@ public class ZstdCompressionServiceTests
         // any surviving decode must fail the XXH64 check rather than silently emit wrong bytes.
         compressed[compressed.Length / 2] ^= 0xFF;
 
-        await Should.ThrowAsync<Exception>(async () => await DecompressAsync(compressed));
+        await Should.ThrowAsync<ZstdSharp.ZstdException>(async () => await DecompressAsync(compressed));
     }
 
     [Test]
