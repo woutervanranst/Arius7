@@ -85,6 +85,12 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                     ? new RoundTripVerifier(compression, encryption, cancellationToken)
                     : new NoopVerifier();
 
+                /*
+                 * source bytes -> zstd -> TeeStream -> encryption -> blob storage
+                 *                             |
+                 *                             +-> zstd decompress -> content hash -> compare with chunk hash
+                 */
+
                 var teeStream         = new TeeStream(encryptionStream, verifier.Sink);
                 var compressionStream = compression.WrapForCompression(teeStream, leaveOpen: true);
 
