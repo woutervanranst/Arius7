@@ -124,7 +124,7 @@ public class ZstdCompressionServiceTests
 
         var truncated = compressed[..(compressed.Length / 2)];
 
-        await Should.ThrowAsync<Exception>(async () => await DecompressAsync(truncated));
+        await Should.ThrowAsync<EndOfStreamException>(async () => await DecompressAsync(truncated));
     }
 
     [Test]
