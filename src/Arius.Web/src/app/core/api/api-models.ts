@@ -60,3 +60,30 @@ export interface ListEntriesOptions {
   filter?: string | null;
   includeLocal?: boolean;
 }
+
+// ── Job streaming (archive / restore) ─────────────────────────────────────────
+
+export interface LogLine {
+  ts: string;
+  text: string;
+  severity: 'ok' | 'warn' | 'dedup' | 'meta' | 'info';
+}
+
+export interface ProgressMsg {
+  pct: number;
+  stats: Record<string, string> | null;
+}
+
+export interface CostEstimateMsg {
+  chunksAvailable: number;
+  chunksNeedingRehydration: number;
+  bytesNeedingRehydration: number;
+  downloadBytes: number;
+  totalStandard: number;
+  totalHigh: number;
+}
+
+export interface DoneMsg {
+  status: string;   // completed | failed
+  summary: string;
+}

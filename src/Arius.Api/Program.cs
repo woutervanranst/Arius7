@@ -33,6 +33,8 @@ try
     builder.Services.AddSingleton<SecretProtector>();
     builder.Services.AddSingleton<IBlobServiceFactory, AzureBlobServiceFactory>();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
+    builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
+    builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
 
     builder.Services.AddSignalR()
         .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

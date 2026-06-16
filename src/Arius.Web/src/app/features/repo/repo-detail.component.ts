@@ -4,6 +4,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { of, switchMap } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { ApiService } from '../../core/api/api.service';
+import { DrawerStore } from '../../core/state/drawer.store';
 
 /** Repository detail shell: header (alias, container/local chips, Restore/Archive) + tab bar + child outlet. */
 @Component({
@@ -29,8 +30,8 @@ import { ApiService } from '../../core/api/api.service';
           </div>
         </div>
         <div class="flex items-center gap-2.5">
-          <button class="ar-btn-outline"><i class="ki-filled ki-cloud-download"></i>Restore</button>
-          <button class="ar-btn-primary"><i class="ki-filled ki-cloud-add"></i>Archive</button>
+          <button class="ar-btn-outline" (click)="drawer.openRestore(r.id, null, [])"><i class="ki-filled ki-cloud-download"></i>Restore</button>
+          <button class="ar-btn-primary" (click)="drawer.openArchive(r.id, r.defaultTier)"><i class="ki-filled ki-cloud-add"></i>Archive</button>
         </div>
       </div>
 
@@ -59,6 +60,7 @@ import { ApiService } from '../../core/api/api.service';
 })
 export class RepoDetailComponent {
   private readonly api = inject(ApiService);
+  protected readonly drawer = inject(DrawerStore);
   readonly repoId = input.required<string>();
 
   protected readonly repo = toSignal(

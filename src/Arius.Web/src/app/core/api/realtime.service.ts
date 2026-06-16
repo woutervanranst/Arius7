@@ -1,16 +1,22 @@
 import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
-import { Observable } from 'rxjs';
-import { EntryDto, ListEntriesOptions } from './api-models';
+import { Observable, Subject } from 'rxjs';
+import { CostEstimateMsg, DoneMsg, EntryDto, ListEntriesOptions, LogLine, ProgressMsg } from './api-models';
 
 /**
- * SignalR client for Arius.Api's hub (/hubs/arius). Phase 2 uses server→client streaming for the
- * file browser; archive/restore job streams + the cost-approval handshake are added later.
+ * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
+ * archive/restore job streams (log/progress/cost/done) with the cost-approval handshake.
  */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
   private connection?: signalR.HubConnection;
   private starting?: Promise<void>;
+  private handlersBound = false;
+
+  readonly log$ = new Subject<LogLine>();
+  readonly progress$ = new Subject<ProgressMsg>();
+  readonly cost$ = new Subject<CostEstimateMsg>();
+  readonly done$ = new Subject<DoneMsg>();
 
   private ensureStarted(): Promise<void> {
     if (!this.connection) {
@@ -19,11 +25,38 @@ export class RealtimeService {
         .withAutomaticReconnect()
         .build();
     }
+    if (!this.handlersBound) {
+      const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
+      this.connection.on('Log', (m: { text: string; severity: LogLine['severity'] }) =>
+        this.log$.next({ ts: now(), text: m.text, severity: m.severity }));
+      this.connection.on('Progress', (m: ProgressMsg) => this.progress$.next(m));
+      this.connection.on('CostEstimate', (m: CostEstimateMsg) => this.cost$.next(m));
+      this.connection.on('Done', (m: DoneMsg) => this.done$.next(m));
+      this.handlersBound = true;
+    }
     if (this.connection.state === signalR.HubConnectionState.Connected) {
       return Promise.resolve();
     }
     this.starting ??= this.connection.start();
     return this.starting;
+  }
+
+  /** Starts an archive; returns the job id. Subscribe to log$/progress$/done$ for the stream. */
+  async startArchive(repositoryId: number, opts: { tier: string; removeLocal: boolean; noPointers: boolean }): Promise<string> {
+    await this.ensureStarted();
+    return this.connection!.invoke<string>('StartArchive', repositoryId, opts.tier, opts.removeLocal, opts.noPointers);
+  }
+
+  /** Starts a restore (empty targetPaths = whole repository). Watch cost$ for the approval modal. */
+  async startRestore(repositoryId: number, opts: { version: string | null; targetPaths: string[]; overwrite: boolean; noPointers: boolean }): Promise<string> {
+    await this.ensureStarted();
+    return this.connection!.invoke<string>('StartRestore', repositoryId, opts.version, opts.targetPaths, opts.overwrite, opts.noPointers);
+  }
+
+  /** Answers the restore cost modal. priority = 'standard' | 'high'; null/'' declines. */
+  async approve(jobId: string, priority: string | null): Promise<void> {
+    await this.ensureStarted();
+    await this.connection!.invoke('Approve', jobId, priority);
   }
 
   /** Streams the immediate children of a folder in a snapshot. */

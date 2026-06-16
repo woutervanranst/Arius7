@@ -5,6 +5,7 @@ import { toArray } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
 import { RealtimeService } from '../../../core/api/realtime.service';
+import { DrawerStore } from '../../../core/state/drawer.store';
 import { EntryDto, SnapshotDto } from '../../../core/api/api-models';
 import { StateRingComponent } from '../../../shared/state-ring/state-ring.component';
 import { StateLegendComponent } from '../../../shared/state-legend/state-legend.component';
@@ -68,7 +69,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
         <span style="font-size:13.5px;color:#1d4ed8"><b>{{ collectedCount() }}</b> files collected · {{ formatBytes(collectedBytes()) }}</span>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="ar-btn-outline" (click)="clearCollected()">Clear</button>
-          <button class="ar-btn-primary"><i class="ki-filled ki-cloud-download"></i>Restore collected</button>
+          <button class="ar-btn-primary" (click)="restoreCollected()"><i class="ki-filled ki-cloud-download"></i>Restore collected</button>
         </div>
       </div>
     }
@@ -173,6 +174,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
 export class FilesTabComponent {
   private readonly api = inject(ApiService);
   private readonly realtime = inject(RealtimeService);
+  private readonly drawer = inject(DrawerStore);
 
   readonly repoId = input.required<string>();
 
@@ -336,6 +338,9 @@ export class FilesTabComponent {
     this.collected.set(next);
   }
   protected clearCollected(): void { this.collected.set(new Map()); }
+  protected restoreCollected(): void {
+    this.drawer.openRestore(+this.repoId(), this.viewSnap(), [...this.collected().keys()]);
+  }
   protected readonly collectedCount = computed(() => this.collected().size);
   protected readonly collectedBytes = computed(() => [...this.collected().values()].reduce((a, b) => a + b, 0));
 

@@ -1,4 +1,5 @@
 using Arius.Api.AppData;
+using Arius.Api.Jobs;
 using Arius.Core;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
@@ -52,7 +53,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         {
             if (!_readProviders.TryGetValue(repositoryId, out lazy!))
             {
-                lazy = new Lazy<Task<ServiceProvider>>(() => BuildAsync(repositoryId, PreflightMode.ReadOnly, CancellationToken.None));
+                // Read providers get an inert JobSink; the event forwarders never fire for them.
+                lazy = new Lazy<Task<ServiceProvider>>(() => BuildAsync(repositoryId, PreflightMode.ReadOnly, new JobSink(), CancellationToken.None));
                 _readProviders[repositoryId] = lazy;
             }
         }
@@ -61,11 +63,11 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Builds a fresh, dedicated provider for a single long-running command. The caller owns it and
-    /// must dispose it when the job ends.
+    /// Builds a fresh, dedicated provider for a single long-running command, wired to the given
+    /// per-job <see cref="JobSink"/>. The caller owns it and must dispose it when the job ends.
     /// </summary>
-    public Task<ServiceProvider> CreateJobProviderAsync(long repositoryId, PreflightMode mode, CancellationToken cancellationToken)
-        => BuildAsync(repositoryId, mode, cancellationToken);
+    public Task<ServiceProvider> CreateJobProviderAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)
+        => BuildAsync(repositoryId, mode, jobSink, cancellationToken);
 
     /// <summary>Disposes and removes the cached read provider for a repository (e.g. after a properties change or archive).</summary>
     public void Evict(long repositoryId)
@@ -80,7 +82,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         _ = DisposeProviderAsync(lazy);
     }
 
-    private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, CancellationToken cancellationToken)
+    private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)
     {
         var connection = LoadConnection(repositoryId);
 
@@ -92,6 +94,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // Route Core's logging through the host's configured logger factory.
         services.AddSingleton(_loggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
+
+        // Per-job sink resolved by the event forwarders (auto-registered by AddMediator).
+        services.AddSingleton(jobSink);
 
         // AddMediator() (generated in this assembly) must run here, not inside AddArius.
         services.AddMediator();
