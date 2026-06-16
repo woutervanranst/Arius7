@@ -1,7 +1,8 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Tests.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -81,7 +82,7 @@ public class FileTreeWalkerTests
         foreach (var tree in trees)
             await SeedTreeAsync(blobs, tree);
 
-        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, "acct-filetree-walker", "ctr-filetree-walker"));
+        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, "acct-filetree-walker", "ctr-filetree-walker"));
     }
 
     private static Task<FileTreeHash> ComputeHashAsync(IReadOnlyList<FileTreeEntry> entries)

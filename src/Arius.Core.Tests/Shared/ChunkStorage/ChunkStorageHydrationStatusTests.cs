@@ -1,7 +1,7 @@
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Fakes;
-using Arius.Tests.Shared.Compression;
-using Arius.Tests.Shared.Encryption;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
 
@@ -15,7 +15,7 @@ public class ChunkStorageHydrationStatusTests
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -30,7 +30,7 @@ public class ChunkStorageHydrationStatusTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Cool };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -45,7 +45,7 @@ public class ChunkStorageHydrationStatusTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = false };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -59,7 +59,7 @@ public class ChunkStorageHydrationStatusTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -74,7 +74,7 @@ public class ChunkStorageHydrationStatusTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -88,7 +88,7 @@ public class ChunkStorageHydrationStatusTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = false };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = false };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -101,7 +101,7 @@ public class ChunkStorageHydrationStatusTests
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = false };
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 

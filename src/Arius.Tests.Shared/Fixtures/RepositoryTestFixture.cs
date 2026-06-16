@@ -10,8 +10,6 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Compression;
-using Arius.Tests.Shared.Encryption;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Data.Sqlite;
@@ -49,7 +47,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var encryption  = passphrase is null
             ? IEncryptionService.EncryptedInstance
             : new PassphraseEncryptionService(passphrase);
-        var compression = TestCompression.Instance;
+        var compression = ICompressionService.ZtdInstance;
         var snapshot    = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index       = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
@@ -88,7 +86,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var compression = TestCompression.Instance;
+        var compression = ICompressionService.ZtdInstance;
         var snapshot = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index    = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 

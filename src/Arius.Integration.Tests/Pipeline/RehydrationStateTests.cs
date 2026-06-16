@@ -2,12 +2,13 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
@@ -72,13 +73,13 @@ public class RehydrationStateTests(AzuriteFixture azurite)
 
     private static RestoreCommandHandler MakeRestoreHandler(RehydrationSimulatingBlobService sim, PipelineFixture fix)
     {
-        var snapshot = new SnapshotService(sim, fix.Encryption, TestCompression.Instance, Account, fix.Container.Name);
-        var index = new ChunkIndexService(sim, fix.Encryption, TestCompression.Instance, snapshot, Account, fix.Container.Name);
+        var snapshot = new SnapshotService(sim, fix.Encryption, ICompressionService.ZtdInstance, Account, fix.Container.Name);
+        var index = new ChunkIndexService(sim, fix.Encryption, ICompressionService.ZtdInstance, snapshot, Account, fix.Container.Name);
         var logger = new FakeLogger<RestoreCommandHandler>();
         return new(fix.Encryption,
             index,
-            new ChunkStorageService(sim, fix.Encryption, TestCompression.Instance),
-            new FileTreeService(sim, fix.Encryption, TestCompression.Instance, Account, fix.Container.Name),
+            new ChunkStorageService(sim, fix.Encryption, ICompressionService.ZtdInstance),
+            new FileTreeService(sim, fix.Encryption, ICompressionService.ZtdInstance, Account, fix.Container.Name),
             snapshot,
             Substitute.For<IMediator>(),
             logger,

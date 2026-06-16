@@ -1,6 +1,7 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
@@ -27,29 +28,23 @@ public class GoldenFileDecryptionTests
 
     // ── File names ──────────────────────────────────────────────────────────────
 
-    private const string LargeChunkFile =
-        "9ffc39c119e735c3c96e5ee912132a52c9c98566fb2a7c2ef156c4666afab18d";
+    private const string LargeChunkFile = "9ffc39c119e735c3c96e5ee912132a52c9c98566fb2a7c2ef156c4666afab18d";
 
-    private const string TarChunkFile =
-        "2552b810aee26966d3a50445d390f5a512591c33085f7d7e3eb8ae0b407c82a0";
+    private const string TarChunkFile = "2552b810aee26966d3a50445d390f5a512591c33085f7d7e3eb8ae0b407c82a0";
 
     // ── Expected hashes ─────────────────────────────────────────────────────────
 
     /// <summary>Plain SHA256 of the decompressed Lena PNG bytes (no passphrase).</summary>
-    private const string LenaPlaintextSha256 =
-        "7e497501a28bcf9a353ccadf6eb9216bf098ac32888fb542fb9bfe71d486761f";
+    private const string LenaPlaintextSha256 = "7e497501a28bcf9a353ccadf6eb9216bf098ac32888fb542fb9bfe71d486761f";
 
     /// <summary>SHA256("wouter" + lena_bytes) — must equal the chunk filename.</summary>
-    private const string LenaContentHash =
-        "9ffc39c119e735c3c96e5ee912132a52c9c98566fb2a7c2ef156c4666afab18d";
+    private const string LenaContentHash = "9ffc39c119e735c3c96e5ee912132a52c9c98566fb2a7c2ef156c4666afab18d";
 
     /// <summary>SHA256("wouter" + "world") — must equal the tar entry name for hello.txt.</summary>
-    private const string WorldContentHash =
-        "4e1c18b56cca9e5c2f27065adddce7585ba114de38a38ec2a6bf54514783ee1b";
+    private const string WorldContentHash = "4e1c18b56cca9e5c2f27065adddce7585ba114de38a38ec2a6bf54514783ee1b";
 
     /// <summary>SHA256("wouter" + "42") — must equal the tar entry name for answer.txt.</summary>
-    private const string FortyTwoContentHash =
-        "3eba035d48fdc6a6292991904c64c2f607b1d07c4ae47704f4e74f2259682e93";
+    private const string FortyTwoContentHash = "3eba035d48fdc6a6292991904c64c2f607b1d07c4ae47704f4e74f2259682e93";
 
     // ── Helper ──────────────────────────────────────────────────────────────────
 

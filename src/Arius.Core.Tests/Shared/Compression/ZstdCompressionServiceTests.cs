@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using Arius.Core.Shared.Compression;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Compression;
 
@@ -11,7 +11,7 @@ namespace Arius.Core.Tests.Shared.Compression;
 /// </summary>
 public class ZstdCompressionServiceTests
 {
-    private static readonly ICompressionService Sut = TestCompression.Instance;
+    private static readonly ICompressionService Sut = ICompressionService.ZtdInstance;
 
     [Test]
     public void RequiresRoundTripVerification()

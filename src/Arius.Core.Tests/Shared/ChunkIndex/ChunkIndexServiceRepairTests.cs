@@ -1,7 +1,8 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.Snapshot.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
@@ -85,7 +86,7 @@ public class ChunkIndexServiceRepairTests
         var staleStore = new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
         staleStore.UpsertPendingFlush(new ShardEntry(FakeContentHash('f'), FakeChunkHash('e'), 1, 1, BlobTier.Cool));
 
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -107,7 +108,7 @@ public class ChunkIndexServiceRepairTests
         staleShard.AddOrUpdate(new ShardEntry(staleHash, FakeChunkHash('f'), 999, 111, BlobTier.Cool));
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(rebuiltHash)),
-            await ShardSerializer.SerializeAsync(staleShard, IEncryptionService.PlaintextInstance, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(staleShard, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkPath(ChunkHash.Parse(rebuiltHash)),
@@ -119,7 +120,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.OriginalSize] = "100",
                 [BlobMetadataKeys.ChunkSize] = "3",
             });
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -143,7 +144,7 @@ public class ChunkIndexServiceRepairTests
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
                 [BlobMetadataKeys.OriginalSize] = "10",
             });
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await Should.ThrowAsync<ChunkIndexRepairException>(() => index.RepairAsync());
 
@@ -180,13 +181,13 @@ public class ChunkIndexServiceRepairTests
         var repositoryKey = UniqueRepositoryKey("repair-clears-memory");
         var staleContentHash = FakeContentHash('a');
         var staleEntry = new ShardEntry(staleContentHash, FakeChunkHash('b'), 10, 2, BlobTier.Cool);
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(staleEntry);
 
         await index.RepairAsync();
         await index.FlushAsync();
 
-        using var resumedIndex = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var resumedIndex = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         (await resumedIndex.LookupAsync(staleContentHash)).ShouldBeNull();
         blobs.UploadedBlobNames.ShouldBeEmpty();
     }
@@ -222,7 +223,7 @@ public class ChunkIndexServiceRepairTests
         cache.CreateDirectory(RelativePath.Root);
         await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
         store.UpsertPendingFlush(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 
@@ -235,7 +236,7 @@ public class ChunkIndexServiceRepairTests
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);
-        return new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        return new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";

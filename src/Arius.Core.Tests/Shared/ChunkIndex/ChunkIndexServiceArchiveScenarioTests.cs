@@ -1,8 +1,9 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.Snapshot.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
 
@@ -449,7 +450,7 @@ public class ChunkIndexServiceArchiveScenarioTests
     private sealed record FirstRun(ContentHash H1, ContentHash H2, ContentHash H3, ShardEntry E1, ShardEntry E2, ShardEntry E3, PathSegment PrefixAa, PathSegment PrefixBb);
 
     private static ChunkIndexService NewRun(IBlobContainerService blobs, string repositoryKey, FakeSnapshotService snapshot)
-        => new(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        => new(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, repositoryKey, repositoryKey);
 
     /// <summary>A content hash sharing <paramref name="hash"/>'s shard prefix but filled with <paramref name="fill"/>.</summary>
     private static ContentHash SamePrefix(ContentHash hash, char fill)
@@ -467,7 +468,7 @@ public class ChunkIndexServiceArchiveScenarioTests
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
         await using var stream = download.Stream;
-        return ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        return ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";

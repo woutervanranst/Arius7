@@ -1,5 +1,6 @@
 using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 

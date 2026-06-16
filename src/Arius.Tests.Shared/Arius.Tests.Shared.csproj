@@ -18,8 +18,4 @@
     <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Encryption\" />
-  </ItemGroup>
-
 </Project>

@@ -1,5 +1,6 @@
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Snapshot;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Snapshot;
 
@@ -21,10 +22,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.0.0"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         bytes.ShouldNotBeEmpty();
 
-        var back = await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var back = await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         back.Timestamp.ShouldBe(ts);
         back.RootHash.ShouldBe(manifest.RootHash);
@@ -48,8 +49,8 @@ public class SnapshotSerializerTests
             AriusVersion = "2.0.0-test"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
-        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, ICompressionService.ZtdInstance);
+        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc, ICompressionService.ZtdInstance);
 
         back.RootHash.ShouldBe(manifest.RootHash);
         back.FileCount.ShouldBe(7);
@@ -69,10 +70,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.2.3"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         using var compressed = new MemoryStream(bytes);
-        await using var decompressed = TestCompression.Instance.WrapForDecompression(compressed);
+        await using var decompressed = ICompressionService.ZtdInstance.WrapForDecompression(compressed);
         using var json = new MemoryStream();
         await decompressed.CopyToAsync(json);
 

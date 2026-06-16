@@ -1,11 +1,12 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Shared.FileTree;
@@ -24,9 +25,9 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         out FileTreeService fileTreeService)
     {
-        var snapshot = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, Account, containerName);
-        var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, Account, containerName);
-        fileTreeService = new FileTreeService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, Account, containerName);
+        var snapshot = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName);
+        var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName);
         return new FileTreeBuilder(IEncryptionService.PlaintextInstance, fileTreeService);
     }
 
@@ -170,7 +171,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     private static async Task<IReadOnlyList<FileTreeEntry>> ReadStoredTreeAsync(Stream source, IEncryptionService encryption)
     {
         await using var decStream = encryption.WrapForDecryption(source);
-        await using var decompressedStream = TestCompression.Instance.WrapForDecompression(decStream);
+        await using var decompressedStream = ICompressionService.ZtdInstance.WrapForDecompression(decStream);
         using var ms = new MemoryStream();
         await decompressedStream.CopyToAsync(ms);
         return FileTreeSerializer.Deserialize(ms.ToArray());

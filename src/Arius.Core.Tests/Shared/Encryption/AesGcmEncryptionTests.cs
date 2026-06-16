@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
