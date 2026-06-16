@@ -42,13 +42,13 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Applies SQLite pragmas and creates the local-store schema.
+    /// Applies SQLite pragmas and creates or upgrades the local-store schema.
     /// </summary>
     private void Initialize()
     {
         try
         {
-            CreateSchema();
+            CreateOrUpgradeSchema();
             _logger.LogDebug("[chunk-index-local] Initialize: database={DatabasePath}", _rootDirectory.Resolve(_databasePath));
         }
         catch (SqliteException ex)
@@ -124,7 +124,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether a coverage claim exists for exactly this prefix at the specified snapshot version.
+    /// Returns whether the prefix has already been validated for the specified snapshot version.
     /// </summary>
     public bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion)
     {
@@ -168,8 +168,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns the root prefixes (fixed minimum depth) that contain entries still pending local
-    /// flush to remote shard blobs.
+    /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
     /// </summary>
     public IReadOnlyList<PathSegment> GetRootsWithPendingFlushes()
     {
@@ -179,12 +178,12 @@ internal sealed class ChunkIndexLocalStore
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY 1;";
             using var reader = command.ExecuteReader();
-            var roots = new List<PathSegment>();
+            var prefixes = new List<PathSegment>();
             while (reader.Read())
-                roots.Add(PathSegment.Parse(reader.GetString(0)));
+                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
-            _logger.LogDebug("[chunk-index-local] GetRootsWithPendingFlushes: count={Count}", roots.Count);
-            return roots;
+            _logger.LogDebug("[chunk-index-local] GetRootsWithPendingFlushes: count={Count}", prefixes.Count);
+            return prefixes;
         }
         catch (SqliteException ex)
         {
@@ -220,9 +219,9 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns the root prefixes (fixed minimum depth) represented by any local chunk-index row.
+    /// Returns prefixes represented by any local chunk-index entry.
     /// </summary>
-    public IReadOnlyList<PathSegment> GetStoredRootPrefixes()
+    public IEnumerable<PathSegment> GetStoredRootPrefixes()
     {
         try
         {
@@ -230,12 +229,12 @@ internal sealed class ChunkIndexLocalStore
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries ORDER BY 1;";
             using var reader = command.ExecuteReader();
-            var roots = new List<PathSegment>();
+            var prefixes = new List<PathSegment>();
             while (reader.Read())
-                roots.Add(PathSegment.Parse(reader.GetString(0)));
+                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
-            _logger.LogDebug("[chunk-index-local] GetStoredRootPrefixes: count={Count}", roots.Count);
-            return roots;
+            _logger.LogDebug("[chunk-index-local] GetStoredRootPrefixes: count={Count}", prefixes.Count);
+            return prefixes;
         }
         catch (SqliteException ex)
         {
@@ -244,7 +243,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Streams all entries currently stored within range of <paramref name="prefix"/>, ordered by content hash.
+    /// Streams all locally stored entries for <paramref name="prefix"/>, including remote-backed and pending-flush rows.
     /// </summary>
     public void ReadRangeEntries(PathSegment prefix, Action<ShardEntry> consume)
     {
@@ -407,7 +406,13 @@ internal sealed class ChunkIndexLocalStore
             var materialized = entries.ToArray();
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            var deletedEntryRows = DeleteCleanRowsInRange(connection, transaction, prefix);
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var deleteEntries = connection.CreateCommand();
+            deleteEntries.Transaction = transaction;
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
+            deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
             using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
             var entryRowsAffected = 0;
@@ -437,7 +442,13 @@ internal sealed class ChunkIndexLocalStore
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
 
-            var deletedEntryRows = DeleteCleanRowsInRange(connection, transaction, prefix);
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var deleteEntries = connection.CreateCommand();
+            deleteEntries.Transaction = transaction;
+            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
+            deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
             var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
             transaction.Commit();
@@ -565,8 +576,32 @@ internal sealed class ChunkIndexLocalStore
         {
             lock (_localStateGate)
             {
-                var replacedFiles = DeleteDatabaseFiles(backupExisting);
-                CreateSchema();
+                ClearConnectionPool();
+                var replacedFiles = 0;
+                foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
+                {
+                    var path = backupExisting
+                        ? RelativePath.Parse($"cache.sqlite{suffix}.bak")
+                        : default;
+                    var current = RelativePath.Parse($"cache.sqlite{suffix}");
+                    if (!_fileSystem.FileExists(current))
+                        continue;
+
+                    replacedFiles++;
+
+                    if (backupExisting)
+                    {
+                        if (_fileSystem.FileExists(path))
+                            _fileSystem.DeleteFile(path);
+                        File.Move(_rootDirectory.Resolve(current), _rootDirectory.Resolve(path), overwrite: true);
+                    }
+                    else
+                    {
+                        _fileSystem.DeleteFile(current);
+                    }
+                }
+
+                CreateOrUpgradeSchema();
                 _logger.LogDebug("[chunk-index-local] RecreateDatabase: backupExisting={BackupExisting} replacedFiles={ReplacedFiles}", backupExisting, replacedFiles);
             }
         }
@@ -574,40 +609,6 @@ internal sealed class ChunkIndexLocalStore
         {
             throw CreateLocalStoreException(ex);
         }
-    }
-
-    /// <summary>
-    /// Deletes (or moves aside to <c>.bak</c>) the SQLite database files. The caller must
-    /// recreate the schema afterwards.
-    /// </summary>
-    private int DeleteDatabaseFiles(bool backupExisting)
-    {
-        SqliteConnection.ClearAllPools();
-        var replacedFiles = 0;
-        foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
-        {
-            var path = backupExisting
-                ? RelativePath.Parse($"cache.sqlite{suffix}.bak")
-                : default;
-            var current = RelativePath.Parse($"cache.sqlite{suffix}");
-            if (!_fileSystem.FileExists(current))
-                continue;
-
-            replacedFiles++;
-
-            if (backupExisting)
-            {
-                if (_fileSystem.FileExists(path))
-                    _fileSystem.DeleteFile(path);
-                File.Move(_rootDirectory.Resolve(current), _rootDirectory.Resolve(path), overwrite: true);
-            }
-            else
-            {
-                _fileSystem.DeleteFile(current);
-            }
-        }
-
-        return replacedFiles;
     }
 
     private ChunkIndexLocalStoreException CreateLocalStoreException(SqliteException ex)
@@ -620,7 +621,7 @@ internal sealed class ChunkIndexLocalStore
 
     // -- SQLITE HELPERS -------------------------------------------------------
 
-    private void CreateSchema()
+    private void CreateOrUpgradeSchema()
     {
         using var connection = OpenConnection();
         using var pragma = connection.CreateCommand();
@@ -674,6 +675,12 @@ internal sealed class ChunkIndexLocalStore
         return connection;
     }
 
+    private void ClearConnectionPool()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        SqliteConnection.ClearPool(connection);
+    }
+
     private static bool HasPendingFlushEntries(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
@@ -724,17 +731,6 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters["$originalSize"].Value = entry.OriginalSize;
         command.Parameters["$chunkSize"].Value = entry.ChunkSize;
         command.Parameters["$storageTierHint"].Value = ShardEntry.SerializeTier(entry.StorageTierHint);
-    }
-
-    private static int DeleteCleanRowsInRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)
-    {
-        var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
-        command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
-        command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-        return command.ExecuteNonQuery();
     }
 
     private static int UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix, bool remoteExists, string? ETag, string snapshotVersion)
