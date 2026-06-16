@@ -14,6 +14,9 @@ public sealed record EntryDto(
     DateTimeOffset? Created,
     DateTimeOffset? Modified);
 
+/// <summary>A cross-repository search hit: the entry plus its owning repository.</summary>
+public sealed record SearchHitDto(long RepoId, string Repo, EntryDto Entry);
+
 /// <summary>Decoded RepositoryEntryState flags.</summary>
 public sealed record StateFlagsDto(
     bool LocalPointer,

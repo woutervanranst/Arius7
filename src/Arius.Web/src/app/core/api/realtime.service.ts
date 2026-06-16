@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
-import { CostEstimateMsg, DoneMsg, EntryDto, ListEntriesOptions, LogLine, ProgressMsg } from './api-models';
+import { CostEstimateMsg, DoneMsg, EntryDto, ListEntriesOptions, LogLine, ProgressMsg, SearchHitDto } from './api-models';
 
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
@@ -57,6 +57,25 @@ export class RealtimeService {
   async approve(jobId: string, priority: string | null): Promise<void> {
     await this.ensureStarted();
     await this.connection!.invoke('Approve', jobId, priority);
+  }
+
+  /** Streams cross-repository search hits (filename filter across every repository). */
+  searchAll(query: string): Observable<SearchHitDto> {
+    return new Observable<SearchHitDto>(subscriber => {
+      let stopped = false;
+      let stream: signalR.ISubscription<SearchHitDto> | undefined;
+      this.ensureStarted()
+        .then(() => {
+          if (stopped) return;
+          stream = this.connection!.stream<SearchHitDto>('SearchAll', query).subscribe({
+            next: hit => subscriber.next(hit),
+            error: e => subscriber.error(e),
+            complete: () => subscriber.complete(),
+          });
+        })
+        .catch(e => subscriber.error(e));
+      return () => { stopped = true; stream?.dispose(); };
+    });
   }
 
   /** Streams the container names in an account (Add-existing wizard). */

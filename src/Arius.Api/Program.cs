@@ -50,6 +50,10 @@ try
 
     app.UseCors("web");
 
+    // Serve the built Angular SPA from wwwroot in production (no-op in dev, where ng serve is used).
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+
     // REST endpoints live under /api so they never collide with the Angular SPA's client-side
     // routes (/overview, /repos, /jobs, …). The SignalR hub lives under /hubs.
     var api = app.MapGroup("/api");
@@ -59,6 +63,9 @@ try
     api.MapBrowseEndpoints();
     api.MapJobEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
+
+    // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).
+    app.MapFallbackToFile("index.html");
 
     Log.Information("Arius.Api starting — app db {DbPath}", dbPath);
     app.Run();

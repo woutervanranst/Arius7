@@ -110,6 +110,12 @@ export interface ScheduleDto {
   nextRun: string | null;
 }
 
+export interface SearchHitDto {
+  repoId: number;
+  repo: string;
+  entry: EntryDto;
+}
+
 export interface CreateRepositoryRequest {
   accountId: number;
   container: string;
