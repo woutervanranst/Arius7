@@ -9,7 +9,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// </summary>
 internal sealed class ChunkIndexLocalStore
 {
-    private const string SchemaVersion = "2";
+    private const string SchemaVersion = "1";
 
     private readonly RelativeFileSystem            _fileSystem;
     private readonly ILogger<ChunkIndexLocalStore> _logger;
@@ -42,46 +42,19 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Applies SQLite pragmas and creates or upgrades the local-store schema.
+    /// Applies SQLite pragmas and creates the local-store schema.
     /// </summary>
     private void Initialize()
     {
         try
         {
-            if (ReadStoredSchemaVersion() is { } storedVersion && storedVersion != SchemaVersion)
-            {
-                _logger.LogInformation("[chunk-index-local] recreating local chunk-index cache: schema v{StoredVersion} -> v{SchemaVersion}", storedVersion, SchemaVersion);
-                DeleteDatabaseFiles(backupExisting: false);
-            }
-
-            CreateOrUpgradeSchema();
+            CreateSchema();
             _logger.LogDebug("[chunk-index-local] Initialize: database={DatabasePath}", _rootDirectory.Resolve(_databasePath));
         }
         catch (SqliteException ex)
         {
             throw CreateLocalStoreException(ex);
         }
-    }
-
-    /// <summary>
-    /// Returns the schema version recorded in an existing database, or <c>null</c> when the
-    /// database or its metadata table does not exist yet.
-    /// </summary>
-    private string? ReadStoredSchemaVersion()
-    {
-        if (!_fileSystem.FileExists(_databasePath))
-            return null;
-
-        using var connection = OpenConnection();
-
-        using var tableExists = connection.CreateCommand();
-        tableExists.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metadata');";
-        if (!(tableExists.ExecuteScalar() is long value && value != 0))
-            return string.Empty; // unversioned database: recreate
-
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        return command.ExecuteScalar() as string ?? string.Empty;
     }
 
     // -- FIND ---------------------------------------------------------------
@@ -593,7 +566,7 @@ internal sealed class ChunkIndexLocalStore
             lock (_localStateGate)
             {
                 var replacedFiles = DeleteDatabaseFiles(backupExisting);
-                CreateOrUpgradeSchema();
+                CreateSchema();
                 _logger.LogDebug("[chunk-index-local] RecreateDatabase: backupExisting={BackupExisting} replacedFiles={ReplacedFiles}", backupExisting, replacedFiles);
             }
         }
@@ -647,7 +620,7 @@ internal sealed class ChunkIndexLocalStore
 
     // -- SQLITE HELPERS -------------------------------------------------------
 
-    private void CreateOrUpgradeSchema()
+    private void CreateSchema()
     {
         using var connection = OpenConnection();
         using var pragma = connection.CreateCommand();
@@ -699,12 +672,6 @@ internal sealed class ChunkIndexLocalStore
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         return connection;
-    }
-
-    private void ClearConnectionPool()
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        SqliteConnection.ClearPool(connection);
     }
 
     private static bool HasPendingFlushEntries(SqliteConnection connection)
