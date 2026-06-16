@@ -2,6 +2,7 @@
   <Folder Name="/Benchmarks/">
     <Project Path="Arius.Benchmarks/Arius.Benchmarks.csproj" />
     <Project Path="Arius.AzureBlob.Benchmarks/Arius.AzureBlob.Benchmarks.csproj" />
+    <Project Path="Arius.CrossVersionBenchmark/Arius.CrossVersionBenchmark.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Arius.AzureBlob.Tests/Arius.AzureBlob.Tests.csproj" />
