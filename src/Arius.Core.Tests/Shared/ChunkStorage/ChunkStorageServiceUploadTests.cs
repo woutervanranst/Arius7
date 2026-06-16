@@ -9,16 +9,16 @@ namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceUploadTests
 {
-    private static readonly ChunkHash LargeChunkHash = ChunkHash.Parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    private static readonly ChunkHash TarChunkHash = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
-    private static readonly ChunkHash RetryChunkHash = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    private static readonly ChunkHash NonSeekableChunkHash = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    private static readonly ContentHash ThinContentHash = ContentHash.Parse("1111111111111111111111111111111111111111111111111111111111111111");
-    private static readonly ChunkHash ThinParentChunkHash = ChunkHash.Parse("2222222222222222222222222222222222222222222222222222222222222222");
-    private static readonly ContentHash ExistingThinContentHash = ContentHash.Parse("3333333333333333333333333333333333333333333333333333333333333333");
-    private static readonly ChunkHash ExistingThinParentChunkHash = ChunkHash.Parse("4444444444444444444444444444444444444444444444444444444444444444");
-    private static readonly ContentHash RetryThinContentHash = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
-    private static readonly ChunkHash RetryThinParentChunkHash = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
+    private static readonly ChunkHash   LargeChunkHash              = ChunkHash.Parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    private static readonly ChunkHash   TarChunkHash                = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
+    private static readonly ChunkHash   RetryChunkHash              = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    private static readonly ChunkHash   NonSeekableChunkHash        = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    private static readonly ContentHash ThinContentHash             = ContentHash.Parse("1111111111111111111111111111111111111111111111111111111111111111");
+    private static readonly ChunkHash   ThinParentChunkHash         = ChunkHash.Parse("2222222222222222222222222222222222222222222222222222222222222222");
+    private static readonly ContentHash ExistingThinContentHash     = ContentHash.Parse("3333333333333333333333333333333333333333333333333333333333333333");
+    private static readonly ChunkHash   ExistingThinParentChunkHash = ChunkHash.Parse("4444444444444444444444444444444444444444444444444444444444444444");
+    private static readonly ContentHash RetryThinContentHash        = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
+    private static readonly ChunkHash   RetryThinParentChunkHash    = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
     // The upload path verifies the stored chunk round-trips to its chunk hash, so test content must
     // actually hash to the chunk hash it is uploaded under — exactly as it always does in production.
