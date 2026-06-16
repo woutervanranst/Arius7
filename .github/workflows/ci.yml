@@ -61,6 +61,7 @@ jobs:
           $projects = '${{ steps.discover.outputs.projects }}' | ConvertFrom-Json
           foreach ($project in $projects) {
             dotnet build $project --no-restore -c Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
       - name: 📊 Install dotnet-coverage

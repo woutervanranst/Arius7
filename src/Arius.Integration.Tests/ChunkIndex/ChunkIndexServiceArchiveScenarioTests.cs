@@ -3,6 +3,7 @@ using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Integration.Tests.ChunkIndex.Fakes;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Core.Shared.Storage;
 
@@ -39,8 +40,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // Machine A: archive the three chunks and flush, writing two shards.
         var counterA  = new CountingBlobContainerService(raw);
-        var snapshotA = new SnapshotService(raw, encryption, Account, containerName);
-        using (var machineA = new ChunkIndexService(counterA, encryption, snapshotA, Account, containerName))
+        var snapshotA = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
+        using (var machineA = new ChunkIndexService(counterA, encryption, TestCompression.Instance, snapshotA, Account, containerName))
         {
             (await machineA.LookupAsync(h1)).ShouldBeNull();
             (await machineA.LookupAsync(h1b)).ShouldBeNull();
@@ -54,8 +55,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // Machine B: a different local cache identity over the SAME remote container — its cache is empty.
         var counterB  = new CountingBlobContainerService(raw);
-        var snapshotB = new SnapshotService(raw, encryption, Account, containerName);
-        using var machineB = new ChunkIndexService(counterB, encryption, snapshotB, Account, $"{containerName}-b");
+        var snapshotB = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
+        using var machineB = new ChunkIndexService(counterB, encryption, TestCompression.Instance, snapshotB, Account, $"{containerName}-b");
 
         (await machineB.LookupAsync(h1)).ShouldBe(e1);   // real download + deserialize from Azure
         (await machineB.LookupAsync(h1b)).ShouldBe(e1b); // same prefix → served from the loaded shard
@@ -73,12 +74,12 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         var (container, raw) = await azurite.CreateTestServiceAsync();
         var encryption    = new PassphraseEncryptionService(Passphrase);
         var containerName = container.Name;
-        var snapshot      = new SnapshotService(raw, encryption, Account, containerName);
+        var snapshot      = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
 
         var h1 = FakeContentHash('3');
         var e1 = new ShardEntry(h1, FakeChunkHash('c'), 800, 400, BlobTier.Cool);
 
-        using (var run1 = new ChunkIndexService(raw, encryption, snapshot, Account, containerName))
+        using (var run1 = new ChunkIndexService(raw, encryption, TestCompression.Instance, snapshot, Account, containerName))
         {
             await run1.LookupAsync(h1);
             run1.AddEntry(e1);
@@ -87,7 +88,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // A new instance with the SAME (account, container) reuses the persisted local cache.
         var counter = new CountingBlobContainerService(raw);
-        using var run2 = new ChunkIndexService(counter, encryption, snapshot, Account, containerName);
+        using var run2 = new ChunkIndexService(counter, encryption, TestCompression.Instance, snapshot, Account, containerName);
 
         (await run2.LookupAsync(h1)).ShouldBe(e1); // served from the warm local cache (no remote read)
 

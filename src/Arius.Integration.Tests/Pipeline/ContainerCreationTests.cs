@@ -7,6 +7,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Azure.Storage.Blobs;
 using Mediator;
@@ -42,12 +43,12 @@ public class ContainerCreationTests(AzuriteFixture azurite)
 
         var svc        = new AzureBlobContainerService(containerClient);
         var encryption = new PlaintextPassthroughService();
-        var snapshot   = new SnapshotService(svc, encryption, Account, containerName);
-        var index      = new ChunkIndexService(svc, encryption, snapshot, Account, containerName);
+        var snapshot   = new SnapshotService(svc, encryption, TestCompression.Instance, Account, containerName);
+        var index      = new ChunkIndexService(svc, encryption, TestCompression.Instance, snapshot, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
         var logger     = new FakeLogger<ArchiveCommandHandler>();
         var handler    = new ArchiveCommandHandler(
-            svc, encryption, index, new ChunkStorageService(svc, encryption), new FileTreeService(svc, encryption, Account, containerName),
+            svc, encryption, index, new ChunkStorageService(svc, encryption, TestCompression.Instance), new FileTreeService(svc, encryption, TestCompression.Instance, Account, containerName),
             snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,

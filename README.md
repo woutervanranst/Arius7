@@ -321,6 +321,27 @@ in a SQLite cache under the repository state directory, validates touched prefix
 against the latest snapshot, and can rebuild the local cache or the remote shards from
 committed chunks when repair is needed.
 
+## Disaster recovery
+
+Normal recovery is `arius restore`. But your data does **not** depend on the Arius binary.
+Every chunk is self-describing: an encryption envelope (detected from its leading magic bytes) wrapping a standard compression frame.
+
+| Layer | Formats (auto-detected from magic bytes) |
+|-------|------------------------------------------|
+| Encryption | AES-256-GCM (`ArGCM1`, current) · AES-256-CBC (`Salted__`, legacy) |
+| Compression | zstd — standard [RFC 8878](https://www.rfc-editor.org/rfc/rfc8878) frame (`28 B5 2F FD`) or gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952), legacy) |
+
+### Emergency single-chunk recovery (without Arius)
+
+[`recover-chunk.py`](recover-chunk.py) decrypts and decompresses one chunk file given only the passphrase.
+It auto-detects both the encryption and the compression format, validates the XXH64 checksum, and refuses
+a truncated frame rather than emitting a partial prefix.
+
+```bash
+# Needs:  pip install cryptography zstandard
+python3 recover-chunk.py <encrypted-chunk-file> <passphrase> [output-file]
+```
+
 ## Toolchain
 
 ### Updating the toolchain

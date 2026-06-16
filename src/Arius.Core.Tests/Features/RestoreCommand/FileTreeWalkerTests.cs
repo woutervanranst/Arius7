@@ -1,6 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Tests.Fakes;
+using Arius.Tests.Shared.Compression;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -81,7 +82,7 @@ public class FileTreeWalkerTests
         foreach (var tree in trees)
             await SeedTreeAsync(blobs, tree);
 
-        return new FileTreeWalker(new FileTreeService(blobs, s_encryption, "acct-filetree-walker", "ctr-filetree-walker"));
+        return new FileTreeWalker(new FileTreeService(blobs, s_encryption, TestCompression.Instance, "acct-filetree-walker", "ctr-filetree-walker"));
     }
 
     private static Task<FileTreeHash> ComputeHashAsync(IReadOnlyList<FileTreeEntry> entries)
@@ -90,7 +91,7 @@ public class FileTreeWalkerTests
     private static async Task SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, s_encryption), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         using var ms = new MemoryStream();
 
         await using (var encStream = s_encryption.WrapForEncryption(ms))

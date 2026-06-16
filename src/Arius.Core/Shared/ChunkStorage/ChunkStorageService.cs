@@ -1,4 +1,5 @@
-using System.IO.Compression;
+using System.IO.Pipelines;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.Streaming;
@@ -6,7 +7,7 @@ using Arius.Core.Shared.Streaming;
 namespace Arius.Core.Shared.ChunkStorage;
 
 [SharedWithinAssembly]
-internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncryptionService encryption) : IChunkStorageService
+internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncryptionService encryption, ICompressionService compression) : IChunkStorageService
 {
     // --- UPLOAD 
 
@@ -69,12 +70,30 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         try
         {
             long storedSize;
+            ContentHash? verifiedHash;
 
             await using (var writeStream = await blobs.OpenWriteAsync(blobName, contentType, cancellationToken))
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = encryption.WrapForEncryption(countingStream);
-                await using var gzipStream = new GZipStream(encryptionStream, CompressionLevel.SmallestSize, leaveOpen: true);
+
+                // Verify the stored chunk round-trips before recording it — but only for codecs that ask for it
+                // (zstd does; the trusted BCL gzip path uses a no-op verifier). The verifier's sink receives a tee
+                // of the compressed bytes, decompresses them on a background task, and re-hashes; the no-op verifier
+                // simply discards them. leaveOpen so the encryption stream is disposed once, explicitly.
+                await using IUploadVerifier verifier = compression.RequireRoundTripVerification
+                    ? new RoundTripVerifier(compression, encryption, cancellationToken)
+                    : new NoopVerifier();
+
+                /*
+                 * source bytes -> zstd -> TeeStream -> encryption -> blob storage
+                 *                             |
+                 *                             +-> zstd decompress -> content hash -> compare with chunk hash
+                 */
+
+                var teeStream         = new TeeStream(encryptionStream, verifier.Sink);
+                var compressionStream = compression.WrapForCompression(teeStream, leaveOpen: true);
+
                 var progressStream = progress is null
                     ? null
                     : new ProgressStream(content, new CallbackProgress(bytesRead =>
@@ -87,11 +106,20 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                     }));
 
                 var source = progressStream ?? content;
-                await source.CopyToAsync(gzipStream, cancellationToken);
+                await source.CopyToAsync(compressionStream, cancellationToken);
 
-                await gzipStream.DisposeAsync(); // NOTE: leave Dispose to get a correct BytesWritten
-                await encryptionStream.DisposeAsync();
+                await compressionStream.DisposeAsync();  // finalize the frame → tee → encryption (+ verifier)
+                verifiedHash = await verifier.CompleteAsync(cancellationToken); // restored hash, or null when not verified
+                await encryptionStream.DisposeAsync();   // NOTE: leave Dispose to get a correct BytesWritten
                 storedSize = countingStream.BytesWritten;
+            }
+
+            if (verifiedHash is { } restoredHash && restoredHash != ContentHash.Parse(chunkHash))
+            {
+                // Compression did not round-trip — the stored frame is not restorable. Fail loudly and
+                // remove the unusable blob rather than recording an unrecoverable chunk.
+                await blobs.DeleteAsync(blobName, cancellationToken);
+                throw new InvalidDataException($"Chunk {chunkHash.Short8} failed compression round-trip verification (restored hash {restoredHash.Short8} ≠ {chunkHash.Short8}); the blob was not recorded.");
             }
 
             var metadata = new Dictionary<string, string>
@@ -100,7 +128,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 [BlobMetadataKeys.ChunkSize] = storedSize.ToString(),
             };
 
-            if (!isTar) // On TAR blobs this doesnt make sense. We find the original size on the respective thin chunks.
+            if (!isTar) // On TAR blobs this doesn't make sense. We find the original size on the respective thin chunks.
                 metadata[BlobMetadataKeys.OriginalSize] = sourceSize.ToString();
 
             await blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
@@ -185,8 +213,8 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         var download            = await blobs.DownloadAsync(blobName, cancellationToken);
         var progressOrRawStream = progress is null ? download.Stream : new ProgressStream(download.Stream, progress);
         var decryptStream       = encryption.WrapForDecryption(progressOrRawStream);
-        var gzipStream          = new GZipStream(decryptStream, CompressionMode.Decompress);
-        return new ChunkDownloadStream(gzipStream);
+        var decompressStream    = compression.WrapForDecompression(decryptStream);
+        return new ChunkDownloadStream(decompressStream);
 
 
         async Task<RelativePath> SelectReadableChunkBlobAsync(ChunkHash chunkHash, CancellationToken cancellationToken)

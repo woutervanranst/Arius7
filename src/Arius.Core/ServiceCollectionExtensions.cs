@@ -6,6 +6,7 @@ using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -47,11 +48,14 @@ public static class ServiceCollectionExtensions
             : new PlaintextPassthroughService();
         services.AddSingleton(encryption);
 
+        services.AddSingleton<ICompressionService>(new ZstdCompressionService());
+
         // Snapshot service
         services.AddSingleton<ISnapshotService>(sp =>
             new SnapshotService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ICompressionService>(),
                 accountName,
                 containerName));
 
@@ -60,6 +64,7 @@ public static class ServiceCollectionExtensions
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ICompressionService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 accountName,
                 containerName,
@@ -68,13 +73,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChunkStorageService>(sp =>
             new ChunkStorageService(
                 sp.GetRequiredService<IBlobContainerService>(),
-                sp.GetRequiredService<IEncryptionService>()));
+                sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ICompressionService>()));
 
         // File tree service
         services.AddSingleton<IFileTreeService>(sp =>
             new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IEncryptionService>(),
+                sp.GetRequiredService<ICompressionService>(),
                 accountName,
                 containerName,
                 sp.GetRequiredService<ILogger<FileTreeService>>()));

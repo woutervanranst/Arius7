@@ -1,26 +1,27 @@
-using System.IO.Compression;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Serializes chunk-index shards with gzip compression and optional encryption.
+/// Handles shard serialization with compression and optional encryption.
 /// </summary>
 internal static class ShardSerializer
 {
     /// <summary>
-    /// Serializes a <see cref="Shard"/> to a gzip-compressed (and optionally encrypted) byte array.
+    /// Serializes a <see cref="Shard"/> to a compressed (and optionally encrypted) byte array.
     /// </summary>
     public static async Task<byte[]> SerializeAsync(
-        Shard             shard,
-        IEncryptionService encryption,
-        CancellationToken cancellationToken = default)
+        Shard               shard,
+        IEncryptionService  encryption,
+        ICompressionService compression,
+        CancellationToken   cancellationToken = default)
     {
         var ms = new MemoryStream();
 
-        await using (var encStream  = encryption.WrapForEncryption(ms))
-        await using (var gzipStream = new GZipStream(encStream, CompressionLevel.SmallestSize, leaveOpen: true))
-        await using (var writer     = new StreamWriter(gzipStream, leaveOpen: true))
+        await using (var encStream         = encryption.WrapForEncryption(ms))
+        await using (var compressionStream = compression.WrapForCompression(encStream))
+        await using (var writer            = new StreamWriter(compressionStream, leaveOpen: true))
         {
             shard.WriteTo(writer);
         }
@@ -29,29 +30,31 @@ internal static class ShardSerializer
     }
 
     /// <summary>
-    /// Deserializes a <see cref="Shard"/> from a gzip-compressed (and optionally encrypted) byte array.
+    /// Deserializes a <see cref="Shard"/> from a compressed (and optionally encrypted) byte array.
     /// </summary>
     public static Shard Deserialize(
-        byte[]            data,
-        IEncryptionService encryption)
+        byte[]              data,
+        IEncryptionService  encryption,
+        ICompressionService compression)
     {
         var ms         = new MemoryStream(data);
         var decStream  = encryption.WrapForDecryption(ms);
-        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
+        var decompress = compression.WrapForDecompression(decStream);
+        using var reader = new StreamReader(decompress);
         return Shard.ReadFrom(reader);
     }
 
     /// <summary>
-    /// Deserializes a <see cref="Shard"/> from a readable stream (gzip + optional encryption).
+    /// Deserializes a <see cref="Shard"/> from a readable stream (compression + optional encryption).
     /// </summary>
     public static Shard Deserialize(
-        Stream             source,
-        IEncryptionService encryption)
+        Stream              source,
+        IEncryptionService  encryption,
+        ICompressionService compression)
     {
         var decStream  = encryption.WrapForDecryption(source);
-        var gzipStream = new GZipStream(decStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
+        var decompress = compression.WrapForDecompression(decStream);
+        using var reader = new StreamReader(decompress);
         return Shard.ReadFrom(reader);
     }
 }

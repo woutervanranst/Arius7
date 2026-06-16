@@ -45,10 +45,25 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             if (!CommandExists("python3"))
                 return false;
 
-            var p = Process.Start(new ProcessStartInfo("python3", "-c \"from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"")
+            // recover-chunk.py needs 'cryptography' to decrypt and a zstd backend (zstandard or pyzstd) to
+            // decompress. Chunks are zstd frames now — even incompressible test data is wrapped in one — so
+            // without a backend the script exits non-zero and these tests would fail rather than skip. Gate on
+            // both so a partial Python environment skips cleanly instead of reporting a spurious failure.
+            return PythonCanImport("from cryptography.hazmat.primitives.ciphers.aead import AESGCM")
+                && (PythonCanImport("import zstandard") || PythonCanImport("import pyzstd"));
+        }
+        catch { return false; }
+    }
+
+    private static bool PythonCanImport(string importStatement)
+    {
+        try
+        {
+            var p = Process.Start(new ProcessStartInfo("python3")
             {
                 RedirectStandardError = true,
                 UseShellExecute       = false,
+                ArgumentList          = { "-c", importStatement },
             });
             p?.WaitForExit(5000);
             return p?.ExitCode == 0;

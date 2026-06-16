@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -22,6 +23,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
     private readonly IBlobContainerService                            _blobs;
     private readonly IEncryptionService                               _encryption;
+    private readonly ICompressionService                              _compression;
     private readonly RelativeFileSystem                               _repositoryFileSystem;
     private readonly ChunkIndexLocalStore                             _localStore;
     private readonly ConcurrentDictionary<PathSegment, SemaphoreSlim> _prefixGates = [];
@@ -43,14 +45,16 @@ internal sealed class ChunkIndexService : IChunkIndexService
     public ChunkIndexService(
         IBlobContainerService blobs,
         IEncryptionService encryption,
+        ICompressionService compression,
         ISnapshotService snapshotService,
         string accountName,
         string containerName,
         ILoggerFactory? loggerFactory = null)
     {
-        _blobs      = blobs;
-        _encryption = encryption;
-        _logger     = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
+        _blobs       = blobs;
+        _encryption  = encryption;
+        _compression = compression;
+        _logger      = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
 
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
         _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
@@ -215,7 +219,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             Shard shard;
             try
             {
-                shard = ShardSerializer.Deserialize(stream, _encryption);
+                shard = ShardSerializer.Deserialize(stream, _encryption, _compression);
             }
             catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
             {
@@ -325,7 +329,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// <returns>The upload result returned by blob storage.</returns>
     private async Task<UploadResult> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
     {
-        var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, cancellationToken);
+        var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, _compression, cancellationToken);
         return await _blobs.UploadAsync(
             BlobPaths.ChunkIndexShardPath(prefix),
             new MemoryStream(bytes),

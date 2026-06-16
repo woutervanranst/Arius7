@@ -79,8 +79,8 @@ jobs:
       - name: 🛎️ Checkout
         uses: actions/checkout@v6
 
-      - name: 🐍 Install Python cryptography package
-        run: pip install cryptography
+      - name: 🐍 Install Python recovery dependencies
+        run: pip install cryptography zstandard
 
       - name: 🔑 Decrypt GCM golden file and verify output
         run: |
@@ -96,6 +96,21 @@ jobs:
             exit 1
           fi
           echo "✅ GCM recovery script output matches expected plaintext."
+
+      - name: 🔑 Decrypt GCM+zstd golden file and verify output
+        run: |
+          GOLDEN="src/Arius.Core.Tests/Encryption/GoldenFiles/b886c2f18e3a1be5bfef76821ca1751126c6534ac267dd539cbbabe09801682f"
+          PASSPHRASE="wouter"
+          EXPECTED="Hello, zstd golden file!"
+
+          ACTUAL=$(python3 recover-chunk.py "$GOLDEN" "$PASSPHRASE")
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "❌ zstd recovery mismatch!" >&2
+            echo "  expected: $EXPECTED" >&2
+            echo "  actual:   $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✅ GCM+zstd recovery script output matches expected plaintext (current format)."
 
       - name: 🔑 Decrypt CBC golden file and verify output
         run: |
