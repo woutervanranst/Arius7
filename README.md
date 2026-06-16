@@ -33,9 +33,7 @@ Restart OpenCode after pulling the workspace if you want the plugin skills to lo
 
 ### Windows
 
-```powershell
-# Download arius-win-x64.exe and add its directory to your PATH
-```
+Download arius-win-x64.exe and add its directory to your PATH
 
 ### Linux (& Synology NAS)
 
