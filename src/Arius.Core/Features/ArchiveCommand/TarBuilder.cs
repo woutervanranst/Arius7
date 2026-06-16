@@ -1,5 +1,4 @@
 using System.Formats.Tar;
-using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Extensions;
 

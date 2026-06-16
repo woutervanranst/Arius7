@@ -4,7 +4,6 @@ using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 

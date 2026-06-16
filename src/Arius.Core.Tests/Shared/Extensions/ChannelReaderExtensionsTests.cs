@@ -1,5 +1,5 @@
-using Arius.Core.Shared.Extensions;
 using System.Threading.Channels;
+using Arius.Core.Shared.Extensions;
 
 namespace Arius.Core.Tests.Shared.Extensions;
 

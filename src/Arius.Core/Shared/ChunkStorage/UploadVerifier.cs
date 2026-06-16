@@ -1,6 +1,6 @@
+using System.IO.Pipelines;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
-using System.IO.Pipelines;
 
 namespace Arius.Core.Shared.ChunkStorage;
 

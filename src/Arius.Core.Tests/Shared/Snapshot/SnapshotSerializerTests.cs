@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Snapshot;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Compression;
 
 namespace Arius.Core.Tests.Shared.Snapshot;

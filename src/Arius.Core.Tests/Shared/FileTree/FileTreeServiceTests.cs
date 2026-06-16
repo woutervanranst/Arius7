@@ -3,7 +3,6 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.FileTree.Fakes;
-using Arius.Tests.Shared;
 using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;

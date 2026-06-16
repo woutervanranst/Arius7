@@ -1,3 +1,7 @@
+using System.Collections.Concurrent;
+using System.Formats.Tar;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
@@ -7,10 +11,6 @@ using Arius.Core.Shared.Storage;
 using Humanizer;
 using Mediator;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Formats.Tar;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 
 namespace Arius.Core.Features.RestoreCommand;
 

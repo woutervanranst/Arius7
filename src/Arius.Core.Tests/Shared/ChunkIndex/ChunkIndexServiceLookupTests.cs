@@ -4,7 +4,6 @@ using Arius.Core.Tests.Shared.Snapshot.Fakes;
 using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Data.Sqlite;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 

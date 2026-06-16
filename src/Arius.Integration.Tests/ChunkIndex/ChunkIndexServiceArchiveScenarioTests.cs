@@ -2,10 +2,10 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.ChunkIndex.Fakes;
 using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 

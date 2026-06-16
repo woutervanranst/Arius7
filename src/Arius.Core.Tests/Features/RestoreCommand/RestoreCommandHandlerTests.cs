@@ -13,7 +13,6 @@ using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 

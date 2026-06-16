@@ -1,7 +1,6 @@
 using Arius.AzureBlob.Tests.Fakes;
 using Arius.Core.Shared.Storage;
 using Azure;
-using Azure.Storage.Blobs.Specialized;
 
 namespace Arius.AzureBlob.Tests;
 

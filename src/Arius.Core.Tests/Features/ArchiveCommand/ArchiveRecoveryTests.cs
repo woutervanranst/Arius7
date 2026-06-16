@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
@@ -11,8 +13,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using System.Collections.Concurrent;
-using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 

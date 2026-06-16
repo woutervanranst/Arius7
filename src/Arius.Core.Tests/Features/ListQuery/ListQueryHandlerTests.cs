@@ -1,6 +1,5 @@
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
