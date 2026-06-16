@@ -247,7 +247,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-write-passphrase", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(blobs, acct, cont, "test-passphrase");
+        await using var fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(blobs, acct, cont);
 
         IReadOnlyList<FileTreeEntry> entries =
         [
@@ -279,7 +279,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-read-passphrase", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(blobs, acct, cont, "test-passphrase");
+        await using var fixture = await RepositoryTestFixture.CreateWithPassphraseAsync(blobs, acct, cont);
 
         IReadOnlyList<FileTreeEntry> entries =
         [

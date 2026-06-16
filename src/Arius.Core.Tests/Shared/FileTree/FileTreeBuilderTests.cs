@@ -531,7 +531,7 @@ public class FileTreeBuilderTests
                 Modified = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero)
             }
         ];
-        var withPass = new PassphraseEncryptionService("secret");
+        var withPass = IEncryptionService.EncryptedInstance;
 
         var h1 = FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance);
         var h2 = FileTreeBuilder.ComputeHash(entries, withPass);

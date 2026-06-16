@@ -7,9 +7,11 @@ namespace Arius.Tests.Shared.Encryption;
 /// </summary>
 public static class TestEncryption
 {
+    public const string Passphrase = "wouter";
+
     extension (IEncryptionService)
     {
         public static IEncryptionService PlaintextInstance => new PlaintextPassthroughService();
-        public static IEncryptionService EncryptedInstance => new PassphraseEncryptionService("test-passphrase");
+        public static IEncryptionService EncryptedInstance => new PassphraseEncryptionService(Passphrase);
     }
 }

@@ -17,8 +17,7 @@ namespace Arius.Integration.Tests.ChunkIndex;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 {
-    private const string Account   = "devstoreaccount1";
-    private const string Passphrase = "test-passphrase";
+    private const string Account = "devstoreaccount1";
 
     private async Task<(ChunkIndexService service, LocalDirectory tempDir)> CreateServiceAsync()
     {
@@ -30,7 +29,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,
         // but for tests we patch via a subclass or just use a very distinct repoId)
-        var encryption = new PassphraseEncryptionService(Passphrase);
+        var encryption = IEncryptionService.EncryptedInstance;
         var snapshot = new SnapshotService(blobs, encryption, TestCompression.Instance, Account, containerName);
         var svc = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
         return (svc, tempDir);
@@ -55,7 +54,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task RecordAndFlush_ThenLookupInNewInstance_FindsEntry()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var encryption = new PassphraseEncryptionService(Passphrase);
+        var encryption = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
 
         var snapshot = new SnapshotService(blobs, encryption, TestCompression.Instance, Account, containerName);
@@ -99,7 +98,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task CorruptLocalStore_FailsWithRecoveryGuidance()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var encryption    = new PassphraseEncryptionService(Passphrase);
+        var encryption    = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
 
         // Step 1: record + flush a real entry so the shard exists in L3

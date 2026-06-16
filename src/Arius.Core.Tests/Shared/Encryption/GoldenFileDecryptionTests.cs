@@ -22,8 +22,6 @@ namespace Arius.Core.Tests.Shared.Encryption;
 /// </summary>
 public class GoldenFileDecryptionTests
 {
-    private const string Passphrase = "wouter";
-
     private static readonly string GoldenFilesDir =
         Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
 
@@ -64,7 +62,7 @@ public class GoldenFileDecryptionTests
         var path = Path.Combine(GoldenFilesDir, fileName);
         File.Exists(path).ShouldBeTrue($"Golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService(Passphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         await using var fs          = File.OpenRead(path);
         await using var decStream   = svc.WrapForDecryption(fs);
@@ -105,7 +103,7 @@ public class GoldenFileDecryptionTests
     {
         var plaintext = await DecryptAndDecompressAsync(LargeChunkFile);
 
-        var svc     = new PassphraseEncryptionService(Passphrase);
+        var svc     = IEncryptionService.EncryptedInstance;
         var hashHex = svc.ComputeHash(plaintext).ToString();
 
         hashHex.ShouldBe(LenaContentHash);
@@ -123,7 +121,7 @@ public class GoldenFileDecryptionTests
         var path = Path.Combine(GoldenFilesDir, TarChunkFile);
         File.Exists(path).ShouldBeTrue($"Golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService(Passphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         await using var fs         = File.OpenRead(path);
         await using var decStream  = svc.WrapForDecryption(fs);
@@ -161,7 +159,7 @@ public class GoldenFileDecryptionTests
     [Test]
     public void TarChunk_EntryContentHashes_MatchEntryNames()
     {
-        var svc = new PassphraseEncryptionService(Passphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         var worldHash    = svc.ComputeHash("world"u8).ToString();
         var fortyTwoHash = svc.ComputeHash("42"u8).ToString();

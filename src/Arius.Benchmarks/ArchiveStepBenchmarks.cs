@@ -5,6 +5,7 @@ using Arius.E2E.Tests.Datasets;
 using Arius.E2E.Tests.Fixtures;
 using Arius.E2E.Tests.Workflows;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Encryption;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.IO;
 using BenchmarkDotNet.Attributes;
@@ -35,7 +36,7 @@ public class ArchiveStepBenchmarks
             _definition,
             RepresentativeWorkflowCatalog.Canonical.Seed,
             _preparedSourceRoot,
-            new PassphraseEncryptionService("arius-test-passphrase"));
+            IEncryptionService.EncryptedInstance);
     }
 
     [GlobalCleanup]

@@ -18,8 +18,7 @@ namespace Arius.Integration.Tests.ChunkIndex;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 {
-    private const string Account    = "devstoreaccount1";
-    private const string Passphrase = "test-passphrase";
+    private const string Account = "devstoreaccount1";
 
     // ── First run uploads shards; another machine (empty cache) downloads each touched prefix once ─────────────
 
@@ -27,7 +26,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
     public async Task FirstRun_ThenAnotherMachine_DownloadsEachPrefixOnce_AndFindsEntries()
     {
         var (container, raw) = await azurite.CreateTestServiceAsync();
-        var encryption    = new PassphraseEncryptionService(Passphrase);
+        var encryption    = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
 
         // Two chunks in prefix of h1, one in another prefix.
@@ -72,7 +71,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
     public async Task SecondRunSameMachine_WarmCache_MakesNoChunkIndexDownloads()
     {
         var (container, raw) = await azurite.CreateTestServiceAsync();
-        var encryption    = new PassphraseEncryptionService(Passphrase);
+        var encryption    = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
         var snapshot      = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
 

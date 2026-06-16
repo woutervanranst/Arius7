@@ -36,7 +36,7 @@ public class SnapshotSerializerTests
     [Test]
     public async Task Serialize_ThenDeserialize_Passphrase_RoundTrips()
     {
-        var enc      = new PassphraseEncryptionService("my-snapshot-pass");
+        var enc      = IEncryptionService.EncryptedInstance;
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var rootHash = FileTreeHash.Parse("deadbeef" + new string('0', 56));
         var manifest = new SnapshotManifest

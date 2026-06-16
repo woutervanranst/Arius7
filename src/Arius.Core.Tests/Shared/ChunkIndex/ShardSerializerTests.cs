@@ -8,7 +8,7 @@ public class ShardSerializerTests
     [Test]
     public async Task Serialize_ThenDeserialize_WithPassphrase_RoundTrips()
     {
-        var svc   = new PassphraseEncryptionService("my-passphrase");
+        var svc   = IEncryptionService.EncryptedInstance;
         var shard = CreateShard(
             new ShardEntry(
                 FakeContentHash('a'),
@@ -29,7 +29,7 @@ public class ShardSerializerTests
     [Test]
     public async Task Serialize_ThenDeserializeStream_WithPassphrase_RoundTrips()
     {
-        var svc   = new PassphraseEncryptionService("my-passphrase");
+        var svc   = IEncryptionService.EncryptedInstance;
         var shard = CreateShard(
             new ShardEntry(
                 FakeContentHash('e'),

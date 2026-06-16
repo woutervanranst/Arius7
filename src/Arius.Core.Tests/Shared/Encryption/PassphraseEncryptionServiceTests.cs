@@ -6,14 +6,12 @@ namespace Arius.Core.Tests.Shared.Encryption;
 
 public class PassphraseEncryptionServiceTests
 {
-    private const string Passphrase = "test123";
-
     // ── 2.5 Encrypt/Decrypt roundtrip ─────────────────────────────────────────
 
     [Test]
     public async Task EncryptDecrypt_Roundtrip_ProducesBytIdenticalOutput()
     {
-        var svc      = new PassphraseEncryptionService(Passphrase);
+        var svc      = IEncryptionService.EncryptedInstance;
         var original = "Hello, Arius! This is a test payload."u8.ToArray();
 
         // Encrypt
@@ -33,7 +31,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public async Task EncryptDecrypt_LargePayload_Roundtrip()
     {
-        var svc     = new PassphraseEncryptionService(Passphrase);
+        var svc     = IEncryptionService.EncryptedInstance;
         var data    = RandomNumberGenerator.GetBytes(4 * 1024 * 1024); // 4 MB
 
         var cipherMs = new MemoryStream();
@@ -52,7 +50,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public async Task Encrypt_OutputStartsWithArGcm1Magic()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = "data"u8.ToArray();
 
         var ms = new MemoryStream();
@@ -72,7 +70,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public async Task Encrypt_LargeFile_DoesNotBufferEntireContent()
     {
-        var svc        = new PassphraseEncryptionService(Passphrase);
+        var svc        = IEncryptionService.EncryptedInstance;
         const int size = 32 * 1024 * 1024; // 32 MB
 
         // Source: a NullStream that returns zeros, sink: a DevNull stream
@@ -90,7 +88,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public void ComputeHash_SameInput_ProducesSameHash()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         ReadOnlySpan<byte> data = "deterministic"u8;
 
         var h1 = svc.ComputeHash(data);
@@ -102,7 +100,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public async Task ComputeHashAsync_SameInput_ProducesSameHash()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = "streaming determinism"u8.ToArray();
 
         var h1 = await svc.ComputeHashAsync(new MemoryStream(data));
@@ -114,7 +112,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public async Task ComputeHashAsync_FileStream_MatchesStreamVariant()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var path = Path.GetTempFileName();
         await File.WriteAllBytesAsync(path, "streaming determinism"u8.ToArray());
 
@@ -137,7 +135,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public void ComputeHash_Span_MatchesStreamVariant()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         ReadOnlySpan<byte> data = "cross-variant"u8;
 
         var hSpan   = svc.ComputeHash(data);
@@ -151,7 +149,7 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public void ComputeHash_WithPassphrase_DiffersFromPlaintext()
     {
-        var encrypted = new PassphraseEncryptionService(Passphrase);
+        var encrypted = IEncryptionService.EncryptedInstance;
         ReadOnlySpan<byte> data = "some file content"u8;
 
         encrypted.ComputeHash(data).ShouldNotBe(IEncryptionService.PlaintextInstance.ComputeHash(data));
@@ -174,10 +172,10 @@ public class PassphraseEncryptionServiceTests
     [Test]
     public void ComputeHash_MatchesManualSha256PassphrasePlusData()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         ReadOnlySpan<byte> data = "test data"u8;
 
-        var passBytes = Encoding.UTF8.GetBytes(Passphrase);
+        var passBytes = Encoding.UTF8.GetBytes(TestEncryption.Passphrase);
         var combined  = new byte[passBytes.Length + data.Length];
         passBytes.CopyTo(combined, 0);
         data.CopyTo(combined.AsSpan(passBytes.Length));

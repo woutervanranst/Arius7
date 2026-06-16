@@ -43,12 +43,12 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, 
         LocalDirectory? tempRoot = null)
     {
-        const string defaultPassphrase = "arius-test-passphrase";
-
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var encryption  = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
+        var encryption  = passphrase is null
+            ? IEncryptionService.EncryptedInstance
+            : new PassphraseEncryptionService(passphrase);
         var compression = TestCompression.Instance;
         var snapshot    = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index       = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);

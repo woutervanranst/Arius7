@@ -93,7 +93,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
-            new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.Instance2),
+            new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             new FakeLogger<ChunkHydrationStatusQueryHandler>());
 
         var files = new[]

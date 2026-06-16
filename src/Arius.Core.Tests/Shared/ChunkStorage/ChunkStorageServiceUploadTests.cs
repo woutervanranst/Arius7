@@ -344,7 +344,7 @@ public class ChunkStorageServiceUploadTests
         // With a passphrase the service encrypts, so the blob must carry the encrypted content type
         // (the plaintext tests only exercise the unencrypted branch). The inline round-trip
         // verification still runs against the pre-encryption compressed bytes and must pass.
-        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new ContentTypeCapturingBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
         var content = new byte[4096];
@@ -444,7 +444,7 @@ public class ChunkStorageServiceUploadTests
         // compression streams straight into the encryption chain with leaveOpen:true) under real AES-GCM, where
         // the encryption stream must be disposed exactly once so its auth tag is flushed before BytesWritten is
         // read. Use content larger than the 80 KiB CopyToAsync buffer so the frame spans multiple writes.
-        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
         var content = new byte[200_000];
