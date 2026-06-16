@@ -227,19 +227,19 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             // One subtree listing decides, per hash, between "existing shard" (parent-wins walk)
             // and "empty range at this depth" — a missing blob alone can mean either.
-            var listing = await ListShardSubtreeAsync(root, cancellationToken);
-            var names = listing.Keys.ToHashSet(StringComparer.Ordinal);
+            var existingRemoteShards = await ListShardSubtreeAsync(root, cancellationToken);
+            var existingRemoteShardNames = existingRemoteShards.Keys.ToHashSet(StringComparer.Ordinal);
 
             var emptyPrefixes = new HashSet<PathSegment>();
             var shardsToLoad = new Dictionary<PathSegment, string?>();
             foreach (var contentHash in uncovered)
             {
-                var target = ChunkIndexRouter.ResolveTarget(names, contentHash);
-                targets[contentHash] = target.Prefix;
-                if (target.Exists)
-                    shardsToLoad[target.Prefix] = listing[target.Prefix.ToString()];
+                var targetShard = ChunkIndexRouter.ResolveTarget(existingRemoteShardNames, contentHash);
+                targets[contentHash] = targetShard.Prefix;
+                if (targetShard.Exists)
+                    shardsToLoad[targetShard.Prefix] = existingRemoteShards[targetShard.Prefix.ToString()];
                 else
-                    emptyPrefixes.Add(target.Prefix);
+                    emptyPrefixes.Add(targetShard.Prefix);
             }
 
             foreach (var prefix in emptyPrefixes)

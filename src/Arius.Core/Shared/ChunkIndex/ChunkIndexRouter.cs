@@ -35,11 +35,14 @@ internal static class ChunkIndexRouter
         var length = ChunkIndexService.MinShardPrefixLength;
         while (true)
         {
+            // Find the first match
             var prefix = hex[..length];
             if (existingShardNames.Contains(prefix))
+                // Match
                 return new ShardTarget(PathSegment.Parse(prefix), Exists: true);
 
             if (!existingShardNames.Any(name => name.Length > length && name.StartsWith(prefix, StringComparison.Ordinal)))
+                // There will be no further matches: it doesnt exist yet
                 return new ShardTarget(PathSegment.Parse(prefix), Exists: false);
 
             length++;
