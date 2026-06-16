@@ -7,5 +7,9 @@ namespace Arius.Tests.Shared.Encryption;
 /// </summary>
 public static class TestEncryption
 {
-    public static IEncryptionService Instance { get; } = new PlaintextPassthroughService();
+    extension (IEncryptionService)
+    {
+        public static IEncryptionService PlaintextInstance => new PlaintextPassthroughService();
+        public static IEncryptionService EncryptedInstance => new PassphraseEncryptionService("test-passphrase");
+    }
 }

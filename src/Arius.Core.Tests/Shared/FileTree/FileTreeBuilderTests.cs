@@ -32,9 +32,9 @@ public class FileTreeBuilderTests
     {
         const string accountName = "account-empty";
         const string cont        = "container-empty";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, cont, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, cont, IEncryptionService.PlaintextInstance);
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
         await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
         var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
@@ -48,12 +48,12 @@ public class FileTreeBuilderTests
     {
         var accountName = $"unittest-acct-single-{Guid.NewGuid():N}";
         var containerName = $"cont-single-{Guid.NewGuid():N}";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var (stagingSession, stagingRoot) = await CreateStagingAsync(fixture, ("readme.txt", FakeContentHash('b'), now, now));
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
         await using (stagingSession)
         {
@@ -69,13 +69,13 @@ public class FileTreeBuilderTests
     {
         var accountName = $"unittest-acct-logs-{Guid.NewGuid():N}";
         var containerName = $"cont-logs-{Guid.NewGuid():N}";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var (stagingSession, stagingRoot) = await CreateStagingAsync(fixture, ("readme.txt", FakeContentHash('b'), now, now));
 
         var logger  = new FakeLogger<FileTreeBuilder>();
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService, logger);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService, logger);
         await fixture.FileTreeService.ValidateAsync();
         await using (stagingSession)
         {
@@ -92,7 +92,7 @@ public class FileTreeBuilderTests
     {
         var accountName = $"unittest-acct-single-relative-{Guid.NewGuid():N}";
         var containerName = $"cont-single-relative-{Guid.NewGuid():N}";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
@@ -101,7 +101,7 @@ public class FileTreeBuilderTests
             await writer.AppendFileEntryAsync(RelativePath.Parse("docs/readme.txt"), FakeContentHash('b'), now, now);
         }
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
 
         var root = await builder.SynchronizeAsync(stagingSession.StagingRoot);
@@ -117,8 +117,8 @@ public class FileTreeBuilderTests
         const string cont1 = "con-identical-1";
         const string acct2 = "acc-identical-2";
         const string cont2 = "con-identical-2";
-        await using var fixture1 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct1, cont1, TestEncryption.Instance);
-        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct2, cont2, TestEncryption.Instance);
+        await using var fixture1 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct1, cont1, IEncryptionService.PlaintextInstance);
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), acct2, cont2, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         await using var stagingSession1 = (await CreateStagingAsync(
@@ -132,8 +132,8 @@ public class FileTreeBuilderTests
             ("photos/b.jpg", FakeContentHash('d'), now, now),
             ("docs/r.pdf", FakeContentHash('e'), now, now))).Session;
 
-        var builder1 = new FileTreeBuilder(TestEncryption.Instance, fixture1.FileTreeService);
-        var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture2.FileTreeService);
+        var builder1 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture1.FileTreeService);
+        var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture2.FileTreeService);
         await fixture1.FileTreeService.ValidateAsync();
         await fixture2.FileTreeService.ValidateAsync();
         var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
@@ -147,7 +147,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-meta";
         const string containerName = "con-meta";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now1  = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var now2  = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -155,7 +155,7 @@ public class FileTreeBuilderTests
         FileTreeHash? root1;
         await using (var stagingSession1 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now1) ])).Session)
         {
-            var builder1 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder1 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
@@ -165,7 +165,7 @@ public class FileTreeBuilderTests
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(fixture, [ ("file.txt", FakeContentHash('f'), now1, now2) ])).Session)
         {
-            var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
@@ -178,7 +178,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-dup-file";
         const string containerName = "con-dup-file";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var rootId = FileTreePaths.GetStagingDirectoryId(RelativePath.Root);
@@ -200,7 +200,7 @@ public class FileTreeBuilderTests
         await using var stagingSession = await FileTreeStagingSession.OpenAsync(fixture.FileTreeCacheDirectory);
         await WriteNodeLinesAsync(stagingSession.StagingRoot, rootId, first, second);
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
 
         await Should.ThrowAsync<InvalidOperationException>(() => builder.SynchronizeAsync(stagingSession.StagingRoot));
@@ -252,7 +252,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-dup-dir";
         const string containerName = "con-dup-dir";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var childId = FileTreePaths.GetStagingDirectoryId(RelativePath.Parse("photos"));
@@ -271,7 +271,7 @@ public class FileTreeBuilderTests
                 Modified = now
             }));
 
-        var builder1 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder1 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
         var root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
 
@@ -291,7 +291,7 @@ public class FileTreeBuilderTests
                 Modified = now
             }));
 
-        var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
         var root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
 
@@ -303,7 +303,7 @@ public class FileTreeBuilderTests
     {
         const string accountName = "unittest-acc-blocked-uploads";
         const string containerName = "con-blocked-uploads";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         await using var stagingSession = (await CreateStagingAsync(
@@ -312,7 +312,7 @@ public class FileTreeBuilderTests
             ("docs/b.jpg", FakeContentHash('e'), now, now))).Session;
 
         var blobs = (BlockingFileTreeUploadBlobContainerService)fixture.BlobContainer;
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
 
         var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
@@ -328,14 +328,14 @@ public class FileTreeBuilderTests
     {
         const string accountName = "unittest-acc";
         const string containerName = "con";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
         FileTreeHash? root;
         await using (var stagingSession1 = (await CreateStagingAsync(fixture, ("file.txt", FakeContentHash('1'), now, now))).Session)
         {
-            var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
         }
@@ -347,11 +347,11 @@ public class FileTreeBuilderTests
         foreach (var blobName in firstBlobs.Uploaded.Keys)
             blobs2.SeedRemoteBlob(blobName);
 
-        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs2, accountName, containerName, TestEncryption.Instance);
+        await using var fixture2 = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs2, accountName, containerName, IEncryptionService.PlaintextInstance);
         FileTreeHash? root2;
         await using (var stagingSession2 = (await CreateStagingAsync(fixture2, ("file.txt", FakeContentHash('1'), now, now))).Session)
         {
-            var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture2.FileTreeService);
+            var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture2.FileTreeService);
             await fixture2.FileTreeService.ValidateAsync();
             root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
@@ -365,12 +365,12 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-unvalidated";
         const string containerName = "con-unvalidated";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         await using var stagingSession = (await CreateStagingAsync(fixture, ("file.txt", FakeContentHash('2'), now, now))).Session;
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await builder.SynchronizeAsync(stagingSession.StagingRoot));
@@ -387,7 +387,7 @@ public class FileTreeBuilderTests
         var accountName = $"unittest-acc-parallel-{Guid.NewGuid():N}";
         var containerName = $"con-parallel-{Guid.NewGuid():N}";
         ThreadPool.GetMinThreads(out var originalWorkerThreads, out var originalCompletionPortThreads);
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new BlockingFileTreeUploadBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         try
         {
@@ -401,7 +401,7 @@ public class FileTreeBuilderTests
                 ("docs/report.pdf", FakeContentHash('9'), now, now))).Session;
 
             var blobs = (BlockingFileTreeUploadBlobContainerService)fixture.BlobContainer;
-            var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
 
             var synchronizeTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
@@ -424,7 +424,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-upload-failure";
         const string containerName = "con-upload-failure";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FaultingAndBlockingFileTreeUploadBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FaultingAndBlockingFileTreeUploadBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         const string hexChars = "0123456789abcdef";
@@ -438,7 +438,7 @@ public class FileTreeBuilderTests
 
         await using var stagingSession = (await CreateStagingAsync(fixture, files)).Session;
 
-        var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
         await fixture.FileTreeService.ValidateAsync();
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -485,8 +485,8 @@ public class FileTreeBuilderTests
             }
         ];
 
-        var h1 = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
-        var h2 = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
+        var h1 = FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance);
+        var h2 = FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance);
 
         h1.ShouldBe(h2);
     }
@@ -512,8 +512,8 @@ public class FileTreeBuilderTests
             }
         ];
 
-        var h1 = FileTreeBuilder.ComputeHash(entries1, TestEncryption.Instance);
-        var h2 = FileTreeBuilder.ComputeHash(entries2, TestEncryption.Instance);
+        var h1 = FileTreeBuilder.ComputeHash(entries1, IEncryptionService.PlaintextInstance);
+        var h2 = FileTreeBuilder.ComputeHash(entries2, IEncryptionService.PlaintextInstance);
 
         h1.ShouldNotBe(h2);
     }
@@ -533,7 +533,7 @@ public class FileTreeBuilderTests
         ];
         var withPass = new PassphraseEncryptionService("secret");
 
-        var h1 = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
+        var h1 = FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance);
         var h2 = FileTreeBuilder.ComputeHash(entries, withPass);
 
         h1.ShouldNotBe(h2);
@@ -564,7 +564,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-nested-core";
         const string containerName = "con-nested-core";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         FileTreeHash? root1;
@@ -574,7 +574,7 @@ public class FileTreeBuilderTests
             ("a/b/other.txt", FakeContentHash('b'), now, now),
             ("z.txt", FakeContentHash('c'), now, now))).Session)
         {
-            var builder = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root1 = await builder.SynchronizeAsync(stagingSession1.StagingRoot);
         }
@@ -588,7 +588,7 @@ public class FileTreeBuilderTests
             ("a/b/other.txt", FakeContentHash('b'), now, now),
             ("z.txt", FakeContentHash('c'), now, now))).Session)
         {
-            var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }
@@ -602,7 +602,7 @@ public class FileTreeBuilderTests
     {
         const string accountName   = "acc-ordering";
         const string containerName = "con-ordering";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, TestEncryption.Instance);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new FakeRecordingBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
 
         var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         FileTreeHash? root1;
@@ -613,7 +613,7 @@ public class FileTreeBuilderTests
             ("docs/z.txt", FakeContentHash('3'), now, now),
             ("docs/a.txt", FakeContentHash('4'), now, now))).Session)
         {
-            var builder1 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder1 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root1 = await builder1.SynchronizeAsync(stagingSession1.StagingRoot);
         }
@@ -628,7 +628,7 @@ public class FileTreeBuilderTests
             ("a.txt", FakeContentHash('2'), now, now),
             ("b.txt", FakeContentHash('1'), now, now))).Session)
         {
-            var builder2 = new FileTreeBuilder(TestEncryption.Instance, fixture.FileTreeService);
+            var builder2 = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
             await fixture.FileTreeService.ValidateAsync();
             root2 = await builder2.SynchronizeAsync(stagingSession2.StagingRoot);
         }

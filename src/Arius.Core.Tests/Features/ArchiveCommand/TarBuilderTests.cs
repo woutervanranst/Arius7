@@ -18,7 +18,7 @@ public class TarBuilderTests
     [Test]
     public async Task AddAsync_FilesUnderTarget_AccumulateIntoSingleBundle()
     {
-        await using var builder = new TarBuilder(targetSize: 1000, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 1000, IEncryptionService.PlaintextInstance);
 
         var (c1, h1) = Content(0x11, 100);
         var (c2, h2) = Content(0x22, 200);
@@ -45,7 +45,7 @@ public class TarBuilderTests
     [Test]
     public async Task AddAsync_ReachingTarget_SealsBundleAndStartsFresh()
     {
-        await using var builder = new TarBuilder(targetSize: 150, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 150, IEncryptionService.PlaintextInstance);
 
         var (c1, h1) = Content(0x11, 100);
         var (c2, h2) = Content(0x22, 100); // pushes the bundle to 200 ≥ 150 → seal
@@ -70,7 +70,7 @@ public class TarBuilderTests
     [Test]
     public async Task SealAsync_NoFilesAdded_ReturnsNull()
     {
-        await using var builder = new TarBuilder(targetSize: 1000, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 1000, IEncryptionService.PlaintextInstance);
 
         (await builder.SealAsync(CancellationToken.None)).ShouldBeNull();
     }
@@ -78,7 +78,7 @@ public class TarBuilderTests
     [Test]
     public async Task SealAsync_AfterThresholdSealWithNoNewFiles_ReturnsNull()
     {
-        await using var builder = new TarBuilder(targetSize: 50, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 50, IEncryptionService.PlaintextInstance);
 
         var (c1, h1) = Content(0x11, 100);
         // 100 ≥ 50 → AddAsync seals immediately.
@@ -91,7 +91,7 @@ public class TarBuilderTests
     [Test]
     public async Task SealAsync_TarHash_MatchesHashOfBundleContent()
     {
-        await using var builder = new TarBuilder(targetSize: 1000, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 1000, IEncryptionService.PlaintextInstance);
 
         var (c1, h1) = Content(0x11, 100);
         await builder.AddAsync(Upload("a", h1, c1.Length), new MemoryStream(c1), CancellationToken.None);
@@ -99,7 +99,7 @@ public class TarBuilderTests
         var bundle = await builder.SealAsync(CancellationToken.None);
 
         bundle.ShouldNotBeNull();
-        bundle.TarHash.ShouldBe(ChunkHashOf(bundle.Content, TestEncryption.Instance));
+        bundle.TarHash.ShouldBe(ChunkHashOf(bundle.Content, IEncryptionService.PlaintextInstance));
     }
 
     // ── Lifecycle callbacks ───────────────────────────────────────────────────
@@ -113,7 +113,7 @@ public class TarBuilderTests
 
         await using var builder = new TarBuilder(
             targetSize: 150,
-            TestEncryption.Instance,
+            IEncryptionService.PlaintextInstance,
             onBundleStarted: () => { started++; return ValueTask.CompletedTask; },
             onEntryAdded:    (hash, count, size) => { entriesAdded.Add((hash, count, size)); return ValueTask.CompletedTask; },
             onBundleSealing: bundle => { sealedBundles.Add(bundle); return ValueTask.CompletedTask; });
@@ -135,7 +135,7 @@ public class TarBuilderTests
     [Test]
     public async Task AddAsync_DisposesSourceStream()
     {
-        await using var builder = new TarBuilder(targetSize: 1000, TestEncryption.Instance);
+        await using var builder = new TarBuilder(targetSize: 1000, IEncryptionService.PlaintextInstance);
 
         var (c1, h1) = Content(0x11, 100);
         var source = new MemoryStream(c1);
@@ -151,7 +151,7 @@ public class TarBuilderTests
         var sealedBundles = new List<SealedTar>();
         var builder = new TarBuilder(
             targetSize: 1000,
-            TestEncryption.Instance,
+            IEncryptionService.PlaintextInstance,
             onBundleSealing: bundle => { sealedBundles.Add(bundle); return ValueTask.CompletedTask; });
 
         var (c1, h1) = Content(0x11, 100);
@@ -172,7 +172,7 @@ public class TarBuilderTests
     private static (byte[] Content, ContentHash Hash) Content(byte fill, int count)
     {
         var bytes = Enumerable.Repeat(fill, count).ToArray();
-        return (bytes, TestEncryption.Instance.ComputeHash(bytes));
+        return (bytes, IEncryptionService.PlaintextInstance.ComputeHash(bytes));
     }
 
     /// <summary>Reads a sealed tar bundle back into a map of entry-name → entry-bytes.</summary>

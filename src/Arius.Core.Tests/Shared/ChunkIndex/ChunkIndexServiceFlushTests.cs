@@ -24,10 +24,10 @@ public class ChunkIndexServiceFlushTests
         var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(prefix),
-            await ShardSerializer.SerializeAsync(CreateShard(cleanEntry), TestEncryption.Instance, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(cleanEntry), IEncryptionService.PlaintextInstance, TestCompression.Instance),
             BlobTier.Cool);
 
-        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
         index.AddEntry(dirtyEntry);
 
         await index.FlushAsync();
@@ -37,7 +37,7 @@ public class ChunkIndexServiceFlushTests
         flushed.Entries.ShouldContain(entry => entry.ContentHash == cleanHash);
         flushed.Entries.ShouldContain(entry => entry.ContentHash == dirtyHash);
 
-        using var resumedIndex = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        using var resumedIndex = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
         (await resumedIndex.LookupAsync(cleanHash)).ShouldBe(cleanEntry);
         (await resumedIndex.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
     }
@@ -47,7 +47,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-closed");
-        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -61,7 +61,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-once");
-        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await index.FlushAsync();
 
@@ -74,7 +74,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-lookup-closed");
-        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -92,7 +92,7 @@ public class ChunkIndexServiceFlushTests
         var collector = new FakeLogCollector();
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new FakeLoggerProvider(collector)));
 
-        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -106,7 +106,7 @@ public class ChunkIndexServiceFlushTests
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
         await using var stream = download.Stream;
-        return ShardSerializer.Deserialize(stream, TestEncryption.Instance, TestCompression.Instance);
+        return ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, TestCompression.Instance);
     }
 
     private static Shard CreateShard(params ShardEntry[] entries)

@@ -59,8 +59,8 @@ public class ShardSerializerTests
                 BlobTier.Cool)
         );
 
-        var bytes  = await ShardSerializer.SerializeAsync(shard, TestEncryption.Instance, TestCompression.Instance);
-        var loaded = ShardSerializer.Deserialize(bytes, TestEncryption.Instance, TestCompression.Instance);
+        var bytes  = await ShardSerializer.SerializeAsync(shard, IEncryptionService.PlaintextInstance, TestCompression.Instance);
+        var loaded = ShardSerializer.Deserialize(bytes, IEncryptionService.PlaintextInstance, TestCompression.Instance);
 
         loaded.TryLookup(FakeContentHash('c'), out var e).ShouldBeTrue();
         e!.ChunkSize.ShouldBe(40);
@@ -79,9 +79,9 @@ public class ShardSerializerTests
                 BlobTier.Cool)
         );
 
-        var bytes = await ShardSerializer.SerializeAsync(shard, TestEncryption.Instance, TestCompression.Instance);
+        var bytes = await ShardSerializer.SerializeAsync(shard, IEncryptionService.PlaintextInstance, TestCompression.Instance);
         using var stream = new MemoryStream(bytes);
-        var loaded = ShardSerializer.Deserialize(stream, TestEncryption.Instance, TestCompression.Instance);
+        var loaded = ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, TestCompression.Instance);
 
         loaded.TryLookup(FakeContentHash('8'), out var e).ShouldBeTrue();
         e!.ChunkSize.ShouldBe(40);

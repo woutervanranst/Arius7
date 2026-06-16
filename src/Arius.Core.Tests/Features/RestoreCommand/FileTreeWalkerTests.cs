@@ -81,19 +81,19 @@ public class FileTreeWalkerTests
         foreach (var tree in trees)
             await SeedTreeAsync(blobs, tree);
 
-        return new FileTreeWalker(new FileTreeService(blobs, TestEncryption.Instance, TestCompression.Instance, "acct-filetree-walker", "ctr-filetree-walker"));
+        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, "acct-filetree-walker", "ctr-filetree-walker"));
     }
 
     private static Task<FileTreeHash> ComputeHashAsync(IReadOnlyList<FileTreeEntry> entries)
-        => Task.FromResult(FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance));
+        => Task.FromResult(FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance));
 
     private static async Task SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHashOf(plaintext, TestEncryption.Instance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, IEncryptionService.PlaintextInstance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         using var ms = new MemoryStream();
 
-        await using (var encStream = TestEncryption.Instance.WrapForEncryption(ms))
+        await using (var encStream = IEncryptionService.PlaintextInstance.WrapForEncryption(ms))
         await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzipStream.WriteAsync(payload.Plaintext);

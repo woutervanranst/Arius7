@@ -24,10 +24,10 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
         string containerName,
         out FileTreeService fileTreeService)
     {
-        var snapshot = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, Account, containerName);
-        var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, Account, containerName);
-        fileTreeService = new FileTreeService(blobs, TestEncryption.Instance, TestCompression.Instance, Account, containerName);
-        return new FileTreeBuilder(TestEncryption.Instance, fileTreeService);
+        var snapshot = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, Account, containerName);
+        var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, Account, containerName);
+        return new FileTreeBuilder(IEncryptionService.PlaintextInstance, fileTreeService);
     }
 
     private static async Task<FileTreeStagingSession> CreateStagingAsync(
@@ -72,7 +72,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             // Download and deserialize to verify content
             var download = await blobs.DownloadAsync(blobName);
             await using var stream = download.Stream;
-            var entries = await ReadStoredTreeAsync(stream, TestEncryption.Instance);
+            var entries = await ReadStoredTreeAsync(stream, IEncryptionService.PlaintextInstance);
 
             entries.Count.ShouldBe(1);
             entries[0].Name.ShouldBe(PathSegment.Parse("readme.txt"));

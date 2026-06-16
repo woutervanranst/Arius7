@@ -449,7 +449,7 @@ public class ChunkIndexServiceArchiveScenarioTests
     private sealed record FirstRun(ContentHash H1, ContentHash H2, ContentHash H3, ShardEntry E1, ShardEntry E2, ShardEntry E3, PathSegment PrefixAa, PathSegment PrefixBb);
 
     private static ChunkIndexService NewRun(IBlobContainerService blobs, string repositoryKey, FakeSnapshotService snapshot)
-        => new(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        => new(blobs, IEncryptionService.PlaintextInstance, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
 
     /// <summary>A content hash sharing <paramref name="hash"/>'s shard prefix but filled with <paramref name="fill"/>.</summary>
     private static ContentHash SamePrefix(ContentHash hash, char fill)
@@ -467,7 +467,7 @@ public class ChunkIndexServiceArchiveScenarioTests
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
         await using var stream = download.Stream;
-        return ShardSerializer.Deserialize(stream, TestEncryption.Instance, TestCompression.Instance);
+        return ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, TestCompression.Instance);
     }
 
     private static string UniqueRepositoryKey(string name) => $"acct-{name}-{Guid.NewGuid():N}";

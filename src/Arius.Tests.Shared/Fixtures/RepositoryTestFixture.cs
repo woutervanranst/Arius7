@@ -156,7 +156,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             blobContainer,
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
-            TestEncryption.Instance,
+            IEncryptionService.PlaintextInstance,
             tempRoot);
     }
 

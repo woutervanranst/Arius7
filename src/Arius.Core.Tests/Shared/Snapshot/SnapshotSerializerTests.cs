@@ -21,10 +21,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.0.0"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, TestEncryption.Instance, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, TestCompression.Instance);
         bytes.ShouldNotBeEmpty();
 
-        var back = await SnapshotSerializer.DeserializeAsync(bytes, TestEncryption.Instance, TestCompression.Instance);
+        var back = await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.PlaintextInstance, TestCompression.Instance);
 
         back.Timestamp.ShouldBe(ts);
         back.RootHash.ShouldBe(manifest.RootHash);
@@ -69,7 +69,7 @@ public class SnapshotSerializerTests
             AriusVersion = "1.2.3"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, TestEncryption.Instance, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, TestCompression.Instance);
 
         using var compressed = new MemoryStream(bytes);
         await using var decompressed = TestCompression.Instance.WrapForDecompression(compressed);

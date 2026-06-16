@@ -12,14 +12,14 @@ public class PlaintextPassthroughServiceTests
     public void WrapForEncryption_ReturnsSameStreamInstance()
     {
         var ms = new MemoryStream();
-        TestEncryption.Instance.WrapForEncryption(ms).ShouldBeSameAs(ms);
+        IEncryptionService.PlaintextInstance.WrapForEncryption(ms).ShouldBeSameAs(ms);
     }
 
     [Test]
     public void WrapForDecryption_ReturnsSameStreamInstance()
     {
         var ms = new MemoryStream();
-        TestEncryption.Instance.WrapForDecryption(ms).ShouldBeSameAs(ms);
+        IEncryptionService.PlaintextInstance.WrapForDecryption(ms).ShouldBeSameAs(ms);
     }
 
     // ── Plain SHA256 hashing ──────────────────────────────────────────────────
@@ -29,7 +29,7 @@ public class PlaintextPassthroughServiceTests
     {
         var data     = "plaintext content"u8.ToArray();
         var expected = ContentHash.FromDigest(SHA256.HashData(data));
-        TestEncryption.Instance.ComputeHash(data).ShouldBe(expected);
+        IEncryptionService.PlaintextInstance.ComputeHash(data).ShouldBe(expected);
     }
 
     [Test]
@@ -43,8 +43,8 @@ public class PlaintextPassthroughServiceTests
             await using var firstStream = File.OpenRead(path);
             await using var secondStream = File.OpenRead(path);
 
-            var firstHash = await TestEncryption.Instance.ComputeHashAsync(firstStream);
-            var secondHash = await TestEncryption.Instance.ComputeHashAsync(secondStream);
+            var firstHash = await IEncryptionService.PlaintextInstance.ComputeHashAsync(firstStream);
+            var secondHash = await IEncryptionService.PlaintextInstance.ComputeHashAsync(secondStream);
 
             firstHash.ShouldBe(secondHash);
         }
@@ -67,7 +67,7 @@ public class PlaintextPassthroughServiceTests
             await using var stream = File.OpenRead(path);
             await using var progressStream = new ProgressStream(stream, progress);
 
-            _ = await TestEncryption.Instance.ComputeHashAsync(progressStream);
+            _ = await IEncryptionService.PlaintextInstance.ComputeHashAsync(progressStream);
 
             reported.ShouldBe(4096);
         }

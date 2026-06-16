@@ -154,7 +154,7 @@ public class PassphraseEncryptionServiceTests
         var encrypted = new PassphraseEncryptionService(Passphrase);
         ReadOnlySpan<byte> data = "some file content"u8;
 
-        encrypted.ComputeHash(data).ShouldNotBe(TestEncryption.Instance.ComputeHash(data));
+        encrypted.ComputeHash(data).ShouldNotBe(IEncryptionService.PlaintextInstance.ComputeHash(data));
     }
 
     // ── 2.7 Same file, different passphrase ──────────────────────────────────

@@ -10,10 +10,10 @@ public static class HashTestHelpers
     // -- CONTENTHASH
 
     public static ContentHash ContentHashOf(ReadOnlySpan<byte> content)
-        => ContentHashOf(content, TestEncryption.Instance);
+        => ContentHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static ContentHash ContentHashOf(string content)
-        => ContentHashOf(content, TestEncryption.Instance);
+        => ContentHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static ContentHash ContentHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => encryption.ComputeHash(content);
@@ -25,10 +25,10 @@ public static class HashTestHelpers
     // -- CHUNKHASH
 
     public static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content)
-        => ChunkHashOf(content, TestEncryption.Instance);
+        => ChunkHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static ChunkHash ChunkHashOf(string content)
-        => ChunkHashOf(content, TestEncryption.Instance);
+        => ChunkHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => ChunkHash.Parse(ContentHashOf(content, encryption));
@@ -40,10 +40,10 @@ public static class HashTestHelpers
     // -- FILETREEHASH
 
     public static FileTreeHash FileTreeHashOf(ReadOnlySpan<byte> content)
-        => FileTreeHashOf(content, TestEncryption.Instance);
+        => FileTreeHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static FileTreeHash FileTreeHashOf(string content)
-        => FileTreeHashOf(content, TestEncryption.Instance);
+        => FileTreeHashOf(content, IEncryptionService.PlaintextInstance);
 
     public static FileTreeHash FileTreeHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => FileTreeHash.Parse(ContentHashOf(content, encryption));
