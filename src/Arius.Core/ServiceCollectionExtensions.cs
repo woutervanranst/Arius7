@@ -48,7 +48,6 @@ public static class ServiceCollectionExtensions
             : new PlaintextPassthroughService();
         services.AddSingleton(encryption);
 
-        // Compression: new blobs are written as zstd; reads auto-detect gzip vs zstd from the frame header.
         services.AddSingleton<ICompressionService>(new ZstdCompressionService());
 
         // Snapshot service
