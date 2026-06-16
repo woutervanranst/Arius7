@@ -335,15 +335,39 @@ public class ChunkIndexLocalStoreTests
     // ── Coverage claims ──────────────────────────────────────────────────────
 
     [Test]
-    public void FindCoveredPrefix_AncestorClaimCoversHash_AndRespectsSnapshotVersion()
+    public void FindCoveredPrefixes_AncestorClaimCoversHash_AndRespectsSnapshotVersion()
     {
         var store = CreateStore("coverage-find");
         var entry = Entry("aa1");
         store.UpdatePrefix(PathSegment.Parse("aa"), "remote-1", "snap-1", [entry]);
 
-        store.FindCoveredPrefix(ContentHash.Parse("aa3f".PadRight(64, '9')), "snap-1").ShouldBe(PathSegment.Parse("aa"));
-        store.FindCoveredPrefix(ContentHash.Parse("aa3f".PadRight(64, '9')), "snap-2").ShouldBeNull(); // stale snapshot
-        store.FindCoveredPrefix(ContentHash.Parse("bb00".PadRight(64, '9')), "snap-1").ShouldBeNull(); // other range
+        var covered = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var stale = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var otherRange = ContentHash.Parse("bb00".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment> { [covered] = PathSegment.Parse("aa") });
+        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [stale], "snap-2").ShouldBeEmpty();
+        store.FindCoveredPrefixes(PathSegment.Parse("bb"), [otherRange], "snap-1").ShouldBeEmpty();
+    }
+
+    [Test]
+    public void FindCoveredPrefixes_ReturnsMatchingClaimsForOneRoot_AndRespectsSnapshotVersion()
+    {
+        var store = CreateStore("coverage-find-batch");
+        store.AddEmptyPrefix(PathSegment.Parse("aa3"), "snap-1");
+
+        var covered = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var uncoveredSibling = ContentHash.Parse("aa4f".PadRight(64, '9'));
+        var otherRoot = ContentHash.Parse("bb00".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered, uncoveredSibling, otherRoot], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment>
+            {
+                [covered] = PathSegment.Parse("aa3"),
+            });
+
+        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered], "snap-2").ShouldBeEmpty();
     }
 
     [Test]

@@ -206,9 +206,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
     {
         var targets = new Dictionary<ContentHash, PathSegment>(hashes.Count);
         List<ContentHash>? uncovered = null;
+        var coveredPrefixes = _localStore.FindCoveredPrefixes(root, hashes, latestSnapshotVersion);
         foreach (var contentHash in hashes)
         {
-            if (_localStore.FindCoveredPrefix(contentHash, latestSnapshotVersion) is { } covered)
+            if (coveredPrefixes.TryGetValue(contentHash, out var covered))
                 targets[contentHash] = covered;
             else
                 (uncovered ??= []).Add(contentHash);
@@ -303,7 +304,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// </summary>
     private async Task<Dictionary<string, string?>> ListShardSubtreeAsync(PathSegment root, CancellationToken cancellationToken)
     {
-        var names = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var names = new Dictionary<string, string?>(StringComparer.Ordinal); 
         await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix / root, BlobListPrefixKind.BlobNamePrefix, cancellationToken: cancellationToken))
             names[item.Name.Name.ToString()] = item.ETag;
         return names;

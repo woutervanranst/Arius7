@@ -95,27 +95,56 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns the validated coverage claim whose range contains <paramref name="contentHash"/>
-    /// at the specified snapshot version, or <c>null</c> when no such claim exists.
-    /// Coverage claims never overlap, so at most one claim can cover a hash.
+    /// Returns validated coverage claims under <paramref name="root"/> whose ranges contain the specified hashes
+    /// at the specified snapshot version.
     /// </summary>
-    public PathSegment? FindCoveredPrefix(ContentHash contentHash, string snapshotVersion)
+    public IReadOnlyDictionary<ContentHash, PathSegment> FindCoveredPrefixes(PathSegment root, IReadOnlyList<ContentHash> contentHashes, string snapshotVersion)
     {
+        if (contentHashes.Count == 0)
+            return new Dictionary<ContentHash, PathSegment>();
+
         try
         {
+            var rootValue = root.ToString();
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT prefix FROM loaded_prefixes
                 WHERE snapshot_version = $snapshotVersion
-                  AND substr($hashHex, 1, length(prefix)) = prefix
-                LIMIT 1;
+                  AND prefix >= $root
+                  AND prefix < $rootUpper;
                 """;
-            command.Parameters.AddWithValue("$hashHex", contentHash.ToString());
             command.Parameters.AddWithValue("$snapshotVersion", snapshotVersion);
-            var prefix = command.ExecuteScalar() is string value ? PathSegment.Parse(value) : (PathSegment?)null;
-            _logger.LogDebug("[chunk-index-local] FindCoveredPrefix: contentHash={ContentHash} snapshotVersion={SnapshotVersion} prefix={Prefix}", contentHash.Short8, snapshotVersion, prefix);
-            return prefix;
+            command.Parameters.AddWithValue("$root", rootValue);
+            command.Parameters.AddWithValue("$rootUpper", rootValue + "g");
+
+            var prefixes = new HashSet<string>(StringComparer.Ordinal);
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                    prefixes.Add(reader.GetString(0));
+            }
+
+            var covered = new Dictionary<ContentHash, PathSegment>();
+            if (prefixes.Count > 0)
+            {
+                foreach (var contentHash in contentHashes)
+                {
+                    var hashHex = contentHash.ToString();
+                    for (var length = ChunkIndexService.MinShardPrefixLength; length <= hashHex.Length; length++)
+                    {
+                        var prefix = hashHex[..length];
+                        if (!prefixes.Contains(prefix))
+                            continue;
+
+                        covered[contentHash] = PathSegment.Parse(prefix);
+                        break;
+                    }
+                }
+            }
+
+            _logger.LogDebug("[chunk-index-local] FindCoveredPrefixes: root={Root} hashes={HashCount} snapshotVersion={SnapshotVersion} covered={CoveredCount}", root, contentHashes.Count, snapshotVersion, covered.Count);
+            return covered;
         }
         catch (SqliteException ex)
         {
@@ -659,6 +688,9 @@ internal sealed class ChunkIndexLocalStore
                 CHECK (length(prefix) > 0),
                 CHECK (length(snapshot_version) > 0)
             );
+
+            CREATE INDEX IF NOT EXISTS ix_loaded_prefixes_snapshot_prefix
+                ON loaded_prefixes(snapshot_version, prefix);
             """;
         create.ExecuteNonQuery();
 
