@@ -77,7 +77,6 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         // on a cold machine. The first run's entries play the role of chunks only referenced by
         // older snapshots (e.g. files since deleted locally) — a later split must keep them reachable.
         var (container, raw) = await azurite.CreateTestServiceAsync();
-        var encryption    = new PassphraseEncryptionService(Passphrase);
         var containerName = container.Name;
 
         var h1 = FakeContentHash('4');
@@ -93,8 +92,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         var rootPrefix = ChunkIndexRouter.GetRootPrefix(h1);
 
         // Run 1 (machine A): two entries fit one root shard.
-        var snapshotA = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
-        using (var run1 = new ChunkIndexService(raw, encryption, TestCompression.Instance, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        var snapshotA = new SnapshotService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, Account, containerName);
+        using (var run1 = new ChunkIndexService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotA, Account, containerName, maxShardEntryCount: 3))
         {
             foreach (var entry in entriesRun1)
                 run1.AddEntry(entry);
@@ -102,7 +101,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         }
 
         // Run 2 (machine A): three more entries push the shard past the threshold → split.
-        using (var run2 = new ChunkIndexService(raw, encryption, TestCompression.Instance, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        using (var run2 = new ChunkIndexService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotA, Account, containerName, maxShardEntryCount: 3))
         {
             foreach (var entry in entriesRun2)
                 run2.AddEntry(entry);
@@ -119,8 +118,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // Machine B (cold cache) resolves every entry — including run 1's — through the split layout.
         var counterB  = new CountingBlobContainerService(raw);
-        var snapshotB = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
-        using var machineB = new ChunkIndexService(counterB, encryption, TestCompression.Instance, snapshotB, Account, $"{containerName}-b");
+        var snapshotB = new SnapshotService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, Account, containerName);
+        using var machineB = new ChunkIndexService(counterB, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotB, Account, $"{containerName}-b");
         var allEntries = entriesRun1.Concat(entriesRun2).ToArray();
         var resolved = await machineB.LookupAsync(allEntries.Select(entry => entry.ContentHash));
         foreach (var entry in allEntries)
