@@ -18,4 +18,5 @@
   <Project Path="Arius.Cli/Arius.Cli.csproj" />
   <Project Path="Arius.Core/Arius.Core.csproj" />
   <Project Path="Arius.Explorer/Arius.Explorer.csproj" />
+  <Project Path="Arius.Migration/Arius.Migration.csproj" />
 </Solution>
