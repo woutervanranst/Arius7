@@ -1,5 +1,5 @@
 using Arius.Api.Contracts;
-using Arius.Api.Data;
+using Arius.Api.AppData;
 
 namespace Arius.Api.Endpoints;
 

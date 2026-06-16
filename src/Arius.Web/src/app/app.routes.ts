@@ -8,7 +8,18 @@ export const routes: Routes = [
   },
   {
     path: 'repos',
+    pathMatch: 'full',
     loadComponent: () => import('./features/repos/repos.component').then(m => m.ReposComponent),
+  },
+  {
+    path: 'repos/:repoId',
+    loadComponent: () => import('./features/repo/repo-detail.component').then(m => m.RepoDetailComponent),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'files' },
+      { path: 'files', loadComponent: () => import('./features/repo/files/files-tab.component').then(m => m.FilesTabComponent) },
+      { path: 'statistics', loadComponent: () => import('./features/repo/statistics/statistics-tab.component').then(m => m.StatisticsTabComponent) },
+      { path: 'properties', loadComponent: () => import('./features/repo/properties/properties-tab.component').then(m => m.PropertiesTabComponent) },
+    ],
   },
   {
     path: 'jobs',

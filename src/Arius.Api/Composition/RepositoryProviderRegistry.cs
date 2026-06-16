@@ -1,4 +1,4 @@
-using Arius.Api.Data;
+using Arius.Api.AppData;
 using Arius.Core;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
@@ -20,7 +20,7 @@ namespace Arius.Api.Composition;
 ///   after flush.</item>
 /// </list>
 /// </summary>
-internal sealed class RepositoryProviderRegistry : IAsyncDisposable
+public sealed class RepositoryProviderRegistry : IAsyncDisposable
 {
     private readonly AppDatabase         _database;
     private readonly SecretProtector     _secrets;

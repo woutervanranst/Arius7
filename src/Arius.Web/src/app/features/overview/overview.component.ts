@@ -1,42 +1,107 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { StateRingComponent } from '../../shared/state-ring/state-ring.component';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
+import { ApiService } from '../../core/api/api.service';
 
-/** Overview placeholder — also a live gallery of the state ring (verifies tokens, ring, Keenicons). */
+/** Overview: KPI cards + the repositories table. Cross-repo size/dedup totals arrive with the jobs DB. */
 @Component({
   selector: 'arius-overview',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StateRingComponent],
   template: `
-    <h1 class="ar-heading" style="font-size:22px;font-weight:700">Overview</h1>
-    <p style="font-size:13.5px;color:#71717a;margin-top:2px">
-      Foundation scaffolded — repositories, jobs and the file browser are wired in the next phase.
-    </p>
+    <!-- Header -->
+    <div class="flex items-start justify-between">
+      <div>
+        <h1 class="ar-heading" style="font-size:22px;font-weight:700">Overview</h1>
+        <p style="font-size:13.5px;color:#71717a;margin-top:2px">
+          {{ repoCount() }} {{ repoCount() === 1 ? 'repository' : 'repositories' }} under management
+        </p>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <button class="ar-btn-outline" (click)="refresh()"><i class="ki-filled ki-arrows-circle"></i>Refresh</button>
+        <button class="ar-btn-outline" (click)="go('/repos/add')"><i class="ki-filled ki-data"></i>Add existing</button>
+        <button class="ar-btn-primary" (click)="go('/repos/create')"><i class="ki-filled ki-plus"></i>New repository</button>
+      </div>
+    </div>
 
-    <div class="ar-card" style="margin-top:24px;padding:20px 22px;max-width:680px">
-      <div style="font-size:15.5px;font-weight:600;color:#18181b">State ring</div>
-      <p style="font-size:13px;color:#71717a;margin:4px 0 18px">
-        One disc per file — left half = local disk, right half = repository.
-      </p>
-      <div style="display:flex;flex-wrap:wrap;gap:26px">
-        @for (sample of samples; track sample.label) {
-          <div style="display:flex;flex-direction:column;align-items:center;gap:8px;width:96px;text-align:center">
-            <arius-state-ring [state]="sample.state" [size]="40" />
-            <span style="font-size:11px;color:#52525b">{{ sample.label }}</span>
+    <!-- KPI grid -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:22px">
+      @for (kpi of kpis(); track kpi.label) {
+        <div class="ar-card" style="padding:19px 20px">
+          <div class="flex items-center justify-between">
+            <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center"
+                 [style.background]="kpi.chipBg" [style.color]="kpi.chipFg">
+              <i class="ki-filled {{ kpi.icon }}" style="font-size:20px"></i>
+            </div>
+          </div>
+          <div style="font-size:25px;font-weight:700;color:#18181b;margin-top:12px;line-height:1">{{ kpi.value }}</div>
+          <div style="font-size:13px;color:#71717a;margin-top:4px">{{ kpi.label }}</div>
+        </div>
+      }
+    </div>
+
+    <!-- Repositories table -->
+    <div class="ar-card" style="margin-top:18px;padding:0;overflow:hidden">
+      <div class="flex items-center justify-between" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
+        <div>
+          <div style="font-size:15.5px;font-weight:600;color:#18181b">Repositories</div>
+          <div style="font-size:12.5px;color:#a1a1aa">Blob containers under management</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2.4fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
+        <div>Repository</div><div>Tier</div><div>Account</div>
+      </div>
+
+      @if (repos(); as list) {
+        @for (repo of list; track repo.id) {
+          <div class="ar-repo-row" (click)="openRepo(repo.id)"
+               style="display:grid;grid-template-columns:2.4fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
+            <div class="flex items-center gap-3">
+              <div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;color:#3b82f6;display:flex;align-items:center;justify-content:center">
+                <i class="ki-filled ki-folder" style="font-size:18px"></i>
+              </div>
+              <div>
+                <div style="font-size:14px;font-weight:600;color:#27272a">{{ repo.alias }}</div>
+                <div class="ar-mono" style="font-size:12px;color:#a1a1aa">{{ repo.container }}</div>
+              </div>
+            </div>
+            <div><span style="font-size:12.5px;font-weight:600;text-transform:capitalize" [style.color]="tierColor(repo.defaultTier)">{{ repo.defaultTier }}</span></div>
+            <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ repo.account }}</div>
+          </div>
+        } @empty {
+          <div style="padding:28px 20px;text-align:center;color:#a1a1aa;font-size:13px">
+            No repositories yet — add an existing one or create a new repository.
           </div>
         }
-      </div>
+      } @else {
+        <div style="padding:28px 20px;text-align:center;color:#a1a1aa;font-size:13px">Loading…</div>
+      }
     </div>
   `,
 })
 export class OverviewComponent {
-  // Flag combinations from the design's state table (see RepositoryEntryState).
-  protected readonly samples = [
-    { label: 'In sync', state: 1 | 2 | 8 | 16 },
-    { label: 'Pointer only', state: 1 | 8 | 16 },
-    { label: 'Archive tier', state: 1 | 8 | 32 },
-    { label: 'Rehydrating', state: 1 | 8 | 32 | 64 },
-    { label: 'Not archived', state: 2 },
-    { label: 'In repo only', state: 8 | 16 },
-  ];
+  private readonly api = inject(ApiService);
+  private readonly router = inject(Router);
+
+  protected readonly repos = toSignal(this.api.listRepositories());
+  protected readonly repoCount = computed(() => this.repos()?.length ?? 0);
+
+  protected readonly kpis = computed(() => [
+    { label: 'Repositories', value: String(this.repoCount()), icon: 'ki-folder', chipBg: '#eff6ff', chipFg: '#3b82f6' },
+    { label: 'Total archived', value: '—', icon: 'ki-cloud', chipBg: '#f0fdf4', chipFg: '#15803d' },
+    { label: 'Deduplicated', value: '—', icon: 'ki-data', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
+    { label: 'Est. monthly storage', value: '—', icon: 'ki-dollar', chipBg: '#fffbeb', chipFg: '#b45309' },
+  ]);
+
+  protected tierColor(tier: string): string {
+    return tier?.toLowerCase() === 'hot' ? '#d97706'
+      : tier?.toLowerCase() === 'cool' ? '#0ea5e9'
+      : tier?.toLowerCase() === 'cold' ? '#3b82f6'
+      : tier?.toLowerCase() === 'archive' ? '#8b5cf6' : '#a1a1aa';
+  }
+
+  protected refresh(): void { this.router.navigateByUrl('/overview', { onSameUrlNavigation: 'reload' }); location.reload(); }
+  protected go(path: string): void { this.router.navigateByUrl(path); }
+  protected openRepo(id: number): void { this.router.navigate(['/repos', id, 'files']); }
 }

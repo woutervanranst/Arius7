@@ -68,3 +68,25 @@
 }
 .ar-mono { font-family: var(--ar-font-mono); }
 .ar-heading { letter-spacing: -.02em; color: var(--ar-title); }
+
+/* Buttons (40px / radius 9) */
+.ar-btn-outline, .ar-btn-primary {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 14px; border-radius: 9px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.ar-btn-outline { background: #fff; border: 1px solid #e4e4e7; color: #3f3f46; }
+.ar-btn-outline:hover { background: #fafafa; }
+.ar-btn-primary { background: #3b82f6; border: 1px solid #3b82f6; color: #fff; }
+.ar-btn-primary:hover { background: #2f74e6; }
+.ar-btn-outline i, .ar-btn-primary i { font-size: 16px; }
+
+/* Hover affordances */
+.ar-repo-row:hover { background: #fafafb; }
+.ar-tree-row:hover { background: #f7f9ff; }
+.ar-file-row:hover { background: #fafafb; }
+
+/* Repo-detail tab bar (underline) */
+.ar-tab { position: relative; padding: 0 2px 12px; font-size: 14px; font-weight: 600; color: #71717a; cursor: pointer; }
+.ar-tab.active { color: #18181b; }
+.ar-tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #3b82f6; border-radius: 2px; }

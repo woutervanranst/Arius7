@@ -1,2 +1,2 @@
 # Local dev app database + Data Protection keys (created at runtime)
-data/
+.appstate/

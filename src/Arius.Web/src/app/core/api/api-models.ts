@@ -1,0 +1,62 @@
+/** DTOs mirroring Arius.Api's contracts (camelCase over the wire). */
+
+export interface AccountDto {
+  id: number;
+  name: string;
+  repositories: number;
+  hasKey: boolean;
+}
+
+export interface RepositoryDto {
+  id: number;
+  alias: string;
+  container: string;
+  accountId: number;
+  account: string;
+  localPath: string | null;
+  defaultTier: string;
+}
+
+export interface SnapshotDto {
+  version: string;
+  timestamp: string;
+  fileCount: number;
+}
+
+export interface StatsDto {
+  files: number;
+  originalSize: number;
+  storedSize: number;
+  uniqueChunks: number;
+  pending: boolean;
+}
+
+export interface StateFlagsDto {
+  localPointer: boolean;
+  localBinary: boolean;
+  localDirectory: boolean;
+  repository: boolean;
+  repositoryHydrated: boolean;
+  repositoryArchived: boolean;
+  repositoryRehydrating: boolean;
+}
+
+export interface EntryDto {
+  relativePath: string;
+  name: string;
+  kind: 'file' | 'dir';
+  state: number;
+  stateFlags: StateFlagsDto;
+  contentHash: string | null;
+  originalSize: number | null;
+  created: string | null;
+  modified: string | null;
+}
+
+/** Options for streaming a folder's children (mirrors ListQueryOptions). */
+export interface ListEntriesOptions {
+  version?: string | null;
+  prefix?: string | null;
+  filter?: string | null;
+  includeLocal?: boolean;
+}
