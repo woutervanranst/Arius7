@@ -24,6 +24,42 @@ memory** of the CLI process, the **blob size** that landed in the container, and
 `MemoryDiagnoser` is deliberately **not** used: it measures the host's managed
 allocations, not the external CLI, which would be misleading here.
 
+## Results
+
+Two runs to date, both on macOS (Apple M4, 10 cores), v5 = `v5.0.190`, Cool tier,
+encryption on, 3 cold iterations per version, each into a fresh container.
+
+**Dataset A — small (17 files, 25.3 MiB, mixed already-compressed media):**
+
+| Version | Mean time | StdDev | Source | Blob stored | Peak mem |
+| --- | --: | --: | --: | --: | --: |
+| v5 | 16.06 s | 0.99 s | 25.3 MiB | 23.5 MiB | 200.9 MiB |
+| v7 | 16.83 s | 0.23 s | 25.3 MiB | 23.3 MiB | 1058.2 MiB |
+
+**Dataset B — larger (7,480 files, 724 MiB, compressible source code):**
+
+| Version | Mean time | StdDev | Source | Blob stored | Peak mem |
+| --- | --: | --: | --: | --: | --: |
+| v5 | 4.42 min | 0.10 min | 724.1 MiB | 450.1 MiB | 237.7 MiB |
+| v7 | 4.86 min | 0.04 min | 724.1 MiB | 429.0 MiB | 1030.7 MiB |
+
+### Findings
+
+- **Time — roughly a tie, lean v5.** On the small set the two are within noise; on the
+  larger set v5's mean is ~10% lower (4.42 vs 4.86 min) but with only 3 runs the
+  confidence intervals overlap (v5's margin is wide, driven by one slow run). The work is
+  largely **network-bound** — wall-clock is dominated by upload to Azure, not by the
+  implementation — so time does not cleanly isolate the two codebases. v7 is consistently
+  the **steadier** of the two (much lower StdDev in both runs).
+- **Blob size — essentially equal, v7 slightly tighter.** ~equal on the media set (little
+  left to compress); on the code set v7 stores ~5% less (429 vs 450 MiB).
+- **Peak memory — v7 uses ~4–5× more, and this reproduces.** ~1 GiB vs ~0.2 GiB on both
+  datasets, measured apples-to-apples (both include the same `dotnet` host baseline).
+  This is the one large, stable difference — plausibly v7's 64 MiB TAR bundling buffers
+  plus zstd working set — and the result most worth investigating in the v7 pipeline.
+
+Caveat: 3 cold runs give wide error bars; treat time as indicative, not conclusive.
+
 ## Method
 
 Because archive is content-addressable and deduplicated, a second run against the same
