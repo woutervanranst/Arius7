@@ -182,43 +182,21 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await foreach (var item in _container.GetBlobsAsync(
-                           traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
-                           states: BlobStates.None,
-                           prefix: prefix.ToBlobPrefix(),
-                           cancellationToken: cancellationToken))
-        {
-            yield return new BlobListItem
-            {
-                Name = RelativePath.Parse(item.Name),
-                ETag = item.Properties.ETag?.ToString(),
-                Metadata = includeMetadata && item.Metadata is not null
-                    ? new Dictionary<string, string>(item.Metadata)
-                    : null,
-                ContentLength = includeMetadata ? item.Properties.ContentLength : null,
-                Tier = FromAzureTier(item.Properties.AccessTier),
-            };
-        }
-    }
-
-    /// <summary>
-    /// Raw-name-prefix listing: matches blob names that start with
-    /// <c>{directory}/{namePrefix}</c> as a plain string (no trailing slash), so
-    /// <c>ListAsync(chunk-index, "aa")</c> returns <c>chunk-index/aa</c>, <c>chunk-index/aa0</c>, …
-    /// </summary>
-    public async IAsyncEnumerable<BlobListItem> ListAsync(
-        RelativePath directory,
-        string namePrefix,
+        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix,
         bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var blobPrefix = prefixKind switch
+        {
+            BlobListPrefixKind.DirectoryPrefix => prefix.ToBlobPrefix(),
+            BlobListPrefixKind.BlobNamePrefix  => prefix.ToString(),
+            _                                  => throw new ArgumentOutOfRangeException(nameof(prefixKind), prefixKind, null)
+        };
+
         await foreach (var item in _container.GetBlobsAsync(
                            traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
                            states: BlobStates.None,
-                           prefix: $"{directory.ToBlobPrefix()}{namePrefix}",
+                           prefix: blobPrefix,
                            cancellationToken: cancellationToken))
         {
             yield return new BlobListItem

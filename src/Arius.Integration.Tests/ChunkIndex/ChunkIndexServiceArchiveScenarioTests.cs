@@ -110,7 +110,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // The parent shard is gone; only deeper (non-empty) leaves remain in the subtree.
         var subtree = new List<string>();
-        await foreach (var item in raw.ListAsync(BlobPaths.ChunkIndexPrefix, rootPrefix.ToString()))
+        await foreach (var item in raw.ListAsync(BlobPaths.ChunkIndexPrefix / rootPrefix, BlobListPrefixKind.BlobNamePrefix))
             subtree.Add(item.Name.Name.ToString());
         subtree.ShouldNotContain(rootPrefix.ToString());
         subtree.ShouldNotBeEmpty();

@@ -34,7 +34,7 @@ public class FakeInMemoryBlobContainerServiceTests
         blobs.SeedBlob(RelativePath.Parse("chunk-index/aa3f"), [3]);
         blobs.SeedBlob(RelativePath.Parse("chunk-index/ab"), [4]);
 
-        var items = await blobs.ListAsync(BlobPaths.ChunkIndexPrefix, "aa").ToListAsync();
+        var items = await blobs.ListAsync(BlobPaths.ChunkIndexPrefix / PathSegment.Parse("aa"), BlobListPrefixKind.BlobNamePrefix).ToListAsync();
 
         items.Select(i => i.Name.ToString()).ShouldBe(["chunk-index/aa", "chunk-index/aa0", "chunk-index/aa3f"]);
         items.ShouldAllBe(i => i.ETag != null);
@@ -54,7 +54,7 @@ public class FakeInMemoryBlobContainerServiceTests
         blobs.SeedBlob(RelativePath.Parse("chunk-index/ab"), [3]);
         var passthrough = new PassthroughBlobContainerService(blobs);
 
-        var items = await ((IBlobContainerService)passthrough).ListAsync(BlobPaths.ChunkIndexPrefix, "aa").ToListAsync();
+        var items = await ((IBlobContainerService)passthrough).ListAsync(BlobPaths.ChunkIndexPrefix / PathSegment.Parse("aa"), BlobListPrefixKind.BlobNamePrefix).ToListAsync();
 
         items.Select(i => i.Name.ToString()).ShouldBe(["chunk-index/aa", "chunk-index/aa0"]);
     }
@@ -68,7 +68,7 @@ public class FakeInMemoryBlobContainerServiceTests
         public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => inner.DownloadAsync(blobName, cancellationToken);
         public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default) => inner.TryDownloadAsync(blobName, cancellationToken);
         public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => inner.GetMetadataAsync(blobName, cancellationToken);
-        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata = false, CancellationToken cancellationToken = default) => inner.ListAsync(prefix, includeMetadata, cancellationToken);
+        public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default) => inner.ListAsync(prefix, prefixKind, includeMetadata, cancellationToken);
         public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default) => inner.SetMetadataAsync(blobName, metadata, cancellationToken);
         public Task SetTierAsync(RelativePath blobName, BlobTier tier, CancellationToken cancellationToken = default) => inner.SetTierAsync(blobName, tier, cancellationToken);
         public Task CopyAsync(RelativePath sourceBlobName, RelativePath destinationBlobName, BlobTier destinationTier, RehydratePriority? rehydratePriority = null, CancellationToken cancellationToken = default) => inner.CopyAsync(sourceBlobName, destinationBlobName, destinationTier, rehydratePriority, cancellationToken);

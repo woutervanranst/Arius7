@@ -304,7 +304,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     private async Task<Dictionary<string, string?>> ListShardSubtreeAsync(PathSegment root, CancellationToken cancellationToken)
     {
         var names = new Dictionary<string, string?>(StringComparer.Ordinal);
-        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, root.ToString(), cancellationToken: cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix / root, BlobListPrefixKind.BlobNamePrefix, cancellationToken: cancellationToken))
             names[item.Name.Name.ToString()] = item.ETag;
         return names;
     }
