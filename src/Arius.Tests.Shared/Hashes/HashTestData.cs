@@ -1,5 +1,5 @@
-using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Text;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Tests.Shared.Hashes;
@@ -23,8 +23,7 @@ public static class HashTestData
 
         for (long attempt = 0; ; attempt++)
         {
-            Span<byte> bytes = stackalloc byte[sizeof(long)];
-            BinaryPrimitives.WriteInt64LittleEndian(bytes, attempt);
+            var bytes = Encoding.UTF8.GetBytes($"Arius test content for {Path.GetFullPath(path)}; attempt {attempt};\n" + new string('x', 4096));
             var hash = ContentHash.FromDigest(SHA256.HashData(bytes));
 
             if (!hash.ToString().StartsWith(hashPrefix, StringComparison.Ordinal))
