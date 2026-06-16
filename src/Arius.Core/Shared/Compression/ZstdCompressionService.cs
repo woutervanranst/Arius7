@@ -9,7 +9,8 @@ namespace Arius.Core.Shared.Compression;
 /// reads auto-detect zstd vs legacy gzip from the stream header.
 /// </summary>
 [SharedWithinAssembly]
-internal sealed class ZstdCompressionService : ICompressionService
+internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompressionService.DefaultCompressionLevel)
+    : ICompressionService
 {
     // Magic number at the start of a zstd frame (little-endian on disk).
     private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD]; // 0xFD2FB528
@@ -24,10 +25,6 @@ internal sealed class ZstdCompressionService : ICompressionService
     /// </summary>
     public const int DefaultCompressionLevel = 19;
 
-    private readonly int _level;
-
-    public ZstdCompressionService(int compressionLevel = DefaultCompressionLevel) => _level = compressionLevel;
-
     /// <summary>
     /// zstd is verified inline on every chunk upload: it is the newer encoder, so we prove each frame
     /// round-trips at archive time (while the source is still on disk) rather than discovering an encoder
@@ -37,7 +34,7 @@ internal sealed class ZstdCompressionService : ICompressionService
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
     {
-        var stream = new CompressionStream(destination, _level, leaveOpen: leaveOpen);
+        var stream = new CompressionStream(destination, compressionLevel, leaveOpen: leaveOpen);
 
         // XXH64 frame checksum (over the original data). Off by default in zstd; we enable it so any
         // decode-time corruption is loud — keeping parity with gzip's always-on CRC32.
@@ -53,17 +50,9 @@ internal sealed class ZstdCompressionService : ICompressionService
     /// selects the matching decompressor (zstd or legacy gzip), and delegates thereafter. Detection is
     /// lazy so neither sync nor async callers pay an eager blocking read.
     /// </summary>
-    private sealed class AutoDetectDecompressionStream : Stream
+    private sealed class AutoDetectDecompressionStream(Stream source, bool leaveOpen) : Stream
     {
-        private readonly Stream _source;
-        private readonly bool _leaveOpen;
-        private Stream? _inner;
-
-        public AutoDetectDecompressionStream(Stream source, bool leaveOpen)
-        {
-            _source = source;
-            _leaveOpen = leaveOpen;
-        }
+        private          Stream? _inner;
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
@@ -101,7 +90,7 @@ internal sealed class ZstdCompressionService : ICompressionService
             var read = 0;
             while (read < header.Length)
             {
-                var n = _source.Read(header.AsSpan(read));
+                var n = source.Read(header.AsSpan(read));
                 if (n == 0)
                     break;
                 read += n;
@@ -119,7 +108,7 @@ internal sealed class ZstdCompressionService : ICompressionService
             var read = 0;
             while (read < header.Length)
             {
-                var n = await _source.ReadAsync(header.AsMemory(read), cancellationToken);
+                var n = await source.ReadAsync(header.AsMemory(read), cancellationToken);
                 if (n == 0)
                     break;
                 read += n;
@@ -130,7 +119,7 @@ internal sealed class ZstdCompressionService : ICompressionService
 
         private Stream CreateInner(byte[] header, int read)
         {
-            var prefixed = new PrefixedStream(header, read, _source, _leaveOpen);
+            var prefixed = new PrefixedStream(header, read, source, leaveOpen);
 
             // An empty source means empty content. Legacy gzip wrote empty payloads (e.g. an empty
             // filetree or empty file) as a 0-byte blob — System.IO.Compression only emits the gzip
@@ -155,8 +144,8 @@ internal sealed class ZstdCompressionService : ICompressionService
             {
                 if (_inner is not null)
                     _inner.Dispose();      // disposes the PrefixedStream, which disposes _source unless leaveOpen
-                else if (!_leaveOpen)
-                    _source.Dispose();
+                else if (!leaveOpen)
+                    source.Dispose();
             }
 
             base.Dispose(disposing);
@@ -166,8 +155,8 @@ internal sealed class ZstdCompressionService : ICompressionService
         {
             if (_inner is not null)
                 await _inner.DisposeAsync();
-            else if (!_leaveOpen)
-                await _source.DisposeAsync();
+            else if (!leaveOpen)
+                await source.DisposeAsync();
 
             GC.SuppressFinalize(this);
         }
@@ -177,21 +166,10 @@ internal sealed class ZstdCompressionService : ICompressionService
     /// Read-only stream that first replays a small already-read prefix, then continues from the
     /// underlying source. Used to "un-peek" the magic bytes consumed during format detection.
     /// </summary>
-    private sealed class PrefixedStream : Stream
+    private sealed class PrefixedStream(byte[] prefix, int prefixLength, Stream source, bool leaveOpen)
+        : Stream
     {
-        private readonly byte[] _prefix;
-        private readonly int _prefixLength;
-        private int _prefixPosition;
-        private readonly Stream _source;
-        private readonly bool _leaveOpen;
-
-        public PrefixedStream(byte[] prefix, int prefixLength, Stream source, bool leaveOpen)
-        {
-            _prefix = prefix;
-            _prefixLength = prefixLength;
-            _source = source;
-            _leaveOpen = leaveOpen;
-        }
+        private          int  _prefixPosition;
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
@@ -207,10 +185,10 @@ internal sealed class ZstdCompressionService : ICompressionService
 
         public override int Read(Span<byte> buffer)
         {
-            if (_prefixPosition < _prefixLength)
+            if (_prefixPosition < prefixLength)
                 return ReadFromPrefix(buffer);
 
-            return _source.Read(buffer);
+            return source.Read(buffer);
         }
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
@@ -218,32 +196,32 @@ internal sealed class ZstdCompressionService : ICompressionService
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            if (_prefixPosition < _prefixLength)
+            if (_prefixPosition < prefixLength)
                 return ValueTask.FromResult(ReadFromPrefix(buffer.Span));
 
-            return _source.ReadAsync(buffer, cancellationToken);
+            return source.ReadAsync(buffer, cancellationToken);
         }
 
         private int ReadFromPrefix(Span<byte> buffer)
         {
-            var n = Math.Min(buffer.Length, _prefixLength - _prefixPosition);
-            _prefix.AsSpan(_prefixPosition, n).CopyTo(buffer);
+            var n = Math.Min(buffer.Length, prefixLength - _prefixPosition);
+            prefix.AsSpan(_prefixPosition, n).CopyTo(buffer);
             _prefixPosition += n;
             return n;
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && !_leaveOpen)
-                _source.Dispose();
+            if (disposing && !leaveOpen)
+                source.Dispose();
 
             base.Dispose(disposing);
         }
 
         public override async ValueTask DisposeAsync()
         {
-            if (!_leaveOpen)
-                await _source.DisposeAsync();
+            if (!leaveOpen)
+                await source.DisposeAsync();
 
             GC.SuppressFinalize(this);
         }
