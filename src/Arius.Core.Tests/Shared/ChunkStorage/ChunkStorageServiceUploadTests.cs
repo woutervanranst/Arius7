@@ -9,10 +9,9 @@ namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceUploadTests
 {
-    private static readonly ChunkHash   LargeChunkHash              = ChunkHash.Parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    private static readonly ChunkHash   TarChunkHash                = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
-    private static readonly ChunkHash   RetryChunkHash              = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    private static readonly ChunkHash   NonSeekableChunkHash        = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    private static readonly ChunkHash   ExistingTarChunkHash        = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
+    private static readonly ChunkHash   ExistingLargeChunkHash      = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    private static readonly ChunkHash   NonSeekableInputChunkHash   = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     private static readonly ContentHash ThinContentHash             = ContentHash.Parse("1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly ChunkHash   ThinParentChunkHash         = ChunkHash.Parse("2222222222222222222222222222222222222222222222222222222222222222");
     private static readonly ContentHash ExistingThinContentHash     = ContentHash.Parse("3333333333333333333333333333333333333333333333333333333333333333");
@@ -58,11 +57,11 @@ public class ChunkStorageServiceUploadTests
         Random.Shared.NextBytes(content);
         using var tarStream = new MemoryStream(content, writable: false);
 
-        await blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(TarChunkHash), [content], BlobTier.Cold);
-        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(TarChunkHash));
+        await blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(ExistingTarChunkHash), [content], BlobTier.Cold);
+        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(ExistingTarChunkHash));
 
         var result = await service.UploadTarAsync(
-            chunkHash: TarChunkHash,
+            chunkHash: ExistingTarChunkHash,
             content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
@@ -72,7 +71,7 @@ public class ChunkStorageServiceUploadTests
         result.AlreadyExisted.ShouldBeTrue();
         result.StoredSize.ShouldBeGreaterThan(0L);
         result.OriginalSize.ShouldBeNull();
-        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.ChunkPath(TarChunkHash));
+        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.ChunkPath(ExistingTarChunkHash));
     }
 
     [Test]
@@ -152,13 +151,13 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
-        var blobName = BlobPaths.ChunkPath(RetryChunkHash);
+        var blobName = BlobPaths.ChunkPath(ExistingLargeChunkHash);
 
         await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         blobs.ThrowAlreadyExistsOnOpenWrite(blobName);
 
         var result = await service.UploadLargeAsync(
-            chunkHash: RetryChunkHash,
+            chunkHash: ExistingLargeChunkHash,
             content: new MemoryStream(content),
             sourceSize: 999,
             tier: BlobTier.Archive,
@@ -227,7 +226,7 @@ public class ChunkStorageServiceUploadTests
         await using var nonSeekable = new NonSeekableReadStream(content);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.UploadLargeAsync(
-            chunkHash: NonSeekableChunkHash,
+            chunkHash: NonSeekableInputChunkHash,
             content: nonSeekable,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
