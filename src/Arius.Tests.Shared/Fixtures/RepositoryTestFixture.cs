@@ -10,6 +10,7 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Data.Sqlite;
@@ -86,7 +87,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var compression = TestCompression;
+        var compression = TestCompression.Instance;
         var snapshot = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index    = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
@@ -172,9 +173,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Compression service used for repository serialization and chunk payloads.</summary>
     public required ICompressionService Compression { get; init; }
-
-    /// <summary>Shared zstd compression at a fast level — correctness is independent of level, so tests stay quick.</summary>
-    private static ICompressionService TestCompression => new ZstdCompressionService(compressionLevel: 1);
 
     /// <summary>Chunk index service used for content-to-chunk lookup and mutation.</summary>
     public required ChunkIndexService Index { get; init; }

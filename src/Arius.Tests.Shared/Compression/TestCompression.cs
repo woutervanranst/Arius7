@@ -8,5 +8,6 @@ namespace Arius.Tests.Shared.Compression;
 /// </summary>
 public static class TestCompression
 {
+    /// <summary>Shared zstd compression at a fast level — correctness is independent of level, so tests stay quick.</summary>
     public static ICompressionService Instance { get; } = new ZstdCompressionService(compressionLevel: 1);
 }
