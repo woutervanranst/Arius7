@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
@@ -175,7 +176,7 @@ public class PassphraseEncryptionServiceTests
         var svc  = IEncryptionService.EncryptedInstance;
         ReadOnlySpan<byte> data = "test data"u8;
 
-        var passBytes = Encoding.UTF8.GetBytes(TestEncryption.Passphrase);
+        var passBytes = Encoding.UTF8.GetBytes(TestDefaults.Passphrase);
         var combined  = new byte[passBytes.Length + data.Length];
         passBytes.CopyTo(combined, 0);
         data.CopyTo(combined.AsSpan(passBytes.Length));

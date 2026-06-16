@@ -1,6 +1,7 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Pipeline;
@@ -113,7 +114,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // PassphraseEncryptionService so the chunk index + restore path work.
         await using var cbcFix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(TestEncryption.Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         var cbcLargeContent = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(cbcLargeContent);

@@ -114,7 +114,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(TestEncryption.Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
@@ -149,7 +149,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress using recover-chunk.py (auto-detects Salted__ magic)
-            var (exitCode, _, stderr) = RunScript(encryptedFile, TestEncryption.Passphrase, recoveredFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, recoveredFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             File.ReadAllBytes(recoveredFile).ShouldBe(original);
@@ -206,7 +206,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress using recover-chunk.py
-            var (exitCode, _, stderr) = RunScript(encryptedFile, TestEncryption.Passphrase, recoveredFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, recoveredFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             File.ReadAllBytes(recoveredFile).ShouldBe(original);
@@ -230,7 +230,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(TestEncryption.Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
@@ -270,7 +270,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress to tar using recover-chunk.py (auto-detects Salted__ magic)
-            var (exitCode, _, stderr) = RunScript(encryptedFile, TestEncryption.Passphrase, tarFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, tarFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             // Read tar entries (named by content-hash)
@@ -355,7 +355,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress to tar using recover-chunk.py
-            var (exitCode, _, stderr) = RunScript(encryptedFile, TestEncryption.Passphrase, tarFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, tarFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             // Read tar entries (named by content-hash)
