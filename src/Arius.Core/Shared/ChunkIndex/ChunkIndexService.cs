@@ -154,7 +154,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
         var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
         if (pendingFlushEntry is not null)
+        {
+            _logger.LogDebug("[chunk-index] Lookup: hash={ContentHash} hit=pending", contentHash.Short8);
             return pendingFlushEntry;
+        }
 
         var latestSnapshot = await _latestSnapshotName;
         await EnsureCoverageForHashesAsync(ChunkIndexRouter.GetRootPrefix(contentHash), [contentHash], latestSnapshot, cancellationToken);
@@ -173,6 +176,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             return;
 
         _localStore.PromoteToSnapshotVersion(oldSnapshotVersion, newSnapshotVersion);
+        _logger.LogDebug("[chunk-index] Promoted cache validation: from={OldSnapshotVersion} to={NewSnapshotVersion}", oldSnapshotVersion, newSnapshotVersion);
     }
 
     // -- Synchronization -----------------------------------------------------
@@ -218,7 +222,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         if (uncovered is null)
         {
             // Hot path: all hashes covered by validated claims — zero remote calls.
-            _logger.LogDebug("[chunk-index] root {Root}: local cache current", root);
+            _logger.LogDebug("[chunk-index] root {Root}: local cache current for {HashCount} hash(es)", root, hashes.Count);
             return targets;
         }
 
@@ -229,6 +233,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             // and "empty range at this depth" — a missing blob alone can mean either.
             var existingRemoteShards = await ListShardSubtreeAsync(root, cancellationToken);
             var existingRemoteShardNames = existingRemoteShards.Keys.ToHashSet(StringComparer.Ordinal);
+            _logger.LogDebug("[chunk-index] root {Root}: listed {ShardCount} remote shard(s), uncoveredHashes={UncoveredHashCount}", root, existingRemoteShards.Count, uncovered.Count);
 
             var emptyPrefixes = new HashSet<PathSegment>();
             var shardsToLoad = new Dictionary<PathSegment, string?>();
@@ -245,7 +250,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             foreach (var prefix in emptyPrefixes)
             {
                 _localStore.AddEmptyPrefix(prefix, latestSnapshotVersion);
-                _logger.LogInformation("[chunk-index] shard {Prefix}: no remote shard (empty range)", prefix);
+                _logger.LogDebug("[chunk-index] shard {Prefix}: no remote shard (empty range)", prefix);
             }
 
             var lostListingRace = false;
@@ -254,7 +259,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 if (listedETag is not null && _localStore.IsPrefixAtETag(prefix, listedETag))
                 {
                     _localStore.SetPrefixSnapshotVersion(prefix, listedETag, latestSnapshotVersion);
-                    _logger.LogInformation("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
+                    _logger.LogDebug("[chunk-index] shard {Prefix}: cache revalidated (etag unchanged)", prefix);
                     continue;
                 }
 
@@ -266,6 +271,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                     {
                         // Deleted between listing and download (a racing split elsewhere):
                         // re-resolve everything from a fresh listing, once.
+                        _logger.LogDebug("[chunk-index] shard {Prefix}: listed but not downloadable; retrying subtree listing", prefix);
                         lostListingRace = true;
                         break;
                     }
@@ -288,7 +294,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 }
 
                 _localStore.UpdatePrefix(prefix, remoteShard.ETag, latestSnapshotVersion, shard.Entries);
-                _logger.LogInformation("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
+                _logger.LogDebug("[chunk-index] shard {Prefix}: downloaded ({EntryCount} entries)", prefix, shard.Count);
             }
 
             if (!lostListingRace)
@@ -352,11 +358,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         var rootsWithPendingFlushes = _localStore.GetRootsWithPendingFlushes();
         if (rootsWithPendingFlushes.Count == 0)
         {
-            _logger.LogDebug("No pending shard flushes");
+            _logger.LogDebug("[chunk-index] No pending shard flushes");
             return; // no shards need to be written to blob
         }
 
-        _logger.LogInformation("Flushing {RootCount} shard subtrees", rootsWithPendingFlushes.Count);
+        _logger.LogInformation("[chunk-index] Flushing {RootCount} shard subtrees", rootsWithPendingFlushes.Count);
 
         var latestSnapshotVersion = await _latestSnapshotName;
         var uploadedStates = new ConcurrentDictionary<PathSegment, string>();
@@ -371,7 +377,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // claim via coverage-overlap deletion).
         _localStore.MarkPendingFlushesSynchronized(uploadedStates.Select(x => (x.Key, x.Value)), latestSnapshotVersion);
 
-        _logger.LogInformation("Flushed {UploadedCount} shards across {RootCount} subtrees", uploadedStates.Count, rootsWithPendingFlushes.Count);
+        _logger.LogInformation("[chunk-index] Flushed {UploadedCount} shards across {RootCount} subtrees", uploadedStates.Count, rootsWithPendingFlushes.Count);
     }
 
     /// <summary>
@@ -390,6 +396,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             // split resolves to the still-existing parent here (reloading its full range before
             // the re-split rewrites the children).
             var pendingHashes = _localStore.GetPendingFlushHashes(root);
+            _logger.LogDebug("[chunk-index] root {Root}: flushing pendingEntries={PendingEntryCount}", root, pendingHashes.Count);
             var targets = await EnsureCoverageCoreAsync(root, pendingHashes, latestSnapshotVersion, cancellationToken);
 
             // An interrupted split can yield mixed-depth targets, e.g. a parent plus an
@@ -410,7 +417,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 {
                     var result = await UploadShardAsync(prefix, shard, cancellationToken);
                     uploadedStates[prefix] = result.ETag;
-                    _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
+                    _logger.LogDebug("[chunk-index] Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
                     continue;
                 }
 
@@ -441,7 +448,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             uploadedStates[leafPrefix] = result.ETag;
         }
 
-        _logger.LogInformation("Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
+        _logger.LogInformation("[chunk-index] Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
 
         // Delete the parent and every other blob in range(prefix) that was not just written —
         // including leftovers of a previously interrupted split (their extra entries were never
@@ -495,6 +502,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     public void InvalidateCaches()
     {
         ThrowIfFlushed();
+        _logger.LogInformation("[chunk-index] Invalidating remote-backed local cache");
         _localStore.ClearRemoteBackedCache();
     }
 
@@ -510,6 +518,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         ThrowIfFlushed();
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
+        _logger.LogInformation("[chunk-index] Repair marker written; rebuilding local cache from chunk blobs");
 
         // Pass 1: collect tar blob metadata. A thin chunk's data lives in its parent tar (the thin
         // stub itself is always uploaded Cool), so its tier hint and chunk size must come from the
@@ -529,6 +538,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
         }
 
+        _logger.LogInformation("[chunk-index] Repair pass 1 complete: tarChunks={TarChunkCount}", tarMetadata.Count);
+
         // Pass 2: rebuild the entries once all parent tar metadata is known.
         var listedChunkCount = 0;
         var rebuiltEntryCount = 0;
@@ -546,12 +557,16 @@ internal sealed class ChunkIndexService : IChunkIndexService
             rebuiltEntryCount++;
         }
 
+        _logger.LogInformation("[chunk-index] Repair pass 2 complete: listedChunks={ListedChunkCount} rebuiltEntries={RebuiltEntryCount}", listedChunkCount, rebuiltEntryCount);
+
         // Compute a fresh balanced layout from the staged entries: recursively split any range
         // whose entry count exceeds the threshold. This also re-balances an over-split remote
         // layout (the stale-shard pass below deletes everything not in the rebuilt set).
         var rebuiltPrefixes = new HashSet<PathSegment>();
         foreach (var root in _localStore.GetStoredRootPrefixes())
             CollectLeaves(root);
+
+        _logger.LogInformation("[chunk-index] Repair layout planned: rebuiltShards={RebuiltShardCount}", rebuiltPrefixes.Count);
 
         void CollectLeaves(PathSegment prefix)
         {
@@ -583,6 +598,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 Interlocked.Increment(ref uploadedShardCount);
             });
 
+        _logger.LogInformation("[chunk-index] Repair uploaded {UploadedShardCount} rebuilt shard(s)", uploadedShardCount);
+
         // Delete stale shards
         var deletedStaleShardCount = 0;
         await Parallel.ForEachAsync(
@@ -598,7 +615,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 Interlocked.Increment(ref deletedStaleShardCount);
             });
 
+        _logger.LogInformation("[chunk-index] Repair deleted {DeletedStaleShardCount} stale shard(s)", deletedStaleShardCount);
+
         DeleteRepairMarker();
+        _logger.LogDebug("[chunk-index] Repair marker deleted");
 
         return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }

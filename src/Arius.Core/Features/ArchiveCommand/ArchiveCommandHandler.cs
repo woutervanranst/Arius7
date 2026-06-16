@@ -605,7 +605,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogInformation("[phase] validate-filetrees");
             var fileTreeValidation = await _fileTreeService.ValidateAsync(cancellationToken);
             if (fileTreeValidation.SnapshotMismatch)
+            {
+                _logger.LogInformation("[tree] Snapshot mismatch detected during filetree validation; invalidating chunk-index cache before flush");
                 _chunkIndex.InvalidateCaches();
+            }
 
             _logger.LogInformation("[phase] flush-chunkindex-and-synchronize-filetree");
             // ── Stage 6b: Flush chunk index (concurrent w/ 6c) ──
