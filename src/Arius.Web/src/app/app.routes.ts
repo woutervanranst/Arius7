@@ -12,6 +12,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/repos/repos.component').then(m => m.ReposComponent),
   },
   {
+    path: 'repos/add',
+    loadComponent: () => import('./features/wizards/add/add-repo-wizard.component').then(m => m.AddRepoWizardComponent),
+  },
+  {
+    path: 'repos/create',
+    loadComponent: () => import('./features/wizards/create/create-repo-wizard.component').then(m => m.CreateRepoWizardComponent),
+  },
+  {
     path: 'repos/:repoId',
     loadComponent: () => import('./features/repo/repo-detail.component').then(m => m.RepoDetailComponent),
     children: [

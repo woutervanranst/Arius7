@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { AccountDto, RepositoryDto, SnapshotDto, StatsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -35,5 +35,25 @@ export class ApiService {
   getStats(id: number, version?: string | null): Observable<StatsDto> {
     const query = version ? `?version=${encodeURIComponent(version)}` : '';
     return this.http.get<StatsDto>(`/api/repos/${id}/stats${query}`);
+  }
+
+  createRepository(req: CreateRepositoryRequest): Observable<RepositoryDto> {
+    return this.http.post<RepositoryDto>('/api/repos', req);
+  }
+
+  getJobs(): Observable<JobDto[]> {
+    return this.http.get<JobDto[]>('/api/jobs');
+  }
+
+  getSchedules(repoId: number): Observable<ScheduleDto[]> {
+    return this.http.get<ScheduleDto[]>(`/api/repos/${repoId}/schedules`);
+  }
+
+  createSchedule(repoId: number, cron: string, kind = 'archive'): Observable<ScheduleDto> {
+    return this.http.post<ScheduleDto>(`/api/repos/${repoId}/schedules`, { cron, kind });
+  }
+
+  deleteSchedule(repoId: number, scheduleId: number): Observable<void> {
+    return this.http.delete<void>(`/api/repos/${repoId}/schedules/${scheduleId}`);
   }
 }

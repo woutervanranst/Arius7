@@ -59,6 +59,25 @@ export class RealtimeService {
     await this.connection!.invoke('Approve', jobId, priority);
   }
 
+  /** Streams the container names in an account (Add-existing wizard). */
+  streamContainers(accountId: number, accountName: string | null, accountKey: string | null): Observable<string> {
+    return new Observable<string>(subscriber => {
+      let stopped = false;
+      let stream: signalR.ISubscription<string> | undefined;
+      this.ensureStarted()
+        .then(() => {
+          if (stopped) return;
+          stream = this.connection!.stream<string>('StreamContainers', accountId, accountName, accountKey).subscribe({
+            next: c => subscriber.next(c),
+            error: e => subscriber.error(e),
+            complete: () => subscriber.complete(),
+          });
+        })
+        .catch(e => subscriber.error(e));
+      return () => { stopped = true; stream?.dispose(); };
+    });
+  }
+
   /** Streams the immediate children of a folder in a snapshot. */
   listEntries(repositoryId: number, options: ListEntriesOptions = {}): Observable<EntryDto> {
     return new Observable<EntryDto>(subscriber => {

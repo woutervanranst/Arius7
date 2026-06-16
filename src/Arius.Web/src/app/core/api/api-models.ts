@@ -87,3 +87,34 @@ export interface DoneMsg {
   status: string;   // completed | failed
   summary: string;
 }
+
+export interface JobDto {
+  id: string;
+  repoId: number;
+  repo: string;
+  kind: string;     // archive | restore
+  trigger: string;  // one-off | schedule
+  status: string;   // queued | running | rehydrating | completed | failed | cancelled
+  pct: number;
+  detail: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ScheduleDto {
+  id: number;
+  repoId: number;
+  cron: string;
+  kind: string;
+  enabled: boolean;
+  nextRun: string | null;
+}
+
+export interface CreateRepositoryRequest {
+  accountId: number;
+  container: string;
+  alias: string;
+  passphrase: string | null;
+  localPath: string | null;
+  defaultTier: string | null;
+}

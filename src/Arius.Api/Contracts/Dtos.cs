@@ -39,3 +39,21 @@ public sealed record UpdateRepositoryRequest(
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 
 public sealed record StatsDto(long Files, long OriginalSize, long StoredSize, long UniqueChunks, bool Pending);
+
+// ── Jobs / schedules ──────────────────────────────────────────────────────────
+
+public sealed record JobDto(
+    string          Id,
+    long            RepoId,
+    string          Repo,
+    string          Kind,
+    string          Trigger,
+    string          Status,
+    double          Pct,
+    string?         Detail,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? FinishedAt);
+
+public sealed record ScheduleDto(long Id, long RepoId, string Cron, string Kind, bool Enabled, DateTimeOffset? NextRun);
+
+public sealed record CreateScheduleRequest(string Cron, string? Kind);

@@ -210,7 +210,122 @@ public sealed class AppDatabase
         command.ExecuteNonQuery();
     }
 
+    // ── Jobs ──────────────────────────────────────────────────────────────────
+
+    public void InsertJob(string id, long repositoryId, string kind, string trigger, string status)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO jobs(id, repo_id, kind, trigger, status, pct, started_at)
+            VALUES ($id, $repoId, $kind, $trigger, $status, 0, $startedAt);
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$repoId", repositoryId);
+        command.Parameters.AddWithValue("$kind", kind);
+        command.Parameters.AddWithValue("$trigger", trigger);
+        command.Parameters.AddWithValue("$status", status);
+        command.Parameters.AddWithValue("$startedAt", DateTimeOffset.UtcNow.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public void CompleteJob(string id, string status, double pct, string? detail)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE jobs SET status = $status, pct = $pct, detail = $detail, finished_at = $finishedAt WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$status", status);
+        command.Parameters.AddWithValue("$pct", pct);
+        command.Parameters.AddWithValue("$detail", (object?)detail ?? DBNull.Value);
+        command.Parameters.AddWithValue("$finishedAt", DateTimeOffset.UtcNow.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<JobRecord> ListJobs(int limit = 100)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at FROM jobs ORDER BY COALESCE(started_at, '') DESC LIMIT $limit;";
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var result = new List<JobRecord>();
+        while (reader.Read())
+            result.Add(ReadJob(reader));
+        return result;
+    }
+
+    // ── Schedules ───────────────────────────────────────────────────────────
+
+    public IReadOnlyList<ScheduleRecord> ListSchedules(long? repositoryId = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = repositoryId is null
+            ? "SELECT id, repo_id, cron, kind, enabled, next_run FROM schedules ORDER BY id;"
+            : "SELECT id, repo_id, cron, kind, enabled, next_run FROM schedules WHERE repo_id = $repoId ORDER BY id;";
+        if (repositoryId is not null) command.Parameters.AddWithValue("$repoId", repositoryId);
+        using var reader = command.ExecuteReader();
+        var result = new List<ScheduleRecord>();
+        while (reader.Read())
+            result.Add(ReadSchedule(reader));
+        return result;
+    }
+
+    public long InsertSchedule(long repositoryId, string cron, string kind, bool enabled)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO schedules(repo_id, cron, kind, enabled) VALUES ($repoId, $cron, $kind, $enabled);
+            SELECT last_insert_rowid();
+            """;
+        command.Parameters.AddWithValue("$repoId", repositoryId);
+        command.Parameters.AddWithValue("$cron", cron);
+        command.Parameters.AddWithValue("$kind", kind);
+        command.Parameters.AddWithValue("$enabled", enabled ? 1 : 0);
+        return (long)command.ExecuteScalar()!;
+    }
+
+    public void SetScheduleNextRun(long id, DateTimeOffset? nextRun)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE schedules SET next_run = $nextRun WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$nextRun", (object?)nextRun?.ToString("O") ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteSchedule(long id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM schedules WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
+    }
+
     // ── Readers ───────────────────────────────────────────────────────────────
+
+    private static JobRecord ReadJob(SqliteDataReader reader) => new(
+        reader.GetString(0),
+        reader.GetInt64(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.GetDouble(5),
+        reader.IsDBNull(6) ? null : reader.GetString(6),
+        reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7)),
+        reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)));
+
+    private static ScheduleRecord ReadSchedule(SqliteDataReader reader) => new(
+        reader.GetInt64(0),
+        reader.GetInt64(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetInt64(4) != 0,
+        reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5)));
 
     private static AccountRecord ReadAccount(SqliteDataReader reader) => new(
         reader.GetInt64(0),

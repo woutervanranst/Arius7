@@ -35,6 +35,7 @@ try
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
+    builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
 
     builder.Services.AddSignalR()
         .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
@@ -56,6 +57,7 @@ try
     api.MapAccountEndpoints();
     api.MapRepositoryEndpoints();
     api.MapBrowseEndpoints();
+    api.MapJobEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
 
     Log.Information("Arius.Api starting — app db {DbPath}", dbPath);

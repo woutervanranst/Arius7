@@ -27,14 +27,16 @@ public sealed class JobRunner(
 
     private SemaphoreSlim LockFor(long repositoryId) => _repoLocks.GetOrAdd(repositoryId, _ => new SemaphoreSlim(1, 1));
 
-    public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool noPointers)
+    public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool noPointers, string trigger = "one-off")
     {
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
+        database.InsertJob(jobId, repositoryId, "archive", trigger, "running");
         if (string.IsNullOrWhiteSpace(repo.LocalPath))
         {
             sink.Log("No local folder configured for this repository — set one in Properties.", "warn");
+            database.CompleteJob(jobId, "failed", 0, "No source folder configured.");
             sink.Done("failed", "No source folder configured.");
             return;
         }
@@ -60,13 +62,21 @@ public sealed class JobRunner(
             }));
 
             if (result.Success)
-                sink.Done("completed", $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.TotalSize)}");
+            {
+                var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.TotalSize)}";
+                database.CompleteJob(jobId, "completed", 100, summary);
+                sink.Done("completed", summary);
+            }
             else
+            {
+                database.CompleteJob(jobId, "failed", 0, result.ErrorMessage);
                 sink.Done("failed", result.ErrorMessage ?? "Archive failed.");
+            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Archive job {JobId} failed", jobId);
+            database.CompleteJob(jobId, "failed", 0, ex.Message);
             sink.Log(ex.Message, "warn");
             sink.Done("failed", ex.Message);
         }
@@ -83,6 +93,7 @@ public sealed class JobRunner(
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
+        database.InsertJob(jobId, repositoryId, "restore", "one-off", "running");
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
             ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())
@@ -129,14 +140,21 @@ public sealed class JobRunner(
                     },
                 }));
 
-                if (!result.Success) { sink.Done("failed", result.ErrorMessage ?? "Restore failed."); return; }
+                if (!result.Success)
+                {
+                    database.CompleteJob(jobId, "failed", 0, result.ErrorMessage);
+                    sink.Done("failed", result.ErrorMessage ?? "Restore failed.");
+                    return;
+                }
             }
 
+            database.CompleteJob(jobId, "completed", 100, "Restore complete.");
             sink.Done("completed", "Restore complete.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Restore job {JobId} failed", jobId);
+            database.CompleteJob(jobId, "failed", 0, ex.Message);
             sink.Log(ex.Message, "warn");
             sink.Done("failed", ex.Message);
         }

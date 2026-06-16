@@ -20,8 +20,40 @@ public sealed class JobsHub(
     RepositoryProviderRegistry registry,
     AppDatabase database,
     JobRunner jobRunner,
-    RestoreApprovalRegistry approvals) : Hub
+    RestoreApprovalRegistry approvals,
+    SecretProtector secrets,
+    IBlobServiceFactory blobServiceFactory) : Hub
 {
+    /// <summary>
+    /// Streams the container names in an account (Add-existing wizard). Pass <paramref name="accountId"/>
+    /// &gt; 0 to use a configured account's stored key, or 0 with an explicit name + key for a new account.
+    /// </summary>
+    public async IAsyncEnumerable<string> StreamContainers(
+        long accountId,
+        string? accountName,
+        string? accountKey,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        string name;
+        string? key;
+        if (accountId > 0)
+        {
+            var account = database.GetAccount(accountId);
+            if (account is null) yield break;
+            name = account.Name;
+            key = secrets.Unprotect(account.EncryptedAccountKey);
+        }
+        else
+        {
+            name = accountName ?? string.Empty;
+            key = accountKey;
+        }
+
+        var blobService = await blobServiceFactory.CreateAsync(name, key, cancellationToken).ConfigureAwait(false);
+        await foreach (var container in blobService.GetContainerNamesAsync(cancellationToken).ConfigureAwait(false))
+            yield return container;
+    }
+
     /// <summary>Starts an archive; the caller's connection joins the job group before events flow.</summary>
     public async Task<string> StartArchive(long repositoryId, string tier, bool removeLocal, bool noPointers)
     {
