@@ -45,4 +45,12 @@ public interface IChunkIndexService : IDisposable
     /// Rebuilds chunk-index shards from authoritative chunk blobs and deletes stale shard blobs.
     /// </summary>
     internal Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Aggregates the repository's stored size and unique-chunk count, loading every chunk-index
+    /// shard first so the figures are exact. Shards are a bounded set (≤256 small index blobs,
+    /// keyed by a two-character prefix) — not the chunk data — so this is cheap relative to a
+    /// chunk download.
+    /// </summary>
+    internal Task<(long UniqueChunks, long StoredSize)> GetStatsAsync(CancellationToken cancellationToken = default);
 }

@@ -214,6 +214,34 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
+    /// Aggregates unique-chunk count and stored size over distinct chunks. Many content hashes can
+    /// share one chunk (tar-bundled small files), so the inner query collapses to one row per chunk
+    /// hash before summing — summing per content-hash would over-count shared tar chunks.
+    /// </summary>
+    public (long UniqueChunks, long StoredSize) GetStats()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT COUNT(*) AS unique_chunks, COALESCE(SUM(chunk_size), 0) AS stored_size
+                FROM (SELECT chunk_hash, MAX(chunk_size) AS chunk_size FROM chunk_index_entries GROUP BY chunk_hash);
+                """;
+            using var reader = command.ExecuteReader();
+            reader.Read();
+            var uniqueChunks = reader.GetInt64(0);
+            var storedSize   = reader.GetInt64(1);
+            _logger.LogDebug("[chunk-index-local] GetStats: uniqueChunks={UniqueChunks} storedSize={StoredSize}", uniqueChunks, storedSize);
+            return (uniqueChunks, storedSize);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
     /// Returns whether the local store currently contains entries pending local flush.
     /// </summary>
     public bool HasPendingFlushEntries()

@@ -339,6 +339,32 @@ internal sealed class ChunkIndexService : IChunkIndexService
             cancellationToken: cancellationToken);
     }
 
+    // -- Stats ---------------------------------------------------------------
+
+    /// <summary>
+    /// Aggregates stored size and unique-chunk count, loading every remote shard prefix first so the
+    /// figures are exact. Shards are bounded (≤256 small index blobs), so this is cheap relative to
+    /// the chunk store.
+    /// </summary>
+    public async Task<(long UniqueChunks, long StoredSize)> GetStatsAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        var latestSnapshotVersion = await _latestSnapshotName;
+
+        var prefixes = new List<PathSegment>();
+        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunkIndexPrefix, includeMetadata: false, cancellationToken: cancellationToken))
+            prefixes.Add(item.Name.Name);
+
+        await Parallel.ForEachAsync(
+            prefixes,
+            new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
+            async (prefix, ct) => await EnsurePrefixLoadedAndSynchronizedAsync(prefix, latestSnapshotVersion, ct));
+
+        return _localStore.GetStats();
+    }
+
     // -- Cache ---------------------------------------------------------------
 
     /// <summary>
