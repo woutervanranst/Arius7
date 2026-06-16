@@ -52,10 +52,7 @@ internal sealed class CountingBlobContainerService(IBlobContainerService inner) 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default)
-        => inner.ListAsync(prefix, includeMetadata, cancellationToken);
-
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind, bool includeMetadata = false, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
     {
         if (IsChunkIndex(prefix))
             Interlocked.Increment(ref _chunkIndexLists);

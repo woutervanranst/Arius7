@@ -193,30 +193,14 @@ public interface IBlobContainerService
     // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Lists blobs below the directory-like <paramref name="prefix"/>.
+    /// Lists blobs matching <paramref name="prefix"/> according to <paramref name="prefixKind"/>.
     /// Metadata is only populated when <paramref name="includeMetadata"/> is true.
     /// </summary>
     IAsyncEnumerable<BlobListItem> ListAsync(
-        RelativePath      prefix,
-        bool              includeMetadata,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Lists blobs matching <paramref name="prefix"/> according to <paramref name="prefixKind"/>.
-    /// Backends can override this when they support native raw blob-name prefix listing.
-    /// </summary>
-    IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath       prefix,
-        BlobListPrefixKind prefixKind,
+        BlobListPrefixKind prefixKind        = BlobListPrefixKind.DirectoryPrefix,
         bool               includeMetadata   = false,
-        CancellationToken  cancellationToken = default)
-        => prefixKind switch
-        {
-            BlobListPrefixKind.DirectoryPrefix => ListAsync(prefix, includeMetadata, cancellationToken),
-            BlobListPrefixKind.BlobNamePrefix => ListAsync(prefix.Parent ?? RelativePath.Root, includeMetadata, cancellationToken)
-                .Where(item => item.Name.ToString().StartsWith(prefix.ToString(), StringComparison.Ordinal)),
-            _ => throw new ArgumentOutOfRangeException(nameof(prefixKind), prefixKind, null)
-        };
+        CancellationToken  cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────
 

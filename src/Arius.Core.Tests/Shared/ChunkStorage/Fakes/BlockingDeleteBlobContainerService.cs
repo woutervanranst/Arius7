@@ -12,7 +12,7 @@ internal sealed class BlockingDeleteBlobContainerService : IBlobContainerService
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
         => AsyncEnumerable(prefix, cancellationToken);
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) => throw new NotSupportedException();

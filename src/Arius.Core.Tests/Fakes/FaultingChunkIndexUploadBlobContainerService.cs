@@ -43,8 +43,8 @@ internal sealed class FaultingChunkIndexUploadBlobContainerService(FakeInMemoryB
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => Inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default)
-        => Inner.ListAsync(prefix, includeMetadata, cancellationToken);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
+        => Inner.ListAsync(prefix, prefixKind, includeMetadata, cancellationToken);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
         => Inner.SetMetadataAsync(blobName, metadata, cancellationToken);

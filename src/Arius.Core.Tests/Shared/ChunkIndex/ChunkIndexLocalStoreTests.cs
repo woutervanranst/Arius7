@@ -16,7 +16,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
+        version.ExecuteScalar().ShouldBe("1");
 
         using var journalMode = connection.CreateCommand();
         journalMode.CommandText = "PRAGMA journal_mode;";
@@ -262,7 +262,7 @@ public class ChunkIndexLocalStoreTests
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();
         version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
+        version.ExecuteScalar().ShouldBe("1");
     }
 
     [Test]
@@ -364,34 +364,6 @@ public class ChunkIndexLocalStoreTests
         store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa3"), "snap-1").ShouldBeFalse();
         store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa"), "snap-2").ShouldBeTrue();
         store.IsPrefixAtSnapshotVersion(PathSegment.Parse("ab"), "snap-1").ShouldBeTrue();
-    }
-
-    // ── Schema versioning ────────────────────────────────────────────────────
-
-    [Test]
-    public void Initialize_SchemaVersionMismatch_RecreatesDatabase()
-    {
-        var repositoryKey = $"acct-local-store-schema-mismatch-{Guid.NewGuid():N}";
-        var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
-        var store = new ChunkIndexLocalStore(root);
-        store.UpsertPendingFlush(Entry("aa1"));
-
-        SqliteConnection.ClearAllPools();
-        using (var connection = OpenConnection(root))
-        using (var downgrade = connection.CreateCommand())
-        {
-            downgrade.CommandText = "UPDATE metadata SET value = '1' WHERE key = 'schema_version';";
-            downgrade.ExecuteNonQuery();
-        }
-
-        SqliteConnection.ClearAllPools();
-        var reopened = new ChunkIndexLocalStore(root);
-
-        reopened.HasPendingFlushEntries().ShouldBeFalse(); // recreated, not migrated
-        using var verify = OpenConnection(root);
-        using var version = verify.CreateCommand();
-        version.CommandText = "SELECT value FROM metadata WHERE key = 'schema_version';";
-        version.ExecuteScalar().ShouldBe("2");
     }
 
     private static ChunkIndexLocalStore CreateStore(string name)

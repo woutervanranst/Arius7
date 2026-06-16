@@ -111,16 +111,7 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await foreach (var item in ListAsync(prefix, BlobListPrefixKind.DirectoryPrefix, includeMetadata, cancellationToken))
-            yield return item;
-    }
-
-    public async IAsyncEnumerable<BlobListItem> ListAsync(
-        RelativePath prefix,
-        BlobListPrefixKind prefixKind,
+        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix,
         bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

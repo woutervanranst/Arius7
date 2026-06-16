@@ -72,9 +72,9 @@ internal sealed class RehydrationSimulatingBlobService(IBlobContainerService inn
         return actual;
     }
 
-    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        await foreach (var item in inner.ListAsync(prefix, includeMetadata, ct))
+        await foreach (var item in inner.ListAsync(prefix, prefixKind, includeMetadata, ct))
             yield return item;
 
         if (prefix != BlobPaths.ChunksRehydratedPrefix)
