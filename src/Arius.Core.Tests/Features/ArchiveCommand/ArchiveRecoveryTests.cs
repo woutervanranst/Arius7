@@ -599,7 +599,7 @@ public class ArchiveRecoveryTests
             writer.WriteEntry(entry);
         }
 
-        return ChunkHash.Parse(fixture.Encryption.ComputeHash(tarStream.ToArray()));
+        return ChunkHashOf(tarStream.ToArray(), fixture.Encryption);
     }
 
     private sealed class RecordingChunkStorageService(

@@ -20,11 +20,6 @@ public class ChunkStorageServiceUploadTests
     private static readonly ContentHash RetryThinContentHash        = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
     private static readonly ChunkHash   RetryThinParentChunkHash    = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
-    // The upload path verifies the stored chunk round-trips to its chunk hash, so test content must
-    // actually hash to the chunk hash it is uploaded under — exactly as it always does in production.
-    private static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content)
-        => ChunkHash.Parse(new PlaintextPassthroughService().ComputeHash(content));
-
     [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
@@ -355,7 +350,7 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+        var chunkHash = ChunkHashOf(content, encryption);
 
         var result = await service.UploadLargeAsync(
             chunkHash: chunkHash,
@@ -455,7 +450,7 @@ public class ChunkStorageServiceUploadTests
         var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
         var content = new byte[200_000];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+        var chunkHash = ChunkHashOf(content, encryption);
 
         var result = await service.UploadLargeAsync(
             chunkHash: chunkHash,
@@ -486,7 +481,7 @@ public class ChunkStorageServiceUploadTests
         var productionReader = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHashOf(content);
+        var chunkHash = ChunkHashOf(content, encryption);
 
         await legacyWriter.UploadLargeAsync(
             chunkHash: chunkHash,

@@ -195,7 +195,7 @@ public class FileTreeServiceTests
 
         var entries = MakeEntries("doc.pdf", "cafebabe");
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         await fixture.FileTreeService.WriteAsync(payload);
 
@@ -227,7 +227,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         var expectedPlaintext = payload.Plaintext.ToArray();
 
         entries[0] = ((FileEntry)entries[0]) with { Name = PathSegment.Parse("omega.txt") };
@@ -263,7 +263,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(fixture.Encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, fixture.Encryption), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         await fixture.FileTreeService.WriteAsync(payload);
 
@@ -300,7 +300,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(fixture.Encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, fixture.Encryption), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         await fixture.FileTreeService.WriteAsync(payload);
         var roundTripped = await fixture.FileTreeService.ReadAsync(payload.Hash);
@@ -319,7 +319,7 @@ public class FileTreeServiceTests
 
         var entries   = MakeEntries();
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload   = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload   = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         // Seed blob in Azure so upload throws BlobAlreadyExistsException.
         var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
@@ -354,7 +354,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_enc.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         await fixture.FileTreeService.EnsureStoredAsync(payload);
 
         blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreePath(payload.Hash));

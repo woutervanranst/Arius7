@@ -922,8 +922,8 @@ public class RestoreCommandHandlerTests
 
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-        var contentHash = fixture.Encryption.ComputeHash(content);
-        var chunkHash   = ChunkHash.Parse(contentHash);
+        var contentHash = ContentHashOf(content, fixture.Encryption);
+        var chunkHash   = ChunkHashOf(content, fixture.Encryption);
         var blobs       = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         var download    = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
         await using (download.Stream)
@@ -971,8 +971,8 @@ public class RestoreCommandHandlerTests
 
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
-        var contentHash = fixture.Encryption.ComputeHash(content);
-        var chunkHash   = ChunkHash.Parse(contentHash);
+        var contentHash = ContentHashOf(content, fixture.Encryption);
+        var chunkHash   = ChunkHashOf(content, fixture.Encryption);
         var blobs       = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         var download    = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
         await using (download.Stream)
@@ -1044,7 +1044,7 @@ public class RestoreCommandHandlerTests
             using var index           = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshotSvc, accountName, containerName);
             var       fileTreeService = new FileTreeService(blobs, encryption, TestCompression.Instance, accountName, containerName);
 
-            var rootHash = FileTreeHash.Parse(encryption.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"root-{contentHash.Short8}")).ToString());
+            var rootHash = FileTreeHashOf($"root-{contentHash.Short8}", encryption);
             var snapshot = new SnapshotManifest
             {
                 Timestamp    = DateTimeOffset.UtcNow,

@@ -91,7 +91,7 @@ public class FileTreeWalkerTests
     private static async Task SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, s_encryption), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         using var ms = new MemoryStream();
 
         await using (var encStream = s_encryption.WrapForEncryption(ms))

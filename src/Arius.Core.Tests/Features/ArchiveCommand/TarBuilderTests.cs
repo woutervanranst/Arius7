@@ -100,7 +100,7 @@ public class TarBuilderTests
         var bundle = await builder.SealAsync(CancellationToken.None);
 
         bundle.ShouldNotBeNull();
-        bundle.TarHash.ShouldBe(ChunkHash.Parse(s_encryption.ComputeHash(bundle.Content)));
+        bundle.TarHash.ShouldBe(ChunkHashOf(bundle.Content, s_encryption));
     }
 
     // ── Lifecycle callbacks ───────────────────────────────────────────────────
