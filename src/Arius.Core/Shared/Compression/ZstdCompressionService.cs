@@ -39,6 +39,18 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
         // XXH64 frame checksum (over the original data). Off by default in zstd; we enable it so any
         // decode-time corruption is loud — keeping parity with gzip's always-on CRC32.
         stream.SetParameter(ZSTD_cParameter.ZSTD_c_checksumFlag, 1);
+
+        // Stay single-threaded on purpose. Multi-worker zstd (ZSTDMT) is the youngest, least-battle-tested
+        // part of the port and the one place its output is not byte-for-byte cross-checked against native
+        // libzstd, so it is the highest-risk path for a silent encoder bug. A backup tool gains nothing from
+        // it — we already parallelize across chunks. 0 is the current zstd default, but we set it explicitly
+        // so the intent (and the safety property) survives any future change to that default.
+        stream.SetParameter(ZSTD_cParameter.ZSTD_c_nbWorkers, 0);
+
+        // Window size and long-distance matching are deliberately left at zstd's level-derived defaults. At
+        // our level the window stays well under the decompressor's default 128 MiB cap (ZSTD_d_windowLogMax),
+        // so a frame written today is always restorable by a default-configured reader — we never emit a
+        // large-window/LDM frame that a future decompressor would have to be specially configured to decode.
         return stream;
     }
 

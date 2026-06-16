@@ -38,6 +38,30 @@ public class ZstdCompressionServiceTests
     }
 
     [Test]
+    [Arguments(1024)]
+    [Arguments(64 * 1024)]
+    [Arguments(8 * 1024 * 1024)]
+    public async Task RoundTripTest(int size)
+    {
+        // Companion to Compress_Then_Decompress_RoundTrips_ByteForByte, which feeds incompressible random
+        // bytes (mostly the "store" path). Real backup data compresses, so this drives the match finder and
+        // the FSE/Huffman entropy stages — the encoder machinery most exposed to a transpilation bug in a
+        // ported codec. It is the same managed encode→decode round-trip the inline upload verifier and the
+        // CI matrix (linux-x64, windows-x64, macOS-arm64) rely on, so a per-architecture divergence surfaces
+        // here as a failed assertion.
+        foreach (var original in new[] { Compressible(size), Textual(size) })
+        {
+            var compressed = await CompressAsync(original);
+
+            // The frame must actually shrink — proof the entropy/match paths ran, not a raw store.
+            compressed.Length.ShouldBeLessThan(original.Length);
+
+            var restored = await DecompressAsync(compressed);
+            restored.ShouldBe(original);
+        }
+    }
+
+    [Test]
     public async Task WritesStandardZstdFrame_WithMagicNumber()
     {
         var compressed = await CompressAsync([1, 2, 3, 4, 5]);
@@ -85,6 +109,22 @@ public class ZstdCompressionServiceTests
         compressed[compressed.Length / 2] ^= 0xFF;
 
         await Should.ThrowAsync<Exception>(async () => await DecompressAsync(compressed));
+    }
+
+    [Test]
+    public async Task Decompress_TruncatedZstdFrame_ThrowsInsteadOfReturningPartialBytes()
+    {
+        // A frame whose tail (end marker + XXH64 trailer) never arrived — e.g. a crash or a forgotten
+        // Dispose mid-upload. Read to EOF, ZstdSharp's default checkEndOfStream must surface this as a throw
+        // rather than silently returning a partial prefix. (This is why restore reads each chunk to the end:
+        // the truncation guard only fires once the consumer reaches EOF.)
+        var original = new byte[8192];
+        Random.Shared.NextBytes(original);
+        var compressed = await CompressAsync(original);
+
+        var truncated = compressed[..(compressed.Length / 2)];
+
+        await Should.ThrowAsync<Exception>(async () => await DecompressAsync(truncated));
     }
 
     [Test]
@@ -145,5 +185,25 @@ public class ZstdCompressionServiceTests
         var output = new MemoryStream();
         await decompress.CopyToAsync(output);
         return output.ToArray();
+    }
+
+    private static byte[] Compressible(int size)
+    {
+        // A 64-byte sawtooth: highly but not trivially compressible, so the match finder and entropy
+        // coders do real work rather than hitting the all-zeros degenerate case.
+        var data = new byte[size];
+        for (var i = 0; i < size; i++)
+            data[i] = (byte)(i % 64);
+        return data;
+    }
+
+    private static byte[] Textual(int size)
+    {
+        // Repeated natural-language text — the workload zstd's Huffman/FSE stages are tuned for.
+        const string lorem = "The quick brown fox jumps over the lazy dog. ";
+        var sb = new StringBuilder(size + lorem.Length);
+        while (sb.Length < size)
+            sb.Append(lorem);
+        return Encoding.UTF8.GetBytes(sb.ToString(0, size));
     }
 }
