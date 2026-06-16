@@ -1,19 +1,19 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Hashes;
+using Arius.Tests.Shared.Encryption;
 
 namespace Arius.Tests.Shared.Hashes;
 
 public static class HashTestHelpers
 {
-    private static readonly PlaintextPassthroughService s_plaintext = new();
 
     // -- CONTENTHASH
 
     public static ContentHash ContentHashOf(ReadOnlySpan<byte> content)
-        => ContentHashOf(content, s_plaintext);
+        => ContentHashOf(content, TestEncryption.Instance);
 
     public static ContentHash ContentHashOf(string content)
-        => ContentHashOf(content, s_plaintext);
+        => ContentHashOf(content, TestEncryption.Instance);
 
     public static ContentHash ContentHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => encryption.ComputeHash(content);
@@ -25,10 +25,10 @@ public static class HashTestHelpers
     // -- CHUNKHASH
 
     public static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content)
-        => ChunkHashOf(content, s_plaintext);
+        => ChunkHashOf(content, TestEncryption.Instance);
 
     public static ChunkHash ChunkHashOf(string content)
-        => ChunkHashOf(content, s_plaintext);
+        => ChunkHashOf(content, TestEncryption.Instance);
 
     public static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => ChunkHash.Parse(ContentHashOf(content, encryption));
@@ -40,10 +40,10 @@ public static class HashTestHelpers
     // -- FILETREEHASH
 
     public static FileTreeHash FileTreeHashOf(ReadOnlySpan<byte> content)
-        => FileTreeHashOf(content, s_plaintext);
+        => FileTreeHashOf(content, TestEncryption.Instance);
 
     public static FileTreeHash FileTreeHashOf(string content)
-        => FileTreeHashOf(content, s_plaintext);
+        => FileTreeHashOf(content, TestEncryption.Instance);
 
     public static FileTreeHash FileTreeHashOf(ReadOnlySpan<byte> content, IEncryptionService encryption)
         => FileTreeHash.Parse(ContentHashOf(content, encryption));

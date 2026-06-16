@@ -16,7 +16,6 @@ namespace Arius.Core.Tests.Shared.FileTree;
 /// </summary>
 public class FileTreeServiceTests
 {
-    private static readonly PlaintextPassthroughService s_enc = new();
 
     private static readonly DateTimeOffset s_ts1 = new(2024, 1, 1,  0,  0,  0,  TimeSpan.Zero);
     private static readonly DateTimeOffset s_ts2 = new(2024, 6, 15, 10, 0,  0,  TimeSpan.Zero);
@@ -47,10 +46,10 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-read-hit", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries   = MakeEntries();
-        var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
+        var hash      = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
         var diskPath = ResolveCachePath(fixture.FileTreeCacheDirectory, hash);
 
         // Pre-populate disk cache with plaintext
@@ -73,14 +72,14 @@ public class FileTreeServiceTests
         const string acct = "unittest-tc-read-miss";
         const string cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries   = MakeEntries("photo.jpg", "deadbeef");
-        var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
+        var hash      = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
         var blobName = BlobPaths.FileTreePath(hash);
 
         // Pre-populate Azure (storage serialization).
-        var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
+        var storageBytes = await SerializeStorageBytesAsync(entries, TestEncryption.Instance);
         blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
         // Clear seed bookkeeping.
         blobs.RequestedBlobNames.Clear();
@@ -106,14 +105,14 @@ public class FileTreeServiceTests
         const string acct = "unittest-tc-read-conc";
         const string cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries   = MakeEntries("concurrent.txt", "cc001122");
-        var hash      = FileTreeBuilder.ComputeHash(entries, s_enc);
+        var hash      = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
         var blobName = BlobPaths.FileTreePath(hash);
 
         // Pre-populate Azure only; no local cache.
-        var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
+        var storageBytes = await SerializeStorageBytesAsync(entries, TestEncryption.Instance);
         blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
         blobs.RequestedBlobNames.Clear();
 
@@ -143,12 +142,12 @@ public class FileTreeServiceTests
         const string acct = "unittest-tc-read-conc-partial";
         const string cont = "container";
         var blobs = new SlowDownloadBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries = MakeEntries("partial.txt", "a1b2c3d4");
-        var hash = FileTreeBuilder.ComputeHash(entries, s_enc);
+        var hash = FileTreeBuilder.ComputeHash(entries, TestEncryption.Instance);
         var blobName = BlobPaths.FileTreePath(hash);
-        var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
+        var storageBytes = await SerializeStorageBytesAsync(entries, TestEncryption.Instance);
         blobs.SeedBlob(blobName, storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
         var t1 = fixture.FileTreeService.ReadAsync(hash);
@@ -174,7 +173,7 @@ public class FileTreeServiceTests
         const string cont = "container";
         var expected = new InvalidOperationException("download failed");
         var blobs = new ThrowingDownloadBlobContainerService(expected);
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var hash = FakeFileTreeHash('f');
 
@@ -190,11 +189,11 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-write", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries = MakeEntries("doc.pdf", "cafebabe");
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, TestEncryption.Instance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         await fixture.FileTreeService.WriteAsync(payload);
 
@@ -212,7 +211,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-write-canonical", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         List<FileTreeEntry> entries =
         [
@@ -226,7 +225,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, TestEncryption.Instance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         var expectedPlaintext = payload.Plaintext.ToArray();
 
         entries[0] = ((FileEntry)entries[0]) with { Name = PathSegment.Parse("omega.txt") };
@@ -314,14 +313,14 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-write-dup", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         var entries   = MakeEntries();
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload   = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload   = (Hash: FileTreeHashOf(plaintext, TestEncryption.Instance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
 
         // Seed blob in Azure so upload throws BlobAlreadyExistsException.
-        var storageBytes = await SerializeStorageBytesAsync(entries, s_enc);
+        var storageBytes = await SerializeStorageBytesAsync(entries, TestEncryption.Instance);
         blobs.SeedBlob(BlobPaths.FileTreePath(payload.Hash), storageBytes, contentType: ContentTypes.FileTreePlaintext);
 
         // Should not throw.
@@ -338,7 +337,7 @@ public class FileTreeServiceTests
         var blobs = new FakeRecordingBlobContainerService();
         var account = $"acc-{Guid.NewGuid():N}";
         var container = $"con-{Guid.NewGuid():N}";
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, TestEncryption.Instance);
 
         await fixture.FileTreeService.ValidateAsync();
         IReadOnlyList<FileTreeEntry> entries =
@@ -353,7 +352,7 @@ public class FileTreeServiceTests
         ];
 
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHashOf(plaintext, s_enc), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, TestEncryption.Instance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         await fixture.FileTreeService.EnsureStoredAsync(payload);
 
         blobs.Uploaded.Keys.ShouldContain(BlobPaths.FileTreePath(payload.Hash));
@@ -389,7 +388,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-match", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
         var timestamp = "2024-06-15T100000.000Z";
@@ -414,7 +413,7 @@ public class FileTreeServiceTests
                 BlobPaths.SnapshotPath("2024-06-15T100000.000Z"),
                 BlobPaths.SnapshotPath("2024-01-01T000000.000Z")
             ]);
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
         await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-06-15T100000.000Z"), [], CancellationToken.None);
@@ -433,7 +432,7 @@ public class FileTreeServiceTests
                 BlobPaths.SnapshotPath("2024-06-15T100000.000Z"),
                 RelativePath.Parse("snapshots-old/2024-07-01T100000.000Z")
             ]);
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
         await snapshotsFileSystem.WriteAllBytesAsync(RelativePath.Parse("2024-06-15T100000.000Z"), [], CancellationToken.None);
@@ -450,7 +449,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-miss", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
         // Determine the L2 dir and pre-populate it with a dummy file. FileTreeService no longer owns chunk-index invalidation.
@@ -490,7 +489,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-noover", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
         var cacheFileSystem = new RelativeFileSystem(fixture.FileTreeCacheDirectory);
         var existingHash = FakeFileTreeHash('3');
@@ -521,7 +520,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-noloc", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var cacheFileSystem = new RelativeFileSystem(fixture.FileTreeCacheDirectory);
         var remoteHash = FakeFileTreeHash('4');
 
@@ -545,7 +544,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-empty", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         // No remote blobs at all; ListAsync returns empty for snapshots.
         await fixture.FileTreeService.ValidateAsync();
@@ -561,7 +560,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-exists-true", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var cacheFileSystem = new RelativeFileSystem(fixture.FileTreeCacheDirectory);
 
         await fixture.FileTreeService.ValidateAsync();
@@ -576,7 +575,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-exists-false", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         await fixture.FileTreeService.ValidateAsync();
 
@@ -590,7 +589,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-exists-guard", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
 
         Should.Throw<InvalidOperationException>(() => fixture.FileTreeService.ExistsInRemote(FakeFileTreeHash('a')));
     }
@@ -602,7 +601,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-marker", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var snapshotsFileSystem = new RelativeFileSystem(fixture.SnapshotCacheDirectory);
 
         var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
@@ -625,7 +624,7 @@ public class FileTreeServiceTests
     {
         const string acct = "tc-val-idempotent", cont = "container";
         var blobs = new FakeInMemoryBlobContainerService();
-        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, s_enc);
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, acct, cont, TestEncryption.Instance);
         var someHash = FakeFileTreeHash('5');
 
         blobs.SeedBlob(BlobPaths.SnapshotPath("2024-06-15T100000.000Z"), [], contentType: null);

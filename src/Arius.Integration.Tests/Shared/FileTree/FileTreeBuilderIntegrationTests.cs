@@ -18,17 +18,16 @@ namespace Arius.Integration.Tests.Shared.FileTree;
 public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 {
     private const string Account = "devstoreaccount1";
-    private static readonly PlaintextPassthroughService s_enc = new();
 
     private static FileTreeBuilder CreateBuilder(
         IBlobContainerService blobs,
         string containerName,
         out FileTreeService fileTreeService)
     {
-        var snapshot = new SnapshotService(blobs, s_enc, TestCompression.Instance, Account, containerName);
-        var index = new ChunkIndexService(blobs, s_enc, TestCompression.Instance, snapshot, Account, containerName);
-        fileTreeService = new FileTreeService(blobs, s_enc, TestCompression.Instance, Account, containerName);
-        return new FileTreeBuilder(s_enc, fileTreeService);
+        var snapshot = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, Account, containerName);
+        var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, TestEncryption.Instance, TestCompression.Instance, Account, containerName);
+        return new FileTreeBuilder(TestEncryption.Instance, fileTreeService);
     }
 
     private static async Task<FileTreeStagingSession> CreateStagingAsync(
@@ -73,7 +72,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             // Download and deserialize to verify content
             var download = await blobs.DownloadAsync(blobName);
             await using var stream = download.Stream;
-            var entries = await ReadStoredTreeAsync(stream, s_enc);
+            var entries = await ReadStoredTreeAsync(stream, TestEncryption.Instance);
 
             entries.Count.ShouldBe(1);
             entries[0].Name.ShouldBe(PathSegment.Parse("readme.txt"));

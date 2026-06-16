@@ -124,7 +124,7 @@ public class ArchiveRecoveryTests
             blobs,
             "test-account",
             $"test-container-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            TestEncryption.Instance,
             TestTempRoots.CreateDirectory("archive-test"));
         var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 2 * 1024 * 1024);
         var contentHash = fixture.Encryption.ComputeHash(content);
@@ -526,7 +526,7 @@ public class ArchiveRecoveryTests
             new FakeInMemoryBlobContainerService(),
             "test-account",
             $"test-container-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            TestEncryption.Instance,
             TestTempRoots.CreateDirectory("archive-test"));
 
     private static async Task<byte[]> WriteRandomFileAsync(RepositoryTestFixture fixture, RelativePath relativePath, int sizeBytes)

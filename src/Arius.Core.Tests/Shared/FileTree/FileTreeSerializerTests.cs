@@ -6,7 +6,6 @@ public class FileTreeSerializerTests
 {
     private static readonly DateTimeOffset s_created  = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
-    private static readonly PlaintextPassthroughService s_enc = new();
 
     private static IReadOnlyList<FileTreeEntry> MakeEntries(params (string name, bool isDirectory, string hash)[] items)
         => BuildEntries(items);

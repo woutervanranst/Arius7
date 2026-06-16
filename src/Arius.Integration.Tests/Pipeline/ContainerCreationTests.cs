@@ -42,13 +42,12 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         (await containerClient.ExistsAsync()).Value.ShouldBeFalse();
 
         var svc        = new AzureBlobContainerService(containerClient);
-        var encryption = new PlaintextPassthroughService();
-        var snapshot   = new SnapshotService(svc, encryption, TestCompression.Instance, Account, containerName);
-        var index      = new ChunkIndexService(svc, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var snapshot   = new SnapshotService(svc, TestEncryption.Instance, TestCompression.Instance, Account, containerName);
+        var index      = new ChunkIndexService(svc, TestEncryption.Instance, TestCompression.Instance, snapshot, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
         var logger     = new FakeLogger<ArchiveCommandHandler>();
         var handler    = new ArchiveCommandHandler(
-            svc, encryption, index, new ChunkStorageService(svc, encryption, TestCompression.Instance), new FileTreeService(svc, encryption, TestCompression.Instance, Account, containerName),
+            svc, TestEncryption.Instance, index, new ChunkStorageService(svc, TestEncryption.Instance, TestCompression.Instance), new FileTreeService(svc, TestEncryption.Instance, TestCompression.Instance, Account, containerName),
             snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,

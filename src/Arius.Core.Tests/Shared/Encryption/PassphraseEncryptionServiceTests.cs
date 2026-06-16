@@ -152,10 +152,9 @@ public class PassphraseEncryptionServiceTests
     public void ComputeHash_WithPassphrase_DiffersFromPlaintext()
     {
         var encrypted = new PassphraseEncryptionService(Passphrase);
-        var plaintext = new PlaintextPassthroughService();
         ReadOnlySpan<byte> data = "some file content"u8;
 
-        encrypted.ComputeHash(data).ShouldNotBe(plaintext.ComputeHash(data));
+        encrypted.ComputeHash(data).ShouldNotBe(TestEncryption.Instance.ComputeHash(data));
     }
 
     // ── 2.7 Same file, different passphrase ──────────────────────────────────

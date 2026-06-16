@@ -16,7 +16,7 @@ public class ChunkStorageServiceReadTests
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Hot };
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -30,7 +30,7 @@ public class ChunkStorageServiceReadTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive, IsRehydrating = true };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = false };
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -44,7 +44,7 @@ public class ChunkStorageServiceReadTests
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = true, Tier = BlobTier.Archive };
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(chunkHash)] = new BlobMetadata { Exists = true };
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -57,7 +57,7 @@ public class ChunkStorageServiceReadTests
         var blobs = new FakeMetadataOnlyBlobContainerService();
         var chunkHash = TestChunkHash;
         blobs.Metadata[BlobPaths.ChunkPath(chunkHash)] = new BlobMetadata { Exists = false };
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
 
         var status = await service.GetHydrationStatusAsync(chunkHash, CancellationToken.None);
 
@@ -68,8 +68,7 @@ public class ChunkStorageServiceReadTests
     public async Task DownloadAsync_UsesRehydratedBlobWhenAvailable_AndReturnsPlaintext()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var encryption = new PlaintextPassthroughService();
-        var service = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
         var content = "hello from rehydrated"u8.ToArray();
         var chunkHash = TestChunkHash;
 
@@ -86,7 +85,7 @@ public class ChunkStorageServiceReadTests
     public async Task DownloadAsync_CanBeDisposedSynchronously()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
         var chunkHash = TestChunkHash;
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkPath(chunkHash), "hello"u8.ToArray(), BlobTier.Hot);
 
@@ -98,7 +97,7 @@ public class ChunkStorageServiceReadTests
     public async Task StartRehydrationAsync_CopiesPrimaryChunkToRehydratedPrefix()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
         var chunkHash = TestChunkHash;
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkPath(chunkHash), "rehydrate"u8.ToArray(), BlobTier.Archive);
 
@@ -113,7 +112,7 @@ public class ChunkStorageServiceReadTests
     public async Task PlanRehydratedCleanupAsync_ReportsAndDeletesPlannedBlobs()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
         var firstChunkHash = FakeChunkHash('a');
         var secondChunkHash = FakeChunkHash('b');
         await blobs.SeedLargeBlobAsync(BlobPaths.ChunkRehydratedPath(firstChunkHash), "aaa"u8.ToArray(), BlobTier.Cold);
@@ -135,7 +134,7 @@ public class ChunkStorageServiceReadTests
     public async Task PlanRehydratedCleanupAsync_DeletesBlobsInParallel()
     {
         var blobs = new BlockingDeleteBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance);
 
         await using var plan = await service.PlanRehydratedCleanupAsync(CancellationToken.None);
         var executeTask = plan.ExecuteAsync(CancellationToken.None);

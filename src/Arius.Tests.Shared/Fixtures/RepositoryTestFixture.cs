@@ -11,6 +11,7 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared.Encryption;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Data.Sqlite;
@@ -144,7 +145,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates a fast unit-test fixture with in-memory storage and plaintext passthrough encryption.
+    /// Creates a fast unit-test fixture with in-memory storage and shared test encryption.
     /// Use this for Core tests that need a complete repository service graph without Azurite, real
     /// Azure behavior, or passphrase encryption semantics.
     /// </summary>
@@ -155,7 +156,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             blobContainer,
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            TestEncryption.Instance,
             tempRoot);
     }
 

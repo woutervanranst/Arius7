@@ -13,7 +13,6 @@ namespace Arius.Integration.Tests.Snapshot;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
 {
-    private static readonly PlaintextPassthroughService s_enc = new();
     private static readonly FileTreeHash s_rootHash = FakeFileTreeHash('0');
 
     // ── Create + resolve latest ───────────────────────────────────────────────
@@ -22,7 +21,7 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     public async Task CreateAsync_ThenResolveLatest_ReturnsCreatedSnapshot()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var svc = new SnapshotService(blobs, s_enc, TestCompression.Instance, container.AccountName, container.Name);
+        var svc = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, container.AccountName, container.Name);
 
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var snapshot = await svc.CreateAsync(s_rootHash, fileCount: 10, totalSize: 1024, timestamp: ts);
@@ -42,7 +41,7 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     public async Task ListBlobNamesAsync_MultipeSnapshots_ReturnsSortedOldestFirst()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var svc = new SnapshotService(blobs, s_enc, TestCompression.Instance, container.AccountName, container.Name);
+        var svc = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, container.AccountName, container.Name);
 
         var ts1 = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var ts2 = new DateTimeOffset(2025, 6, 15, 12, 0, 0, TimeSpan.Zero);
@@ -66,7 +65,7 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     public async Task ResolveAsync_WithVersion_ReturnsMatchingSnapshot()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var svc = new SnapshotService(blobs, s_enc, TestCompression.Instance, container.AccountName, container.Name);
+        var svc = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, container.AccountName, container.Name);
 
         var ts1 = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var ts2 = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
@@ -86,7 +85,7 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
     public async Task ResolveAsync_NoSnapshots_ReturnsNull()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var svc = new SnapshotService(blobs, s_enc, TestCompression.Instance, container.AccountName, container.Name);
+        var svc = new SnapshotService(blobs, TestEncryption.Instance, TestCompression.Instance, container.AccountName, container.Name);
 
         var result = await svc.ResolveAsync();
         result.ShouldBeNull();

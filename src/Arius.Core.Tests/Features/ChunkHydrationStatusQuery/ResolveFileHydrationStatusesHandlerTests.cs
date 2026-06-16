@@ -11,7 +11,6 @@ namespace Arius.Core.Tests.Features.ChunkHydrationStatusQuery;
 
 public class ResolveFileHydrationStatusesHandlerTests
 {
-    private static readonly PlaintextPassthroughService s_encryption = new();
 
     [Test]
     [MatrixDataSource]
@@ -36,7 +35,7 @@ public class ResolveFileHydrationStatusesHandlerTests
         testCase.ConfigureChunk(blobs, resolvedChunkHash, chunkType);
 
         var snapshot = new FakeSnapshotService();
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, snapshot, $"acct-hydration-{key}", $"ctr-hydration-{key}");
+        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, $"acct-hydration-{key}", $"ctr-hydration-{key}");
         var entry = chunkType switch
         {
             BlobMetadataKeys.TypeLarge => new ShardEntry(contentHash, ChunkHash.Parse(contentHash), 100, 25, BlobTier.Cool),
@@ -48,7 +47,7 @@ public class ResolveFileHydrationStatusesHandlerTests
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
-            new ChunkStorageService(blobs, s_encryption, TestCompression.Instance),
+            new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance),
             new FakeLogger<ChunkHydrationStatusQueryHandler>());
 
         var files = new[]
@@ -87,13 +86,13 @@ public class ResolveFileHydrationStatusesHandlerTests
         blobs.Metadata[BlobPaths.ChunkRehydratedPath(tarChunkHash)] = new BlobMetadata { Exists = false };
 
         var snapshot = new FakeSnapshotService();
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, snapshot, "acct-hydration-thin-special", "ctr-hydration-thin-special");
+        using var index = new ChunkIndexService(blobs, TestEncryption.Instance, TestCompression.Instance, snapshot, "acct-hydration-thin-special", "ctr-hydration-thin-special");
         index.AddEntry(new ShardEntry(thinContentHash, tarChunkHash, 50, 10, BlobTier.Cool));
         index.AddEntry(new ShardEntry(tarContentHash, tarChunkHash, 75, 15, BlobTier.Cool));
 
         var handler = new ChunkHydrationStatusQueryHandler(
             index,
-            new ChunkStorageService(blobs, s_encryption, TestCompression.Instance),
+            new ChunkStorageService(blobs, TestEncryption.Instance, TestCompression.Instance),
             new FakeLogger<ChunkHydrationStatusQueryHandler>());
 
         var files = new[]
