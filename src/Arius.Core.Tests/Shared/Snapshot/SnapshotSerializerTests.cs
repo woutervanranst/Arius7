@@ -1,6 +1,6 @@
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
-using Arius.Tests.Shared.Compression;
 
 namespace Arius.Core.Tests.Shared.Snapshot;
 
@@ -11,7 +11,6 @@ public class SnapshotSerializerTests
     [Test]
     public async Task Serialize_ThenDeserialize_Plaintext_RoundTrips()
     {
-        var enc      = new PlaintextPassthroughService();
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var rootHash = FileTreeHash.Parse("a1b2c3d4" + new string('0', 56));
         var manifest = new SnapshotManifest
@@ -23,10 +22,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.0.0"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         bytes.ShouldNotBeEmpty();
 
-        var back = await SnapshotSerializer.DeserializeAsync(bytes, enc, TestCompression.Instance);
+        var back = await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         back.Timestamp.ShouldBe(ts);
         back.RootHash.ShouldBe(manifest.RootHash);
@@ -38,7 +37,7 @@ public class SnapshotSerializerTests
     [Test]
     public async Task Serialize_ThenDeserialize_Passphrase_RoundTrips()
     {
-        var enc      = new PassphraseEncryptionService("my-snapshot-pass");
+        var enc      = IEncryptionService.EncryptedInstance;
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var rootHash = FileTreeHash.Parse("deadbeef" + new string('0', 56));
         var manifest = new SnapshotManifest
@@ -50,8 +49,8 @@ public class SnapshotSerializerTests
             AriusVersion = "2.0.0-test"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
-        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, ICompressionService.ZtdInstance);
+        var back  = await SnapshotSerializer.DeserializeAsync(bytes, enc, ICompressionService.ZtdInstance);
 
         back.RootHash.ShouldBe(manifest.RootHash);
         back.FileCount.ShouldBe(7);
@@ -60,7 +59,6 @@ public class SnapshotSerializerTests
     [Test]
     public async Task Serialize_Plaintext_UsesStringRootHashJsonShape()
     {
-        var enc      = new PlaintextPassthroughService();
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
         var rootHash = FileTreeHash.Parse("cafebabe" + new string('0', 56));
         var manifest = new SnapshotManifest
@@ -72,10 +70,10 @@ public class SnapshotSerializerTests
             AriusVersion = "1.2.3"
         };
 
-        var bytes = await SnapshotSerializer.SerializeAsync(manifest, enc, TestCompression.Instance);
+        var bytes = await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         using var compressed = new MemoryStream(bytes);
-        await using var decompressed = TestCompression.Instance.WrapForDecompression(compressed);
+        await using var decompressed = ICompressionService.ZtdInstance.WrapForDecompression(compressed);
         using var json = new MemoryStream();
         await decompressed.CopyToAsync(json);
 

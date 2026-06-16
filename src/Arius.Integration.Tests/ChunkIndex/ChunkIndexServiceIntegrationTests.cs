@@ -1,12 +1,12 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
-using Arius.Tests.Shared.Compression;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Data.Sqlite;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Integration.Tests.ChunkIndex;
 
@@ -17,8 +17,7 @@ namespace Arius.Integration.Tests.ChunkIndex;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
 {
-    private const string Account   = "devstoreaccount1";
-    private const string Passphrase = "test-passphrase";
+    private const string Account = "devstoreaccount1";
 
     private async Task<(ChunkIndexService service, LocalDirectory tempDir)> CreateServiceAsync()
     {
@@ -30,9 +29,9 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         // Override L2 path by creating service pointing at temp dir
         // (ChunkIndexService uses ~/.arius/cache/<repoId>/chunk-index by default,
         // but for tests we patch via a subclass or just use a very distinct repoId)
-        var encryption = new PassphraseEncryptionService(Passphrase);
-        var snapshot = new SnapshotService(blobs, encryption, TestCompression.Instance, Account, containerName);
-        var svc = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var encryption = IEncryptionService.EncryptedInstance;
+        var snapshot = new SnapshotService(blobs, encryption, ICompressionService.ZtdInstance, Account, containerName);
+        var svc = new ChunkIndexService(blobs, encryption, ICompressionService.ZtdInstance, snapshot, Account, containerName);
         return (svc, tempDir);
     }
 
@@ -55,11 +54,11 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task RecordAndFlush_ThenLookupInNewInstance_FindsEntry()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var encryption = new PassphraseEncryptionService(Passphrase);
+        var encryption = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
 
-        var snapshot = new SnapshotService(blobs, encryption, TestCompression.Instance, Account, containerName);
-        var svc1 = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var snapshot = new SnapshotService(blobs, encryption, ICompressionService.ZtdInstance, Account, containerName);
+        var svc1 = new ChunkIndexService(blobs, encryption, ICompressionService.ZtdInstance, snapshot, Account, containerName);
 
         var contentHash = FakeContentHash('1');
         var chunkHash   = FakeChunkHash('a');
@@ -68,7 +67,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         await svc1.FlushAsync();
 
         // New service instance (L1 cold, L2 may have data)
-        var svc2   = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var svc2   = new ChunkIndexService(blobs, encryption, ICompressionService.ZtdInstance, snapshot, Account, containerName);
         var result = await svc2.LookupAsync(contentHash);
 
         result.ShouldNotBeNull();
@@ -99,12 +98,12 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
     public async Task CorruptLocalStore_FailsWithRecoveryGuidance()
     {
         var (container, blobs) = await azurite.CreateTestServiceAsync();
-        var encryption    = new PassphraseEncryptionService(Passphrase);
+        var encryption    = IEncryptionService.EncryptedInstance;
         var containerName = container.Name;
 
         // Step 1: record + flush a real entry so the shard exists in L3
-        var snapshot = new SnapshotService(blobs, encryption, TestCompression.Instance, Account, containerName);
-        var svc1        = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var snapshot = new SnapshotService(blobs, encryption, ICompressionService.ZtdInstance, Account, containerName);
+        var svc1        = new ChunkIndexService(blobs, encryption, ICompressionService.ZtdInstance, snapshot, Account, containerName);
         var contentHash = FakeContentHash('3');
         var chunkHash   = FakeChunkHash('c');
         var entry       = new ShardEntry(contentHash, chunkHash, 800, 400, BlobTier.Cool);
@@ -112,7 +111,7 @@ public class ChunkIndexServiceIntegrationTests(AzuriteFixture azurite)
         await svc1.FlushAsync();
 
         // Step 2: create a new service instance with cold local state.
-        var svc2 = new ChunkIndexService(blobs, encryption, TestCompression.Instance, snapshot, Account, containerName);
+        var svc2 = new ChunkIndexService(blobs, encryption, ICompressionService.ZtdInstance, snapshot, Account, containerName);
 
         // Step 3: corrupt the local SQLite cache so the next lookup must recover and refill it.
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(Account, containerName);

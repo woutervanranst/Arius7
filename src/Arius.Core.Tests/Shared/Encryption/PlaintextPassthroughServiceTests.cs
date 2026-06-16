@@ -1,27 +1,26 @@
 using System.Security.Cryptography;
 using Arius.Core.Shared.Streaming;
 using Arius.Core.Tests.Shared.Streaming;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
 public class PlaintextPassthroughServiceTests
 {
-    private readonly PlaintextPassthroughService _svc = new();
-
     // ── WrapForEncryption / WrapForDecryption are pass-through ────────────────
 
     [Test]
     public void WrapForEncryption_ReturnsSameStreamInstance()
     {
         var ms = new MemoryStream();
-        _svc.WrapForEncryption(ms).ShouldBeSameAs(ms);
+        IEncryptionService.PlaintextInstance.WrapForEncryption(ms).ShouldBeSameAs(ms);
     }
 
     [Test]
     public void WrapForDecryption_ReturnsSameStreamInstance()
     {
         var ms = new MemoryStream();
-        _svc.WrapForDecryption(ms).ShouldBeSameAs(ms);
+        IEncryptionService.PlaintextInstance.WrapForDecryption(ms).ShouldBeSameAs(ms);
     }
 
     // ── Plain SHA256 hashing ──────────────────────────────────────────────────
@@ -31,7 +30,7 @@ public class PlaintextPassthroughServiceTests
     {
         var data     = "plaintext content"u8.ToArray();
         var expected = ContentHash.FromDigest(SHA256.HashData(data));
-        _svc.ComputeHash(data).ShouldBe(expected);
+        IEncryptionService.PlaintextInstance.ComputeHash(data).ShouldBe(expected);
     }
 
     [Test]
@@ -45,8 +44,8 @@ public class PlaintextPassthroughServiceTests
             await using var firstStream = File.OpenRead(path);
             await using var secondStream = File.OpenRead(path);
 
-            var firstHash = await _svc.ComputeHashAsync(firstStream);
-            var secondHash = await _svc.ComputeHashAsync(secondStream);
+            var firstHash = await IEncryptionService.PlaintextInstance.ComputeHashAsync(firstStream);
+            var secondHash = await IEncryptionService.PlaintextInstance.ComputeHashAsync(secondStream);
 
             firstHash.ShouldBe(secondHash);
         }
@@ -69,7 +68,7 @@ public class PlaintextPassthroughServiceTests
             await using var stream = File.OpenRead(path);
             await using var progressStream = new ProgressStream(stream, progress);
 
-            _ = await _svc.ComputeHashAsync(progressStream);
+            _ = await IEncryptionService.PlaintextInstance.ComputeHashAsync(progressStream);
 
             reported.ShouldBe(4096);
         }

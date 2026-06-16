@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Encryption;
 
@@ -13,14 +14,12 @@ namespace Arius.Core.Tests.Shared.Encryption;
 /// </summary>
 public class AesGcmEncryptionTests
 {
-    private const string Passphrase = "test-gcm-passphrase";
-
     // ── 5.1 Small payload roundtrip ──────────────────────────────────────────────
 
     [Test]
     public async Task GcmEncryptDecrypt_SmallPayload_Roundtrip()
     {
-        var svc      = new PassphraseEncryptionService(Passphrase);
+        var svc      = IEncryptionService.EncryptedInstance;
         var original = "Hello, AES-256-GCM!"u8.ToArray();
 
         var cipherMs = new MemoryStream();
@@ -40,7 +39,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmEncryptDecrypt_LargePayload_Roundtrip()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = RandomNumberGenerator.GetBytes(4 * 1024 * 1024); // 4 MB → 64 blocks
 
         var cipherMs = new MemoryStream();
@@ -60,7 +59,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmEncrypt_OutputStartsWithArGcm1Magic()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = "data"u8.ToArray();
 
         var ms = new MemoryStream();
@@ -77,7 +76,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmEncrypt_HeaderStructure_IsCorrect()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = "header-check"u8.ToArray();
 
         var ms = new MemoryStream();
@@ -110,7 +109,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmEncrypt_LargeStream_DoesNotBufferEntireContent()
     {
-        var svc        = new PassphraseEncryptionService(Passphrase);
+        var svc        = IEncryptionService.EncryptedInstance;
         const int size = 32 * 1024 * 1024; // 32 MB
 
         var source = new ZeroStream(size);
@@ -128,7 +127,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmDecrypt_TamperedCiphertext_ThrowsAuthenticationException()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = RandomNumberGenerator.GetBytes(100);
 
         var cipherMs = new MemoryStream();
@@ -153,7 +152,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmDecrypt_TamperedSentinelTag_ThrowsAuthenticationException()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = RandomNumberGenerator.GetBytes(100);
 
         var cipherMs = new MemoryStream();
@@ -178,7 +177,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task GcmDecrypt_TruncatedStream_ThrowsOnMissingSentinel()
     {
-        var svc  = new PassphraseEncryptionService(Passphrase);
+        var svc  = IEncryptionService.EncryptedInstance;
         var data = RandomNumberGenerator.GetBytes(100);
 
         var cipherMs = new MemoryStream();
@@ -202,7 +201,7 @@ public class AesGcmEncryptionTests
     [Test]
     public async Task WrapForDecryption_AutoDetects_GcmAndCbc()
     {
-        var svc = new PassphraseEncryptionService(Passphrase);
+        var svc = IEncryptionService.EncryptedInstance;
         var data = "auto-detect test"u8.ToArray();
 
         // GCM (new default)
@@ -234,7 +233,7 @@ public class AesGcmEncryptionTests
         var path = Path.Combine(goldenDir, cbcFile);
         File.Exists(path).ShouldBeTrue($"CBC golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService("wouter");
+        var svc = IEncryptionService.EncryptedInstance;
         await using var fs        = File.OpenRead(path);
         await using var dec       = svc.WrapForDecryption(fs);
         await using var gzip      = new GZipStream(dec, CompressionMode.Decompress);
@@ -250,7 +249,7 @@ public class AesGcmEncryptionTests
     [Test]
     public void WrapForDecryption_UnknownMagic_ThrowsInvalidDataException()
     {
-        var svc    = new PassphraseEncryptionService(Passphrase);
+        var svc    = IEncryptionService.EncryptedInstance;
         var junk   = new MemoryStream("JUNKJUNK"u8.ToArray());
 
         Should.Throw<InvalidDataException>(() => svc.WrapForDecryption(junk));
@@ -267,13 +266,12 @@ public class AesGcmEncryptionTests
         const string gcmGoldenFile =
             "2594868716c414b39895e10299bc609a1d1602a65b8576599d149f911aa33be8";
         const string expectedPlaintext = "Hello, ArGCM1 golden file!";
-        const string goldenPassphrase  = "wouter";
 
         var goldenDir = Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
         var path      = Path.Combine(goldenDir, gcmGoldenFile);
         File.Exists(path).ShouldBeTrue($"GCM golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService(goldenPassphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         await using var fs       = File.OpenRead(path);
         await using var dec      = svc.WrapForDecryption(fs);
@@ -296,13 +294,12 @@ public class AesGcmEncryptionTests
         const string zstdGoldenFile =
             "b886c2f18e3a1be5bfef76821ca1751126c6534ac267dd539cbbabe09801682f";
         const string expectedPlaintext = "Hello, zstd golden file!";
-        const string goldenPassphrase  = "wouter";
 
         var goldenDir = Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
         var path      = Path.Combine(goldenDir, zstdGoldenFile);
         File.Exists(path).ShouldBeTrue($"GCM+zstd golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService(goldenPassphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         await using var fs   = File.OpenRead(path);
         await using var dec  = svc.WrapForDecryption(fs);                              // auto-detects ArGCM1 → GCM
@@ -323,13 +320,12 @@ public class AesGcmEncryptionTests
         // Key+IV derived via PBKDF2-SHA256(passphrase, salt, 10_000, dklen=48)
         const string cbcGoldenFile    = "680ccc692b5c2b058a0d9964ae08f9343350f8873dd900bb62742ba0a0b313de";
         const string expectedPlaintext = "Hello, Salted__ CBC golden file!";
-        const string goldenPassphrase  = "wouter";
 
         var goldenDir = Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
         var path      = Path.Combine(goldenDir, cbcGoldenFile);
         File.Exists(path).ShouldBeTrue($"CBC text golden file not found: {path}");
 
-        var svc = new PassphraseEncryptionService(goldenPassphrase);
+        var svc = IEncryptionService.EncryptedInstance;
 
         await using var fs   = File.OpenRead(path);
         await using var dec  = svc.WrapForDecryption(fs);  // auto-detects Salted__ magic → CBC

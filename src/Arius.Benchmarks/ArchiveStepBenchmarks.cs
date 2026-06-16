@@ -35,7 +35,7 @@ public class ArchiveStepBenchmarks
             _definition,
             RepresentativeWorkflowCatalog.Canonical.Seed,
             _preparedSourceRoot,
-            new PassphraseEncryptionService("arius-test-passphrase"));
+            IEncryptionService.EncryptedInstance);
     }
 
     [GlobalCleanup]

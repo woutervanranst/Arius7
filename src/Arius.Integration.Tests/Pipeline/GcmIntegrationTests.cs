@@ -1,6 +1,7 @@
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Arius.Integration.Tests.Pipeline.Fakes;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Pipeline;
@@ -13,14 +14,12 @@ namespace Arius.Integration.Tests.Pipeline;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class GcmIntegrationTests(AzuriteFixture azurite)
 {
-    private const string Passphrase = "gcm-integration-test-passphrase";
-
     // ── 6.1: GCM large file roundtrip ────────────────────────────────────────
 
     [Test]
     public async Task Archive_GcmEncrypted_LargeFile_Restore_ByteIdentical()
     {
-        await using var fix = await PipelineFixture.CreateAsync(azurite, passphrase: Passphrase);
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // 2 MB > 1 MB threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
@@ -63,7 +62,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
     [Test]
     public async Task Archive_GcmEncrypted_TarBundle_Restore_ByteIdentical()
     {
-        await using var fix = await PipelineFixture.CreateAsync(azurite, passphrase: Passphrase);
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Small files → tar-bundled pipeline
         var content1 = new byte[512];
@@ -115,7 +114,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // PassphraseEncryptionService so the chunk index + restore path work.
         await using var cbcFix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         var cbcLargeContent = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(cbcLargeContent);
@@ -133,7 +132,7 @@ public class GcmIntegrationTests(AzuriteFixture azurite)
         // When restore downloads that chunk it auto-detects the Salted__ magic and decrypts via CBC.
         await using var gcmFix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new PassphraseEncryptionService(Passphrase),
+            IEncryptionService.EncryptedInstance,
             existingContainer: cbcFix.Container);
 
         await gcmFix.LocalFileSystem.WriteAllBytesAsync(cbcLargePath, cbcLargeContent, CancellationToken.None); // deduplicates against cbcFix chunk

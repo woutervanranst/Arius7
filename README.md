@@ -321,19 +321,13 @@ committed chunks when repair is needed.
 
 ## Disaster recovery
 
-Normal recovery is `arius restore`. But your data does **not** depend on the Arius binary — or even
-on the ZstdSharp library — continuing to exist. Every chunk is self-describing: an encryption envelope
-(detected from its leading magic bytes) wrapping a standard compression frame.
+Normal recovery is `arius restore`. But your data does **not** depend on the Arius binary.
+Every chunk is self-describing: an encryption envelope (detected from its leading magic bytes) wrapping a standard compression frame.
 
 | Layer | Formats (auto-detected from magic bytes) |
 |-------|------------------------------------------|
 | Encryption | AES-256-GCM (`ArGCM1`, current) · AES-256-CBC (`Salted__`, legacy) |
-| Compression | zstd — standard [RFC 8878](https://www.rfc-editor.org/rfc/rfc8878) frame (`28 B5 2F FD`), current · gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952), legacy) |
-
-The zstd body is a **standard frame with an XXH64 content checksum**, so it is decodable by the official
-[`zstd`](https://github.com/facebook/zstd) CLI, libzstd, and every other conformant decoder (the Linux
-kernel, 7-Zip, Python, Go, Rust, …) — not just Arius. A chunk written today remains recoverable decades
-from now regardless of what happens to this project or its dependencies.
+| Compression | zstd — standard [RFC 8878](https://www.rfc-editor.org/rfc/rfc8878) frame (`28 B5 2F FD`) or gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952), legacy) |
 
 ### Emergency single-chunk recovery (without Arius)
 
@@ -344,12 +338,6 @@ a truncated frame rather than emitting a partial prefix.
 ```bash
 # Needs:  pip install cryptography zstandard
 python3 recover-chunk.py <encrypted-chunk-file> <passphrase> [output-file]
-```
-
-No Python zstd backend on hand? Decrypt only and pipe the raw frame through the `zstd` CLI:
-
-```bash
-python3 recover-chunk.py --no-decompress <encrypted-chunk-file> <passphrase> | zstd -d > recovered
 ```
 
 ## Toolchain

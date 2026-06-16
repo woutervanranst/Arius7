@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using Arius.Core.Shared.Compression;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Compression;
 
@@ -11,7 +11,7 @@ namespace Arius.Core.Tests.Shared.Compression;
 /// </summary>
 public class ZstdCompressionServiceTests
 {
-    private static readonly ICompressionService Sut = TestCompression.Instance;
+    private static readonly ICompressionService Sut = ICompressionService.ZtdInstance;
 
     [Test]
     public void RequiresRoundTripVerification()
@@ -108,7 +108,7 @@ public class ZstdCompressionServiceTests
         // any surviving decode must fail the XXH64 check rather than silently emit wrong bytes.
         compressed[compressed.Length / 2] ^= 0xFF;
 
-        await Should.ThrowAsync<Exception>(async () => await DecompressAsync(compressed));
+        await Should.ThrowAsync<ZstdSharp.ZstdException>(async () => await DecompressAsync(compressed));
     }
 
     [Test]
@@ -124,7 +124,7 @@ public class ZstdCompressionServiceTests
 
         var truncated = compressed[..(compressed.Length / 2)];
 
-        await Should.ThrowAsync<Exception>(async () => await DecompressAsync(truncated));
+        await Should.ThrowAsync<EndOfStreamException>(async () => await DecompressAsync(truncated));
     }
 
     [Test]

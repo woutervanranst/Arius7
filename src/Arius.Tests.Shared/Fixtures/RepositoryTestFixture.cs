@@ -41,13 +41,13 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         IBlobContainerService blobContainer, string accountName, string containerName, string? passphrase = null, 
         LocalDirectory? tempRoot = null)
     {
-        const string defaultPassphrase = "arius-test-passphrase";
-
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var encryption  = new PassphraseEncryptionService(passphrase ?? defaultPassphrase);
-        var compression = TestCompression;
+        var encryption  = passphrase is null
+            ? IEncryptionService.EncryptedInstance
+            : new PassphraseEncryptionService(passphrase);
+        var compression = ICompressionService.ZtdInstance;
         var snapshot    = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index       = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
@@ -86,7 +86,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         var (localRoot, restoreRoot) = CreateTempRoots(tempRoot);
         var (chunkIndexCacheDirectory, fileTreeCacheDirectory, snapshotCacheDirectory) = CreateCacheFolders(accountName, containerName);
 
-        var compression = TestCompression;
+        var compression = ICompressionService.ZtdInstance;
         var snapshot = new SnapshotService(blobContainer, encryption, compression, accountName, containerName);
         var index    = new ChunkIndexService(blobContainer, encryption, compression, snapshot, accountName, containerName);
 
@@ -143,7 +143,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates a fast unit-test fixture with in-memory storage and plaintext passthrough encryption.
+    /// Creates a fast unit-test fixture with in-memory storage and shared test encryption.
     /// Use this for Core tests that need a complete repository service graph without Azurite, real
     /// Azure behavior, or passphrase encryption semantics.
     /// </summary>
@@ -154,7 +154,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             blobContainer,
             accountName ?? $"acct-test-{Guid.NewGuid():N}",
             containerName ?? $"ctr-test-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            IEncryptionService.PlaintextInstance,
             tempRoot);
     }
 
@@ -172,9 +172,6 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Compression service used for repository serialization and chunk payloads.</summary>
     public required ICompressionService Compression { get; init; }
-
-    /// <summary>Shared zstd compression at a fast level — correctness is independent of level, so tests stay quick.</summary>
-    private static ICompressionService TestCompression => new ZstdCompressionService(compressionLevel: 1);
 
     /// <summary>Chunk index service used for content-to-chunk lookup and mutation.</summary>
     public required ChunkIndexService Index { get; init; }

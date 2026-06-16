@@ -1,6 +1,6 @@
+using System.IO.Pipelines;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
-using System.IO.Pipelines;
 
 namespace Arius.Core.Shared.ChunkStorage;
 
@@ -56,7 +56,8 @@ internal sealed class RoundTripVerifier : IUploadVerifier
 
         _hashTask = Task.Run(async () =>
         {
-            await using var reader = _pipe.Reader.AsStream();
+            // Keep pipe completion explicit; see /2026-06-15-ztd/ZstdSharp Hardening Report.md.
+            await using var reader = _pipe.Reader.AsStream(leaveOpen: true);
             await using var decompress = compression.WrapForDecompression(reader, leaveOpen: true);
             return await encryption.ComputeHashAsync(decompress, cancellationToken);
         }, cancellationToken);

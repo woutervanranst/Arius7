@@ -1,7 +1,6 @@
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Microsoft.Data.Sqlite;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 

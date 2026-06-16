@@ -2,34 +2,28 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.ChunkStorage.Fakes;
 using Arius.Core.Tests.Shared.Streaming;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkStorage;
 
 public class ChunkStorageServiceUploadTests
 {
-    private static readonly ChunkHash LargeChunkHash = ChunkHash.Parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    private static readonly ChunkHash TarChunkHash = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
-    private static readonly ChunkHash RetryChunkHash = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    private static readonly ChunkHash NonSeekableChunkHash = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    private static readonly ContentHash ThinContentHash = ContentHash.Parse("1111111111111111111111111111111111111111111111111111111111111111");
-    private static readonly ChunkHash ThinParentChunkHash = ChunkHash.Parse("2222222222222222222222222222222222222222222222222222222222222222");
-    private static readonly ContentHash ExistingThinContentHash = ContentHash.Parse("3333333333333333333333333333333333333333333333333333333333333333");
-    private static readonly ChunkHash ExistingThinParentChunkHash = ChunkHash.Parse("4444444444444444444444444444444444444444444444444444444444444444");
-    private static readonly ContentHash RetryThinContentHash = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
-    private static readonly ChunkHash RetryThinParentChunkHash = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
-
-    // The upload path verifies the stored chunk round-trips to its chunk hash, so test content must
-    // actually hash to the chunk hash it is uploaded under — exactly as it always does in production.
-    private static ChunkHash ChunkHashOf(ReadOnlySpan<byte> content)
-        => ChunkHash.Parse(new PlaintextPassthroughService().ComputeHash(content));
+    private static readonly ChunkHash   ExistingTarChunkHash        = ChunkHash.Parse("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
+    private static readonly ChunkHash   ExistingLargeChunkHash      = ChunkHash.Parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    private static readonly ChunkHash   NonSeekableInputChunkHash   = ChunkHash.Parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    private static readonly ContentHash ThinContentHash             = ContentHash.Parse("1111111111111111111111111111111111111111111111111111111111111111");
+    private static readonly ChunkHash   ThinParentChunkHash         = ChunkHash.Parse("2222222222222222222222222222222222222222222222222222222222222222");
+    private static readonly ContentHash ExistingThinContentHash     = ContentHash.Parse("3333333333333333333333333333333333333333333333333333333333333333");
+    private static readonly ChunkHash   ExistingThinParentChunkHash = ChunkHash.Parse("4444444444444444444444444444444444444444444444444444444444444444");
+    private static readonly ContentHash RetryThinContentHash        = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
+    private static readonly ChunkHash   RetryThinParentChunkHash    = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
     [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -58,16 +52,16 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadTarAsync_ReusesCompletedExistingBlob()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[1024];
         Random.Shared.NextBytes(content);
         using var tarStream = new MemoryStream(content, writable: false);
 
-        await blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(TarChunkHash), [content], BlobTier.Cold);
-        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(TarChunkHash));
+        await blobs.SeedTarBlobAsync(BlobPaths.ChunkPath(ExistingTarChunkHash), [content], BlobTier.Cold);
+        blobs.ThrowAlreadyExistsOnOpenWrite(BlobPaths.ChunkPath(ExistingTarChunkHash));
 
         var result = await service.UploadTarAsync(
-            chunkHash: TarChunkHash,
+            chunkHash: ExistingTarChunkHash,
             content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
@@ -77,14 +71,14 @@ public class ChunkStorageServiceUploadTests
         result.AlreadyExisted.ShouldBeTrue();
         result.StoredSize.ShouldBeGreaterThan(0L);
         result.OriginalSize.ShouldBeNull();
-        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.ChunkPath(TarChunkHash));
+        blobs.DeletedBlobNames.ShouldNotContain(BlobPaths.ChunkPath(ExistingTarChunkHash));
     }
 
     [Test]
     public async Task UploadTarAsync_StoresTarMetadataWithoutOriginalSize_AndUsesPlaintextTarContentType()
     {
         var blobs = new ContentTypeCapturingBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[1536];
         Random.Shared.NextBytes(content);
         var tarChunkHash = ChunkHashOf(content);
@@ -125,7 +119,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadLargeAsync_DeletesPartialExistingBlobAndRetries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -154,16 +148,16 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadLargeAsync_ReturnsOriginalSizeFromExistingCommittedBlob()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
-        var blobName = BlobPaths.ChunkPath(RetryChunkHash);
+        var blobName = BlobPaths.ChunkPath(ExistingLargeChunkHash);
 
         await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
         blobs.ThrowAlreadyExistsOnOpenWrite(blobName);
 
         var result = await service.UploadLargeAsync(
-            chunkHash: RetryChunkHash,
+            chunkHash: ExistingLargeChunkHash,
             content: new MemoryStream(content),
             sourceSize: 999,
             tier: BlobTier.Archive,
@@ -178,7 +172,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadLargeAsync_OpenWriteConflict_FetchesMetadataAfterSuccessfulStreamUpload()
     {
         var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -199,7 +193,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadLargeAsync_RetryAfterMetadataConflict_ReportsSingleProgressSequence()
     {
         var blobs = new BlobAlreadyExistsOnSetMetadataOnceBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -225,14 +219,14 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadLargeAsync_Throws_WhenInputIsNotSeekable()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[2048];
         Random.Shared.NextBytes(content);
 
         await using var nonSeekable = new NonSeekableReadStream(content);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.UploadLargeAsync(
-            chunkHash: NonSeekableChunkHash,
+            chunkHash: NonSeekableInputChunkHash,
             content: nonSeekable,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
@@ -247,7 +241,7 @@ public class ChunkStorageServiceUploadTests
         // chunk hash (e.g. an encoder bug). The inline round-trip verification must catch it: fail loudly
         // and leave no recorded blob, never silently store an unrecoverable chunk.
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
         var wrongHash = ChunkHash.Parse("0000000000000000000000000000000000000000000000000000000000000000");
@@ -268,7 +262,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadThinAsync_CreatesPointerBlobWithMetadata()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         var created = await service.UploadThinAsync(
             contentHash: ThinContentHash,
@@ -296,7 +290,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadThinAsync_ReturnsFalse_WhenCommittedBlobAlreadyExists()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var blobName = BlobPaths.ThinChunkPath(ExistingThinContentHash);
 
         blobs.SeedBlob(
@@ -324,7 +318,7 @@ public class ChunkStorageServiceUploadTests
     public async Task UploadThinAsync_DeletesPartialExistingBlobAndRetries()
     {
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var blobName = BlobPaths.ThinChunkPath(RetryThinContentHash);
 
         blobs.SeedBlob(blobName, Array.Empty<byte>(), BlobTier.Cool, metadata: new Dictionary<string, string>(), contentType: ContentTypes.Thin);
@@ -350,12 +344,12 @@ public class ChunkStorageServiceUploadTests
         // With a passphrase the service encrypts, so the blob must carry the encrypted content type
         // (the plaintext tests only exercise the unencrypted branch). The inline round-trip
         // verification still runs against the pre-encryption compressed bytes and must pass.
-        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new ContentTypeCapturingBlobContainerService();
-        var service = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, encryption, ICompressionService.ZtdInstance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+        var chunkHash = ChunkHashOf(content, encryption);
 
         var result = await service.UploadLargeAsync(
             chunkHash: chunkHash,
@@ -375,7 +369,7 @@ public class ChunkStorageServiceUploadTests
         // A source handed in mid-stream must be rewound to position 0 and read in full; the round-trip
         // verifier only reproduces the chunk hash if every byte from the start was compressed.
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), TestCompression.Instance);
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -401,7 +395,7 @@ public class ChunkStorageServiceUploadTests
         // With verification skipped, an upload under a hash the content does NOT produce is recorded as-is
         // rather than failing loudly — proving the verification is gated on the codec's flag.
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), new GZipCompressionService());
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
         var wrongHash = ChunkHash.Parse("0000000000000000000000000000000000000000000000000000000000000000");
@@ -424,7 +418,7 @@ public class ChunkStorageServiceUploadTests
         // A full compress→encrypt→upload→download→decrypt→decompress cycle on the legacy gzip codec,
         // exercising the no-verifier upload path and proving ChunkStorageService both writes and reads gzip.
         var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, new PlaintextPassthroughService(), new GZipCompressionService());
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
@@ -450,12 +444,12 @@ public class ChunkStorageServiceUploadTests
         // compression streams straight into the encryption chain with leaveOpen:true) under real AES-GCM, where
         // the encryption stream must be disposed exactly once so its auth tag is flushed before BytesWritten is
         // read. Use content larger than the 80 KiB CopyToAsync buffer so the frame spans multiple writes.
-        var encryption = new PassphraseEncryptionService("correct horse battery staple");
+        var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
         var content = new byte[200_000];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+        var chunkHash = ChunkHashOf(content, encryption);
 
         var result = await service.UploadLargeAsync(
             chunkHash: chunkHash,
@@ -481,12 +475,11 @@ public class ChunkStorageServiceUploadTests
         // auto-detect now delegates legacy frames to GZipCompressionService — exercised end-to-end via the full
         // ChunkStorageService download stack.
         var blobs = new FakeInMemoryBlobContainerService();
-        var encryption = new PlaintextPassthroughService();
-        var legacyWriter = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
-        var productionReader = new ChunkStorageService(blobs, encryption, TestCompression.Instance);
+        var legacyWriter = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
+        var productionReader = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
         Random.Shared.NextBytes(content);
-        var chunkHash = ChunkHashOf(content);
+        var chunkHash = ChunkHashOf(content, IEncryptionService.PlaintextInstance);
 
         await legacyWriter.UploadLargeAsync(
             chunkHash: chunkHash,

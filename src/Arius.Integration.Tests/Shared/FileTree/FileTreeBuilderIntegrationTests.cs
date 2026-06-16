@@ -1,12 +1,12 @@
-using System.IO.Compression;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Hashes;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Integration.Tests.Shared.FileTree;
@@ -19,17 +19,16 @@ namespace Arius.Integration.Tests.Shared.FileTree;
 public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
 {
     private const string Account = "devstoreaccount1";
-    private static readonly PlaintextPassthroughService s_enc = new();
 
     private static FileTreeBuilder CreateBuilder(
         IBlobContainerService blobs,
         string containerName,
         out FileTreeService fileTreeService)
     {
-        var snapshot = new SnapshotService(blobs, s_enc, TestCompression.Instance, Account, containerName);
-        var index = new ChunkIndexService(blobs, s_enc, TestCompression.Instance, snapshot, Account, containerName);
-        fileTreeService = new FileTreeService(blobs, s_enc, TestCompression.Instance, Account, containerName);
-        return new FileTreeBuilder(s_enc, fileTreeService);
+        var snapshot = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName);
+        var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, Account, containerName);
+        fileTreeService = new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName);
+        return new FileTreeBuilder(IEncryptionService.PlaintextInstance, fileTreeService);
     }
 
     private static async Task<FileTreeStagingSession> CreateStagingAsync(
@@ -74,7 +73,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
             // Download and deserialize to verify content
             var download = await blobs.DownloadAsync(blobName);
             await using var stream = download.Stream;
-            var entries = await ReadStoredTreeAsync(stream, s_enc);
+            var entries = await ReadStoredTreeAsync(stream, IEncryptionService.PlaintextInstance);
 
             entries.Count.ShouldBe(1);
             entries[0].Name.ShouldBe(PathSegment.Parse("readme.txt"));
@@ -172,7 +171,7 @@ public class FileTreeBuilderIntegrationTests(AzuriteFixture azurite)
     private static async Task<IReadOnlyList<FileTreeEntry>> ReadStoredTreeAsync(Stream source, IEncryptionService encryption)
     {
         await using var decStream = encryption.WrapForDecryption(source);
-        await using var decompressedStream = TestCompression.Instance.WrapForDecompression(decStream);
+        await using var decompressedStream = ICompressionService.ZtdInstance.WrapForDecompression(decStream);
         using var ms = new MemoryStream();
         await decompressedStream.CopyToAsync(ms);
         return FileTreeSerializer.Deserialize(ms.ToArray());

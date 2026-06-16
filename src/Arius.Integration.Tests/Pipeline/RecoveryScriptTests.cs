@@ -18,8 +18,6 @@ namespace Arius.Integration.Tests.Pipeline;
 [ClassDataSource<AzuriteFixture>(Shared = SharedType.PerTestSession)]
 public class RecoveryScriptTests(AzuriteFixture azurite)
 {
-    private const string Passphrase = "recovery-script-test";
-
     /// <summary>Absolute path to recover-chunk.py in the repo root.</summary>
     private static string RecoverScript
     {
@@ -116,7 +114,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
@@ -151,7 +149,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress using recover-chunk.py (auto-detects Salted__ magic)
-            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, recoveredFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, recoveredFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             File.ReadAllBytes(recoveredFile).ShouldBe(original);
@@ -173,7 +171,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             return;
         }
 
-        await using var fix = await PipelineFixture.CreateAsync(azurite, passphrase: Passphrase);
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // 2 MB > threshold → large pipeline
         var original = new byte[2 * 1024 * 1024];
@@ -208,7 +206,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress using recover-chunk.py
-            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, recoveredFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, recoveredFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             File.ReadAllBytes(recoveredFile).ShouldBe(original);
@@ -232,7 +230,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
 
         await using var fix = await PipelineFixture.CreateAsyncWithEncryption(
             azurite,
-            new CbcEncryptionServiceAdapter(Passphrase));
+            new CbcEncryptionServiceAdapter(TestDefaults.Passphrase));
 
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
@@ -272,7 +270,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress to tar using recover-chunk.py (auto-detects Salted__ magic)
-            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, tarFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, tarFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             // Read tar entries (named by content-hash)
@@ -291,7 +289,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Verify both files are in the tar (by content-hash lookup)
-            var enc   = new PassphraseEncryptionService(Passphrase);
+            var enc   = IEncryptionService.EncryptedInstance;
             var hash1 = enc.ComputeHash(c1).ToString();
             var hash2 = enc.ComputeHash(c2).ToString();
 
@@ -317,7 +315,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             return;
         }
 
-        await using var fix = await PipelineFixture.CreateAsync(azurite, passphrase: Passphrase);
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
 
         // Small files → tar bundled
         var c1 = new byte[100]; Random.Shared.NextBytes(c1);
@@ -357,7 +355,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Decrypt + decompress to tar using recover-chunk.py
-            var (exitCode, _, stderr) = RunScript(encryptedFile, Passphrase, tarFile);
+            var (exitCode, _, stderr) = RunScript(encryptedFile, TestDefaults.Passphrase, tarFile);
             exitCode.ShouldBe(0, $"recover-chunk.py failed: {stderr}");
 
             // Read tar entries (named by content-hash)
@@ -376,7 +374,7 @@ public class RecoveryScriptTests(AzuriteFixture azurite)
             }
 
             // Verify both files are in the tar (by content-hash lookup)
-            var enc   = new PassphraseEncryptionService(Passphrase);
+            var enc   = IEncryptionService.EncryptedInstance;
             var hash1 = enc.ComputeHash(c1).ToString();
             var hash2 = enc.ComputeHash(c2).ToString();
 

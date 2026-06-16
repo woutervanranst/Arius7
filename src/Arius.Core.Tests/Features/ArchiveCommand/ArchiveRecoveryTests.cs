@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Formats.Tar;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
@@ -11,8 +13,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
-using System.Collections.Concurrent;
-using System.Formats.Tar;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -124,7 +124,7 @@ public class ArchiveRecoveryTests
             blobs,
             "test-account",
             $"test-container-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            IEncryptionService.PlaintextInstance,
             TestTempRoots.CreateDirectory("archive-test"));
         var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 2 * 1024 * 1024);
         var contentHash = fixture.Encryption.ComputeHash(content);
@@ -526,7 +526,7 @@ public class ArchiveRecoveryTests
             new FakeInMemoryBlobContainerService(),
             "test-account",
             $"test-container-{Guid.NewGuid():N}",
-            new PlaintextPassthroughService(),
+            IEncryptionService.PlaintextInstance,
             TestTempRoots.CreateDirectory("archive-test"));
 
     private static async Task<byte[]> WriteRandomFileAsync(RepositoryTestFixture fixture, RelativePath relativePath, int sizeBytes)
@@ -599,7 +599,7 @@ public class ArchiveRecoveryTests
             writer.WriteEntry(entry);
         }
 
-        return ChunkHash.Parse(fixture.Encryption.ComputeHash(tarStream.ToArray()));
+        return ChunkHashOf(tarStream.ToArray(), fixture.Encryption);
     }
 
     private sealed class RecordingChunkStorageService(

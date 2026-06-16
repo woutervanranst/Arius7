@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.FileTree;

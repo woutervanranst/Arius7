@@ -1,4 +1,3 @@
-using System.CommandLine;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;

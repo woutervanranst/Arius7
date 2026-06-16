@@ -1,13 +1,13 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Tests.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class FileTreeWalkerTests
 {
-    private static readonly PlaintextPassthroughService s_encryption = new();
     private static readonly DateTimeOffset s_created = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
 
@@ -82,19 +82,19 @@ public class FileTreeWalkerTests
         foreach (var tree in trees)
             await SeedTreeAsync(blobs, tree);
 
-        return new FileTreeWalker(new FileTreeService(blobs, s_encryption, TestCompression.Instance, "acct-filetree-walker", "ctr-filetree-walker"));
+        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, "acct-filetree-walker", "ctr-filetree-walker"));
     }
 
     private static Task<FileTreeHash> ComputeHashAsync(IReadOnlyList<FileTreeEntry> entries)
-        => Task.FromResult(FileTreeBuilder.ComputeHash(entries, s_encryption));
+        => Task.FromResult(FileTreeBuilder.ComputeHash(entries, IEncryptionService.PlaintextInstance));
 
     private static async Task SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
         var plaintext = FileTreeSerializer.Serialize(entries);
-        var payload = (Hash: FileTreeHash.Parse(s_encryption.ComputeHash(plaintext)), Plaintext: (ReadOnlyMemory<byte>)plaintext);
+        var payload = (Hash: FileTreeHashOf(plaintext, IEncryptionService.PlaintextInstance), Plaintext: (ReadOnlyMemory<byte>)plaintext);
         using var ms = new MemoryStream();
 
-        await using (var encStream = s_encryption.WrapForEncryption(ms))
+        await using (var encStream = IEncryptionService.PlaintextInstance.WrapForEncryption(ms))
         await using (var gzipStream = new System.IO.Compression.GZipStream(encStream, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true))
         {
             await gzipStream.WriteAsync(payload.Plaintext);

@@ -1,17 +1,16 @@
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Fakes;
 using Arius.Core.Tests.Shared.Snapshot.Fakes;
-using Arius.Tests.Shared.Compression;
+using Arius.Tests.Shared;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Tests.Shared.ChunkIndex;
 
 public class ChunkIndexServiceFlushTests
 {
-    private static readonly PlaintextPassthroughService s_encryption = new();
 
     [Test]
     public async Task FlushAsync_GetsDirtyPrefixesFromSqlite_AndUploadsMergedShard()
@@ -27,10 +26,10 @@ public class ChunkIndexServiceFlushTests
         var dirtyEntry = new ShardEntry(dirtyHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(prefix),
-            await ShardSerializer.SerializeAsync(CreateShard(cleanEntry), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(cleanEntry), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, repositoryKey, repositoryKey);
         index.AddEntry(dirtyEntry);
 
         await index.FlushAsync();
@@ -40,7 +39,7 @@ public class ChunkIndexServiceFlushTests
         flushed.Entries.ShouldContain(entry => entry.ContentHash == cleanHash);
         flushed.Entries.ShouldContain(entry => entry.ContentHash == dirtyHash);
 
-        using var resumedIndex = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, snapshot, repositoryKey, repositoryKey);
+        using var resumedIndex = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, repositoryKey, repositoryKey);
         (await resumedIndex.LookupAsync(cleanHash)).ShouldBe(cleanEntry);
         (await resumedIndex.LookupAsync(dirtyHash)).ShouldBe(dirtyEntry);
     }
@@ -50,7 +49,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-closed");
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -64,7 +63,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-once");
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         await index.FlushAsync();
 
@@ -77,7 +76,7 @@ public class ChunkIndexServiceFlushTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var repositoryKey = UniqueRepositoryKey("flush-lookup-closed");
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -95,7 +94,7 @@ public class ChunkIndexServiceFlushTests
         var collector = new FakeLogCollector();
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new FakeLoggerProvider(collector)));
 
-        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
+        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, loggerFactory);
         index.AddEntry(new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool));
 
         await index.FlushAsync();
@@ -115,10 +114,10 @@ public class ChunkIndexServiceFlushTests
         var entries = new[] { Entry("aa1"), Entry("aa2"), Entry("aa3"), Entry("aa4"), Entry("aa5") };
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")),
-            await ShardSerializer.SerializeAsync(CreateShard(entries[0], entries[1], entries[2]), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(entries[0], entries[1], entries[2]), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
 
-        using (var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 3))
+        using (var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 3))
         {
             index.AddEntry(entries[3]);
             index.AddEntry(entries[4]);
@@ -135,7 +134,7 @@ public class ChunkIndexServiceFlushTests
         }
 
         // A cold machine resolves every hash through the split layout.
-        using var cold = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-cold"), UniqueRepositoryKey("flush-split-cold"));
+        using var cold = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-cold"), UniqueRepositoryKey("flush-split-cold"));
         foreach (var entry in entries)
             (await cold.LookupAsync(entry.ContentHash)).ShouldBe(entry);
     }
@@ -148,7 +147,7 @@ public class ChunkIndexServiceFlushTests
         var first = Entry("aa30");
         var second = Entry("aa3f");
 
-        using (var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 1))
+        using (var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 1))
         {
             index.AddEntry(first);
             index.AddEntry(second);
@@ -173,12 +172,12 @@ public class ChunkIndexServiceFlushTests
         var e3 = Entry("aa3");
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")),
-            await ShardSerializer.SerializeAsync(CreateShard(e1, e2), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(e1, e2), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
 
         // The split dies after the first child upload: parent + one child coexist.
         var faulting = new FaultingChunkIndexUploadBlobContainerService(blobs) { AllowedChunkIndexUploads = 1 };
-        using (var crashed = new ChunkIndexService(faulting, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
+        using (var crashed = new ChunkIndexService(faulting, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
         {
             crashed.AddEntry(e3);
             await Should.ThrowAsync<InvalidOperationException>(() => crashed.FlushAsync());
@@ -189,7 +188,7 @@ public class ChunkIndexServiceFlushTests
 
         // PARENT WINS: a cold reader resolves everything any published snapshot could reference from
         // the parent, and does not see the crashed run's unpublished entry.
-        using (var coldReader = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-crash-reader"), UniqueRepositoryKey("flush-split-crash-reader")))
+        using (var coldReader = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-crash-reader"), UniqueRepositoryKey("flush-split-crash-reader")))
         {
             (await coldReader.LookupAsync(e1.ContentHash)).ShouldBe(e1);
             (await coldReader.LookupAsync(e2.ContentHash)).ShouldBe(e2);
@@ -197,7 +196,7 @@ public class ChunkIndexServiceFlushTests
         }
 
         // Retry on the same machine: the pending row survived, the split re-runs and converges.
-        using (var retry = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
+        using (var retry = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
             await retry.FlushAsync();
 
         (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")))).ShouldBeNull(); // parent gone
@@ -205,7 +204,7 @@ public class ChunkIndexServiceFlushTests
         (await ReadShardAsync(blobs, PathSegment.Parse("aa2"))).Entries.Single().ShouldBe(e2);
         (await ReadShardAsync(blobs, PathSegment.Parse("aa3"))).Entries.Single().ShouldBe(e3);
 
-        using var cold = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-crash-cold"), UniqueRepositoryKey("flush-split-crash-cold"));
+        using var cold = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), UniqueRepositoryKey("flush-split-crash-cold"), UniqueRepositoryKey("flush-split-crash-cold"));
         (await cold.LookupAsync(e3.ContentHash)).ShouldBe(e3);
     }
 
@@ -219,11 +218,11 @@ public class ChunkIndexServiceFlushTests
         var existing = Entry("aa1");
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa1")),
-            await ShardSerializer.SerializeAsync(CreateShard(existing), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(existing), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
 
         var newEntry = Entry("aa7");
-        using (var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey))
+        using (var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey))
         {
             index.AddEntry(newEntry);
             await index.FlushAsync();
@@ -249,14 +248,14 @@ public class ChunkIndexServiceFlushTests
         var foreignUnpublished = Entry("aa9");
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")),
-            await ShardSerializer.SerializeAsync(CreateShard(e1, e2), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(e1, e2), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
         blobs.SeedBlob(
             BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa9")),
-            await ShardSerializer.SerializeAsync(CreateShard(foreignUnpublished), s_encryption, TestCompression.Instance),
+            await ShardSerializer.SerializeAsync(CreateShard(foreignUnpublished), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
             BlobTier.Cool);
 
-        using (var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
+        using (var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2))
         {
             index.AddEntry(e3);
             await index.FlushAsync();
@@ -275,7 +274,7 @@ public class ChunkIndexServiceFlushTests
     {
         var download = await blobs.DownloadAsync(BlobPaths.ChunkIndexShardPath(prefix), CancellationToken.None);
         await using var stream = download.Stream;
-        return ShardSerializer.Deserialize(stream, s_encryption, TestCompression.Instance);
+        return ShardSerializer.Deserialize(stream, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
     }
 
     private static Shard CreateShard(params ShardEntry[] entries)
