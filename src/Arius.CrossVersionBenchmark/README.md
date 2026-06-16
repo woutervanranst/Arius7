@@ -60,6 +60,71 @@ encryption on, 3 cold iterations per version, each into a fresh container.
 
 Caveat: 3 cold runs give wide error bars; treat time as indicative, not conclusive.
 
+## Memory investigation: why v7 peaks ~4–5× higher
+
+The one large, reproducible difference is peak memory (~1 GiB v7 vs ~0.2 GiB v5,
+**independent of dataset size**). It was traced to **unmanaged zstd memory**, not the
+managed heap.
+
+### Methodology
+
+1. **Static read** of the v7 archive pipeline (`ArchiveCommandHandler`,
+   `TarBuilder`, `ChunkStorageService`, `ZstdCompressionService`) to find buffers and
+   per-stream allocations and the concurrency knobs.
+2. **Micro-measurement** — a standalone probe creating the two compressors Arius uses,
+   reading `ZSTD_estimateCCtxSize` and measuring working-set delta for 5 live streams
+   (matching v7's ~5 concurrent uploads).
+3. **Real-process profiling** — `dotnet-counters` (`System.Runtime`) over an actual v7
+   archive, comparing peak working set against the GC heap size to locate the memory.
+
+### Results
+
+zstd compression-context size, and the working-set cost of keeping 5 alive:
+
+| Compressor | Context size (`estimateCCtxSize`) | 5 live streams (Δ working set) |
+| --- | --: | --: |
+| gzip `SmallestSize` (v5) | ~0 | +2 MiB |
+| zstd level 3 | 1.2 MiB | +18 MiB |
+| **zstd level 19 (v7 default)** | **81.3 MiB** | **+415 MiB** |
+
+Real v7 archive process (`dotnet-counters`):
+
+| Metric | Value |
+| --- | --: |
+| Peak working set (RSS) | ~600 MiB sampled (`time -l` caught ~1058 MiB) |
+| Managed GC heap (all gens incl. LOH) | ~29 MiB |
+| GC committed memory | ~35 MiB |
+| Allocation rate | ~24 MB/s |
+
+Managed heap ~29 MiB while RSS is 600 MiB–1 GiB ⇒ ~95 % of the memory is **off the
+managed heap** (ZstdSharp.Port allocates contexts in unmanaged memory). Not a managed
+leak, not GC pressure.
+
+### Findings
+
+- **Main driver — zstd level 19.** `ZstdCompressionService.DefaultCompressionLevel = 19`
+  gives an 81.3 MiB context **per compressor**, fixed-cost regardless of file size. The
+  handler runs ~5 concurrently (`UploadWorkers = 4` + `TarUploadWorkers = 1`), each a
+  fresh context ⇒ ~400 MiB. This is why even the 25 MiB dataset peaked at ~1 GiB.
+- **Secondary — 64 MiB in-memory TAR bundles.** `TarBuilder` accumulates small files in a
+  `MemoryStream` and seals a `TarTargetSize` (64 MiB) buffer; a few in flight ⇒ ~130–190 MiB
+  (on the LOH).
+- **Ruled out.** The round-trip verifier is bounded to ~1 MiB (a `Pipe`), and the upload
+  path is fully streaming — neither buffers whole files.
+- **v5 contrast.** BCL `GZipStream` has negligible per-stream cost, leaving v5 near the
+  ~200 MiB runtime + Azure-SDK baseline.
+- **Budget (v7 ≈ 1 GiB):** ~400 MiB zstd contexts + ~130–190 MiB TAR buffers + ~200 MiB
+  runtime/SDK baseline.
+
+### Levers (not implemented)
+
+1. **Pool/reuse compressors** instead of `new` per chunk — caps total context memory
+   regardless of throughput. Biggest structural win.
+2. **Reconsider the level** — 19 is the one knob; ~12–15 keeps most ratio at a fraction of
+   the context size (level 3 = 1.2 MiB). Tradeoff: compression ratio.
+3. **Lower `UploadWorkers`** (4→2) halves concurrent contexts.
+4. **Spool TAR bundles to a temp file** instead of `MemoryStream`. Tradeoff: disk I/O.
+
 ## Method
 
 Because archive is content-addressable and deduplicated, a second run against the same
