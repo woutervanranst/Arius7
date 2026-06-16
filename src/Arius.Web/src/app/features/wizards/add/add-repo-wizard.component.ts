@@ -30,7 +30,7 @@ import { RealtimeService } from '../../../core/api/realtime.service';
 
         @if (mode() === 'select') {
           @for (a of accounts(); track a.id) {
-            <label class="ar-radio" [class.on]="selectedAccountId() === a.id" (click)="selectedAccountId.set(a.id)">
+            <label class="ar-radio" data-testid="account-radio" [class.on]="selectedAccountId() === a.id" (click)="selectedAccountId.set(a.id)">
               <span class="ar-dot"></span>
               <span class="ar-mono" style="font-weight:600">{{ a.name }}</span>
               <span style="color:#a1a1aa;margin-left:auto">{{ a.repositories }} repositories</span>
@@ -47,7 +47,7 @@ import { RealtimeService } from '../../../core/api/realtime.service';
         @if (error()) { <div style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
           <button class="ar-btn-outline" (click)="cancel()">Cancel</button>
-          <button class="ar-btn-primary" [disabled]="discovering()" (click)="discover()">
+          <button class="ar-btn-primary" data-testid="btn-discover" [disabled]="discovering()" (click)="discover()">
             <i class="ki-filled ki-arrow-right"></i>{{ discovering() ? 'Discovering…' : 'Connect & discover' }}
           </button>
         </div>
@@ -55,7 +55,7 @@ import { RealtimeService } from '../../../core/api/realtime.service';
         <h1 class="ar-heading" style="font-size:20px;font-weight:700;margin-bottom:16px">Repository</h1>
         <div class="ar-field"><span>Select container</span>
           @for (c of containers(); track c) {
-            <label class="ar-radio" [class.on]="selectedContainer() === c" (click)="selectedContainer.set(c)">
+            <label class="ar-radio" data-testid="container-radio" [class.on]="selectedContainer() === c" (click)="selectedContainer.set(c)">
               <span class="ar-dot"></span><span class="ar-mono">{{ c }}</span>
             </label>
           } @empty {

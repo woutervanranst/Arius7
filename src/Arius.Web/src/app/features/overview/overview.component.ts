@@ -27,7 +27,7 @@ import { ApiService } from '../../core/api/api.service';
     <!-- KPI grid -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:22px">
       @for (kpi of kpis(); track kpi.label) {
-        <div class="ar-card" style="padding:19px 20px">
+        <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
           <div class="flex items-center justify-between">
             <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center"
                  [style.background]="kpi.chipBg" [style.color]="kpi.chipFg">
@@ -55,7 +55,7 @@ import { ApiService } from '../../core/api/api.service';
 
       @if (repos(); as list) {
         @for (repo of list; track repo.id) {
-          <div class="ar-repo-row" (click)="openRepo(repo.id)"
+          <div class="ar-repo-row" data-testid="repo-row" (click)="openRepo(repo.id)"
                style="display:grid;grid-template-columns:2.4fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
             <div class="flex items-center gap-3">
               <div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;color:#3b82f6;display:flex;align-items:center;justify-content:center">

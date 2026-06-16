@@ -204,10 +204,22 @@ public sealed class AppDatabase
     public void DeleteRepository(long id)
     {
         using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        // Cascade: a repository's jobs/schedules reference it, so remove them first.
+        foreach (var table in new[] { "jobs", "schedules" })
+        {
+            using var child = connection.CreateCommand();
+            child.Transaction = transaction;
+            child.CommandText = $"DELETE FROM {table} WHERE repo_id = $id;";
+            child.Parameters.AddWithValue("$id", id);
+            child.ExecuteNonQuery();
+        }
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "DELETE FROM repositories WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         command.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     // ── Jobs ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ const COLORS: Record<string, string> = {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div #scroll style="background:#0b0b0f;border-radius:10px;padding:12px 14px;overflow-y:auto;font-family:var(--ar-font-mono);font-size:12px;line-height:1.55"
+    <div #scroll data-testid="live-console" style="background:#0b0b0f;border-radius:10px;padding:12px 14px;overflow-y:auto;font-family:var(--ar-font-mono);font-size:12px;line-height:1.55"
          [style.height.px]="height()">
       @for (line of lines(); track $index) {
         <div style="white-space:pre-wrap">

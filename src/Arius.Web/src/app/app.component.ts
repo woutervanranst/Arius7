@@ -28,6 +28,7 @@ interface RailItem { label: string; icon: string; link: string; }
       <nav class="flex flex-col items-center gap-2 mt-5">
         @for (item of nav; track item.link) {
           <a [routerLink]="item.link"
+             [attr.data-testid]="'rail-' + item.label.toLowerCase()"
              routerLinkActive="!text-[#3b82f6] !bg-white !border-[#ececef] shadow-sm"
              class="flex flex-col items-center justify-center gap-1 text-[#71717a] border border-transparent transition-colors"
              style="width:64px;height:62px;border-radius:13px">
@@ -57,10 +58,10 @@ interface RailItem { label: string; icon: string; link: string; }
         <div class="text-[14px]">
           <span style="color:#a1a1aa">Arius</span>
           <span style="color:#d4d4d8" class="mx-1.5">›</span>
-          <span style="color:#27272a;font-weight:600">{{ crumb() }}</span>
+          <span style="color:#27272a;font-weight:600" data-testid="breadcrumb-current">{{ crumb() }}</span>
         </div>
         @if (searchVisible()) {
-          <button type="button" (click)="search.openSearch()" class="flex items-center gap-2 px-3"
+          <button type="button" data-testid="topbar-search" (click)="search.openSearch()" class="flex items-center gap-2 px-3"
                   style="width:300px;height:38px;background:#f4f4f5;border-radius:9px;color:#71717a;cursor:text">
             <i class="ki-filled ki-magnifier" style="font-size:16px"></i>
             <span class="grow text-left text-[13.5px]">Search files across repositories…</span>

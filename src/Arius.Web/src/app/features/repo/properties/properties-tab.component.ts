@@ -15,11 +15,11 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
       <div class="ar-card" style="max-width:680px;padding:24px">
         <label class="ar-field">
           <span>Friendly alias</span>
-          <input [(ngModel)]="alias" class="ar-input" />
+          <input [(ngModel)]="alias" class="ar-input" data-testid="prop-alias" />
         </label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <label class="ar-field"><span>Storage account</span><input class="ar-input ar-mono" [value]="r.account" readonly /></label>
-          <label class="ar-field"><span>Container</span><input class="ar-input ar-mono" [value]="r.container" readonly /></label>
+          <label class="ar-field"><span>Container</span><input class="ar-input ar-mono" data-testid="prop-container" [value]="r.container" readonly /></label>
         </div>
         <label class="ar-field">
           <span>Account key</span>
@@ -43,18 +43,18 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
         <div style="font-size:15.5px;font-weight:600;color:#18181b">Scheduled archives</div>
         <p style="font-size:12.5px;color:#a1a1aa;margin:2px 0 14px">Cron schedules fire archive runs automatically (UTC).</p>
         @for (s of schedules(); track s.id) {
-          <div class="flex items-center gap-3" style="padding:9px 0;border-top:1px solid #f4f4f5">
+          <div class="flex items-center gap-3" data-testid="schedule-row" style="padding:9px 0;border-top:1px solid #f4f4f5">
             <i class="ki-filled ki-calendar-tick" style="color:#6d28d9"></i>
             <span class="ar-mono" style="font-size:13px;color:#27272a">{{ s.cron }}</span>
             <span style="font-size:12px;color:#a1a1aa;margin-left:auto">{{ s.nextRun ? 'next ' + (s.nextRun | date:'dd MMM HH:mm') : 'computing…' }}</span>
-            <button class="ar-icon-btn" (click)="removeSchedule(s.id)"><i class="ki-filled ki-trash"></i></button>
+            <button class="ar-icon-btn" data-testid="schedule-delete" (click)="removeSchedule(s.id)"><i class="ki-filled ki-trash"></i></button>
           </div>
         } @empty {
           <div style="font-size:13px;color:#a1a1aa;padding:6px 0">No schedules.</div>
         }
         <div class="flex items-center gap-2.5" style="margin-top:12px">
-          <input class="ar-input ar-mono" style="flex:1" placeholder="cron e.g. 0 2 * * *" [(ngModel)]="newCron" />
-          <button class="ar-btn-primary" [disabled]="!newCron" (click)="addSchedule()"><i class="ki-filled ki-plus"></i>Add</button>
+          <input class="ar-input ar-mono" data-testid="schedule-cron" style="flex:1" placeholder="cron e.g. 0 2 * * *" [(ngModel)]="newCron" />
+          <button class="ar-btn-primary" data-testid="schedule-add" [disabled]="!newCron" (click)="addSchedule()"><i class="ki-filled ki-plus"></i>Add</button>
         </div>
       </div>
     } @else {

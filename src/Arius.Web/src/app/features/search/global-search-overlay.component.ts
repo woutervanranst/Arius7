@@ -19,13 +19,13 @@ import { formatBytes } from '../../shared/format';
         <div class="flex items-center gap-3" style="padding:16px 18px;border-bottom:1px solid #f0f0f2">
           <i class="ki-filled ki-magnifier" style="font-size:18px;color:#a1a1aa"></i>
           <input #box autofocus [ngModel]="store.query()" (ngModelChange)="store.setQuery($event)"
-                 placeholder="Search files across all repositories…"
+                 placeholder="Search files across all repositories…" data-testid="search-input"
                  class="grow bg-transparent outline-none" style="font-size:15px" />
           <kbd style="font-size:11px;color:#a1a1aa;border:1px solid #e4e4e7;border-radius:6px;padding:2px 6px">Esc</kbd>
         </div>
         <div style="max-height:50vh;overflow-y:auto">
           @for (hit of store.results(); track hit.repoId + hit.entry.relativePath) {
-            <button class="ar-hit" (click)="openHit(hit)">
+            <button class="ar-hit" data-testid="search-result" (click)="openHit(hit)">
               <arius-state-ring [state]="hit.entry.state" [size]="19" />
               <i class="ki-outline ki-document" style="color:#a1a1aa;font-size:16px"></i>
               <div style="min-width:0;text-align:left">

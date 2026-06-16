@@ -14,14 +14,14 @@ import { formatBytes } from '../../shared/format';
   template: `
     @if (store.type(); as type) {
       <div class="ar-scrim" (click)="onScrim()"></div>
-      <aside class="ar-drawer">
+      <aside class="ar-drawer" data-testid="drawer">
         <!-- Header -->
         <div class="flex items-center gap-3" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
           <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center"
                [style.background]="type === 'archive' ? '#eff6ff' : '#f5f3ff'" [style.color]="type === 'archive' ? '#3b82f6' : '#6d28d9'">
             <i class="ki-filled {{ type === 'archive' ? 'ki-cloud-add' : 'ki-cloud-download' }}" style="font-size:19px"></i>
           </div>
-          <div style="font-size:15.5px;font-weight:600;color:#18181b">{{ type === 'archive' ? 'Archive' : 'Restore' }} · {{ alias() }}</div>
+          <div data-testid="drawer-title" style="font-size:15.5px;font-weight:600;color:#18181b">{{ type === 'archive' ? 'Archive' : 'Restore' }} · {{ alias() }}</div>
           <button class="ms-auto ar-icon-btn" (click)="store.close()"><i class="ki-filled ki-cross"></i></button>
         </div>
 
@@ -33,12 +33,12 @@ import { formatBytes } from '../../shared/format';
               <div class="ar-fld"><span>Upload tier</span>
                 <div class="ar-seg">
                   @for (t of tiers; track t) {
-                    <button [class.on]="store.archiveTier() === t" (click)="store.archiveTier.set(t)">{{ t | titlecase }}</button>
+                    <button data-testid="tier-seg" [attr.data-tier]="t" [class.on]="store.archiveTier() === t" (click)="store.archiveTier.set(t)">{{ t | titlecase }}</button>
                   }
                 </div>
               </div>
-              <label class="ar-toggle"><input type="checkbox" [checked]="store.removeLocal()" (change)="store.toggleRemoveLocal()" /> Remove local binaries <small>(--remove-local)</small></label>
-              <label class="ar-toggle"><input type="checkbox" [checked]="store.noPointers()" (change)="store.toggleNoPointers()" /> Skip pointer files <small>(--no-pointers)</small></label>
+              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-remove-local" [checked]="store.removeLocal()" (change)="store.toggleRemoveLocal()" /> Remove local binaries <small>(--remove-local)</small></label>
+              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-no-pointers" [checked]="store.noPointers()" (change)="store.toggleNoPointers()" /> Skip pointer files <small>(--no-pointers)</small></label>
               <div class="ar-note">Small files are bundled (1 MB threshold, 64 MB tar target). Remove-local and skip-pointers are mutually exclusive.</div>
             } @else {
               <!-- Restore form -->
@@ -59,7 +59,7 @@ import { formatBytes } from '../../shared/format';
               <span style="font-size:13px;font-weight:600;color:#27272a">{{ stateLabel() }}</span>
               <span style="font-size:12.5px;color:#71717a">{{ store.progress() }}%</span>
             </div>
-            <div style="height:6px;background:#eef0f3;border-radius:999px;overflow:hidden">
+            <div data-testid="progress-bar" style="height:6px;background:#eef0f3;border-radius:999px;overflow:hidden">
               <div style="height:100%;background:#3b82f6;transition:width .3s" [style.width.%]="store.progress()"></div>
             </div>
 
@@ -85,7 +85,7 @@ import { formatBytes } from '../../shared/format';
         <div class="flex items-center justify-end gap-2.5" style="padding:16px 20px;border-top:1px solid #f0f0f2">
           @if (store.streamState() === 'idle') {
             <button class="ar-btn-outline" (click)="store.close()">Close</button>
-            <button class="ar-btn-primary" (click)="store.start()">
+            <button class="ar-btn-primary" data-testid="drawer-start" (click)="store.start()">
               <i class="ki-filled {{ type === 'archive' ? 'ki-cloud-add' : 'ki-cloud-download' }}"></i>
               {{ type === 'archive' ? 'Start archive' : 'Start restore' }}
             </button>
@@ -96,7 +96,7 @@ import { formatBytes } from '../../shared/format';
 
         <!-- Cost approval modal -->
         @if (store.streamState() === 'cost' && store.cost(); as cost) {
-          <div class="ar-cost-scrim">
+          <div class="ar-cost-scrim" data-testid="cost-modal">
             <div class="ar-cost">
               <div class="ar-cost-banner"><i class="ki-filled ki-information-2"></i> Rehydration required before download</div>
               <div class="ar-statgrid" style="margin:14px 0">
@@ -106,16 +106,16 @@ import { formatBytes } from '../../shared/format';
               </div>
               <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:8px">Rehydration priority</div>
               <div class="flex gap-3">
-                <button class="ar-prio" [class.on]="priority() === 'standard'" (click)="priority.set('standard')">
+                <button class="ar-prio" data-testid="prio-standard" [class.on]="priority() === 'standard'" (click)="priority.set('standard')">
                   <div style="font-weight:700">Standard</div><div style="font-size:12px;color:#71717a">~15 h · €{{ cost.totalStandard.toFixed(2) }}</div>
                 </button>
-                <button class="ar-prio" [class.on]="priority() === 'high'" (click)="priority.set('high')">
+                <button class="ar-prio" data-testid="prio-high" [class.on]="priority() === 'high'" (click)="priority.set('high')">
                   <div style="font-weight:700">High</div><div style="font-size:12px;color:#71717a">~1 h · €{{ cost.totalHigh.toFixed(2) }}</div>
                 </button>
               </div>
               <div class="flex items-center justify-end gap-2.5" style="margin-top:18px">
-                <button class="ar-btn-outline" (click)="decline()">Decline</button>
-                <button class="ar-btn-primary" (click)="approve()"><i class="ki-filled ki-check"></i>Approve &amp; restore</button>
+                <button class="ar-btn-outline" data-testid="cost-decline" (click)="decline()">Decline</button>
+                <button class="ar-btn-primary" data-testid="cost-approve" (click)="approve()"><i class="ki-filled ki-check"></i>Approve &amp; restore</button>
               </div>
             </div>
           </div>

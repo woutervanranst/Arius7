@@ -11,7 +11,7 @@ import { formatBytes, formatCount } from '../../../shared/format';
   template: `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px">
       @for (card of cards(); track card.label) {
-        <div class="ar-card" style="padding:19px 20px">
+        <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
           <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
             <i class="ki-filled {{ card.icon }}" style="font-size:20px"></i>
           </div>

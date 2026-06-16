@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TitleCasePipe } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -28,7 +28,7 @@ import { ApiService } from '../../../core/api/api.service';
         </div>
         @if (mode() === 'select') {
           @for (a of accounts(); track a.id) {
-            <label class="ar-radio" [class.on]="selectedAccountId() === a.id" (click)="selectedAccountId.set(a.id)">
+            <label class="ar-radio" data-testid="account-radio" [class.on]="selectedAccountId() === a.id" (click)="selectedAccountId.set(a.id)">
               <span class="ar-dot"></span><span class="ar-mono" style="font-weight:600">{{ a.name }}</span>
               <span style="color:#a1a1aa;margin-left:auto">{{ a.repositories }} repositories</span>
             </label>
@@ -40,27 +40,27 @@ import { ApiService } from '../../../core/api/api.service';
         @if (error()) { <div style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
           <button class="ar-btn-outline" (click)="cancel()">Cancel</button>
-          <button class="ar-btn-primary" (click)="next()"><i class="ki-filled ki-arrow-right"></i>Continue</button>
+          <button class="ar-btn-primary" data-testid="btn-continue" (click)="next()"><i class="ki-filled ki-arrow-right"></i>Continue</button>
         </div>
       } @else {
         <h1 class="ar-heading" style="font-size:20px;font-weight:700;margin-bottom:16px">New container</h1>
-        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" [(ngModel)]="alias" (ngModelChange)="syncContainer()" /></label>
-        <label class="ar-field"><span>Container name (auto-generated)</span><input class="ar-input ar-mono" [value]="container()" readonly /></label>
+        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" data-testid="create-alias" [(ngModel)]="alias" (ngModelChange)="syncContainer()" /></label>
+        <label class="ar-field"><span>Container name (auto-generated)</span><input class="ar-input ar-mono" data-testid="create-container" [value]="container()" readonly /></label>
         <label class="ar-field"><span>Local path</span><input class="ar-input ar-mono" [(ngModel)]="localPath" /></label>
         <div class="ar-field"><span>Default tier</span>
           <div class="ar-seg">
             @for (t of tiers; track t) { <button [class.on]="tier() === t" (click)="tier.set(t)">{{ t | titlecase }}</button> }
           </div>
         </div>
-        <label class="ar-field"><span>Passphrase</span><input class="ar-input ar-mono" type="password" [(ngModel)]="passphrase" /></label>
-        <label class="ar-field"><span>Confirm passphrase</span><input class="ar-input ar-mono" type="password" [(ngModel)]="passphrase2" /></label>
+        <label class="ar-field"><span>Passphrase</span><input class="ar-input ar-mono" type="password" data-testid="passphrase" [(ngModel)]="passphrase" /></label>
+        <label class="ar-field"><span>Confirm passphrase</span><input class="ar-input ar-mono" type="password" data-testid="passphrase-confirm" [(ngModel)]="passphrase2" /></label>
         <div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 12px">
           <i class="ki-filled ki-information-2"></i> The passphrase encrypts every chunk and <b>cannot be recovered</b> if lost.
         </div>
         @if (error()) { <div style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
           <button class="ar-btn-outline" (click)="step.set(1)">Back</button>
-          <button class="ar-btn-primary" [disabled]="!canCreate()" (click)="create()"><i class="ki-filled ki-check"></i>Create repository</button>
+          <button class="ar-btn-primary" data-testid="btn-create" [disabled]="!canCreate()" (click)="create()"><i class="ki-filled ki-check"></i>Create repository</button>
         </div>
       }
     </div>
@@ -99,8 +99,11 @@ export class CreateRepoWizardComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly tiers = ['hot', 'cool', 'cold', 'archive'];
 
-  protected readonly canCreate = computed(() =>
-    !!this.alias && !!this.container() && !!this.passphrase && this.passphrase === this.passphrase2);
+  // A method (not a computed) because alias/passphrase are plain ngModel properties, not signals —
+  // OnPush re-evaluates this on each ngModel change.
+  protected canCreate(): boolean {
+    return !!this.alias && !!this.container() && !!this.passphrase && this.passphrase === this.passphrase2;
+  }
 
   protected syncContainer(): void {
     const slug = (this.alias || 'repo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'repo';

@@ -21,7 +21,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
             <i class="ki-filled ki-folder" style="font-size:22px"></i>
           </div>
           <div>
-            <h1 class="ar-heading" style="font-size:21px;font-weight:700">{{ r.alias }}</h1>
+            <h1 class="ar-heading" data-testid="repo-title" style="font-size:21px;font-weight:700">{{ r.alias }}</h1>
             <div class="flex items-center gap-2 flex-wrap" style="margin-top:7px">
               <span class="ar-chip"><i class="ki-filled ki-data"></i>{{ r.container }}</span>
               @if (r.localPath) { <span class="ar-chip"><i class="ki-filled ki-folder"></i>{{ r.localPath }}</span> }
@@ -30,16 +30,16 @@ import { DrawerStore } from '../../core/state/drawer.store';
           </div>
         </div>
         <div class="flex items-center gap-2.5">
-          <button class="ar-btn-outline" (click)="drawer.openRestore(r.id, null, [])"><i class="ki-filled ki-cloud-download"></i>Restore</button>
-          <button class="ar-btn-primary" (click)="drawer.openArchive(r.id, r.defaultTier)"><i class="ki-filled ki-cloud-add"></i>Archive</button>
+          <button class="ar-btn-outline" data-testid="btn-restore" (click)="drawer.openRestore(r.id, null, [])"><i class="ki-filled ki-cloud-download"></i>Restore</button>
+          <button class="ar-btn-primary" data-testid="btn-archive" (click)="drawer.openArchive(r.id, r.defaultTier)"><i class="ki-filled ki-cloud-add"></i>Archive</button>
         </div>
       </div>
 
       <!-- Tab bar -->
       <div class="flex items-center gap-6" style="margin-top:20px;border-bottom:1px solid #f0f0f2">
-        <a class="ar-tab" routerLink="files" routerLinkActive="active">Files</a>
-        <a class="ar-tab" routerLink="statistics" routerLinkActive="active">Statistics</a>
-        <a class="ar-tab" routerLink="properties" routerLinkActive="active">Properties</a>
+        <a class="ar-tab" data-testid="tab-files" routerLink="files" routerLinkActive="active">Files</a>
+        <a class="ar-tab" data-testid="tab-statistics" routerLink="statistics" routerLinkActive="active">Statistics</a>
+        <a class="ar-tab" data-testid="tab-properties" routerLink="properties" routerLinkActive="active">Properties</a>
       </div>
 
       <div style="margin-top:18px">

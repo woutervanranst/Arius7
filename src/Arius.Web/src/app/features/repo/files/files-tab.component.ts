@@ -23,7 +23,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
     <!-- Snapshot / time-travel bar -->
     <div class="ar-card" style="padding:13px 18px;display:flex;align-items:center;gap:18px">
       <div style="position:relative">
-        <button class="ar-btn-outline" (click)="pickerOpen.set(!pickerOpen())">
+        <button class="ar-btn-outline" data-testid="snapshot-picker" (click)="pickerOpen.set(!pickerOpen())">
           <i class="ki-filled ki-time"></i>
           <span>Snapshot <b>{{ activeSnapLabel() }}</b></span>
           @if (!viewSnap()) { <span class="ar-pill-green">LATEST</span> }
@@ -32,7 +32,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
         @if (pickerOpen()) {
           <div class="ar-snap-menu">
             @for (s of snapshots(); track s.version; let i = $index) {
-              <button class="ar-snap-item" (click)="pickSnapshot(s, i)">
+              <button class="ar-snap-item" data-testid="snapshot-item" (click)="pickSnapshot(s, i)">
                 <span style="font-weight:600">v{{ snapshots().length - i }}</span>
                 <span style="color:#71717a">{{ s.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
                 <span style="color:#a1a1aa">{{ s.fileCount }} files</span>
@@ -49,7 +49,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
       <div style="flex:1;display:flex;align-items:center;gap:10px;height:20px">
         <div style="position:relative;flex:1;height:4px;background:#eef0f3;border-radius:999px">
           @for (s of snapshots(); track s.version; let i = $index) {
-            <span class="ar-scrub-dot" [class.active]="isActiveIndex(i)" [class.past]="i < activeIndex()"
+            <span class="ar-scrub-dot" data-testid="scrubber-dot" [class.active]="isActiveIndex(i)" [class.past]="i < activeIndex()"
                   [style.left.%]="dotLeft(i)" (click)="pickSnapshot(s, i)"></span>
           }
         </div>
@@ -64,12 +64,12 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
 
     <!-- Collected action bar -->
     @if (collectedCount() > 0) {
-      <div style="margin-top:14px;display:flex;align-items:center;gap:14px;background:#eff6ff;border:1px solid #dbeafe;border-radius:11px;padding:11px 16px">
+      <div data-testid="collected-bar" style="margin-top:14px;display:flex;align-items:center;gap:14px;background:#eff6ff;border:1px solid #dbeafe;border-radius:11px;padding:11px 16px">
         <i class="ki-filled ki-check-square" style="color:#3b82f6;font-size:18px"></i>
         <span style="font-size:13.5px;color:#1d4ed8"><b>{{ collectedCount() }}</b> files collected · {{ formatBytes(collectedBytes()) }}</span>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="ar-btn-outline" (click)="clearCollected()">Clear</button>
-          <button class="ar-btn-primary" (click)="restoreCollected()"><i class="ki-filled ki-cloud-download"></i>Restore collected</button>
+          <button class="ar-btn-primary" data-testid="restore-collected" (click)="restoreCollected()"><i class="ki-filled ki-cloud-download"></i>Restore collected</button>
         </div>
       </div>
     }
@@ -83,7 +83,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
         <div class="flex items-center gap-2" style="width:240px;background:#fff;border:1px solid #e4e4e7;border-radius:8px;padding:6px 10px">
           <i class="ki-filled ki-magnifier" style="font-size:14px;color:#a1a1aa"></i>
           <input [ngModel]="fileFilter()" (ngModelChange)="onFilter($event)" placeholder="Filter files in this folder…"
-                 class="grow bg-transparent outline-none text-[13px]" />
+                 data-testid="file-filter" class="grow bg-transparent outline-none text-[13px]" />
         </div>
       </div>
 
@@ -97,7 +97,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
             <span style="font-weight:600;color:#27272a">{{ alias() }}</span>
           </button>
           @for (row of treeRows(); track row.path) {
-            <button class="ar-tree-row" [class.sel]="selectedFolder() === row.path" (click)="onTreeClick(row)"
+            <button class="ar-tree-row" data-testid="tree-node" [class.sel]="selectedFolder() === row.path" (click)="onTreeClick(row)"
                     style="display:flex;align-items:center;gap:5px;width:100%;font-size:13px"
                     [style.padding-left.px]="8 + row.depth * 18" [style.padding-top.px]="6" [style.padding-bottom.px]="6" [style.padding-right.px]="8">
               <i class="ki-filled ki-down" style="font-size:11px;color:#a1a1aa;transition:transform .12s"
@@ -120,7 +120,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
               </div>
             } @else {
               @for (f of shownFiles(); track f.relativePath) {
-                <div class="ar-file-row" (click)="toggleCollect(f)"
+                <div class="ar-file-row" data-testid="file-row" (click)="toggleCollect(f)"
                      style="display:grid;grid-template-columns:34px 2fr 1.2fr .7fr .7fr .9fr;align-items:center;font-size:13px"
                      [style.height.px]="46" [style.background]="collected().has(f.relativePath) ? '#f7f9ff' : ''">
                   <div style="display:flex;justify-content:center">
@@ -128,7 +128,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
                   </div>
                   <div class="flex items-center gap-2.5" style="min-width:0;padding-right:8px">
                     <i class="ki-outline ki-document" style="color:#a1a1aa;font-size:16px"></i>
-                    <span style="color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+                    <span data-testid="file-name" style="color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <arius-state-ring [state]="f.state" [size]="19" />

@@ -34,7 +34,7 @@ const STATUS: Record<string, { label: string; color: string; bg: string; icon: s
       </div>
       @if (jobs(); as list) {
         @for (job of list; track job.id) {
-          <div style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr 1.5fr;align-items:center;padding:12px 20px;border-top:1px solid #f6f6f7"
+          <div data-testid="job-row" style="display:grid;grid-template-columns:2.2fr 1.5fr 1fr 1.5fr;align-items:center;padding:12px 20px;border-top:1px solid #f6f6f7"
                [style.opacity]="job.status === 'completed' ? .66 : 1">
             <div class="flex items-center gap-3">
               <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center"
@@ -50,7 +50,7 @@ const STATUS: Record<string, { label: string; color: string; bg: string; icon: s
               <i class="ki-filled {{ job.trigger === 'schedule' ? 'ki-calendar' : 'ki-flash' }}" style="color:#a1a1aa;margin-right:5px"></i>{{ job.trigger }}
             </div>
             <div>
-              <span class="ar-pill" [style.color]="meta(job.status).color" [style.background]="meta(job.status).bg">
+              <span class="ar-pill" data-testid="job-status" [style.color]="meta(job.status).color" [style.background]="meta(job.status).bg">
                 <i class="ki-filled {{ meta(job.status).icon }}" style="font-size:12px"></i>{{ meta(job.status).label }}
               </span>
             </div>
