@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using Arius.Core.Shared.Compression;
 using Arius.Core.Tests.Shared.Encryption.Fakes;
 
 namespace Arius.Core.Tests.Shared.Encryption;
@@ -279,6 +280,35 @@ public class AesGcmEncryptionTests
         await using var gzip     = new GZipStream(dec, CompressionMode.Decompress);
         var ms = new MemoryStream();
         await gzip.CopyToAsync(ms);
+
+        Encoding.UTF8.GetString(ms.ToArray()).ShouldBe(expectedPlaintext);
+    }
+
+    // ── GCM + zstd golden file decryption (current production format) ────────────
+
+    [Test]
+    public async Task GcmZstdGoldenFile_Decrypt_PlaintextMatchesExpected()
+    {
+        // Golden file: GCM-encrypted zstd of "Hello, zstd golden file!" with passphrase "wouter",
+        // produced by the current write path (ZstdCompressionService + PassphraseEncryptionService).
+        // Guards the production read path on a committed real zstd blob; mirrors the recover-chunk.py
+        // check in release.yml.
+        const string zstdGoldenFile =
+            "b886c2f18e3a1be5bfef76821ca1751126c6534ac267dd539cbbabe09801682f";
+        const string expectedPlaintext = "Hello, zstd golden file!";
+        const string goldenPassphrase  = "wouter";
+
+        var goldenDir = Path.Combine(AppContext.BaseDirectory, "Encryption", "GoldenFiles");
+        var path      = Path.Combine(goldenDir, zstdGoldenFile);
+        File.Exists(path).ShouldBeTrue($"GCM+zstd golden file not found: {path}");
+
+        var svc = new PassphraseEncryptionService(goldenPassphrase);
+
+        await using var fs   = File.OpenRead(path);
+        await using var dec  = svc.WrapForDecryption(fs);                              // auto-detects ArGCM1 → GCM
+        await using var zstd = new ZstdCompressionService().WrapForDecompression(dec); // auto-detects zstd frame
+        var ms = new MemoryStream();
+        await zstd.CopyToAsync(ms);
 
         Encoding.UTF8.GetString(ms.ToArray()).ShouldBe(expectedPlaintext);
     }
