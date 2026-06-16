@@ -93,8 +93,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         var rootPrefix = ChunkIndexRouter.GetRootPrefix(h1);
 
         // Run 1 (machine A): two entries fit one root shard.
-        var snapshotA = new SnapshotService(raw, encryption, Account, containerName);
-        using (var run1 = new ChunkIndexService(raw, encryption, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        var snapshotA = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
+        using (var run1 = new ChunkIndexService(raw, encryption, TestCompression.Instance, snapshotA, Account, containerName, maxShardEntryCount: 3))
         {
             foreach (var entry in entriesRun1)
                 run1.AddEntry(entry);
@@ -102,7 +102,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         }
 
         // Run 2 (machine A): three more entries push the shard past the threshold → split.
-        using (var run2 = new ChunkIndexService(raw, encryption, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        using (var run2 = new ChunkIndexService(raw, encryption, TestCompression.Instance, snapshotA, Account, containerName, maxShardEntryCount: 3))
         {
             foreach (var entry in entriesRun2)
                 run2.AddEntry(entry);
@@ -119,8 +119,8 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         // Machine B (cold cache) resolves every entry — including run 1's — through the split layout.
         var counterB  = new CountingBlobContainerService(raw);
-        var snapshotB = new SnapshotService(raw, encryption, Account, containerName);
-        using var machineB = new ChunkIndexService(counterB, encryption, snapshotB, Account, $"{containerName}-b");
+        var snapshotB = new SnapshotService(raw, encryption, TestCompression.Instance, Account, containerName);
+        using var machineB = new ChunkIndexService(counterB, encryption, TestCompression.Instance, snapshotB, Account, $"{containerName}-b");
         var allEntries = entriesRun1.Concat(entriesRun2).ToArray();
         var resolved = await machineB.LookupAsync(allEntries.Select(entry => entry.ContentHash));
         foreach (var entry in allEntries)

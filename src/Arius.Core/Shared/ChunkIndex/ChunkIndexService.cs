@@ -280,7 +280,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 Shard shard;
                 try
                 {
-                    shard = ShardSerializer.Deserialize(stream, _encryption);
+                    shard = ShardSerializer.Deserialize(stream, _encryption, _compression);
                 }
                 catch (Exception ex) when (ex is InvalidDataException or FormatException or IOException or UnauthorizedAccessException)
                 {

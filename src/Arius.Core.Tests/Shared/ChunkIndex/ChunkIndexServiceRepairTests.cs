@@ -244,7 +244,7 @@ public class ChunkIndexServiceRepairTests
         foreach (var contentHash in contentHashes)
             SeedLargeChunk(blobs, contentHash);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2);
+        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 2);
 
         var result = await index.RepairAsync();
 
@@ -271,7 +271,7 @@ public class ChunkIndexServiceRepairTests
         blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa1")), [1], BlobTier.Cool);
         blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa2")), [2], BlobTier.Cool);
 
-        using var index = new ChunkIndexService(blobs, s_encryption, new FakeSnapshotService(), repositoryKey, repositoryKey);
+        using var index = new ChunkIndexService(blobs, s_encryption, TestCompression.Instance, new FakeSnapshotService(), repositoryKey, repositoryKey);
 
         var result = await index.RepairAsync();
 

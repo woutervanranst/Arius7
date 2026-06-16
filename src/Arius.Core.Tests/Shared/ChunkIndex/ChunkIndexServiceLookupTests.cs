@@ -436,8 +436,8 @@ public class ChunkIndexServiceLookupTests
         var contentHash = ContentHash.Parse("aa3".PadRight(64, '9'));
         var parentEntry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
         var childEntry = new ShardEntry(contentHash, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
-        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")), await ShardSerializer.SerializeAsync(CreateShard(parentEntry), s_encryption), BlobTier.Cool);
-        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(childEntry), s_encryption), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")), await ShardSerializer.SerializeAsync(CreateShard(parentEntry), s_encryption, TestCompression.Instance), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(childEntry), s_encryption, TestCompression.Instance), BlobTier.Cool);
         using var index = CreateIndex(blobs, "parent-wins");
 
         var actual = await index.LookupAsync(contentHash);
@@ -452,7 +452,7 @@ public class ChunkIndexServiceLookupTests
         var blobs = new FakeInMemoryBlobContainerService();
         var contentHash = ContentHash.Parse("aa3".PadRight(64, '9'));
         var entry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
-        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(entry), s_encryption, TestCompression.Instance), BlobTier.Cool);
         using var index = CreateIndex(blobs, "descend-leaf");
 
         (await index.LookupAsync(contentHash)).ShouldBe(entry);
@@ -474,7 +474,7 @@ public class ChunkIndexServiceLookupTests
         // the listing alone proves the miss.
         var blobs = new FakeInMemoryBlobContainerService();
         var siblingEntry = new ShardEntry(ContentHash.Parse("aa0".PadRight(64, '9')), FakeChunkHash('1'), 10, 5, BlobTier.Cool);
-        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa0")), await ShardSerializer.SerializeAsync(CreateShard(siblingEntry), s_encryption), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa0")), await ShardSerializer.SerializeAsync(CreateShard(siblingEntry), s_encryption, TestCompression.Instance), BlobTier.Cool);
         var missingHash = ContentHash.Parse("aa5".PadRight(64, '9'));
         using var index = CreateIndex(blobs, "empty-child-range");
 
