@@ -211,7 +211,7 @@ public class ChunkIndexServiceLookupTests
         var staleEntry    = new ShardEntry(contentHash, FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var cacheRoot     = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store         = new ChunkIndexLocalStore(cacheRoot);
-        store.UpdatePrefix(prefix, "remote-1", "snapshot-old", [staleEntry]);
+        store.IngestCoverage("snapshot-old", [(prefix, "remote-1", new[] { staleEntry })], [], []);
 
         using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, repositoryKey, repositoryKey);
 
