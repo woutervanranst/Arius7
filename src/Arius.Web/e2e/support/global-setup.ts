@@ -1,4 +1,5 @@
 import { request } from '@playwright/test';
+import { SCRATCH_PREFIX } from './scratch';
 
 const API = 'http://localhost:5080';
 
@@ -19,7 +20,7 @@ export default async function globalSetup() {
   // Purge leftover scratch repos from previous (possibly crashed) @write runs.
   const existing = await (await ctx.get(`${API}/api/repos`)).json();
   if (Array.isArray(existing)) {
-    for (const r of existing.filter((x: { container: string }) => x.container.startsWith('e2e-arius-')))
+    for (const r of existing.filter((x: { container: string }) => x.container.startsWith(SCRATCH_PREFIX)))
       await ctx.delete(`${API}/api/repos/${r.id}`);
   }
 

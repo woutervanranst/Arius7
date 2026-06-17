@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from '../support/fixtures';
+import { scratchContainer } from '../support/scratch';
 
 // Destructive: archives a small folder to a dedicated container, then restores it twice to contrast
 // the two restore-destination behaviours.
@@ -14,7 +15,7 @@ test('restore writes files to an empty destination, and skips them when already 
   fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: 'e2e-arius-roundtrip', alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+    data: { accountId: repo.accountId, container: scratchContainer('roundtrip'), alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
   })).json();
 
   try {

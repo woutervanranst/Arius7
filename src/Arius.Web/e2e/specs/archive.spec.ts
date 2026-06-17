@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect } from '../support/fixtures';
+import { scratchContainer } from '../support/scratch';
 
 test.describe('archive drawer', () => {
   test('idle form: four tier segments + mutually-exclusive toggles', async ({ page, repo }) => {
@@ -31,7 +32,7 @@ test.describe('archive drawer', () => {
     fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
     const created = await (await request.post('/api/repos', {
-      data: { accountId: repo.accountId, container: 'e2e-arius-write', alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+      data: { accountId: repo.accountId, container: scratchContainer('write'), alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
     })).json();
 
     try {
