@@ -3,11 +3,6 @@ using Arius.Core.Shared.Storage;
 namespace Arius.Core.Shared.ChunkIndex;
 
 /// <summary>
-/// Distinct-chunk count and stored size for one storage tier (<see cref="BlobTier"/>).
-/// </summary>
-public sealed record ChunkTierStatistic(BlobTier Tier, long UniqueChunks, long StoredSize);
-
-/// <summary>
 /// Contract for resolving and publishing repository chunk-index entries. Feature handlers depend on this interface
 /// so the concrete <see cref="ChunkIndexService"/> implementation can stay internal to Arius.Core.
 /// </summary>
@@ -21,7 +16,7 @@ public interface IChunkIndexService : IDisposable
     /// <summary>
     /// Resolves the chunk-index entry for a single content hash.
     /// </summary>
-    internal Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default);
+    internal Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default); // TODO this can be deprecated?
 
     /// <summary>
     /// Marks loaded prefixes already validated against the current snapshot as valid for the newly published snapshot.
@@ -61,3 +56,8 @@ public interface IChunkIndexService : IDisposable
     /// </summary>
     internal IReadOnlyList<ChunkTierStatistic> GetStatistics();
 }
+
+/// <summary>
+/// Distinct-chunk count and stored size for one storage tier (<see cref="BlobTier"/>).
+/// </summary>
+public sealed record ChunkTierStatistic(BlobTier Tier, long UniqueChunks, long StoredSize);
