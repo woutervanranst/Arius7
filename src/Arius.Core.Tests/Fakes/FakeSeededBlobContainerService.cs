@@ -38,13 +38,14 @@ internal sealed class FakeSeededBlobContainerService : IBlobContainerService
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BlobMetadata { Exists = _blobs.ContainsKey(blobName) });
 
-    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (includeMetadata)
             throw new NotSupportedException("FakeSeededBlobContainerService does not model metadata-aware listing.");
 
+        var rawPrefix = prefixKind == BlobListPrefixKind.BlobNamePrefix ? prefix.ToString() : null;
         foreach (var name in _blobs.Keys
-                     .Where(name => name.StartsWith(prefix))
+                     .Where(name => rawPrefix is null ? name.StartsWith(prefix) : name.ToString().StartsWith(rawPrefix, StringComparison.Ordinal))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();

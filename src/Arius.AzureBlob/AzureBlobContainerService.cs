@@ -182,13 +182,21 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata,
+        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix,
+        bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var blobPrefix = prefixKind switch
+        {
+            BlobListPrefixKind.DirectoryPrefix => prefix.ToBlobPrefix(),
+            BlobListPrefixKind.BlobNamePrefix  => prefix.ToString(),
+            _                                  => throw new ArgumentOutOfRangeException(nameof(prefixKind), prefixKind, null)
+        };
+
         await foreach (var item in _container.GetBlobsAsync(
                            traits: includeMetadata ? BlobTraits.Metadata : BlobTraits.None,
                            states: BlobStates.None,
-                           prefix: prefix.ToBlobPrefix(),
+                           prefix: blobPrefix,
                            cancellationToken: cancellationToken))
         {
             yield return new BlobListItem

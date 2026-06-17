@@ -95,6 +95,22 @@ public sealed record BlobListItem
 }
 
 /// <summary>
+/// Defines how a blob listing prefix is interpreted.
+/// </summary>
+public enum BlobListPrefixKind
+{
+    /// <summary>
+    /// Treats the prefix as a directory-like path. Non-root paths list blobs below <c>prefix/</c>.
+    /// </summary>
+    DirectoryPrefix,
+
+    /// <summary>
+    /// Treats the prefix as a raw blob-name prefix without adding a trailing separator.
+    /// </summary>
+    BlobNamePrefix
+}
+
+/// <summary>
 /// Abstracts all blob storage I/O. Arius.Core depends on this interface only —
 /// no Azure-specific types cross this boundary.
 /// </summary>
@@ -177,13 +193,14 @@ public interface IBlobContainerService
     // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Lists all blobs that start with <paramref name="prefix"/>.
+    /// Lists blobs matching <paramref name="prefix"/> according to <paramref name="prefixKind"/>.
     /// Metadata is only populated when <paramref name="includeMetadata"/> is true.
     /// </summary>
     IAsyncEnumerable<BlobListItem> ListAsync(
-        RelativePath      prefix,
-        bool              includeMetadata,
-        CancellationToken cancellationToken = default);
+        RelativePath       prefix,
+        BlobListPrefixKind prefixKind        = BlobListPrefixKind.DirectoryPrefix,
+        bool               includeMetadata   = false,
+        CancellationToken  cancellationToken = default);
 
     // ── Metadata update ───────────────────────────────────────────────────────
 

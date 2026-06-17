@@ -210,9 +210,9 @@ public class ShardTests
     }
 
     [Test]
-    public void Shard_PrefixOf_UsesChunkIndexShardPrefixLength()
+    public void ChunkIndexRouter_GetRootPrefix_UsesMinShardPrefixLength()
     {
-        Shard.PrefixOf(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
+        ChunkIndexRouter.GetRootPrefix(ContentHash.Parse("aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"))
             .ShouldBe(PathSegment.Parse("aa"));
     }
 

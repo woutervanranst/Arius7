@@ -64,6 +64,69 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         counterB.ChunkIndexTryDownloads.ShouldBe(2); // one download per touched prefix, not per hash
         counterB.ChunkIndexUploads.ShouldBe(0);
+        counterB.ChunkIndexLists.ShouldBe(1);        // one full chunk-index listing for the run, reused across roots
+    }
+
+    // ── Shard split: a later run splits the shard; entries from earlier runs stay resolvable ──────────────────
+
+    [Test]
+    public async Task SplitRoundtrip_SecondMachineResolvesEntriesFromEarlierRunsThroughSplitLayout()
+    {
+        // Proves the dynamic layout against REAL Azure semantics: raw name-prefix listing (no
+        // trailing-slash segment alignment), child uploads, parent delete, and the parent-wins walk
+        // on a cold machine. The first run's entries play the role of chunks only referenced by
+        // older snapshots (e.g. files since deleted locally) — a later split must keep them reachable.
+        var (container, raw) = await azurite.CreateTestServiceAsync();
+        var containerName = container.Name;
+
+        var h1 = FakeContentHash('4');
+        var h2 = SamePrefix(h1, 'a');
+        var entriesRun1 = new[]
+        {
+            new ShardEntry(h1, FakeChunkHash('a'), 1024, 512, BlobTier.Cool),
+            new ShardEntry(h2, FakeChunkHash('b'), 2048, 700, BlobTier.Cool),
+        };
+        var entriesRun2 = new[] { 'c', 'd', 'e' }
+            .Select(fill => new ShardEntry(SamePrefix(h1, fill), FakeChunkHash(fill), 100, 50, BlobTier.Cool))
+            .ToArray();
+        var rootPrefix = ChunkIndexRouter.GetRootPrefix(h1);
+
+        // Run 1 (machine A): two entries fit one root shard.
+        var snapshotA = new SnapshotService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, Account, containerName);
+        using (var run1 = new ChunkIndexService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        {
+            foreach (var entry in entriesRun1)
+                run1.AddEntry(entry);
+            await run1.FlushAsync();
+        }
+
+        // Run 2 (machine A): three more entries push the shard past the threshold → split.
+        using (var run2 = new ChunkIndexService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotA, Account, containerName, maxShardEntryCount: 3))
+        {
+            foreach (var entry in entriesRun2)
+                run2.AddEntry(entry);
+            await run2.FlushAsync();
+        }
+
+        // The parent shard is gone; only deeper (non-empty) leaves remain in the subtree.
+        var subtree = new List<string>();
+        await foreach (var item in raw.ListAsync(BlobPaths.ChunkIndexPrefix / rootPrefix, BlobListPrefixKind.BlobNamePrefix))
+            subtree.Add(item.Name.Name.ToString());
+        subtree.ShouldNotContain(rootPrefix.ToString());
+        subtree.ShouldNotBeEmpty();
+        subtree.ShouldAllBe(name => name.Length > rootPrefix.ToString().Length);
+
+        // Machine B (cold cache) resolves every entry — including run 1's — through the split layout.
+        var counterB  = new CountingBlobContainerService(raw);
+        var snapshotB = new SnapshotService(raw, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, Account, containerName);
+        using var machineB = new ChunkIndexService(counterB, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance, snapshotB, Account, $"{containerName}-b");
+        var allEntries = entriesRun1.Concat(entriesRun2).ToArray();
+        var resolved = await machineB.LookupAsync(allEntries.Select(entry => entry.ContentHash));
+        foreach (var entry in allEntries)
+            resolved[entry.ContentHash].ShouldBe(entry);
+
+        counterB.ChunkIndexLists.ShouldBe(1); // the whole split subtree resolved from one full chunk-index listing
+        counterB.ChunkIndexUploads.ShouldBe(0);
     }
 
     // ── Second run on the same machine: warm local cache → no chunk-index downloads ───────────────────────────
@@ -98,5 +161,5 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
     /// <summary>A content hash sharing <paramref name="hash"/>'s shard prefix but filled with <paramref name="fill"/>.</summary>
     private static ContentHash SamePrefix(ContentHash hash, char fill)
-        => ContentHash.Parse($"{hash.Prefix(ChunkIndexService.ShardPrefixLength)}{new string(fill, 64 - ChunkIndexService.ShardPrefixLength)}");
+        => ContentHash.Parse($"{hash.Prefix(ChunkIndexService.MinShardPrefixLength)}{new string(fill, 64 - ChunkIndexService.MinShardPrefixLength)}");
 }

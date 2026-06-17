@@ -20,10 +20,21 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     private readonly ConcurrentQueue<RelativePath> _requestedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _deletedBlobNames = new();
     private readonly ConcurrentQueue<RelativePath> _uploadedBlobNames = new();
+    private readonly ConcurrentQueue<string> _listedNamePrefixes = new();
 
     public ICollection<RelativePath> RequestedBlobNames => new RecordingCollection(_requestedBlobNames);
     public ICollection<RelativePath> DeletedBlobNames => new RecordingCollection(_deletedBlobNames);
     public ICollection<RelativePath> UploadedBlobNames => new RecordingCollection(_uploadedBlobNames);
+
+    /// <summary>Listing requests, recorded as the raw blob-name prefix used for matching (separate from <see cref="RequestedBlobNames"/> so download-count assertions stay meaningful).</summary>
+    public IReadOnlyCollection<string> ListedNamePrefixes => _listedNamePrefixes.ToArray();
+
+    public void ClearListedNamePrefixes()
+    {
+        while (_listedNamePrefixes.TryDequeue(out _))
+        {
+        }
+    }
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -100,13 +111,21 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        bool includeMetadata,
+        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix,
+        bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        _requestedBlobNames.Enqueue(prefix);
+        var rawPrefix = prefixKind switch
+        {
+            BlobListPrefixKind.DirectoryPrefix => prefix == RelativePath.Root ? string.Empty : $"{prefix}/",
+            BlobListPrefixKind.BlobNamePrefix => prefix.ToString(),
+            _ => throw new ArgumentOutOfRangeException(nameof(prefixKind), prefixKind, null)
+        };
+
+        _listedNamePrefixes.Enqueue(rawPrefix);
 
         foreach (var blobName in _blobs.Keys
-                     .Where(name => name.StartsWith(prefix))
+                     .Where(name => name.ToString().StartsWith(rawPrefix, StringComparison.Ordinal))
                      .OrderBy(name => name.ToString(), StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();

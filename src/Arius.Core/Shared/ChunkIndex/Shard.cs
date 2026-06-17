@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Shared.ChunkIndex;
@@ -16,6 +17,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// it is a hint — a lifecycle policy or rehydration may change the actual tier out of our control.
 /// </summary>
 [SharedWithinAssembly]
+[DebuggerDisplay("{ContentHash} {ChunkHash} {OriginalSize} {ChunkSize} {StorageTierHint}")]
 internal sealed record ShardEntry(ContentHash ContentHash, ChunkHash ChunkHash, long OriginalSize, long ChunkSize, BlobTier StorageTierHint)
 {
     public bool IsLargeChunk => ChunkHash.Parse(ContentHash) == ChunkHash;
@@ -145,11 +147,4 @@ internal sealed class Shard
 
         return shard;
     }
-
-    // ── Prefix calculation ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the configured shard prefix for a content-hash.
-    /// </summary>
-    public static PathSegment PrefixOf(ContentHash contentHash) => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.ShardPrefixLength));
 }
