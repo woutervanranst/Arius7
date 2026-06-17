@@ -258,19 +258,12 @@ lock, all results of one validation run are applied in a single batched
 transaction (the resolved prefixes are pairwise non-nested by the parent-wins
 walk, so their coverage claims cannot clobber one another).
 
-**`MaxShardEntryCount` (= 1024).** The split threshold trades incremental write
-cost against listing/download fan-out. A shard entry is ~44 bytes compressed
-(zstd-19; dominated by the 32-byte hash), so a 1024-entry shard is ~11 KB. With
-256 fixed two-hex roots and recursive 16-way splitting, ~1.3 M chunks → ~4096 leaf
-shards, which still lists in a single 5000-blob page; the layout only spills to a
-second page past ~4.2 M chunks (and degradation is gradual — one extra list
-round-trip per additional ~5000 shards, paid once per run). 1024 is chosen because
-flush rewrites the *whole* touched shard (`overwrite: true`, no delta), so
-incremental write amplification scales with shard size and dominates steady state
-(a daily run touching ~200 roots rewrites ~2.2 MB at 1024 vs ~34 MB at 4096, ~15×);
-the cold-dedup GET count (the only thing a larger threshold improves) is instead
-addressed by the parallel, single-listing download path above. Total cold-dedup
-bytes are ~constant in the threshold.
+**`MaxShardEntryCount` (= 1024).**  Motivation:
+- Incremental flush rewrites the whole touched shard 
+- So write-amplification scales with shard size and dominates steady state:
+a daily archive touching ~200 roots writes ~2.2 MB at T=1024 vs ~34 MB at T=4096 (~15×).
+Conclusion: optimize the common incremental path, not the once-per-machine cold path. 
+Design point ~1.3M chunks → ~4096 shards → one 5000-blob list page (≈900 shards of headroom). Beyond 1.3M the 'failure mode' is gradual where we will need to get an additional page from the list operation.
 
 ---
 
