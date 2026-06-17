@@ -33,20 +33,17 @@ internal sealed class ChunkIndexService : IChunkIndexService
     private readonly int                                              _maxShardEntryCount;
     private          int                                              _acceptingEntries = 1;
 
-    // One run-scoped listing of the whole chunk-index/ subtree (shard name -> ETag), grouped by root.
-    // Under the single-writer assumption the remote layout is stable for a run, so one listing serves
-    // every root/leaf; per-root re-listing on each uncovered lookup is pure waste. Reset by
-    // InvalidateCaches (epoch mismatch) and once on a download 404-race. The generation counter makes
-    // a 404-race reset idempotent across the parallel lookup/flush workers (no re-list storm).
-    // Run-scoped listing of the whole chunk-index/ subtree as shard name -> ETag, grouped by 2-hex root
-    // (a FrozenDictionary: built once, read many times by the parallel workers, never mutated, O(1) per root).
-    // Under the single-writer assumption the remote layout is stable for a run, so one listing serves every
-    // root/leaf; per-root re-listing per uncovered lookup is pure waste. Replaced when faulted (so a transient
-    // list error doesn't poison the run), reset by InvalidateCaches (epoch mismatch) and once on a 404-race;
-    // the generation counter makes a 404-race reset idempotent across workers (no re-list storm).
-    private readonly Lock                                                          _shardListingGate = new();
+    /* Run-scoped listing of the whole chunk-index/ subtree (shard name -> ETag), grouped by root.
+     *
+     * Under the single-writer assumption the remote layout is stable for a run, so one listing serves every root/leaf; per-root re-listing on each uncovered lookup is pure waste.
+     * Reset by InvalidateCaches (epoch mismatch) and once on a download 404-race.
+     * The generation counter makes a 404-race reset idempotent across the parallel lookup/flush workers (no re-list storm).
+     * Run-scoped listing of the whole chunk-index/ subtree as shard name -> ETag, grouped by 2-hex root.
+     *
+     */
+    private readonly Lock                                                               _shardListingGate = new();
     private          Task<FrozenDictionary<string, FrozenDictionary<string, string?>>>? _shardListing;
-    private          int                                                           _shardListingGeneration;
+    private          int                                                                _shardListingGeneration;
 
     // -- Construction --------------------------------------------------------
 
