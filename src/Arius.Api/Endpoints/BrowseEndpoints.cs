@@ -24,7 +24,9 @@ internal static class BrowseEndpoints
             var provider = await registry.GetReadProviderAsync(id, ct);
             var mediator = provider.GetRequiredService<IMediator>();
             var stats = await mediator.Send(new StatsQuery(version), ct);
-            return new StatsDto(stats.Files, stats.OriginalSize, stats.StoredSize, stats.UniqueChunks);
+            return new StatsDto(
+                stats.Files, stats.OriginalSize, stats.StoredSize, stats.UniqueChunks,
+                stats.StoredByTier.Select(t => new TierStatDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize)).ToList());
         });
     }
 }

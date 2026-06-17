@@ -41,6 +41,46 @@ public class StatsQueryHandlerTests
         stats.OriginalSize.ShouldBe(600);
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(90);
+
+        // All chunks are Cool → a single tier row carrying the full distinct-chunk aggregate.
+        stats.StoredByTier.Count.ShouldBe(1);
+        stats.StoredByTier[0].Tier.ShouldBe(BlobTier.Cool);
+        stats.StoredByTier[0].UniqueChunks.ShouldBe(2);
+        stats.StoredByTier[0].StoredSize.ShouldBe(90);
+    }
+
+    [Test]
+    public async Task Handle_SplitsStoredSizeByStorageTier()
+    {
+        var blobs = new FakeSeededBlobContainerService();
+        var snapshot = new SnapshotManifest
+        {
+            Timestamp    = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
+            RootHash     = FileTreeHashOf("root"),
+            FileCount    = 2,
+            TotalSize    = 500,
+            AriusVersion = "test"
+        };
+        blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-stats-tier", "ctr-stats-tier", IEncryptionService.PlaintextInstance);
+
+        // Two chunks in distinct tiers: chunk 'a' (40) Cool, chunk 'b' (60) Archive.
+        fixture.Index.AddEntry(new ShardEntry(ContentHashOf("a"), FakeChunkHash('a'), OriginalSize: 100, ChunkSize: 40, BlobTier.Cool));
+        fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('b'), OriginalSize: 400, ChunkSize: 60, BlobTier.Archive));
+
+        var handler = new StatsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatsQueryHandler>.Instance);
+        var stats = await handler.Handle(new StatsQueryType(), CancellationToken.None);
+
+        stats.UniqueChunks.ShouldBe(2);
+        stats.StoredSize.ShouldBe(100);
+
+        // Ordered by serialized tier (Cool=2 before Archive=4).
+        stats.StoredByTier.Count.ShouldBe(2);
+        stats.StoredByTier[0].Tier.ShouldBe(BlobTier.Cool);
+        stats.StoredByTier[0].StoredSize.ShouldBe(40);
+        stats.StoredByTier[1].Tier.ShouldBe(BlobTier.Archive);
+        stats.StoredByTier[1].StoredSize.ShouldBe(60);
     }
 
     [Test]
