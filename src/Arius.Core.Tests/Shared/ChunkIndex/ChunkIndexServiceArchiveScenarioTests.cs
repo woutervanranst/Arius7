@@ -31,7 +31,7 @@ public class ChunkIndexServiceArchiveScenarioTests
          │
          ├─ yes ───────────────────────────────────────►  P1   return immediately        — 0 remote calls
          │
-         └─ no → ListAsync(chunk-index, <root>)  (one subtree listing per root)
+         └─ no → consult the run-scoped full chunk-index/ listing (fetched once, reused by every root)
                    │  walk: shallowest existing shard on the hash's prefix path wins (parent wins)
                    │
                    ├─ no shard on the path ─────────────►  P2   AddEmptyPrefix            — list only, no download
@@ -48,7 +48,7 @@ public class ChunkIndexServiceArchiveScenarioTests
        ┌──────────────────────┬───────────────────────────────┬─────────────────────────┬──────────────────────────────────┐
        │       Scenario       │     Arrange (start state)     │       Act (paths)       │         Assert (proves)          │
        ├──────────────────────┼───────────────────────────────┼─────────────────────────┼──────────────────────────────────┤
-       │ 1 new repo           │ empty remote + empty cache,   │ P2, P1, P2 → flush →    │ 2 lists, 0 downloads, 2 uploads, │
+       │ 1 new repo           │ empty remote + empty cache,   │ P2, P1, P2 → flush →    │ 1 list, 0 downloads, 2 uploads,  │
        │                      │ snapshot <none>               │ promote                 │ re-probe 0 calls = in sync       │
        ├──────────────────────┼───────────────────────────────┼─────────────────────────┼──────────────────────────────────┤
        │ 2 2nd run same       │ warm remote + warm cache @    │ all P1, h4 new → flush  │ 0 downloads, 1 upload (merged    │
@@ -97,16 +97,16 @@ public class ChunkIndexServiceArchiveScenarioTests
         var prefixBb = ChunkIndexRouter.GetRootPrefix(h3);
 
         // Act — one complete first archive run: look up each hash, record the new entries, flush, then promote.
-        //       Lookup(h1) → P2 (list "aa" subtree → empty) → AddEmptyPrefix("aa")
+        //       Lookup(h1) → P2 (full chunk-index listing → "aa" empty) → empty-range coverage for "aa"
         //       Lookup(h2) → P1 ("aa" already empty for "<none>" → no remote call)
-        //       Lookup(h3) → P2 (list "bb" subtree → empty) → AddEmptyPrefix("bb")
+        //       Lookup(h3) → P2 ("bb" empty in the cached listing, no new list) → empty-range coverage for "bb"
         //       FlushAsync → one upload per dirty prefix (targets resolved from the empty-coverage
         //       claims, zero extra calls); PromoteToSnapshotVersionAsync → "<none>" becomes "s1".
         using (var run1 = NewRun(blobs, account, new FakeSnapshotService()))
         {
-            (await run1.LookupAsync(h1)).ShouldBeNull(); // P2: subtree listing empty → AddEmptyPrefix("aa")
+            (await run1.LookupAsync(h1)).ShouldBeNull(); // P2: listing shows "aa" empty → empty-range claim
             (await run1.LookupAsync(h2)).ShouldBeNull(); // P1: "aa" already empty for this snapshot
-            (await run1.LookupAsync(h3)).ShouldBeNull(); // P2: subtree listing empty → AddEmptyPrefix("bb")
+            (await run1.LookupAsync(h3)).ShouldBeNull(); // P2: "bb" empty in the cached listing → empty-range claim
 
             run1.AddEntry(e1);
             run1.AddEntry(e2);
@@ -117,10 +117,10 @@ public class ChunkIndexServiceArchiveScenarioTests
         }
 
         // Assert — exactly the remote traffic we expect, plus proof the cache is now in sync at "s1".
-        //   2 lists     = one subtree listing per touched root (the 2nd "aa" lookup was a cache hit).
+        //   1 list      = one full chunk-index listing for the whole run, reused across roots "aa" and "bb".
         //   0 downloads = misses are decided by the listing, never by a shard download.
         //   2 uploads   = one shard per touched prefix, each carrying its entries.
-        blobs.ListedNamePrefixes.Count.ShouldBe(2);
+        blobs.ListedNamePrefixes.Count.ShouldBe(1);
         ChunkIndexDownloads(blobs).ShouldBe(0); // empty ranges are decided by the listing
         ChunkIndexUploads(blobs).ShouldBe(2);   // one shard written per touched prefix
 
@@ -328,14 +328,14 @@ public class ChunkIndexServiceArchiveScenarioTests
         blobs.RequestedBlobNames.Clear(); // measure only machine B's next run
 
         // Act — machine B runs again at snapshot "s2" and looks up h1 (in prefix "aa"):
-        //       snapshot moved (s1 ≠ s2) → list "aa" subtree → LISTED ETag matches (A1 == A1) → P3a:
+        //       snapshot moved (s1 ≠ s2) → consult the full chunk-index listing → LISTED ETag matches (A1 == A1) → P3a:
         //       re-stamp "aa" as valid for "s2" and keep the cached rows (no download, no re-parse).
         using (var runB2 = NewRun(blobs, machineB, new FakeSnapshotService([Snapshot("s1"), Snapshot("s2")])))
         {
             blobs.ClearListedNamePrefixes();
             (await runB2.LookupAsync(first.H1)).ShouldBe(first.E1);
 
-            // Assert — the snapshot bump cost exactly ONE cheap subtree listing and ZERO downloads...
+            // Assert — the snapshot bump cost exactly ONE cheap full listing and ZERO downloads...
             blobs.ListedNamePrefixes.Count.ShouldBe(1);
             ChunkIndexDownloads(blobs).ShouldBe(0);
 

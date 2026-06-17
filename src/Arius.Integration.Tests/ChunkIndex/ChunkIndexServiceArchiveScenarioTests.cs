@@ -64,7 +64,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
 
         counterB.ChunkIndexTryDownloads.ShouldBe(2); // one download per touched prefix, not per hash
         counterB.ChunkIndexUploads.ShouldBe(0);
-        counterB.ChunkIndexLists.ShouldBe(2);        // one subtree listing per touched root
+        counterB.ChunkIndexLists.ShouldBe(1);        // one full chunk-index listing for the run, reused across roots
     }
 
     // ── Shard split: a later run splits the shard; entries from earlier runs stay resolvable ──────────────────
@@ -125,7 +125,7 @@ public class ChunkIndexServiceArchiveScenarioTests(AzuriteFixture azurite)
         foreach (var entry in allEntries)
             resolved[entry.ContentHash].ShouldBe(entry);
 
-        counterB.ChunkIndexLists.ShouldBe(1); // the whole subtree resolved from one root listing
+        counterB.ChunkIndexLists.ShouldBe(1); // the whole split subtree resolved from one full chunk-index listing
         counterB.ChunkIndexUploads.ShouldBe(0);
     }
 

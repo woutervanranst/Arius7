@@ -21,9 +21,9 @@ public class ChunkIndexServiceLookupTests
         var actual = await index.LookupAsync(contentHash);
 
         actual.ShouldBeNull();
-        // The miss is decided by one subtree listing; no shard download happens.
+        // The miss is decided by one full chunk-index listing; no shard download happens.
         blobs.RequestedBlobNames.ShouldBeEmpty();
-        blobs.ListedNamePrefixes.ShouldBe([$"{BlobPaths.ChunkIndexPrefix}/{ChunkIndexRouter.GetRootPrefix(contentHash)}"]);
+        blobs.ListedNamePrefixes.ShouldBe([$"{BlobPaths.ChunkIndexPrefix}/"]);
     }
 
     [Test]
@@ -217,7 +217,7 @@ public class ChunkIndexServiceLookupTests
 
         (await index.LookupAsync(contentHash)).ShouldBeNull();
         blobs.RequestedBlobNames.ShouldBeEmpty();
-        blobs.ListedNamePrefixes.ShouldBe([$"{BlobPaths.ChunkIndexPrefix}/{prefix}"]);
+        blobs.ListedNamePrefixes.ShouldBe([$"{BlobPaths.ChunkIndexPrefix}/"]);
         blobs.ClearListedNamePrefixes();
 
         (await index.LookupAsync(contentHash)).ShouldBeNull();

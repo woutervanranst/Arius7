@@ -118,7 +118,14 @@ which shard blobs exist:
   entry counts (splitting and coarsening as needed) and deletes every other
   `chunk-index/` blob.
 
-The model is: 256 independently managed recursive subtrees, not one global recursive trie. Also not literally 256-way parallel at once: lookup uses 8 workers, flush/repair use 32 workers.
+The model is: 256 independently managed recursive subtrees, not one global recursive tree. It is recursively split within each 2-hex root, but discovery/gating/parallelism are anchored on the fixed 256 roots.
+
+Motivation for MaxShardEntryCount = 1024:
+- Incremental flush rewrites the whole touched shard 
+- So write-amplification scales with shard size and dominates steady state:
+a daily archive touching ~200 roots writes ~2.2 MB at T=1024 vs ~34 MB at T=4096 (~15×).
+Conclusion: optimize the common incremental path, not the once-per-machine cold path. 
+Design point ~1.3M chunks → ~4096 shards → one 5000-blob list page (≈900 shards of headroom). Beyond 1.3M the 'failure mode' is gradual where we will need to get an additional page from the list operation.
 
 Known limitation (pre-existing, unchanged by dynamic sharding): concurrent
 archives from two machines into the same repository can overwrite each other's
@@ -196,7 +203,10 @@ identity with the current remote blob identity for that prefix.
 **Key operations:**
 
 - `LookupAsync` — returns dirty rows immediately; otherwise validates the touched
-  prefix lazily and reads only requested hashes from local SQLite.
+  prefix lazily (against the run-scoped listing, see below) and reads only the
+  requested hashes from local SQLite. Shard downloads for one validation run
+  concurrently (bounded), and their results are applied to SQLite in a single
+  transaction.
 - `AddEntry` — records a newly uploaded chunk as a dirty row immediately after
   upload.
 - `FlushAsync` — reads dirty roots from SQLite, resolves the authoritative
@@ -227,6 +237,45 @@ mutable. Another machine can upload a newer `chunk-index/{prefix}` blob after
 this machine last validated a prefix. The local SQLite cache is therefore trusted
 only after per-prefix validation against the current latest snapshot identity and
 the current remote blob identity for that prefix.
+
+**Run-scoped shard listing.** Layout discovery (which shards exist, with their
+ETags) needs a blob listing. Because the service is rebuilt per command and we are
+the only writer at a given time (see the known limitation above), the remote
+layout is stable for the run — so the service lists the *entire* `chunk-index/`
+subtree **once** (Azure auto-pages at 5000 blobs/page) and reuses that listing for
+every root and leaf. Coverage *claims* were always cached in `loaded_prefixes`;
+caching the *listing* too removes the previous per-uncovered-leaf re-listing.
+
+- It is reset (forcing a fresh listing) by `InvalidateCaches` — so an epoch
+  mismatch re-lists before flush — and once, automatically, when a listed shard is
+  gone at download time (a racing split); the retry is bounded to a single re-list.
+- The destructive post-split delete scan in `SplitShardAsync` deliberately reads a
+  **fresh** per-root listing rather than the run-scoped cache.
+- **Load-bearing invariant:** nothing mutates remote `chunk-index/` blobs between
+  dedup (archive stage 3) and flush (stage 6b) except `FlushAsync` itself. This is
+  what makes reusing the run-start listing at flush correct for the sole writer; any
+  future mutation in that window must reset the listing.
+
+**In-process write model.** `AddEntry`/`AddEntries` (dirty rows) run concurrently
+with lookup-driven `UpdatePrefix`/empty-range writes on separate SQLite
+connections; they serialize at the WAL writer + Microsoft.Data.Sqlite busy-retry
+level. To keep the parallel shard-download fan-out from contending on the write
+lock, all results of one validation run are applied in a single batched
+transaction (the resolved prefixes are pairwise non-nested by the parent-wins
+walk, so their coverage claims cannot clobber one another).
+
+**`MaxShardEntryCount` (= 1024).** The split threshold trades incremental write
+cost against listing/download fan-out. A shard entry is ~44 bytes compressed
+(zstd-19; dominated by the 32-byte hash), so a 1024-entry shard is ~11 KB. With
+256 fixed two-hex roots and recursive 16-way splitting, ~1.3 M chunks → ~4096 leaf
+shards, which still lists in a single 5000-blob page; the layout only spills to a
+second page past ~4.2 M chunks (and degradation is gradual — one extra list
+round-trip per additional ~5000 shards, paid once per run). 1024 is chosen because
+flush rewrites the *whole* touched shard (`overwrite: true`, no delta), so
+incremental write amplification scales with shard size and dominates steady state;
+the cold-dedup GET count (the only thing a larger threshold improves) is instead
+addressed by the parallel, single-listing download path above. Total cold-dedup
+bytes are ~constant in the threshold.
 
 ---
 
