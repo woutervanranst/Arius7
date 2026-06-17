@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Arius.Core.Shared.Storage;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -330,6 +331,40 @@ internal sealed class ChunkIndexLocalStore
             var count = Convert.ToInt32(command.ExecuteScalar());
             _logger.LogDebug("[chunk-index-local] CountRangeEntries: prefix={Prefix} count={Count}", prefix, count);
             return count;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Aggregates distinct-chunk count and stored size per storage tier. Many content hashes can share
+    /// one chunk (tar-bundled small files), so the inner query collapses to one row per chunk hash
+    /// before grouping by tier — summing per content-hash would over-count shared tar chunks. A chunk
+    /// blob lives in exactly one tier, so the per-chunk tier hint is unambiguous.
+    /// </summary>
+    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT storage_tier_hint, COUNT(*) AS unique_chunks, COALESCE(SUM(chunk_size), 0) AS stored_size
+                FROM (SELECT chunk_hash, MAX(chunk_size) AS chunk_size, MAX(storage_tier_hint) AS storage_tier_hint
+                      FROM chunk_index_entries GROUP BY chunk_hash)
+                GROUP BY storage_tier_hint
+                ORDER BY storage_tier_hint;
+                """;
+            using var reader = command.ExecuteReader();
+            var stats = new List<ChunkTierStatistic>();
+            while (reader.Read())
+                stats.Add(new ChunkTierStatistic(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
+
+            _logger.LogDebug("[chunk-index-local] GetStats: tiers={TierCount} uniqueChunks={UniqueChunks} storedSize={StoredSize}",
+                stats.Count, stats.Sum(t => t.UniqueChunks), stats.Sum(t => t.StoredSize));
+            return stats;
         }
         catch (SqliteException ex)
         {

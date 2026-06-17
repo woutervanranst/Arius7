@@ -34,6 +34,12 @@ public interface ISnapshotService
     /// Returns <c>null</c> if no matching snapshot exists.
     /// </summary>
     Task<SnapshotManifest?> ResolveAsync(string? version = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the version identifier for a snapshot blob name — the timestamp filename, which is
+    /// exactly what <see cref="ResolveAsync"/> (and ListQueryOptions.Version) match against.
+    /// </summary>
+    string GetVersion(RelativePath blobName);
 }
 
 /// <summary>
@@ -223,6 +229,8 @@ internal sealed class SnapshotService : ISnapshotService
         await stream.CopyToAsync(ms, cancellationToken);
         return await SnapshotSerializer.DeserializeAsync(ms.ToArray(), _encryption, _compression, cancellationToken);
     }
+
+    public string GetVersion(RelativePath blobName) => GetSnapshotFileName(blobName).ToString();
 
     private static PathSegment GetSnapshotFileName(RelativePath blobName) =>
         blobName.Parent is { } parent && (parent == RelativePath.Root || parent == BlobPaths.SnapshotsPrefix)

@@ -582,6 +582,22 @@ internal sealed class ChunkIndexService : IChunkIndexService
             cancellationToken: cancellationToken);
     }
 
+    // -- Stats ---------------------------------------------------------------
+
+    /// <summary>
+    /// Aggregates distinct-chunk count and stored size per storage tier from the local cache only —
+    /// no blob reads (the cache is the local mirror of the index, populated by browsing/lookups and
+    /// pending archive entries). Deduping is by chunk hash, since tar-bundled content hashes share
+    /// one chunk.
+    /// </summary>
+    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        return _localStore.GetStatistics();
+    }
+
     // -- Cache ---------------------------------------------------------------
 
     /// <summary>

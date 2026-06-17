@@ -209,6 +209,12 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
 - Keep orchestration in `Features` and storage/caching/serialization mechanics in `Shared`.
 - Prefer injecting shared services into features instead of constructing them ad hoc inside handlers or helpers.
 
+### Hosts
+
+- `Arius.Cli` (CLI) and `Arius.Explorer` (WPF, Windows-only) drive `Arius.Core` directly via `IMediator`, building one provider per repository.
+- `Arius.Api` (`src/Arius.Api`, ASP.NET minimal API) relays `Arius.Core` over REST + SignalR for the web UI. It builds a per-repository `IServiceProvider` (`AddMediator()` + `AddArius(...)`) via `RepositoryProviderRegistry`, and owns a small app SQLite (storage accounts, repositories, jobs, schedules) separate from Core's chunk-index cache. Account keys/passphrases are encrypted at rest with ASP.NET Data Protection.
+- `Arius.Web` (`src/Arius.Web`) is the Angular + Metronic v9 (Tailwind/KTUI) frontend. It is a Node project and is **not** part of `Arius.slnx`; its `dist/` is served by `Arius.Api` (or built into its `wwwroot`) for deployment.
+
 ### Shared vs Features
 
 - `Features` should decide **when** to resolve a snapshot, walk a tree, look up chunk metadata, upload chunks, or restore files.

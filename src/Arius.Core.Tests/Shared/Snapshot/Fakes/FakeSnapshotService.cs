@@ -25,4 +25,6 @@ internal sealed class FakeSnapshotService : ISnapshotService
     }
 
     public Task<SnapshotManifest?> ResolveAsync(string? version = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    public string GetVersion(RelativePath blobName) => blobName.Name.ToString();
 }

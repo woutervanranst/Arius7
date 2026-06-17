@@ -1,0 +1,25 @@
+# Arius web management UI on Synology (or any Docker host).
+# One container serves the Angular SPA + the API; volumes hold app state and the repository
+# local-overlay folders. Each repository's `local_path` (set in Properties / the wizards) must point
+# at a path that exists INSIDE the container — i.e. one of the mounted folders below.
+services:
+  arius:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arius-web:latest
+    container_name: arius
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # App SQLite, Data-Protection keys, and Arius.Core's ~/.arius caches.
+      - /volume1/docker/arius/data:/data
+      # One mount per repository local-overlay folder (adjust to your shares).
+      - /volume1/photo:/repos/photos:rw
+      - /volume1/documents:/repos/documents:rw
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - HOME=/data
+      - Arius__AppDbPath=/data/arius-app.sqlite
+      - Arius__DataProtectionKeysPath=/data/keys

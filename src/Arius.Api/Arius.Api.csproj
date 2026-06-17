@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The Mediator source generator MUST run in this outermost assembly so it discovers
+         INotificationHandler<T> implementations in BOTH Arius.Core and Arius.Api. -->
+    <PackageReference Include="Mediator.SourceGenerator">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Mediator.Abstractions" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Cronos" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
+    <ProjectReference Include="..\Arius.AzureBlob\Arius.AzureBlob.csproj" />
+  </ItemGroup>
+
+</Project>

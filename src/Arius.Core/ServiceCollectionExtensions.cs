@@ -4,6 +4,8 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.SnapshotsQuery;
+using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
@@ -145,6 +147,17 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
                 sp.GetRequiredService<ILogger<ChunkHydrationStatusQueryHandler>>()));
+
+        services.AddSingleton<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>(sp =>
+            new SnapshotsQueryHandler(
+                sp.GetRequiredService<ISnapshotService>(),
+                sp.GetRequiredService<ILogger<SnapshotsQueryHandler>>()));
+
+        services.AddSingleton<ICommandHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
+            new StatisticsQueryHandler(
+                sp.GetRequiredService<ISnapshotService>(),
+                sp.GetRequiredService<IChunkIndexService>(),
+                sp.GetRequiredService<ILogger<StatisticsQueryHandler>>()));
 
         return services;
     }

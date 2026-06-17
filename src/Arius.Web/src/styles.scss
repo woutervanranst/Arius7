@@ -1,0 +1,92 @@
+@use "./tailwind";
+
+/*
+ * Arius design tokens — layered over Metronic's compiled styles (public/assets/css/styles.css).
+ * Values are the high-fidelity tokens from the design handoff. Metronic already ships
+ * --primary = blue-500 (#3b82f6); here we add the Arius-specific tokens the prototype uses.
+ */
+:root {
+  /* Accent tints (prototype's hexA(accent, .10/.05)) */
+  --ar-accent: #3b82f6;
+  --ar-accent-soft: #eff6ff;
+  --ar-accent-softer: #f7f9ff;
+
+  /* Surfaces & borders */
+  --ar-page: #f4f4f5;
+  --ar-card: #ffffff;
+  --ar-border-card: #ececef;
+  --ar-border-input: #e4e4e7;
+  --ar-divider: #f0f0f2;
+
+  /* Foreground scale */
+  --ar-title: #18181b;
+  --ar-body: #27272a;
+  --ar-muted: #71717a;
+  --ar-muted-2: #a1a1aa;
+
+  /* State colours */
+  --ar-ok: #15803d;      --ar-ok-bg: #f0fdf4;
+  --ar-warn: #b45309;    --ar-warn-bg: #fffbeb;
+  --ar-violet: #6d28d9;  --ar-violet-bg: #f5f3ff;
+  --ar-sky: #0ea5e9;     --ar-sky-bg: #f0f9ff;
+  --ar-danger: #dc2626;
+
+  /* Tier colours */
+  --ar-tier-hot: #d97706;
+  --ar-tier-cool: #0ea5e9;
+  --ar-tier-cold: #3b82f6;
+  --ar-tier-archive: #8b5cf6;
+
+  /* State-ring colours (distinct from accent — these match the WPF reference brushes) */
+  --ar-ring-present: #27272a;
+  --ar-ring-hydrated: #2563eb;
+  --ar-ring-nothydr: #9cc4f5;
+  --ar-ring-empty: #e4e7ec;
+
+  /* Radii */
+  --ar-radius-card: 13px;
+  --ar-radius-shell: 16px;
+  --ar-radius-control: 9px;
+
+  /* Explorer row height (comfortable / compact) */
+  --ar-row-h: 46px;
+
+  /* Shadows */
+  --ar-shadow-card: 0 1px 2px rgba(0, 0, 0, .04);
+  --ar-shadow-overlay: 0 12px 32px rgba(9, 9, 11, .14);
+
+  /* Mono font for paths/containers/cron/keys */
+  --ar-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Small utility set that pins exact spec values where Metronic's defaults would drift. */
+.ar-card {
+  background: var(--ar-card);
+  border: 1px solid var(--ar-border-card);
+  border-radius: var(--ar-radius-card);
+  box-shadow: var(--ar-shadow-card);
+}
+.ar-mono { font-family: var(--ar-font-mono); }
+.ar-heading { letter-spacing: -.02em; color: var(--ar-title); }
+
+/* Buttons (40px / radius 9) */
+.ar-btn-outline, .ar-btn-primary {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 14px; border-radius: 9px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.ar-btn-outline { background: #fff; border: 1px solid #e4e4e7; color: #3f3f46; }
+.ar-btn-outline:hover { background: #fafafa; }
+.ar-btn-primary { background: #3b82f6; border: 1px solid #3b82f6; color: #fff; }
+.ar-btn-primary:hover { background: #2f74e6; }
+.ar-btn-outline i, .ar-btn-primary i { font-size: 16px; }
+
+/* Hover affordances */
+.ar-repo-row:hover { background: #fafafb; }
+.ar-tree-row:hover { background: #f7f9ff; }
+.ar-file-row:hover { background: #fafafb; }
+
+/* Repo-detail tab bar (underline) */
+.ar-tab { position: relative; padding: 0 2px 12px; font-size: 14px; font-weight: 600; color: #71717a; cursor: pointer; }
+.ar-tab.active { color: #18181b; }
+.ar-tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #3b82f6; border-radius: 2px; }
