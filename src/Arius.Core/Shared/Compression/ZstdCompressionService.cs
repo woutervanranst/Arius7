@@ -19,11 +19,10 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
     private static readonly GZipCompressionService LegacyGzip = new();
 
     /// <summary>
-    /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller
-    /// but slower. 19 favours ratio (matching the previous gzip <c>SmallestSize</c> intent); benchmark
-    /// against representative data before changing.
+    /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller but slower.
+    /// 19 favours ratio (matching the previous gzip <c>SmallestSize</c> intent) but requires ~85 MB per compressor.
     /// </summary>
-    public const int DefaultCompressionLevel = 19;
+    public const int DefaultCompressionLevel = 15;
 
     /// <summary>
     /// zstd is verified inline on every chunk upload: it is the newer encoder, so we prove each frame

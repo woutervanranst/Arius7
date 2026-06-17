@@ -1,35 +1,35 @@
+using System.Runtime.CompilerServices;
 using Arius.Tests.Shared.Storage;
 
 namespace Arius.Core.Tests.Fakes;
 
 /// <summary>
-/// Wraps a <see cref="FakeInMemoryBlobContainerService"/> and fails chunk-index shard uploads, so tests can
-/// simulate an interrupted archive whose flush dies after some chunks were already uploaded. Every other call
-/// (downloads, seeding, listing, tracking) is delegated to the shared <see cref="Inner"/> instance, so a test
-/// can keep recording/seeding through that same reference and then retry the flush through a non-faulting view.
+/// Wraps a <see cref="FakeInMemoryBlobContainerService"/> and faults the FIRST chunk-index listing (modelling a
+/// transient Azure list error that outlasts the SDK's retry budget), delegating every later call to
+/// <see cref="Inner"/>. Lets a test prove the run-scoped listing cache re-lists and recovers on a later lookup
+/// instead of pinning the faulted task.
 /// </summary>
-internal sealed class FaultingChunkIndexUploadBlobContainerService(FakeInMemoryBlobContainerService inner) : IBlobContainerService
+internal sealed class FaultOnceListBlobContainerService(FakeInMemoryBlobContainerService inner) : IBlobContainerService
 {
+    private int _chunkIndexListAttempts;
+
     /// <summary>The shared underlying store; seed and inspect through this from the test.</summary>
     public FakeInMemoryBlobContainerService Inner { get; } = inner;
 
-    /// <summary>When <see langword="true"/>, uploads to <c>chunk-index/*</c> throw instead of being stored.</summary>
-    public bool FailChunkIndexUploads { get; set; } = true;
+    public async IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (prefix.StartsWith(BlobPaths.ChunkIndexPrefix) && Interlocked.Increment(ref _chunkIndexListAttempts) == 1)
+            throw new InvalidOperationException("simulated transient chunk-index list failure");
 
-    /// <summary>Number of chunk-index uploads that succeed before failing kicks in (default 0 = fail immediately). Lets tests simulate a flush that dies mid-split.</summary>
-    public int AllowedChunkIndexUploads { get; set; }
-
-    private int _chunkIndexUploadAttempts;
+        await foreach (var item in Inner.ListAsync(prefix, prefixKind, includeMetadata, cancellationToken))
+            yield return item;
+    }
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => Inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
-        => FailChunkIndexUploads
-           && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
-           && Interlocked.Increment(ref _chunkIndexUploadAttempts) > AllowedChunkIndexUploads
-            ? throw new InvalidOperationException("chunk-index upload failed")
-            : Inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+        => Inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
         => Inner.OpenWriteAsync(blobName, contentType, cancellationToken);
@@ -42,9 +42,6 @@ internal sealed class FaultingChunkIndexUploadBlobContainerService(FakeInMemoryB
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => Inner.GetMetadataAsync(blobName, cancellationToken);
-
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
-        => Inner.ListAsync(prefix, prefixKind, includeMetadata, cancellationToken);
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
         => Inner.SetMetadataAsync(blobName, metadata, cancellationToken);

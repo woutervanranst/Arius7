@@ -11,14 +11,17 @@ internal sealed class CountingBlobContainerService(IBlobContainerService inner) 
 {
     private int _chunkIndexTryDownloads;
     private int _chunkIndexUploads;
+    private int _chunkIndexLists;
 
     public int ChunkIndexTryDownloads => Volatile.Read(ref _chunkIndexTryDownloads);
     public int ChunkIndexUploads      => Volatile.Read(ref _chunkIndexUploads);
+    public int ChunkIndexLists        => Volatile.Read(ref _chunkIndexLists);
 
     public void Reset()
     {
         Interlocked.Exchange(ref _chunkIndexTryDownloads, 0);
         Interlocked.Exchange(ref _chunkIndexUploads, 0);
+        Interlocked.Exchange(ref _chunkIndexLists, 0);
     }
 
     private static bool IsChunkIndex(RelativePath blobName) => blobName.StartsWith(BlobPaths.ChunkIndexPrefix);
@@ -49,8 +52,12 @@ internal sealed class CountingBlobContainerService(IBlobContainerService inner) 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => inner.GetMetadataAsync(blobName, cancellationToken);
 
-    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, bool includeMetadata, CancellationToken cancellationToken = default)
-        => inner.ListAsync(prefix, includeMetadata, cancellationToken);
+    public IAsyncEnumerable<BlobListItem> ListAsync(RelativePath prefix, BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, bool includeMetadata = false, CancellationToken cancellationToken = default)
+    {
+        if (IsChunkIndex(prefix))
+            Interlocked.Increment(ref _chunkIndexLists);
+        return inner.ListAsync(prefix, prefixKind, includeMetadata, cancellationToken);
+    }
 
     public Task SetMetadataAsync(RelativePath blobName, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
         => inner.SetMetadataAsync(blobName, metadata, cancellationToken);

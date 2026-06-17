@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,6 +11,11 @@ namespace Arius.Core.Shared.ChunkIndex;
 internal sealed class ChunkIndexLocalStore
 {
     private const string SchemaVersion = "1";
+
+    // Deepest coverage-claim prefix FindCoveredPrefixes probes for. A claim at depth d implies ~16^(d-2)
+    // shards per root; depth 8 is ~4 trillion shards — far beyond any real repository. A (never-produced)
+    // deeper claim is simply not matched here and re-validates harmlessly, so this is correctness-safe.
+    private const int MaxCoveragePrefixLength = 8;
 
     private readonly RelativeFileSystem            _fileSystem;
     private readonly ILogger<ChunkIndexLocalStore> _logger;
@@ -95,6 +101,72 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
+    /// Returns the validated coverage claim covering each of the specified hashes at the specified snapshot
+    /// version. A hash is covered by at most one (non-overlapping) claim, whose prefix is a prefix of the hash,
+    /// so only those candidate prefixes — each hash's prefix path — are queried, never every claim under the root.
+    /// </summary>
+    public IReadOnlyDictionary<ContentHash, PathSegment> FindCoveredPrefixes(IReadOnlyList<ContentHash> contentHashes, string snapshotVersion)
+    {
+        if (contentHashes.Count == 0)
+            return new Dictionary<ContentHash, PathSegment>();
+
+        try
+        {
+            var candidates = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var contentHash in contentHashes)
+            {
+                var hashHex = contentHash.ToString();
+                var maxLength = Math.Min(hashHex.Length, MaxCoveragePrefixLength);
+                for (var length = ChunkIndexService.MinShardPrefixLength; length <= maxLength; length++)
+                    candidates.Add(hashHex[..length]);
+            }
+
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT prefix FROM loaded_prefixes
+                WHERE snapshot_version = $snapshotVersion
+                  AND prefix IN (SELECT value FROM json_each($candidates));
+                """;
+            command.Parameters.AddWithValue("$snapshotVersion", snapshotVersion);
+            command.Parameters.AddWithValue("$candidates", JsonSerializer.Serialize(candidates));
+
+            var prefixes = new HashSet<string>(StringComparer.Ordinal);
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                    prefixes.Add(reader.GetString(0));
+            }
+
+            var covered = new Dictionary<ContentHash, PathSegment>();
+            if (prefixes.Count > 0)
+            {
+                foreach (var contentHash in contentHashes)
+                {
+                    var hashHex = contentHash.ToString();
+                    var maxLength = Math.Min(hashHex.Length, MaxCoveragePrefixLength);
+                    for (var length = ChunkIndexService.MinShardPrefixLength; length <= maxLength; length++)
+                    {
+                        var prefix = hashHex[..length];
+                        if (!prefixes.Contains(prefix))
+                            continue;
+
+                        covered[contentHash] = PathSegment.Parse(prefix);
+                        break;
+                    }
+                }
+            }
+
+            _logger.LogDebug("[chunk-index-local] FindCoveredPrefixes: hashes={HashCount} candidates={CandidateCount} snapshotVersion={SnapshotVersion} covered={CoveredCount}", contentHashes.Count, candidates.Count, snapshotVersion, covered.Count);
+            return covered;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
     /// Returns whether the prefix has already been validated for the specified snapshot version.
     /// </summary>
     public bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion)
@@ -141,20 +213,47 @@ internal sealed class ChunkIndexLocalStore
     /// <summary>
     /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
     /// </summary>
-    public IReadOnlyList<PathSegment> GetPrefixesWithPendingFlushes()
+    public IReadOnlyList<PathSegment> GetRootsWithPendingFlushes()
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY prefix;";
+            command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY 1;";
             using var reader = command.ExecuteReader();
             var prefixes = new List<PathSegment>();
             while (reader.Read())
                 prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
-            _logger.LogDebug("[chunk-index-local] GetPrefixesWithPendingFlushes: count={Count}", prefixes.Count);
+            _logger.LogDebug("[chunk-index-local] GetRootsWithPendingFlushes: count={Count}", prefixes.Count);
             return prefixes;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns the content hashes of entries pending local flush within range of <paramref name="prefix"/>.
+    /// </summary>
+    public IReadOnlyList<ContentHash> GetPendingFlushHashes(PathSegment prefix)
+    {
+        try
+        {
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT content_hash FROM chunk_index_entries WHERE pending_flush = 1 AND content_hash BETWEEN $lower AND $upper ORDER BY content_hash;";
+            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            using var reader = command.ExecuteReader();
+            var hashes = new List<ContentHash>();
+            while (reader.Read())
+                hashes.Add(ContentHash.FromDigest((byte[])reader.GetValue(0)));
+
+            _logger.LogDebug("[chunk-index-local] GetPendingFlushHashes: prefix={Prefix} count={Count}", prefix, hashes.Count);
+            return hashes;
         }
         catch (SqliteException ex)
         {
@@ -165,19 +264,19 @@ internal sealed class ChunkIndexLocalStore
     /// <summary>
     /// Returns prefixes represented by any local chunk-index entry.
     /// </summary>
-    public IEnumerable<PathSegment> GetStoredPrefixes()
+    public IEnumerable<PathSegment> GetStoredRootPrefixes()
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT DISTINCT prefix FROM chunk_index_entries ORDER BY prefix;";
+            command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries ORDER BY 1;";
             using var reader = command.ExecuteReader();
             var prefixes = new List<PathSegment>();
             while (reader.Read())
                 prefixes.Add(PathSegment.Parse(reader.GetString(0)));
 
-            _logger.LogDebug("[chunk-index-local] GetStoredPrefixes: count={Count}", prefixes.Count);
+            _logger.LogDebug("[chunk-index-local] GetStoredRootPrefixes: count={Count}", prefixes.Count);
             return prefixes;
         }
         catch (SqliteException ex)
@@ -189,14 +288,16 @@ internal sealed class ChunkIndexLocalStore
     /// <summary>
     /// Streams all locally stored entries for <paramref name="prefix"/>, including remote-backed and pending-flush rows.
     /// </summary>
-    public void ReadPrefixEntries(PathSegment prefix, Action<ShardEntry> consume)
+    public void ReadRangeEntries(PathSegment prefix, Action<ShardEntry> consume)
     {
         try
         {
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE prefix = $prefix;";
-            command.Parameters.AddWithValue("$prefix", prefix.ToString());
+            command.CommandText = "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash BETWEEN $lower AND $upper ORDER BY content_hash;";
+            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
             using var reader = command.ExecuteReader();
             var count = 0;
             while (reader.Read())
@@ -205,7 +306,30 @@ internal sealed class ChunkIndexLocalStore
                 count++;
             }
 
-            _logger.LogDebug("[chunk-index-local] ReadPrefixEntries: prefix={Prefix} count={Count}", prefix, count);
+            _logger.LogDebug("[chunk-index-local] ReadRangeEntries: prefix={Prefix} count={Count}", prefix, count);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns the number of entries currently stored within range of <paramref name="prefix"/>.
+    /// </summary>
+    public int CountRangeEntries(PathSegment prefix)
+    {
+        try
+        {
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM chunk_index_entries WHERE content_hash BETWEEN $lower AND $upper;";
+            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            var count = Convert.ToInt32(command.ExecuteScalar());
+            _logger.LogDebug("[chunk-index-local] CountRangeEntries: prefix={Prefix} count={Count}", prefix, count);
+            return count;
         }
         catch (SqliteException ex)
         {
@@ -316,77 +440,54 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Replaces local remote-backed rows for a prefix while preserving any pending flush rows for the same content hashes.
+    /// Applies one coverage-resolution pass for a batch of prefixes in a single transaction: downloaded shards
+    /// (replace remote-backed range + record etag), revalidated shards (advance snapshot version only), and
+    /// empty ranges (clear remote-backed range + mark missing). The prefixes are pairwise non-nested — they come
+    /// from <see cref="ChunkIndexRouter.ResolveTarget"/>'s parent-wins walk, which returns the shallowest existing
+    /// shard per hash — so their coverage-overlap deletes cannot clobber one another. Batching keeps the parallel
+    /// shard-download fan-out from contending on the SQLite write lock (one transaction, one writer).
     /// </summary>
-    public void UpdatePrefix(PathSegment prefix, string etag, string snapshotVersion, IEnumerable<ShardEntry> entries)
+    public void IngestCoverage(
+        string                                                                          snapshotVersion,
+        IReadOnlyCollection<(PathSegment Prefix, string Etag, IReadOnlyList<ShardEntry> Entries)> downloaded,
+        IReadOnlyCollection<(PathSegment Prefix, string Etag)>                           revalidated,
+        IReadOnlyCollection<PathSegment>                                                 emptyPrefixes)
     {
+        if (downloaded.Count == 0 && revalidated.Count == 0 && emptyPrefixes.Count == 0)
+            return;
+
         try
         {
-            var materialized = entries.ToArray();
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND pending_flush = 0;";
-            deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
-
-            using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
-            var entryRowsAffected = 0;
-            foreach (var entry in materialized)
+            lock (_localStateGate)
             {
-                BindEntry(command, entry);
-                entryRowsAffected += command.ExecuteNonQuery();
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var upsertEntries = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
+
+                foreach (var (prefix, etag, entries) in downloaded)
+                {
+                    DeleteRemoteBackedRange(connection, transaction, prefix);
+                    foreach (var entry in entries)
+                    {
+                        BindEntry(upsertEntries, entry);
+                        upsertEntries.ExecuteNonQuery();
+                    }
+
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
+                }
+
+                foreach (var (prefix, etag) in revalidated)
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
+
+                foreach (var prefix in emptyPrefixes)
+                {
+                    DeleteRemoteBackedRange(connection, transaction, prefix);
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
+                }
+
+                transaction.Commit();
+                _logger.LogDebug("[chunk-index-local] IngestCoverage: downloaded={Downloaded} revalidated={Revalidated} empty={Empty}", downloaded.Count, revalidated.Count, emptyPrefixes.Count);
             }
-
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] UpdatePrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} entries={Entries} entryRowsAffected={EntryRowsAffected} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, materialized.Length, entryRowsAffected, loadedPrefixRowsAffected);
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Deletes remote-backed cached rows for <paramref name="prefix"/> while preserving pending flush rows and marks the prefix validated as missing on remote.
-    /// </summary>
-    public void AddEmptyPrefix(PathSegment prefix, string snapshotVersion)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE prefix = $prefix AND pending_flush = 0;";
-            deleteEntries.Parameters.AddWithValue("$prefix", prefix.ToString());
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
-
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, loadedPrefixRowsAffected);
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Marks the prefix validated for the specified snapshot without changing cached remote-backed entries.
-    /// </summary>
-    public void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            var rowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] SetPrefixSnapshotVersion: prefix={Prefix} rowsAffected={RowsAffected}", prefix, rowsAffected);
         }
         catch (SqliteException ex)
         {
@@ -458,21 +559,26 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0;";
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
+            // Under the same gate as the other remote-backed writers (IngestCoverage / pending-flush), so a
+            // cleared cache and a coverage ingest can never interleave into a half-cleared state.
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var deleteEntries = connection.CreateCommand();
+                deleteEntries.Transaction = transaction;
+                deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0;";
+                var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
-            using var deletePrefixes = connection.CreateCommand();
-            deletePrefixes.Transaction = transaction;
-            deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
-            var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
-            transaction.Commit();
+                using var deletePrefixes = connection.CreateCommand();
+                deletePrefixes.Transaction = transaction;
+                deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
+                var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
+                transaction.Commit();
 
-            DeleteLegacyShardCacheFiles();
-            _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
+                DeleteLegacyShardCacheFiles();
+                _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
+            }
         }
         catch (SqliteException ex)
         {
@@ -558,18 +664,13 @@ internal sealed class ChunkIndexLocalStore
                 original_size   INTEGER NOT NULL CHECK (original_size >= 0),
                 chunk_size INTEGER NOT NULL CHECK (chunk_size >= 0),
                 storage_tier_hint INTEGER NOT NULL CHECK (storage_tier_hint BETWEEN 1 AND 4),
-                prefix          TEXT NOT NULL,
                 pending_flush   INTEGER NOT NULL DEFAULT 0 CHECK (pending_flush IN (0, 1)),
                 CHECK (length(content_hash) = 32),
-                CHECK (length(chunk_hash) = 32),
-                CHECK (length(prefix) > 0)
+                CHECK (length(chunk_hash) = 32)
             );
 
-            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_prefix
-                ON chunk_index_entries(prefix, content_hash);
-
-            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_pending_flush_prefix
-                ON chunk_index_entries(pending_flush, prefix);
+            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_pending_flush
+                ON chunk_index_entries(pending_flush) WHERE pending_flush = 1;
 
             CREATE TABLE IF NOT EXISTS loaded_prefixes (
                 prefix                      TEXT NOT NULL PRIMARY KEY,
@@ -579,6 +680,9 @@ internal sealed class ChunkIndexLocalStore
                 CHECK (length(prefix) > 0),
                 CHECK (length(snapshot_version) > 0)
             );
+
+            CREATE INDEX IF NOT EXISTS ix_loaded_prefixes_snapshot_prefix
+                ON loaded_prefixes(snapshot_version, prefix);
             """;
         create.ExecuteNonQuery();
 
@@ -608,32 +712,41 @@ internal sealed class ChunkIndexLocalStore
         return command.ExecuteScalar() is long count && count != 0;
     }
 
+    private static int DeleteRemoteBackedRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)
+    {
+        var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+        using var deleteEntries = connection.CreateCommand();
+        deleteEntries.Transaction = transaction;
+        deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
+        deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+        deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+        return deleteEntries.ExecuteNonQuery();
+    }
+
     private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool pendingFlush, bool preservePendingFlushRows)
     {
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = preservePendingFlushRows
             ? """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, prefix, pending_flush)
-                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $prefix, $pendingFlush)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
                     chunk_size = excluded.chunk_size,
                     storage_tier_hint = excluded.storage_tier_hint,
-                    prefix = excluded.prefix,
                     pending_flush = excluded.pending_flush
                 WHERE chunk_index_entries.pending_flush = 0;
                 """
             : """
-                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, prefix, pending_flush)
-                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $prefix, $pendingFlush)
+                INSERT INTO chunk_index_entries(content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint, pending_flush)
+                VALUES ($contentHash, $chunkHash, $originalSize, $chunkSize, $storageTierHint, $pendingFlush)
                 ON CONFLICT(content_hash) DO UPDATE SET
                     chunk_hash = excluded.chunk_hash,
                     original_size = excluded.original_size,
                     chunk_size = excluded.chunk_size,
                     storage_tier_hint = excluded.storage_tier_hint,
-                    prefix = excluded.prefix,
                     pending_flush = excluded.pending_flush;
                 """;
 
@@ -642,7 +755,6 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters.Add("$originalSize", SqliteType.Integer);
         command.Parameters.Add("$chunkSize", SqliteType.Integer);
         command.Parameters.Add("$storageTierHint", SqliteType.Integer);
-        command.Parameters.Add("$prefix", SqliteType.Text);
         command.Parameters.Add("$pendingFlush", SqliteType.Integer).Value = pendingFlush ? 1 : 0;
         return command;
     }
@@ -654,11 +766,23 @@ internal sealed class ChunkIndexLocalStore
         command.Parameters["$originalSize"].Value = entry.OriginalSize;
         command.Parameters["$chunkSize"].Value = entry.ChunkSize;
         command.Parameters["$storageTierHint"].Value = ShardEntry.SerializeTier(entry.StorageTierHint);
-        command.Parameters["$prefix"].Value = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash).ToString();
     }
 
     private static int UpsertLoadedPrefix(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix, bool remoteExists, string? ETag, string snapshotVersion)
     {
+        // Coverage claims must never overlap: replacing a range claim removes any claim that is a
+        // strict ancestor or strict descendant of the inserted prefix (never siblings).
+        using var deleteOverlapping = connection.CreateCommand();
+        deleteOverlapping.Transaction = transaction;
+        deleteOverlapping.CommandText = """
+            DELETE FROM loaded_prefixes
+            WHERE prefix <> $prefix
+              AND (substr($prefix, 1, length(prefix)) = prefix
+                OR substr(prefix, 1, length($prefix)) = $prefix);
+            """;
+        deleteOverlapping.Parameters.AddWithValue("$prefix", prefix.ToString());
+        deleteOverlapping.ExecuteNonQuery();
+
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """

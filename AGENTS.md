@@ -2,8 +2,6 @@
 
 ## General
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ### 1. Think Before Coding
@@ -61,6 +59,17 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+### 5. Guidance specifically for Anthropic Fable 5
+
+Don't add features, refactor, or introduce abstractions beyond what the task requires. A
+bug fix doesn't need surrounding cleanup and a one-shot operation usually doesn't need a
+helper. Don't design for hypothetical future requirements: do the simplest thing that
+works well. Avoid premature abstraction and half-finished implementations. Don't add
+error handling, fallbacks, or validation for scenarios that cannot happen. Trust
+internal code and framework guarantees. Only validate at system boundaries (user input,
+external APIs). Don't use feature flags or backwards-compatibility shims when you can
+just change the code.
 
 ## Agent Guidance: dotnet-skills
 
@@ -163,7 +172,7 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
   - **tar chunk**: a chunk whose blob body stores a tar bundle of multiple small files, then gzip plus optional encryption. Why: small files are prohibitively expensive to rehydrate in Azure Blob Storage, so we tar them together into a ~large chunk.
   - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
 - **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
-  - **shard**: one mutable chunk-index blob, partitioned by hash prefix for storage and caching.
+  - **shard**: one mutable chunk-index blob, partitioned by a dynamic-length hash prefix (2 hex chars to start; a shard splits 16-way by the next hex char when it grows past the entry threshold). The layout is self-describing from which shard blobs exist; reads use the shallowest existing shard on a hash's prefix path (parent wins).
   - **chunk size**: each chunk-index entry records the stored chunk blob byte count. For large chunks this is the large chunk blob size; for tar-bundled files this is the full parent tar chunk blob size, not a proportional per-file share. Restore, download progress, and rehydration cost estimates operate on distinct chunks and must use this full chunk size.
   - **storage tier hint**: each chunk-index entry records the chunk blob's storage tier at archive time (wire values: hot=1, cool=2, cold=3, archive=4; for tar-bundled files, the tar blob's tier). It is a *hint* — lifecycle policies or rehydration can change the actual tier — and lets `ls` report hydrated-vs-archived state from the index without per-blob calls. Live truth (including rehydration-pending) comes from `ChunkHydrationStatusQuery`.
 - **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.

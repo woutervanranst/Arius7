@@ -36,7 +36,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindPendingFlushEntry(entry.ContentHash).ShouldBe(entry);
         store.HasPendingFlushEntries().ShouldBeTrue();
-        store.GetPrefixesWithPendingFlushes().ShouldBe([ChunkIndexRouter.GetLeafPrefix(entry.ContentHash)]);
+        store.GetRootsWithPendingFlushes().ShouldBe([ChunkIndexRouter.GetRootPrefix(entry.ContentHash)]);
 
         using var connection = OpenConnection(root);
         using var command = connection.CreateCommand();
@@ -84,7 +84,7 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void UpdatePrefix_DoesNotOverwriteExistingPendingFlushRow()
+    public void IngestCoverage_DownloadedPrefix_DoesNotOverwriteExistingPendingFlushRow()
     {
         var repositoryKey = $"acct-local-store-preserve-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
@@ -94,22 +94,22 @@ public class ChunkIndexLocalStoreTests
         var remoteBackedEntry = new ShardEntry(contentHash, FakeChunkHash('c'), 20, 8, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlushEntry);
 
-        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(contentHash), "remote-1", "snap-1", [remoteBackedEntry]);
+        store.IngestCoverage("snap-1", [(ChunkIndexRouter.GetRootPrefix(contentHash), "remote-1", new[] { remoteBackedEntry })], [], []);
 
         store.FindEntry(contentHash).ShouldBe(pendingFlushEntry);
         store.FindPendingFlushEntry(contentHash).ShouldBe(pendingFlushEntry);
     }
 
     [Test]
-    public void UpdatePrefix_WritesRemoteBackedRowAndValidationStateInSameStore()
+    public void IngestCoverage_DownloadedPrefix_WritesRemoteBackedRowAndValidationStateInSameStore()
     {
         var repositoryKey = $"acct-local-store-clean-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
+        var prefix = ChunkIndexRouter.GetRootPrefix(entry.ContentHash);
 
-        store.UpdatePrefix(prefix, "opaque-identity", "snapshot-1", [entry]);
+        store.IngestCoverage("snapshot-1", [(prefix, "opaque-identity", new[] { entry })], [], []);
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindPendingFlushEntry(entry.ContentHash).ShouldBeNull();
@@ -118,18 +118,18 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void AddEmptyPrefix_PreservesPendingFlushRows_AndMarksRemoteMissing()
+    public void IngestCoverage_EmptyPrefix_PreservesPendingFlushRows_AndMarksRemoteMissing()
     {
         var repositoryKey = $"acct-local-store-reset-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var remoteBackedEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var pendingFlushEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(remoteBackedEntry.ContentHash);
-        store.UpdatePrefix(prefix, "remote-1", "snapshot-1", [remoteBackedEntry]);
+        var prefix = ChunkIndexRouter.GetRootPrefix(remoteBackedEntry.ContentHash);
+        SeedRemotePrefix(store, prefix, "remote-1", "snapshot-1", remoteBackedEntry);
         store.UpsertPendingFlush(pendingFlushEntry);
 
-        store.AddEmptyPrefix(prefix, "snapshot-2");
+        store.IngestCoverage("snapshot-2", [], [], [prefix]);
 
         store.FindEntry(remoteBackedEntry.ContentHash).ShouldBeNull();
         store.FindPendingFlushEntry(remoteBackedEntry.ContentHash).ShouldBeNull();
@@ -140,18 +140,18 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
-    public void SetPrefixSnapshotVersion_UpdatesSnapshotVersionWithoutReingest()
+    public void IngestCoverage_RevalidatedPrefix_UpdatesSnapshotVersionWithoutReingest()
     {
         var repositoryKey = $"acct-local-store-mark-validated-{Guid.NewGuid():N}";
         var root = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
         var entry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var prefix = ChunkIndexRouter.GetLeafPrefix(entry.ContentHash);
+        var prefix = ChunkIndexRouter.GetRootPrefix(entry.ContentHash);
         var originalSnapshotVersion = "snapshot-1";
         var latestSnapshotVersion = "snapshot-2";
-        store.UpdatePrefix(prefix, "remote-1", originalSnapshotVersion, [entry]);
+        SeedRemotePrefix(store, prefix, "remote-1", originalSnapshotVersion, entry);
 
-        store.SetPrefixSnapshotVersion(prefix, "remote-1", latestSnapshotVersion);
+        store.IngestCoverage(latestSnapshotVersion, [], [(prefix, "remote-1")], []);
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.IsPrefixAtSnapshotVersion(prefix, originalSnapshotVersion).ShouldBeFalse();
@@ -168,13 +168,13 @@ public class ChunkIndexLocalStoreTests
         var fromSnapshot = "snapshot-1";
         var toSnapshot = "snapshot-2";
         var remoteEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
-        var remotePrefix = ChunkIndexRouter.GetLeafPrefix(remoteEntry.ContentHash);
+        var remotePrefix = ChunkIndexRouter.GetRootPrefix(remoteEntry.ContentHash);
         var emptyPrefix = PathSegment.Parse("ff");
         var untouchedPrefix = PathSegment.Parse("ee");
 
-        store.UpdatePrefix(remotePrefix, "remote-1", fromSnapshot, [remoteEntry]);
-        store.AddEmptyPrefix(emptyPrefix, fromSnapshot);
-        store.AddEmptyPrefix(untouchedPrefix, "snapshot-older");
+        SeedRemotePrefix(store, remotePrefix, "remote-1", fromSnapshot, remoteEntry);
+        SeedEmptyPrefix(store, emptyPrefix, fromSnapshot);
+        SeedEmptyPrefix(store, untouchedPrefix, "snapshot-older");
 
         store.PromoteToSnapshotVersion(fromSnapshot, toSnapshot);
 
@@ -197,8 +197,8 @@ public class ChunkIndexLocalStoreTests
         var snapshotVersion = "snapshot-2";
         var firstEntry = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var secondEntry = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 20, 8, BlobTier.Cool);
-        var firstPrefix = ChunkIndexRouter.GetLeafPrefix(firstEntry.ContentHash);
-        var secondPrefix = ChunkIndexRouter.GetLeafPrefix(secondEntry.ContentHash);
+        var firstPrefix = ChunkIndexRouter.GetRootPrefix(firstEntry.ContentHash);
+        var secondPrefix = ChunkIndexRouter.GetRootPrefix(secondEntry.ContentHash);
         store.UpsertPendingFlush(firstEntry);
         store.UpsertPendingFlush(secondEntry);
 
@@ -224,7 +224,7 @@ public class ChunkIndexLocalStoreTests
         var pendingFlush = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
         var remoteBacked = new ShardEntry(FakeContentHash('c'), FakeChunkHash('d'), 11, 6, BlobTier.Cool);
         store.UpsertPendingFlush(pendingFlush);
-        store.UpdatePrefix(ChunkIndexRouter.GetLeafPrefix(remoteBacked.ContentHash), "remote-1", "snap-1", [remoteBacked]);
+        SeedRemotePrefix(store, ChunkIndexRouter.GetRootPrefix(remoteBacked.ContentHash), "remote-1", "snap-1", remoteBacked);
 
         store.ClearRemoteBackedCache();
 
@@ -232,7 +232,7 @@ public class ChunkIndexLocalStoreTests
         store.FindPendingFlushEntry(pendingFlush.ContentHash).ShouldBe(pendingFlush);
         store.FindEntry(remoteBacked.ContentHash).ShouldBeNull();
         store.FindPendingFlushEntry(remoteBacked.ContentHash).ShouldBeNull();
-        store.IsPrefixAtSnapshotVersion(ChunkIndexRouter.GetLeafPrefix(remoteBacked.ContentHash), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(ChunkIndexRouter.GetRootPrefix(remoteBacked.ContentHash), "snap-1").ShouldBeFalse();
     }
 
     [Test]
@@ -297,6 +297,130 @@ public class ChunkIndexLocalStoreTests
 
         ex.Message.ShouldContain("Delete the local chunk-index cache directory");
     }
+
+    // ── Range queries (variable-depth prefixes) ──────────────────────────────
+
+    [Test]
+    public void ReadRangeEntries_OddNibblePrefix_FiltersInclusiveBounds()
+    {
+        var store = CreateStore("range-odd-nibble");
+        var entries = new[] { Entry("aa2f"), Entry("aa30"), Entry("aa3f"), Entry("aa40") };
+        store.UpsertPendingFlush(entries);
+
+        var inRange = new List<ShardEntry>();
+        store.ReadRangeEntries(PathSegment.Parse("aa3"), inRange.Add);
+
+        inRange.Select(e => e.ContentHash).ShouldBe([entries[1].ContentHash, entries[2].ContentHash]);
+        store.CountRangeEntries(PathSegment.Parse("aa3")).ShouldBe(2);
+        store.CountRangeEntries(PathSegment.Parse("aa")).ShouldBe(4);
+        store.CountRangeEntries(PathSegment.Parse("bb")).ShouldBe(0);
+    }
+
+    [Test]
+    public void GetRootsWithPendingFlushes_AndGetPendingFlushHashes_FilterByRootRange()
+    {
+        var store = CreateStore("pending-roots");
+        var pendingAa = Entry("aa1");
+        var pendingBb = Entry("bb1");
+        var cleanCc = Entry("cc1");
+        store.UpsertPendingFlush(pendingAa);
+        store.UpsertPendingFlush(pendingBb);
+        SeedRemotePrefix(store, PathSegment.Parse("cc"), "remote-1", "snap-1", cleanCc);
+
+        store.GetRootsWithPendingFlushes().ShouldBe([PathSegment.Parse("aa"), PathSegment.Parse("bb")]);
+        store.GetPendingFlushHashes(PathSegment.Parse("aa")).ShouldBe([pendingAa.ContentHash]);
+        store.GetStoredRootPrefixes().ShouldBe([PathSegment.Parse("aa"), PathSegment.Parse("bb"), PathSegment.Parse("cc")]);
+    }
+
+    // ── Coverage claims ──────────────────────────────────────────────────────
+
+    [Test]
+    public void FindCoveredPrefixes_AncestorClaimCoversHash_AndRespectsSnapshotVersion()
+    {
+        var store = CreateStore("coverage-find");
+        var entry = Entry("aa1");
+        SeedRemotePrefix(store, PathSegment.Parse("aa"), "remote-1", "snap-1", entry);
+
+        var covered = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var stale = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var otherRange = ContentHash.Parse("bb00".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes([covered], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment> { [covered] = PathSegment.Parse("aa") });
+        store.FindCoveredPrefixes([stale], "snap-2").ShouldBeEmpty();
+        store.FindCoveredPrefixes([otherRange], "snap-1").ShouldBeEmpty();
+    }
+
+    [Test]
+    public void FindCoveredPrefixes_ReturnsMatchingClaimsForOneRoot_AndRespectsSnapshotVersion()
+    {
+        var store = CreateStore("coverage-find-batch");
+        SeedEmptyPrefix(store, PathSegment.Parse("aa3"), "snap-1");
+
+        var covered = ContentHash.Parse("aa3f".PadRight(64, '9'));
+        var uncoveredSibling = ContentHash.Parse("aa4f".PadRight(64, '9'));
+        var otherRoot = ContentHash.Parse("bb00".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes([covered, uncoveredSibling, otherRoot], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment>
+            {
+                [covered] = PathSegment.Parse("aa3"),
+            });
+
+        store.FindCoveredPrefixes([covered], "snap-2").ShouldBeEmpty();
+    }
+
+    [Test]
+    public void FindCoveredPrefixes_DeepClaim_StillResolvedWithinProbeDepthCap()
+    {
+        var store = CreateStore("coverage-deep");
+        // A claim several levels deep (well within the candidate probe cap) still covers its own hashes only.
+        SeedEmptyPrefix(store, PathSegment.Parse("aa3f0"), "snap-1");
+
+        var covered = ContentHash.Parse("aa3f0".PadRight(64, '9'));
+        var sibling = ContentHash.Parse("aa3f1".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes([covered, sibling], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment> { [covered] = PathSegment.Parse("aa3f0") });
+    }
+
+    [Test]
+    public void UpsertingCoverageClaim_RemovesOverlappingClaims_AndKeepsSiblings()
+    {
+        var store = CreateStore("coverage-overlap");
+        SeedEmptyPrefix(store, PathSegment.Parse("aa"), "snap-1");
+        SeedEmptyPrefix(store, PathSegment.Parse("ab"), "snap-1");
+
+        // A deeper claim replaces its ancestor (split discovered), never its siblings.
+        SeedEmptyPrefix(store, PathSegment.Parse("aa3"), "snap-1");
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa"), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa3"), "snap-1").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("ab"), "snap-1").ShouldBeTrue();
+
+        // A shallower claim replaces all its descendants (e.g. repair coarsened the layout).
+        SeedEmptyPrefix(store, PathSegment.Parse("aa"), "snap-2");
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa3"), "snap-1").ShouldBeFalse();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("aa"), "snap-2").ShouldBeTrue();
+        store.IsPrefixAtSnapshotVersion(PathSegment.Parse("ab"), "snap-1").ShouldBeTrue();
+    }
+
+    private static ChunkIndexLocalStore CreateStore(string name)
+    {
+        var repositoryKey = $"acct-local-store-{name}-{Guid.NewGuid():N}";
+        return new ChunkIndexLocalStore(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
+    }
+
+    /// <summary>Seeds a remote-backed prefix through the production write path (<see cref="ChunkIndexLocalStore.IngestCoverage"/>).</summary>
+    private static void SeedRemotePrefix(ChunkIndexLocalStore store, PathSegment prefix, string etag, string snapshot, params ShardEntry[] entries)
+        => store.IngestCoverage(snapshot, [(prefix, etag, entries)], [], []);
+
+    /// <summary>Seeds an empty (remote-missing) prefix claim through the production write path.</summary>
+    private static void SeedEmptyPrefix(ChunkIndexLocalStore store, PathSegment prefix, string snapshot)
+        => store.IngestCoverage(snapshot, [], [], [prefix]);
+
+    /// <summary>An entry whose content hash starts with <paramref name="hashPrefix"/> (padded with '9').</summary>
+    private static ShardEntry Entry(string hashPrefix)
+        => new(ContentHash.Parse(hashPrefix.PadRight(64, '9')), FakeChunkHash('e'), 10, 5, BlobTier.Cool);
 
     private static SqliteConnection OpenConnection(LocalDirectory root)
     {

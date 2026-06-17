@@ -3,42 +3,46 @@ using Arius.Tests.Shared.Storage;
 namespace Arius.Core.Tests.Fakes;
 
 /// <summary>
-/// Wraps a <see cref="FakeInMemoryBlobContainerService"/> and fails chunk-index shard uploads, so tests can
-/// simulate an interrupted archive whose flush dies after some chunks were already uploaded. Every other call
-/// (downloads, seeding, listing, tracking) is delegated to the shared <see cref="Inner"/> instance, so a test
-/// can keep recording/seeding through that same reference and then retry the flush through a non-faulting view.
+/// Wraps a <see cref="FakeInMemoryBlobContainerService"/> and blocks each chunk-index shard download until
+/// <see cref="_expectedConcurrency"/> of them are simultaneously in flight, then releases all. If the downloads
+/// run sequentially the barrier is never reached and the wait times out (failing the caller) — so a test can
+/// prove the coverage downloads actually run concurrently, which a serialized in-memory fake cannot show.
 /// </summary>
-internal sealed class FaultingChunkIndexUploadBlobContainerService(FakeInMemoryBlobContainerService inner) : IBlobContainerService
+internal sealed class ParallelDownloadBarrierBlobContainerService(FakeInMemoryBlobContainerService inner, int expectedConcurrency) : IBlobContainerService
 {
-    /// <summary>The shared underlying store; seed and inspect through this from the test.</summary>
+    private readonly int                   _expectedConcurrency = expectedConcurrency;
+    private readonly TaskCompletionSource  _allArrived          = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private          int                   _inFlight;
+
     public FakeInMemoryBlobContainerService Inner { get; } = inner;
 
-    /// <summary>When <see langword="true"/>, uploads to <c>chunk-index/*</c> throw instead of being stored.</summary>
-    public bool FailChunkIndexUploads { get; set; } = true;
+    /// <summary>True once <see cref="_expectedConcurrency"/> downloads were concurrently in flight.</summary>
+    public bool ReachedExpectedConcurrency => _allArrived.Task.IsCompletedSuccessfully;
 
-    /// <summary>Number of chunk-index uploads that succeed before failing kicks in (default 0 = fail immediately). Lets tests simulate a flush that dies mid-split.</summary>
-    public int AllowedChunkIndexUploads { get; set; }
+    public async Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
+    {
+        if (blobName.StartsWith(BlobPaths.ChunkIndexPrefix))
+        {
+            if (Interlocked.Increment(ref _inFlight) >= _expectedConcurrency)
+                _allArrived.TrySetResult();
 
-    private int _chunkIndexUploadAttempts;
+            await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+
+        return await Inner.TryDownloadAsync(blobName, cancellationToken);
+    }
 
     public Task CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)
         => Inner.CreateContainerIfNotExistsAsync(cancellationToken);
 
     public Task<UploadResult> UploadAsync(RelativePath blobName, Stream content, IReadOnlyDictionary<string, string> metadata, BlobTier tier, string? contentType = null, bool overwrite = false, CancellationToken cancellationToken = default)
-        => FailChunkIndexUploads
-           && blobName.StartsWith(BlobPaths.ChunkIndexPrefix)
-           && Interlocked.Increment(ref _chunkIndexUploadAttempts) > AllowedChunkIndexUploads
-            ? throw new InvalidOperationException("chunk-index upload failed")
-            : Inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
+        => Inner.UploadAsync(blobName, content, metadata, tier, contentType, overwrite, cancellationToken);
 
     public Task<Stream> OpenWriteAsync(RelativePath blobName, string? contentType = null, CancellationToken cancellationToken = default)
         => Inner.OpenWriteAsync(blobName, contentType, cancellationToken);
 
     public Task<DownloadResult> DownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => Inner.DownloadAsync(blobName, cancellationToken);
-
-    public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
-        => Inner.TryDownloadAsync(blobName, cancellationToken);
 
     public Task<BlobMetadata> GetMetadataAsync(RelativePath blobName, CancellationToken cancellationToken = default)
         => Inner.GetMetadataAsync(blobName, cancellationToken);

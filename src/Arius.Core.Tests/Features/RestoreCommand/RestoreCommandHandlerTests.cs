@@ -478,7 +478,7 @@ public class RestoreCommandHandlerTests
             seedBlobs: async (blobs, rootHash, snapshot, encryption) =>
             {
                 blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(System.Text.Encoding.UTF8.GetBytes($"{contentHash} F {DateTimeOffset.UtcNow:O} {DateTimeOffset.UtcNow:O} corrupt.txt\n")));
-                blobs.AddBlob(BlobPaths.ChunkIndexShardPath(Shard.PrefixOf(contentHash)), [1, 2, 3]);
+                blobs.AddBlob(BlobPaths.ChunkIndexShardPath(ChunkIndexRouter.GetRootPrefix(contentHash)), [1, 2, 3]);
                 blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, encryption, ICompressionService.ZtdInstance));
             },
             expectedCategory: "corrupt",
