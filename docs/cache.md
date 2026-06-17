@@ -118,7 +118,7 @@ which shard blobs exist:
   entry counts (splitting and coarsening as needed) and deletes every other
   `chunk-index/` blob.
 
-The model is: 256 independently managed recursive subtrees, not one global recursive trie. Also not literally 256-way parallel at once: lookup uses 8 workers, flush/repair use 32 workers.
+The model is: 256 independently managed recursive subtrees, not one global recursive tree. It is recursively split within each 2-hex root, but discovery/gating/parallelism are anchored on the fixed 256 roots.
 
 Known limitation (pre-existing, unchanged by dynamic sharding): concurrent
 archives from two machines into the same repository can overwrite each other's
