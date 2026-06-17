@@ -14,12 +14,16 @@ public sealed class RestoreApprovalRegistry
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RehydratePriority?>> _pending = new();
     private readonly ConcurrentDictionary<string, string> _ownerByJob = new();   // jobId → connectionId
 
-    /// <summary>Awaited by the restore command; completes when the client approves or declines.</summary>
-    public Task<RehydratePriority?> Register(string jobId)
-        => _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
-
-    /// <summary>Records which client connection owns a restore job's cost modal.</summary>
-    public void Track(string jobId, string connectionId) => _ownerByJob[jobId] = connectionId;
+    /// <summary>
+    /// Awaited by the restore command; completes when the client approves or declines. Records the
+    /// owning connection here — only restores that actually reach the cost modal are tracked, so the
+    /// owner map can't accumulate entries for restores that never need approval.
+    /// </summary>
+    public Task<RehydratePriority?> Register(string jobId, string connectionId)
+    {
+        _ownerByJob[jobId] = connectionId;
+        return _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+    }
 
     /// <summary>Completes the pending approval for a job (priority, or null to decline).</summary>
     public void Resolve(string jobId, RehydratePriority? priority)

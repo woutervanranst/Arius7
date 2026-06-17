@@ -28,6 +28,13 @@ export interface StatsDto {
   originalSize: number;
   storedSize: number;
   uniqueChunks: number;
+  storedByTier: TierStatDto[];
+}
+
+export interface TierStatDto {
+  tier: string;
+  uniqueChunks: number;
+  storedSize: number;
 }
 
 export interface StateFlagsDto {

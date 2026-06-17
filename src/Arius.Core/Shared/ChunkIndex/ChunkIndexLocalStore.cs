@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Arius.Core.Shared.Storage;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -338,26 +339,32 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Aggregates unique-chunk count and stored size over distinct chunks. Many content hashes can
-    /// share one chunk (tar-bundled small files), so the inner query collapses to one row per chunk
-    /// hash before summing — summing per content-hash would over-count shared tar chunks.
+    /// Aggregates distinct-chunk count and stored size per storage tier. Many content hashes can share
+    /// one chunk (tar-bundled small files), so the inner query collapses to one row per chunk hash
+    /// before grouping by tier — summing per content-hash would over-count shared tar chunks. A chunk
+    /// blob lives in exactly one tier, so the per-chunk tier hint is unambiguous.
     /// </summary>
-    public (long UniqueChunks, long StoredSize) GetStats()
+    public IReadOnlyList<ChunkTierStat> GetStats()
     {
         try
         {
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT COUNT(*) AS unique_chunks, COALESCE(SUM(chunk_size), 0) AS stored_size
-                FROM (SELECT chunk_hash, MAX(chunk_size) AS chunk_size FROM chunk_index_entries GROUP BY chunk_hash);
+                SELECT storage_tier_hint, COUNT(*) AS unique_chunks, COALESCE(SUM(chunk_size), 0) AS stored_size
+                FROM (SELECT chunk_hash, MAX(chunk_size) AS chunk_size, MAX(storage_tier_hint) AS storage_tier_hint
+                      FROM chunk_index_entries GROUP BY chunk_hash)
+                GROUP BY storage_tier_hint
+                ORDER BY storage_tier_hint;
                 """;
             using var reader = command.ExecuteReader();
-            reader.Read();
-            var uniqueChunks = reader.GetInt64(0);
-            var storedSize   = reader.GetInt64(1);
-            _logger.LogDebug("[chunk-index-local] GetStats: uniqueChunks={UniqueChunks} storedSize={StoredSize}", uniqueChunks, storedSize);
-            return (uniqueChunks, storedSize);
+            var stats = new List<ChunkTierStat>();
+            while (reader.Read())
+                stats.Add(new ChunkTierStat(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
+
+            _logger.LogDebug("[chunk-index-local] GetStats: tiers={TierCount} uniqueChunks={UniqueChunks} storedSize={StoredSize}",
+                stats.Count, stats.Sum(t => t.UniqueChunks), stats.Sum(t => t.StoredSize));
+            return stats;
         }
         catch (SqliteException ex)
         {

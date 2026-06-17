@@ -21,6 +21,24 @@ import { formatBytes, formatCount } from '../../../shared/format';
       }
     </div>
 
+    @if (tiers().length) {
+      <div class="ar-card" data-testid="tier-breakdown" style="margin-top:18px;padding:18px 20px">
+        <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:14px">Stored size by tier</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          @for (t of tiers(); track t.tier) {
+            <div class="flex items-center gap-3" data-testid="tier-row">
+              <span style="width:62px;font-size:12.5px;font-weight:600" [style.color]="t.color">{{ t.tier }}</span>
+              <div style="flex:1;height:8px;border-radius:5px;background:#f1f1f4;overflow:hidden">
+                <div style="height:100%;border-radius:5px" [style.width.%]="t.pct" [style.background]="t.color"></div>
+              </div>
+              <span style="width:84px;text-align:right;font-size:13px;color:#27272a;font-weight:600">{{ t.size }}</span>
+              <span style="width:96px;text-align:right;font-size:12px;color:#a1a1aa">{{ t.chunks }} chunks</span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     <div class="ar-card" style="margin-top:18px;padding:16px 20px;background:#f7f9ff;border-color:#dbeafe">
       <div style="font-size:13px;color:#3f3f46;line-height:1.5">
         <i class="ki-filled ki-information-2" style="color:#3b82f6"></i>
@@ -38,10 +56,11 @@ export class StatisticsTabComponent {
 
   constructor() {
     // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
-    effect(() => {
+    effect(onCleanup => {
       const id = +this.repoId();
       this.stats.set(null);
-      this.api.getStats(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
+      const sub = this.api.getStats(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
+      onCleanup(() => sub.unsubscribe());   // cancel the in-flight request if repoId changes first
     });
   }
 
@@ -53,5 +72,22 @@ export class StatisticsTabComponent {
       { label: 'Stored size', value: s ? formatBytes(s.storedSize) : '—', icon: 'ki-cloud', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
       { label: 'Unique chunks', value: s ? formatCount(s.uniqueChunks) : '—', icon: 'ki-element-11', chipBg: '#fffbeb', chipFg: '#b45309' },
     ];
+  }
+
+  // Warmer → cooler colours so the access-tier story reads at a glance (Archive = coldest = slowest to restore).
+  private static readonly TIER_COLORS: Record<string, string> = {
+    Hot: '#ef4444', Cool: '#3b82f6', Cold: '#0ea5e9', Archive: '#64748b',
+  };
+
+  protected tiers() {
+    const rows = this.stats()?.storedByTier ?? [];
+    const max = Math.max(1, ...rows.map(t => t.storedSize));
+    return rows.map(t => ({
+      tier: t.tier,
+      size: formatBytes(t.storedSize),
+      chunks: formatCount(t.uniqueChunks),
+      pct: (t.storedSize / max) * 100,
+      color: StatisticsTabComponent.TIER_COLORS[t.tier] ?? '#a1a1aa',
+    }));
   }
 }

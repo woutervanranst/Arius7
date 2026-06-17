@@ -1,4 +1,11 @@
+using Arius.Core.Shared.Storage;
+
 namespace Arius.Core.Shared.ChunkIndex;
+
+/// <summary>
+/// Distinct-chunk count and stored size for one storage tier (<see cref="BlobTier"/>).
+/// </summary>
+public sealed record ChunkTierStat(BlobTier Tier, long UniqueChunks, long StoredSize);
 
 /// <summary>
 /// Contract for resolving and publishing repository chunk-index entries. Feature handlers depend on this interface
@@ -47,10 +54,10 @@ public interface IChunkIndexService : IDisposable
     internal Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Aggregates the repository's stored size and unique-chunk count, loading every chunk-index
-    /// shard first so the figures are exact. Shards are a bounded set (≤256 small index blobs,
-    /// keyed by a two-character prefix) — not the chunk data — so this is cheap relative to a
-    /// chunk download.
+    /// Aggregates distinct-chunk count and stored size per storage tier straight from the local
+    /// chunk-index cache — no blob reads. Figures therefore reflect the cache's current coverage
+    /// (entries loaded by browsing/lookups plus any not-yet-flushed pending entries) and finalise
+    /// once the cache has fully synchronised.
     /// </summary>
-    internal Task<(long UniqueChunks, long StoredSize)> GetStatsAsync(CancellationToken cancellationToken = default);
+    internal IReadOnlyList<ChunkTierStat> GetStats();
 }

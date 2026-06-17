@@ -22,17 +22,18 @@ public sealed record StatsQuery(string? Version = null) : ICommand<RepositorySta
 /// <param name="OriginalSize">Sum of original (uncompressed) file sizes in bytes (from the manifest).</param>
 /// <param name="StoredSize">Sum of stored chunk sizes over distinct chunks (from the chunk index).</param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index).</param>
+/// <param name="StoredByTier">Distinct-chunk count and stored size split by storage tier.</param>
 /// <remarks>
-/// An empty repository (no snapshot yet) reports all-zero figures. Stored/unique-chunk figures are
-/// otherwise computed exactly: the query loads every chunk-index shard (a bounded set, ≤256 small
-/// index blobs — not the chunk data) before aggregating, so the response blocks until the figures
-/// are final rather than streaming a partial result.
+/// An empty repository (no snapshot yet) reports all-zero figures. The stored/unique-chunk figures
+/// are read straight from the local chunk-index cache (no blob reads), so they reflect the cache's
+/// current coverage and finalise once it has fully synchronised.
 /// </remarks>
 public sealed record RepositoryStats(
     long Files,
     long OriginalSize,
     long StoredSize,
-    long UniqueChunks);
+    long UniqueChunks,
+    IReadOnlyList<ChunkTierStat> StoredByTier);
 
 // --- HANDLER
 
@@ -53,16 +54,17 @@ public sealed class StatsQueryHandler(
         if (manifest is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            return new RepositoryStats(0, 0, 0, 0);
+            return new RepositoryStats(0, 0, 0, 0, []);
         }
 
-        // ── Stage 2: chunk-index aggregate over distinct chunks (stored size, unique chunks) ──
-        var (uniqueChunks, storedSize) = await chunkIndex.GetStatsAsync(cancellationToken);
+        // ── Stage 2: chunk-index aggregate over distinct chunks, split by storage tier ──
+        var byTier = chunkIndex.GetStats();
 
         return new RepositoryStats(
             Files:        manifest.FileCount,
             OriginalSize: manifest.TotalSize,
-            StoredSize:   storedSize,
-            UniqueChunks: uniqueChunks);
+            StoredSize:   byTier.Sum(t => t.StoredSize),
+            UniqueChunks: byTier.Sum(t => t.UniqueChunks),
+            StoredByTier: byTier);
     }
 }
