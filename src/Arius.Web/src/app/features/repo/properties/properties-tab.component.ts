@@ -86,11 +86,12 @@ export class PropertiesTabComponent {
 
   constructor() {
     // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
-    effect(() => {
+    effect(onCleanup => {
       const id = +this.repoId();
       this.repo.set(null);
-      this.api.getRepository(id).subscribe(r => { this.repo.set(r); this.reset(r); });
-      this.loadSchedules();
+      const repoSub = this.api.getRepository(id).subscribe(r => { this.repo.set(r); this.reset(r); });
+      const schedulesSub = this.api.getSchedules(id).subscribe(s => this.schedules.set(s));
+      onCleanup(() => { repoSub.unsubscribe(); schedulesSub.unsubscribe(); });   // drop in-flight requests if repoId changes first
     });
   }
 

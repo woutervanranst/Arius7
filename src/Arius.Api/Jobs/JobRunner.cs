@@ -88,7 +88,7 @@ public sealed class JobRunner(
         }
     }
 
-    public async Task RunRestoreAsync(long repositoryId, string jobId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
+    public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
     {
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
@@ -134,7 +134,7 @@ public sealed class JobRunner(
                             totalStandard            = estimate.TotalStandard,
                             totalHigh                = estimate.TotalHigh,
                         });
-                        var priority = await approvals.Register(jobId);
+                        var priority = await approvals.Register(jobId, connectionId);
                         sink.Log(priority is null ? "Restore declined." : $"Approved · {priority} priority", priority is null ? "warn" : "info");
                         return priority;
                     },

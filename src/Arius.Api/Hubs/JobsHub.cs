@@ -68,9 +68,8 @@ public sealed class JobsHub(
     {
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
-        // Tie any cost-approval modal to this connection so a disconnect declines (cancels) it.
-        approvals.Track(jobId, Context.ConnectionId);
-        _ = jobRunner.RunRestoreAsync(repositoryId, jobId, version, targetPaths ?? [], overwrite, noPointers);
+        // Pass the connection so a cost-approval modal is tied to it — a disconnect declines (cancels) it.
+        _ = jobRunner.RunRestoreAsync(repositoryId, jobId, Context.ConnectionId, version, targetPaths ?? [], overwrite, noPointers);
         return jobId;
     }
 
