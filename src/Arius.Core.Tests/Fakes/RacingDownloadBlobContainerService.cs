@@ -26,11 +26,15 @@ internal sealed class RacingDownloadBlobContainerService(
 
     public Task<DownloadResult?> TryDownloadAsync(RelativePath blobName, CancellationToken cancellationToken = default)
     {
-        if (blobName == _target && Interlocked.Increment(ref _missesServed) <= MaxMisses)
+        if (blobName == _target)
         {
-            if (_missesServed == 1)
-                _onFirstMiss?.Invoke();
-            return Task.FromResult<DownloadResult?>(null);
+            var missNumber = Interlocked.Increment(ref _missesServed);
+            if (missNumber <= MaxMisses)
+            {
+                if (missNumber == 1)
+                    _onFirstMiss?.Invoke();
+                return Task.FromResult<DownloadResult?>(null);
+            }
         }
 
         return Inner.TryDownloadAsync(blobName, cancellationToken);

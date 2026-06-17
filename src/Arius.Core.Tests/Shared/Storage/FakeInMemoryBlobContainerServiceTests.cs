@@ -44,11 +44,10 @@ public class FakeInMemoryBlobContainerServiceTests
     }
 
     [Test]
-    public async Task ListAsync_RawNamePrefix_DefaultInterfaceImplementation_MatchesNativeFakeSemantics()
+    public async Task ListAsync_RawNamePrefix_PassthroughDecorator_MatchesNativeFakeSemantics()
     {
-        // Exercises the IBlobContainerService DEFAULT implementation (directory listing + client-side
-        // filter) against the same seed data, so decorators that do not override the overload behave
-        // identically to native implementations.
+        // Verifies that a pass-through decorator forwards BlobNamePrefix listing semantics to the inner
+        // service unchanged, so it behaves identically to the native fake against the same seed data.
         var blobs = new FakeInMemoryBlobContainerService();
         blobs.SeedBlob(RelativePath.Parse("chunk-index/aa"), [1]);
         blobs.SeedBlob(RelativePath.Parse("chunk-index/aa0"), [2]);

@@ -1,6 +1,7 @@
 namespace Arius.Core.Tests.Shared.Storage.Fakes;
 
-/// <summary>Minimal decorator without an override for the raw name-prefix overload.</summary>
+/// <summary>Pass-through decorator that forwards every <see cref="IBlobContainerService"/> call
+/// (including <c>ListAsync</c> with its <c>prefixKind</c>) to the inner service unchanged.</summary>
 internal sealed class PassthroughBlobContainerService(IBlobContainerService inner) : IBlobContainerService
 {
     public Task                           CreateContainerIfNotExistsAsync(CancellationToken cancellationToken = default)                                                                                                                                     => inner.CreateContainerIfNotExistsAsync(cancellationToken);
