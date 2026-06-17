@@ -20,6 +20,70 @@ npm start                                   # http://localhost:4200
 dev. Build a production bundle with `npm run build` (output in `dist/arius-web`); in Docker the API
 serves that bundle from `wwwroot`.
 
+### Local state (when running the API with `dotnet run`)
+
+`ContentRootPath` is the API project dir, so by default state lands under `src/Arius.Api/.appstate`
+(gitignored). Override the first two with `Arius__AppDbPath` / `Arius__DataProtectionKeysPath`.
+
+| What | Default path |
+|---|---|
+| App SQLite (storage accounts, repositories, jobs, schedules) | `src/Arius.Api/.appstate/arius-app.sqlite` |
+| Data-Protection keys (encrypt account keys + passphrases at rest) | `src/Arius.Api/.appstate/keys/` |
+| Arius.Core caches (chunk index, filetree, snapshots) | `~/.arius/<account>-<container>/` |
+| Default restore destination (repositories with no local path) | `<temp>/arius-restore/<repoId>` (e.g. `/var/folders/.../arius-restore/1`) |
+| Isolated e2e app DB | `src/Arius.Web/e2e/.state/` |
+
+## Docker (single-container deployment)
+
+One image serves the built Angular SPA (from `wwwroot`) **and** the API (`/api` + `/hubs`) on port
+`8080`. The `Dockerfile`, `.dockerignore` and `docker-compose.yml` live at the **repository root**,
+and the build context is the repo root — run the commands below from there (not from `src/Arius.Web`).
+
+### Build the container
+
+```bash
+# from the repo root
+docker build -t arius-web:latest .
+```
+
+Multi-stage: builds the Angular bundle (`node`), publishes `Arius.Api` (`dotnet/sdk`), then assembles
+the SPA + API into a `dotnet/aspnet` runtime image.
+
+### Run the container
+
+```bash
+docker run -d --name arius -p 8080:8080 \
+  -v /host/arius/data:/data \
+  -v /host/photos:/repos/photos \
+  arius-web:latest
+# → http://localhost:8080
+```
+
+`-v …:/data` persists the app SQLite, the Data-Protection keys, and Arius.Core's caches. Add one
+`-v host-share:/container-path` mount per repository local-overlay folder (a repository's local path,
+set in Properties / the wizards, must resolve **inside** the container — i.e. one of these mounts).
+
+### Run with Docker Compose
+
+```bash
+# from the repo root
+docker compose up -d --build      # build the image and start (detached)
+docker compose logs -f            # follow logs
+docker compose down               # stop and remove
+```
+
+Edit the `volumes:` in `docker-compose.yml` to match your host shares — the defaults target Synology
+paths (`/volume1/...`).
+
+### Paths inside the container
+
+| What | Path |
+|---|---|
+| App SQLite | `/data/arius-app.sqlite` (`Arius__AppDbPath`) |
+| Data-Protection keys | `/data/keys` (`Arius__DataProtectionKeysPath`) |
+| Arius.Core caches (`~/.arius`) | `/data/.arius` (`HOME=/data`) |
+| Repository local-overlay folders | the host shares you mount (e.g. `/repos/photos`) |
+
 ## End-to-end tests (Playwright)
 
 A **live full-stack** suite (`e2e/`): Playwright boots the real `Arius.Api` + `ng serve` and drives
