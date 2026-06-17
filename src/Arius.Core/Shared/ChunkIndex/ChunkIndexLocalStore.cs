@@ -344,7 +344,7 @@ internal sealed class ChunkIndexLocalStore
     /// before grouping by tier — summing per content-hash would over-count shared tar chunks. A chunk
     /// blob lives in exactly one tier, so the per-chunk tier hint is unambiguous.
     /// </summary>
-    public IReadOnlyList<ChunkTierStat> GetStats()
+    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
     {
         try
         {
@@ -358,9 +358,9 @@ internal sealed class ChunkIndexLocalStore
                 ORDER BY storage_tier_hint;
                 """;
             using var reader = command.ExecuteReader();
-            var stats = new List<ChunkTierStat>();
+            var stats = new List<ChunkTierStatistic>();
             while (reader.Read())
-                stats.Add(new ChunkTierStat(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
+                stats.Add(new ChunkTierStatistic(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
 
             _logger.LogDebug("[chunk-index-local] GetStats: tiers={TierCount} uniqueChunks={UniqueChunks} storedSize={StoredSize}",
                 stats.Count, stats.Sum(t => t.UniqueChunks), stats.Sum(t => t.StoredSize));

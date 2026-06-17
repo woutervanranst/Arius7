@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { ApiService } from '../../../core/api/api.service';
-import { StatsDto } from '../../../core/api/api-models';
+import { StatisticsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
 
 /** Statistics tab: Files / Original size / Stored size / Unique chunks, with the "pending" banner. */
@@ -52,14 +52,14 @@ export class StatisticsTabComponent {
   private readonly api = inject(ApiService);
   readonly repoId = input.required<string>();
 
-  protected readonly stats = signal<StatsDto | null>(null);
+  protected readonly stats = signal<StatisticsDto | null>(null);
 
   constructor() {
     // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
     effect(onCleanup => {
       const id = +this.repoId();
       this.stats.set(null);
-      const sub = this.api.getStats(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
+      const sub = this.api.getStatistics(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
       onCleanup(() => sub.unsubscribe());   // cancel the in-flight request if repoId changes first
     });
   }

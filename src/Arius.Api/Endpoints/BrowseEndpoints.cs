@@ -1,7 +1,7 @@
 using Arius.Api.Composition;
 using Arius.Api.Contracts;
 using Arius.Core.Features.SnapshotsQuery;
-using Arius.Core.Features.StatsQuery;
+using Arius.Core.Features.StatisticsQuery;
 using Mediator;
 
 namespace Arius.Api.Endpoints;
@@ -23,10 +23,10 @@ internal static class BrowseEndpoints
         {
             var provider = await registry.GetReadProviderAsync(id, ct);
             var mediator = provider.GetRequiredService<IMediator>();
-            var stats = await mediator.Send(new StatsQuery(version), ct);
-            return new StatsDto(
+            var stats = await mediator.Send(new StatisticsQuery(version), ct);
+            return new StatisticsDto(
                 stats.Files, stats.OriginalSize, stats.StoredSize, stats.UniqueChunks,
-                stats.StoredByTier.Select(t => new TierStatDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize)).ToList());
+                stats.StoredByTier.Select(t => new TierStatisticsDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize)).ToList());
         });
     }
 }

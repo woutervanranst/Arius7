@@ -5,7 +5,7 @@ using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Features.SnapshotsQuery;
-using Arius.Core.Features.StatsQuery;
+using Arius.Core.Features.StatisticsQuery;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -43,7 +43,7 @@ internal sealed class CliHarness
         // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
         // ISnapshotService the harness has no reason to wire up).
         var snapshotsHandler = Substitute.For<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>();
-        var statsHandler = Substitute.For<ICommandHandler<StatsQuery, RepositoryStats>>();
+        var statsHandler = Substitute.For<ICommandHandler<StatisticsQuery, RepositoryStatistics>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -85,8 +85,8 @@ internal sealed class CliHarness
             .Returns(new ValueTask<IReadOnlyList<SnapshotInfo>>([]));
 
         statsHandler
-            .Handle(Arg.Any<StatsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStats>(new RepositoryStats(0, 0, 0, 0, [])));
+            .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, [])));
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

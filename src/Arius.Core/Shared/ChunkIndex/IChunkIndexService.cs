@@ -5,7 +5,7 @@ namespace Arius.Core.Shared.ChunkIndex;
 /// <summary>
 /// Distinct-chunk count and stored size for one storage tier (<see cref="BlobTier"/>).
 /// </summary>
-public sealed record ChunkTierStat(BlobTier Tier, long UniqueChunks, long StoredSize);
+public sealed record ChunkTierStatistic(BlobTier Tier, long UniqueChunks, long StoredSize);
 
 /// <summary>
 /// Contract for resolving and publishing repository chunk-index entries. Feature handlers depend on this interface
@@ -59,5 +59,5 @@ public interface IChunkIndexService : IDisposable
     /// (entries loaded by browsing/lookups plus any not-yet-flushed pending entries) and finalise
     /// once the cache has fully synchronised.
     /// </summary>
-    internal IReadOnlyList<ChunkTierStat> GetStats();
+    internal IReadOnlyList<ChunkTierStatistic> GetStatistics();
 }

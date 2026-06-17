@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -32,9 +32,9 @@ export class ApiService {
     return this.http.get<SnapshotDto[]>(`/api/repos/${id}/snapshots`);
   }
 
-  getStats(id: number, version?: string | null): Observable<StatsDto> {
+  getStatistics(id: number, version?: string | null): Observable<StatisticsDto> {
     const query = version ? `?version=${encodeURIComponent(version)}` : '';
-    return this.http.get<StatsDto>(`/api/repos/${id}/stats${query}`);
+    return this.http.get<StatisticsDto>(`/api/repos/${id}/stats${query}`);
   }
 
   createRepository(req: CreateRepositoryRequest): Observable<RepositoryDto> {

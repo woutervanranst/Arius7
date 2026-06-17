@@ -590,12 +590,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// pending archive entries). Deduping is by chunk hash, since tar-bundled content hashes share
     /// one chunk.
     /// </summary>
-    public IReadOnlyList<ChunkTierStat> GetStats()
+    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
     {
         ThrowIfRepairIncomplete();
         ThrowIfFlushed();
 
-        return _localStore.GetStats();
+        return _localStore.GetStatistics();
     }
 
     // -- Cache ---------------------------------------------------------------

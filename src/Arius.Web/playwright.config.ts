@@ -16,7 +16,14 @@ export default defineConfig({
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 20_000 },
-  reporter: [['list'], ['html', { outputFolder: 'e2e/playwright-report', open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'e2e/playwright-report', open: 'never' }],
+    // In CI, write a results table to the GitHub Actions job summary (mirrors the .NET test jobs).
+    ...(process.env.GITHUB_ACTIONS
+      ? [['@estruyf/github-actions-reporter', { title: 'Playwright e2e', useDetails: true }] as const]
+      : []),
+  ],
   outputDir: 'e2e/test-results',
   use: {
     baseURL: 'http://localhost:4200',

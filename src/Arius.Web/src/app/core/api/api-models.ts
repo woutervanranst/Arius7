@@ -23,15 +23,15 @@ export interface SnapshotDto {
   fileCount: number;
 }
 
-export interface StatsDto {
+export interface StatisticsDto {
   files: number;
   originalSize: number;
   storedSize: number;
   uniqueChunks: number;
-  storedByTier: TierStatDto[];
+  storedByTier: TierStatisticsDto[];
 }
 
-export interface TierStatDto {
+export interface TierStatisticsDto {
   tier: string;
   uniqueChunks: number;
   storedSize: number;

@@ -2,18 +2,18 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { StatisticsTabComponent } from './statistics-tab.component';
 import { ApiService } from '../../../core/api/api.service';
-import { StatsDto } from '../../../core/api/api-models';
+import { StatisticsDto } from '../../../core/api/api-models';
 
 /**
  * Deterministic coverage of the Statistics tab's per-tier breakdown — the live Playwright suite
  * cannot exercise this (its seed archives to a single tier), so multi-tier rendering and the
- * empty-state gate are verified here against a mocked StatsDto.
+ * empty-state gate are verified here against a mocked StatisticsDto.
  */
 describe('StatisticsTabComponent', () => {
-  function render(stats: StatsDto) {
+  function render(stats: StatisticsDto) {
     TestBed.configureTestingModule({
       imports: [StatisticsTabComponent],
-      providers: [{ provide: ApiService, useValue: { getStats: () => of(stats) } }],
+      providers: [{ provide: ApiService, useValue: { getStatistics: () => of(stats) } }],
     });
     const fixture = TestBed.createComponent(StatisticsTabComponent);
     fixture.componentRef.setInput('repoId', '1');
@@ -21,7 +21,7 @@ describe('StatisticsTabComponent', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  const multiTier: StatsDto = {
+  const multiTier: StatisticsDto = {
     files: 10,
     originalSize: 1000,
     storedSize: 100,
@@ -42,7 +42,7 @@ describe('StatisticsTabComponent', () => {
     expect(el.textContent).toContain('Unique chunks');
   });
 
-  it('renders one tier row per StatsDto.storedByTier entry, in order', () => {
+  it('renders one tier row per StatisticsDto.storedByTier entry, in order', () => {
     const el = render(multiTier);
 
     const panel = el.querySelector('[data-testid="tier-breakdown"]');

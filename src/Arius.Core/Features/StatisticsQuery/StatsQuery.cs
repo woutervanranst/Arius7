@@ -3,7 +3,7 @@ using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
 
-namespace Arius.Core.Features.StatsQuery;
+namespace Arius.Core.Features.StatisticsQuery;
 
 // --- QUERY
 
@@ -11,7 +11,7 @@ namespace Arius.Core.Features.StatsQuery;
 /// Mediator command: aggregate repository statistics for the Statistics view.
 /// </summary>
 /// <param name="Version">Snapshot version (partial match). <c>null</c> = latest.</param>
-public sealed record StatsQuery(string? Version = null) : ICommand<RepositoryStats>;
+public sealed record StatisticsQuery(string? Version = null) : ICommand<RepositoryStatistics>;
 
 // --- RESULT
 
@@ -28,12 +28,12 @@ public sealed record StatsQuery(string? Version = null) : ICommand<RepositorySta
 /// are read straight from the local chunk-index cache (no blob reads), so they reflect the cache's
 /// current coverage and finalise once it has fully synchronised.
 /// </remarks>
-public sealed record RepositoryStats(
+public sealed record RepositoryStatistics(
     long Files,
     long OriginalSize,
     long StoredSize,
     long UniqueChunks,
-    IReadOnlyList<ChunkTierStat> StoredByTier);
+    IReadOnlyList<ChunkTierStatistic> StoredByTier);
 
 // --- HANDLER
 
@@ -41,26 +41,26 @@ public sealed record RepositoryStats(
 /// Combines the snapshot manifest totals (files, original size) with the chunk-index aggregate
 /// (stored size, unique chunks).
 /// </summary>
-public sealed class StatsQueryHandler(
+public sealed class StatisticsQueryHandler(
     ISnapshotService          snapshots,
     IChunkIndexService        chunkIndex,
-    ILogger<StatsQueryHandler> logger)
-    : ICommandHandler<StatsQuery, RepositoryStats>
+    ILogger<StatisticsQueryHandler> logger)
+    : ICommandHandler<StatisticsQuery, RepositoryStatistics>
 {
-    public async ValueTask<RepositoryStats> Handle(StatsQuery query, CancellationToken cancellationToken)
+    public async ValueTask<RepositoryStatistics> Handle(StatisticsQuery query, CancellationToken cancellationToken)
     {
         // ── Stage 1: manifest totals (files, original size) ─────────────────────
         var manifest = await snapshots.ResolveAsync(query.Version, cancellationToken);
         if (manifest is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            return new RepositoryStats(0, 0, 0, 0, []);
+            return new RepositoryStatistics(0, 0, 0, 0, []);
         }
 
         // ── Stage 2: chunk-index aggregate over distinct chunks, split by storage tier ──
-        var byTier = chunkIndex.GetStats();
+        var byTier = chunkIndex.GetStatistics();
 
-        return new RepositoryStats(
+        return new RepositoryStatistics(
             Files:        manifest.FileCount,
             OriginalSize: manifest.TotalSize,
             StoredSize:   byTier.Sum(t => t.StoredSize),

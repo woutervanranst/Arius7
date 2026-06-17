@@ -1,4 +1,4 @@
-using Arius.Core.Features.StatsQuery;
+using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Snapshot;
@@ -6,11 +6,11 @@ using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging.Abstractions;
-using StatsQueryType = Arius.Core.Features.StatsQuery.StatsQuery;
+using StatisticsQueryType = Arius.Core.Features.StatisticsQuery.StatisticsQuery;
 
-namespace Arius.Core.Tests.Features.StatsQuery;
+namespace Arius.Core.Tests.Features.StatisticsQuery;
 
-public class StatsQueryHandlerTests
+public class StatisticsQueryHandlerTests
 {
     [Test]
     public async Task Handle_AggregatesManifestTotalsAndDistinctChunks()
@@ -34,8 +34,8 @@ public class StatsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('a'), OriginalSize: 200, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("c"), FakeChunkHash('b'), OriginalSize: 300, ChunkSize: 50, BlobTier.Cool));
 
-        var handler = new StatsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatsQueryHandler>.Instance);
-        var stats = await handler.Handle(new StatsQueryType(), CancellationToken.None);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(3);
         stats.OriginalSize.ShouldBe(600);
@@ -69,8 +69,8 @@ public class StatsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("a"), FakeChunkHash('a'), OriginalSize: 100, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('b'), OriginalSize: 400, ChunkSize: 60, BlobTier.Archive));
 
-        var handler = new StatsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatsQueryHandler>.Instance);
-        var stats = await handler.Handle(new StatsQueryType(), CancellationToken.None);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(100);
@@ -89,8 +89,8 @@ public class StatsQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-stats-empty", "ctr-stats-empty", IEncryptionService.PlaintextInstance);
 
-        var handler = new StatsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatsQueryHandler>.Instance);
-        var stats = await handler.Handle(new StatsQueryType(), CancellationToken.None);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(0);
         stats.OriginalSize.ShouldBe(0);

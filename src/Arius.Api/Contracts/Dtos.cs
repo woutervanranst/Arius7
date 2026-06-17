@@ -38,10 +38,10 @@ public sealed record UpdateRepositoryRequest(
 
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 
-public sealed record StatsDto(long Files, long OriginalSize, long StoredSize, long UniqueChunks, IReadOnlyList<TierStatDto> StoredByTier);
+public sealed record StatisticsDto(long Files, long OriginalSize, long StoredSize, long UniqueChunks, IReadOnlyList<TierStatisticsDto> StoredByTier);
 
 /// <summary>Stored size and distinct-chunk count for one storage tier (Hot/Cool/Cold/Archive).</summary>
-public sealed record TierStatDto(string Tier, long UniqueChunks, long StoredSize);
+public sealed record TierStatisticsDto(string Tier, long UniqueChunks, long StoredSize);
 
 // ── Jobs / schedules ──────────────────────────────────────────────────────────
 
