@@ -41,11 +41,10 @@ public class StatsQueryHandlerTests
         stats.OriginalSize.ShouldBe(600);
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(90);
-        stats.IsPending.ShouldBeFalse();
     }
 
     [Test]
-    public async Task Handle_NoSnapshot_ReturnsPendingZeroes()
+    public async Task Handle_NoSnapshot_ReturnsZeroes()
     {
         var blobs = new FakeSeededBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-stats-empty", "ctr-stats-empty", IEncryptionService.PlaintextInstance);
@@ -57,6 +56,5 @@ public class StatsQueryHandlerTests
         stats.OriginalSize.ShouldBe(0);
         stats.UniqueChunks.ShouldBe(0);
         stats.StoredSize.ShouldBe(0);
-        stats.IsPending.ShouldBeTrue();
     }
 }

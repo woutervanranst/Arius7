@@ -1,6 +1,6 @@
 # Arius.Web
 
-Angular 20 + Metronic v9 (Tailwind/KTUI) frontend for Arius. It talks to **Arius.Api** over REST
+Angular 21 + Metronic v9 (Tailwind/KTUI) frontend for Arius. It talks to **Arius.Api** over REST
 (`/api`) and SignalR (`/hubs/arius`) — the file browser, archive/restore streaming, container
 discovery and global search all run over the hub.
 

@@ -51,7 +51,7 @@ public sealed class JobSink
             stats = new Dictionary<string, string>
             {
                 ["Files"] = $"{hashed}/{Interlocked.Read(ref _totalFiles)}",
-                ["Uploaded"] = FormatBytes(Interlocked.Read(ref _bytesUploaded)),
+                ["Uploaded"] = JobFormat.Bytes(Interlocked.Read(ref _bytesUploaded)),
                 ["Deduped"] = Interlocked.Read(ref _filesDeduped).ToString(),
                 ["Chunks"] = Interlocked.Read(ref _chunksUploaded).ToString(),
             },
@@ -70,12 +70,9 @@ public sealed class JobSink
             stats = new Dictionary<string, string>
             {
                 ["Restored"] = $"{restored}/{Interlocked.Read(ref _totalRestore)}",
-                ["Downloaded"] = FormatBytes(Interlocked.Read(ref _bytesRestored)),
+                ["Downloaded"] = JobFormat.Bytes(Interlocked.Read(ref _bytesRestored)),
                 ["Rehydrating"] = Interlocked.Read(ref _chunksToRehydrate).ToString(),
             },
         });
     }
-
-    private static string FormatBytes(long b)
-        => b >= 1_000_000_000 ? $"{b / 1e9:0.00} GB" : b >= 1_000_000 ? $"{b / 1e6:0.0} MB" : b >= 1000 ? $"{b / 1e3:0} KB" : $"{b} B";
 }

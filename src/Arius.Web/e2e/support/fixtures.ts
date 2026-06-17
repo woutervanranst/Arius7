@@ -16,7 +16,9 @@ export interface RepoInfo {
  */
 export const test = base.extend<{ repo: RepoInfo; patchRepo: (id: number, body: Record<string, unknown>) => Promise<void> }>({
   repo: async ({ request }, use) => {
-    const repos = await (await request.get('/api/repos')).json();
+    const reposResponse = await request.get('/api/repos');
+    expect(reposResponse.ok(), `GET /api/repos failed (${reposResponse.status()})`).toBeTruthy();
+    const repos = await reposResponse.json();
     if (!Array.isArray(repos) || repos.length === 0) throw new Error('No repository available (global setup did not seed one).');
     // Prefer the configured container; otherwise the first non-scratch repo; never a leftover scratch repo.
     const wanted = process.env.ARIUS_E2E_CONTAINER;
@@ -27,7 +29,10 @@ export const test = base.extend<{ repo: RepoInfo; patchRepo: (id: number, body: 
     await use({ repoId: r.id, accountId: r.accountId, alias: r.alias, container: r.container, localPath: r.localPath, defaultTier: r.defaultTier });
   },
   patchRepo: async ({ request }, use) => {
-    await use(async (id, body) => { await request.patch(`/api/repos/${id}`, { data: body }); });
+    await use(async (id, body) => {
+      const patchResponse = await request.patch(`/api/repos/${id}`, { data: body });
+      expect(patchResponse.ok(), `PATCH /api/repos/${id} failed (${patchResponse.status()})`).toBeTruthy();
+    });
   },
 });
 

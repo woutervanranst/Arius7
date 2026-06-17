@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { ApiService } from '../../../core/api/api.service';
@@ -85,8 +85,11 @@ export class PropertiesTabComponent {
   protected newCron = '';
 
   constructor() {
-    queueMicrotask(() => {
-      this.api.getRepository(+this.repoId()).subscribe(r => { this.repo.set(r); this.reset(r); });
+    // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
+    effect(() => {
+      const id = +this.repoId();
+      this.repo.set(null);
+      this.api.getRepository(id).subscribe(r => { this.repo.set(r); this.reset(r); });
       this.loadSchedules();
     });
   }

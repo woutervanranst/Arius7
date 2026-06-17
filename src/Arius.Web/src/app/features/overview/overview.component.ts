@@ -101,7 +101,7 @@ export class OverviewComponent {
       : tier?.toLowerCase() === 'archive' ? '#8b5cf6' : '#a1a1aa';
   }
 
-  protected refresh(): void { this.router.navigateByUrl('/overview', { onSameUrlNavigation: 'reload' }); location.reload(); }
+  protected refresh(): void { location.reload(); }
   protected go(path: string): void { this.router.navigateByUrl(path); }
   protected openRepo(id: number): void { this.router.navigate(['/repos', id, 'files']); }
 }

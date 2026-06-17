@@ -20,7 +20,11 @@ export class SearchStore {
 
   close(): void {
     this.open.set(false);
+    clearTimeout(this.debounce);
+    this.debounce = undefined;
     this.subscription?.unsubscribe();
+    this.subscription = undefined;
+    this.loading.set(false);
   }
 
   setQuery(value: string): void {

@@ -17,7 +17,8 @@ test.describe('files tab', () => {
     const files = page.getByTestId('file-row');
     await expect(files.first()).toBeVisible({ timeout: 40_000 });
     // every file row renders the state-ring SVG
-    await expect(files.first().locator('arius-state-ring svg')).toBeVisible();
+    const rowCount = await files.count();
+    await expect(files.locator('arius-state-ring svg')).toHaveCount(rowCount);
   });
 
   test('filter narrows the file list', async ({ page }) => {

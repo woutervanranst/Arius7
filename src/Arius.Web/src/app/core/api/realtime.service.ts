@@ -37,7 +37,8 @@ export class RealtimeService {
     if (this.connection.state === signalR.HubConnectionState.Connected) {
       return Promise.resolve();
     }
-    this.starting ??= this.connection.start();
+    // Cache the in-flight start, but drop it on failure so a later call can retry (API not up yet).
+    this.starting ??= this.connection.start().catch(err => { this.starting = undefined; throw err; });
     return this.starting;
   }
 

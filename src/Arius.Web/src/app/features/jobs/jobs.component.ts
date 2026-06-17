@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ApiService } from '../../core/api/api.service';
 import { RealtimeService } from '../../core/api/realtime.service';
 import { JobDto, LogLine } from '../../core/api/api-models';
@@ -89,7 +89,9 @@ export class JobsComponent {
   protected readonly scheduledCount = computed(() => this.jobs()?.filter(j => j.status === 'scheduled').length ?? 0);
 
   constructor() {
-    this.realtime.log$.subscribe(line => this.consoleLines.update(a => [...a.slice(-200), line]));
+    this.realtime.log$
+      .pipe(takeUntilDestroyed())
+      .subscribe(line => this.consoleLines.update(a => [...a.slice(-200), line]));
   }
 
   protected meta(status: string) {

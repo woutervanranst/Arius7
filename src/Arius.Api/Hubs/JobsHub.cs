@@ -68,8 +68,17 @@ public sealed class JobsHub(
     {
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
+        // Tie any cost-approval modal to this connection so a disconnect declines (cancels) it.
+        approvals.Track(jobId, Context.ConnectionId);
         _ = jobRunner.RunRestoreAsync(repositoryId, jobId, version, targetPaths ?? [], overwrite, noPointers);
         return jobId;
+    }
+
+    /// <summary>A dropped connection (closed tab / lost socket) declines any restore awaiting its approval.</summary>
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        approvals.CancelForConnection(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
     }
 
     /// <summary>

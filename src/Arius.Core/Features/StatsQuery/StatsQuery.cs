@@ -22,17 +22,17 @@ public sealed record StatsQuery(string? Version = null) : ICommand<RepositorySta
 /// <param name="OriginalSize">Sum of original (uncompressed) file sizes in bytes (from the manifest).</param>
 /// <param name="StoredSize">Sum of stored chunk sizes over distinct chunks (from the chunk index).</param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index).</param>
-/// <param name="IsPending">
-/// <c>true</c> when no snapshot exists yet (figures are not meaningful). Stored/unique-chunk figures
-/// are otherwise computed exactly by loading every chunk-index shard (a bounded set, ≤256 small
-/// index blobs — not the chunk data).
-/// </param>
+/// <remarks>
+/// An empty repository (no snapshot yet) reports all-zero figures. Stored/unique-chunk figures are
+/// otherwise computed exactly: the query loads every chunk-index shard (a bounded set, ≤256 small
+/// index blobs — not the chunk data) before aggregating, so the response blocks until the figures
+/// are final rather than streaming a partial result.
+/// </remarks>
 public sealed record RepositoryStats(
     long Files,
     long OriginalSize,
     long StoredSize,
-    long UniqueChunks,
-    bool IsPending);
+    long UniqueChunks);
 
 // --- HANDLER
 
@@ -52,8 +52,8 @@ public sealed class StatsQueryHandler(
         var manifest = await snapshots.ResolveAsync(query.Version, cancellationToken);
         if (manifest is null)
         {
-            logger.LogDebug("[stats] no snapshot for version {Version}; returning empty pending stats", query.Version ?? "<latest>");
-            return new RepositoryStats(0, 0, 0, 0, IsPending: true);
+            logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
+            return new RepositoryStats(0, 0, 0, 0);
         }
 
         // ── Stage 2: chunk-index aggregate over distinct chunks (stored size, unique chunks) ──
@@ -63,7 +63,6 @@ public sealed class StatsQueryHandler(
             Files:        manifest.FileCount,
             OriginalSize: manifest.TotalSize,
             StoredSize:   storedSize,
-            UniqueChunks: uniqueChunks,
-            IsPending:    false);
+            UniqueChunks: uniqueChunks);
     }
 }

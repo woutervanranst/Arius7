@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { ApiService } from '../../../core/api/api.service';
 import { StatsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
@@ -25,7 +25,7 @@ import { formatBytes, formatCount } from '../../../shared/format';
       <div style="font-size:13px;color:#3f3f46;line-height:1.5">
         <i class="ki-filled ki-information-2" style="color:#3b82f6"></i>
         Counts are derived from the file-tree and chunk index. Figures finalise once the local cache
-        has fully downloaded@if (stats()?.pending) {<b> — still loading…</b>}.
+        has fully downloaded.
       </div>
     </div>
   `,
@@ -37,8 +37,11 @@ export class StatisticsTabComponent {
   protected readonly stats = signal<StatsDto | null>(null);
 
   constructor() {
-    queueMicrotask(() => {
-      this.api.getStats(+this.repoId()).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
+    // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
+    effect(() => {
+      const id = +this.repoId();
+      this.stats.set(null);
+      this.api.getStats(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
     });
   }
 

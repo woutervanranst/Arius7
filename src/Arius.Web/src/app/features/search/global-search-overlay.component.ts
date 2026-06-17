@@ -24,7 +24,7 @@ import { formatBytes } from '../../shared/format';
           <kbd style="font-size:11px;color:#a1a1aa;border:1px solid #e4e4e7;border-radius:6px;padding:2px 6px">Esc</kbd>
         </div>
         <div style="max-height:50vh;overflow-y:auto">
-          @for (hit of store.results(); track hit.repoId + hit.entry.relativePath) {
+          @for (hit of store.results(); track hit.repoId + '|' + hit.entry.relativePath) {
             <button class="ar-hit" data-testid="search-result" (click)="openHit(hit)">
               <arius-state-ring [state]="hit.entry.state" [size]="19" />
               <i class="ki-outline ki-document" style="color:#a1a1aa;font-size:16px"></i>

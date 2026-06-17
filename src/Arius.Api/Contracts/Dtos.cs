@@ -38,7 +38,7 @@ public sealed record UpdateRepositoryRequest(
 
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 
-public sealed record StatsDto(long Files, long OriginalSize, long StoredSize, long UniqueChunks, bool Pending);
+public sealed record StatsDto(long Files, long OriginalSize, long StoredSize, long UniqueChunks);
 
 // ── Jobs / schedules ──────────────────────────────────────────────────────────
 

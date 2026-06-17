@@ -28,7 +28,6 @@ export interface StatsDto {
   originalSize: number;
   storedSize: number;
   uniqueChunks: number;
-  pending: boolean;
 }
 
 export interface StateFlagsDto {

@@ -62,6 +62,8 @@ export class DrawerStore {
   }
 
   close(): void {
+    // Closing while the cost modal is up cancels the parked restore (server treats null as decline).
+    if (this.streamState() === 'cost') { const id = this.jobId(); if (id) void this.realtime.approve(id, null); }
     this.type.set(null);
     this.resetStream();
   }
