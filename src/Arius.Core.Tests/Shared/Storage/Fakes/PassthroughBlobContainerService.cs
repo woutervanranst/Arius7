@@ -1,4 +1,4 @@
-namespace Arius.Core.Tests.Shared.Storage;
+namespace Arius.Core.Tests.Shared.Storage.Fakes;
 
 /// <summary>Minimal decorator without an override for the raw name-prefix overload.</summary>
 internal sealed class PassthroughBlobContainerService(IBlobContainerService inner) : IBlobContainerService
