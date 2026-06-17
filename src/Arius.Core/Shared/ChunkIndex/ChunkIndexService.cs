@@ -70,19 +70,19 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _logger             = loggerFactory?.CreateLogger<ChunkIndexService>() ?? NullLogger<ChunkIndexService>.Instance;
 
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName);
-        _repositoryFileSystem = new RelativeFileSystem(repositoryRoot);
+        _repositoryFileSystem = new(repositoryRoot);
         _repositoryFileSystem.CreateDirectory(RelativePath.Root);
 
         var cacheRoot = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName);
-        _localStore = new ChunkIndexLocalStore(cacheRoot, loggerFactory?.CreateLogger<ChunkIndexLocalStore>());
-        _latestSnapshotName = new AsyncLazy<string>(async () =>
+        _localStore = new(cacheRoot, loggerFactory?.CreateLogger<ChunkIndexLocalStore>());
+        _latestSnapshotName = new(async () =>
         {
             var snapshots = await snapshotService.ListBlobNamesAsync();
             return snapshots.Count == 0
                 ? "<none>"
                 : snapshots[^1].Name.ToString();
         });
-        _shardListing = new ResettableAsyncLazy<FrozenDictionary<string, FrozenDictionary<string, string?>>>(ListAllShardsAsync);
+        _shardListing = new(ListAllShardsAsync);
     }
 
     // -- Lookup --------------------------------------------------------------
@@ -193,7 +193,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// </summary>
     private async Task EnsureCoverageForHashesAsync(PathSegment root, IReadOnlyList<ContentHash> hashes, string latestSnapshotVersion, CancellationToken cancellationToken)
     {
-        var gate = _rootGates.GetOrAdd(root, static _ => new SemaphoreSlim(1, 1));
+        var gate = _rootGates.GetOrAdd(root, static _ => new(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
@@ -349,7 +349,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
             var root = name[..MinShardPrefixLength];
             if (!byRoot.TryGetValue(root, out var shards))
-                byRoot[root] = shards = new Dictionary<string, string?>(StringComparer.Ordinal);
+                byRoot[root] = shards = new(StringComparer.Ordinal);
             shards[name] = item.ETag;
         }
 
@@ -443,7 +443,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// </summary>
     private async Task FlushRootAsync(PathSegment root, string latestSnapshotVersion, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
-        var gate = _rootGates.GetOrAdd(root, static _ => new SemaphoreSlim(1, 1));
+        var gate = _rootGates.GetOrAdd(root, static _ => new(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
@@ -688,7 +688,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         DeleteRepairMarker();
         _shardListing.Reset(); // repair rewrote the whole layout — drop any cached listing
 
-        return new ChunkIndexRepairResult(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
+        return new(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
     }
 
     /// <summary>
@@ -716,7 +716,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
             var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
             var chunkSize      = ReadChunkSize(item);
-            return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
+            return new(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
         }
 
         static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
@@ -732,7 +732,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
 
             var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            return new ShardEntry(contentHash, parentChunkHash, originalSize, parentTar.ChunkSize, parentTar.Tier);
+            return new(contentHash, parentChunkHash, originalSize, parentTar.ChunkSize, parentTar.Tier);
         }
 
         static long ReadRequiredLongMetadata(BlobListItem item, string key)
