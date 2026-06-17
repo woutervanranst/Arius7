@@ -2,7 +2,7 @@
   "profiles": {
     "10 archive": {
       "commandName": "Project",
-      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariusci -c test -t Cool"
+      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source2\" -a ariusci -c test -t Cool --no-pointers"
     },
     "20 list": {
       "commandName": "Project",

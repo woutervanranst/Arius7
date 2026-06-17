@@ -112,6 +112,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
                 if (pendingFlushEntry is not null)
                 {
+                    // Entry is local-only / dirty
                     result[contentHash] = pendingFlushEntry;
                     continue;
                 }
@@ -136,8 +137,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
         await Parallel.ForEachAsync(
             validationWork,
             new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
-            async (item, ct) => await EnsureCoverageForHashesAsync(item.Root, item.Hashes, latestSnapshotName, ct));
+            async (item, ct) =>
+            {
+                await EnsureCoverageForHashesAsync(item.Root, item.Hashes, latestSnapshotName, ct);
+            });
 
+        // Construct the result from the validated shards
         foreach (var item in validationWork)
         {
             foreach (var contentHash in item.Hashes)
@@ -263,7 +268,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
             await Parallel.ForEachAsync(
                 shardsToLoad,
                 new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
-                async (shard, ct) => await LoadShardAsync(shard.Key, shard.Value, downloaded, revalidated, raced, ct));
+                async (shard, ct) =>
+                {
+                    await LoadShardAsync(shard.Key, shard.Value, downloaded, revalidated, raced, ct);
+                });
 
             // A shard listed at snapshot time but gone at download time means a racing split deleted it.
             // Reset the shared listing and re-resolve from a fresh one; the per-call latch bounds this to one
@@ -426,7 +434,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
         await Parallel.ForEachAsync(
             rootsWithPendingFlushes,
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (root, ct) => await FlushRootAsync(root, latestSnapshotVersion, uploadedStates, ct));
+            async (root, ct) =>
+            {
+                await FlushRootAsync(root, latestSnapshotVersion, uploadedStates, ct);
+            });
 
         // Only after EVERY subtree uploaded successfully: pending rows become clean, and the
         // uploaded shard set becomes validated coverage (leaf claims replace any split parent's

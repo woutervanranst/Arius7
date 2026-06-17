@@ -182,7 +182,7 @@ public sealed class AzureBlobContainerService : IBlobContainerService
 
     public async IAsyncEnumerable<BlobListItem> ListAsync(
         RelativePath prefix,
-        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix,
+        BlobListPrefixKind prefixKind = BlobListPrefixKind.DirectoryPrefix, // TODO i think BlobListPrefixKind.BlobNamePrefix is no longer used -> can be reverted?
         bool includeMetadata = false,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
