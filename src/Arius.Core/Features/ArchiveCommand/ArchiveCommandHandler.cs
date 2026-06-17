@@ -90,7 +90,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     private const int HashWorkers      = 4;
     private const int UploadWorkers    = 4;
-    private const int TarUploadWorkers = 1;
+    private const int TarUploadWorkers = 2;
     private const int ThinEntryWorkers = 64;
     private const int FileTreeUpdateWorkers = 16;
     private const int ChannelCapacity  = 64;
