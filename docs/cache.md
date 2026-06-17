@@ -118,14 +118,7 @@ which shard blobs exist:
   entry counts (splitting and coarsening as needed) and deletes every other
   `chunk-index/` blob.
 
-The model is: 256 independently managed recursive subtrees, not one global recursive tree. It is recursively split within each 2-hex root, but discovery/gating/parallelism are anchored on the fixed 256 roots.
-
-Motivation for MaxShardEntryCount = 1024:
-- Incremental flush rewrites the whole touched shard 
-- So write-amplification scales with shard size and dominates steady state:
-a daily archive touching ~200 roots writes ~2.2 MB at T=1024 vs ~34 MB at T=4096 (~15×).
-Conclusion: optimize the common incremental path, not the once-per-machine cold path. 
-Design point ~1.3M chunks → ~4096 shards → one 5000-blob list page (≈900 shards of headroom). Beyond 1.3M the 'failure mode' is gradual where we will need to get an additional page from the list operation.
+The model is: 256 independently managed recursive subtrees, not one global recursive tree. It is recursively split within each 2-hex root, but discovery/gating/parallelism are anchored on the fixed 256 roots. The `MaxShardEntryCount` threshold (1024) is discussed below.
 
 Known limitation (pre-existing, unchanged by dynamic sharding): concurrent
 archives from two machines into the same repository can overwrite each other's
@@ -156,22 +149,20 @@ cache, and no write-session overlay collection.
 
 ```mermaid
 flowchart TD
-    A[LookupAsync content hash] --> B{Dirty row in local SQLite?}
+    A[LookupAsync content hashes] --> B{Dirty row in local SQLite?}
     B -->|yes| C[Return dirty row]
     B -->|no| D[Group hashes by 2-char root]
     D --> E{Coverage claim at current snapshot covers hash?}
     E -->|yes| F[Read requested rows from local SQLite]
-    E -->|no| G[List chunk-index subtree for the root]
-    G --> H{Walk: shallowest existing shard on the hash's path?}
-    H -->|none| H2[AddEmptyPrefix at terminal walk depth]
-    H2 --> F
-    H -->|shard| H3{Listed ETag matches stored identity?}
-    H3 -->|yes| I[Advance validated snapshot identity, no download]
-    I --> F
-    H3 -->|no| J[TryDownloadAsync the shard, delete clean rows in its range]
-    J --> K[Deserialize downloaded shard body]
-    K --> L[Ingest clean rows into local SQLite]
-    L --> F
+    E -->|no| G[Consult run-scoped chunk-index/ listing, cached once per run]
+    G --> H{Per hash: shallowest existing shard on the path?}
+    H -->|none| H2[Classify as empty range]
+    H -->|shard with matching ETag| H3[Classify as revalidated, no download]
+    H -->|shard with differing ETag| H4[Download + deserialize, parallel and bounded]
+    H2 --> Z[Apply once in a batched IngestCoverage transaction]
+    H3 --> Z
+    H4 --> Z
+    Z --> F
     F --> M{Entry found?}
     M -->|yes| N[Return shard entry]
     M -->|no| O[Miss]
@@ -183,10 +174,13 @@ flowchart TD
     U --> V[Stream range rows ordered by content hash]
     V --> W{Merged count over MaxShardEntryCount?}
     W -->|no| W1[Upload complete shard to Azure]
-    W -->|yes| W2[Upload all non-empty leaf shards, THEN delete parent + stale blobs in range]
+    W -->|yes| W2[Upload non-empty leaf shards then delete parent + stale blobs, both parallel; delete scan skipped if the range was empty]
     W1 --> X[Mark dirty rows clean and store new blob identities]
     W2 --> X
 ```
+
+A shard listed at snapshot time but gone at download time (a racing split) resets the
+run-scoped listing and re-lists once before retrying.
 
 Dirty rows and clean rows are separate states in the same local database,
 distinguished by the `pending_flush` column on `chunk_index_entries`:
@@ -204,9 +198,9 @@ identity with the current remote blob identity for that prefix.
 
 - `LookupAsync` — returns dirty rows immediately; otherwise validates the touched
   prefix lazily (against the run-scoped listing, see below) and reads only the
-  requested hashes from local SQLite. Shard downloads for one validation run
-  concurrently (bounded), and their results are applied to SQLite in a single
-  transaction.
+  requested hashes from local SQLite. Within one validation the touched shards
+  download concurrently (bounded), and their results are applied to SQLite in a
+  single transaction.
 - `AddEntry` — records a newly uploaded chunk as a dirty row immediately after
   upload.
 - `FlushAsync` — reads dirty roots from SQLite, resolves the authoritative
@@ -257,7 +251,7 @@ caching the *listing* too removes the previous per-uncovered-leaf re-listing.
   future mutation in that window must reset the listing.
 
 **In-process write model.** `AddEntry`/`AddEntries` (dirty rows) run concurrently
-with lookup-driven `UpdatePrefix`/empty-range writes on separate SQLite
+with the lookup-driven `IngestCoverage` write on separate SQLite
 connections; they serialize at the WAL writer + Microsoft.Data.Sqlite busy-retry
 level. To keep the parallel shard-download fan-out from contending on the write
 lock, all results of one validation run are applied in a single batched
@@ -272,7 +266,8 @@ shards, which still lists in a single 5000-blob page; the layout only spills to 
 second page past ~4.2 M chunks (and degradation is gradual — one extra list
 round-trip per additional ~5000 shards, paid once per run). 1024 is chosen because
 flush rewrites the *whole* touched shard (`overwrite: true`, no delta), so
-incremental write amplification scales with shard size and dominates steady state;
+incremental write amplification scales with shard size and dominates steady state
+(a daily run touching ~200 roots rewrites ~2.2 MB at 1024 vs ~34 MB at 4096, ~15×);
 the cold-dedup GET count (the only thing a larger threshold improves) is instead
 addressed by the parallel, single-listing download path above. Total cold-dedup
 bytes are ~constant in the threshold.
