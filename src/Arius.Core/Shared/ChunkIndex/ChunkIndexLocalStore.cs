@@ -545,21 +545,26 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0;";
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
+            // Under the same gate as the other remote-backed writers (IngestCoverage / pending-flush), so a
+            // cleared cache and a coverage ingest can never interleave into a half-cleared state.
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var deleteEntries = connection.CreateCommand();
+                deleteEntries.Transaction = transaction;
+                deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0;";
+                var deletedEntryRows = deleteEntries.ExecuteNonQuery();
 
-            using var deletePrefixes = connection.CreateCommand();
-            deletePrefixes.Transaction = transaction;
-            deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
-            var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
-            transaction.Commit();
+                using var deletePrefixes = connection.CreateCommand();
+                deletePrefixes.Transaction = transaction;
+                deletePrefixes.CommandText = "DELETE FROM loaded_prefixes;";
+                var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
+                transaction.Commit();
 
-            DeleteLegacyShardCacheFiles();
-            _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
+                DeleteLegacyShardCacheFiles();
+                _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
+            }
         }
         catch (SqliteException ex)
         {

@@ -184,7 +184,12 @@ public class ChunkIndexServiceFlushTests
         }
 
         (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")))).ShouldNotBeNull(); // parent intact
-        (await ReadShardAsync(blobs, PathSegment.Parse("aa1"))).Entries.Single().ShouldBe(e1);                    // one child written
+        // Exactly one leaf landed before the crash; which one is non-deterministic under parallel leaf upload.
+        var survivingLeaves = 0;
+        foreach (var leaf in new[] { "aa1", "aa2", "aa3" })
+            if (await blobs.TryDownloadAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse(leaf))) is not null)
+                survivingLeaves++;
+        survivingLeaves.ShouldBe(1);
 
         // PARENT WINS: a cold reader resolves everything any published snapshot could reference from
         // the parent, and does not see the crashed run's unpublished entry.
@@ -264,6 +269,29 @@ public class ChunkIndexServiceFlushTests
         blobs.DeletedBlobNames.ShouldContain(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")));
         blobs.DeletedBlobNames.ShouldContain(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa9")));
         (await ReadShardAsync(blobs, PathSegment.Parse("aa3"))).Entries.Single().ShouldBe(e3);
+        // A non-empty range was split, so the destructive scan did list the root subtree.
+        blobs.ListedNamePrefixes.ShouldContain($"{BlobPaths.ChunkIndexPrefix}/aa");
+    }
+
+    [Test]
+    public async Task FlushAsync_SplitOfEmptyRange_SkipsPostSplitListingAndDeletes()
+    {
+        // A brand-new (empty) range that splits has no parent or interrupted-split leftovers to clean, so
+        // the post-split subtree listing and deletes are skipped — only the coverage listing happens.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var repositoryKey = UniqueRepositoryKey("flush-split-empty-skip");
+        using (var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey, maxShardEntryCount: 1))
+        {
+            index.AddEntry(Entry("aa1"));
+            index.AddEntry(Entry("aa2"));
+            await index.FlushAsync();
+        }
+
+        // No per-root (chunk-index/aa) listing and no deletes — the destructive post-split scan was skipped.
+        blobs.ListedNamePrefixes.ShouldNotContain($"{BlobPaths.ChunkIndexPrefix}/aa");
+        blobs.DeletedBlobNames.ShouldBeEmpty();
+        (await ReadShardAsync(blobs, PathSegment.Parse("aa1"))).Entries.Single().ShouldBe(Entry("aa1"));
+        (await ReadShardAsync(blobs, PathSegment.Parse("aa2"))).Entries.Single().ShouldBe(Entry("aa2"));
     }
 
     /// <summary>An entry whose content hash starts with <paramref name="hashPrefix"/> (padded with '9').</summary>

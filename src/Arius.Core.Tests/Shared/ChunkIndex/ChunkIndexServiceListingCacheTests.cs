@@ -107,6 +107,33 @@ public class ChunkIndexServiceListingCacheTests
         blobs.ListedNamePrefixes.ShouldBe([ExpectedFullListPrefix]);        // one listing served all leaves
     }
 
+    // ── #9: sibling-leaf coverage downloads actually run concurrently (not just correctly) ──────────────────
+
+    [Test]
+    public async Task LookupAsync_ManyLeavesOneRoot_DownloadsRunConcurrently()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var entriesByHash = new Dictionary<ContentHash, ShardEntry>();
+        foreach (var nibble in "01234567") // 8 leaves == PrefixLoadWorkers
+        {
+            var hash = ContentHash.Parse($"aa{nibble}".PadRight(64, '0'));
+            var entry = new ShardEntry(hash, FakeChunkHash(nibble), 10, 5, BlobTier.Cool);
+            entriesByHash[hash] = entry;
+            blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse($"aa{nibble}")), await ShardSerializer.SerializeAsync(CreateShard(entry), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), BlobTier.Cool);
+        }
+        // The barrier only releases once all 8 downloads are simultaneously in flight; sequential loads would
+        // never reach it and the lookup would time out.
+        var barrier = new ParallelDownloadBarrierBlobContainerService(blobs, expectedConcurrency: 8);
+        using var index = CreateIndex(barrier, "parallel-downloads");
+
+        var actual = await index.LookupAsync(entriesByHash.Keys);
+
+        barrier.ReachedExpectedConcurrency.ShouldBeTrue();
+        actual.Count.ShouldBe(entriesByHash.Count);
+        foreach (var (hash, entry) in entriesByHash)
+            actual[hash].ShouldBe(entry);
+    }
+
     // ── #2 reset: InvalidateCaches drops the run-scoped listing so the next lookup re-lists ──────────────────
 
     [Test]

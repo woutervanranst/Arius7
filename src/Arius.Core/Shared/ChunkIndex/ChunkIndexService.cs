@@ -548,27 +548,49 @@ internal sealed class ChunkIndexService : IChunkIndexService
     /// </summary>
     private async Task SplitShardAsync(PathSegment root, PathSegment prefix, Shard shard, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
+        // Whether range(prefix) held any remote shard before this run's flush. Under the single-writer
+        // assumption the run-scoped listing is that pre-flush state (our own leaf uploads below never
+        // appear in the immutable snapshot), so an empty range means there is nothing stale to clean.
+        var rangeWasEmpty = !((await GetShardListingAsync(cancellationToken)).Listing.GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty)
+            .Keys.Any(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal));
+
         var leaves = ChunkIndexRouter.PartitionIntoLeaves(prefix, shard.Entries.ToList(), _maxShardEntryCount);
-        foreach (var (leafPrefix, leafEntries) in leaves)
-        {
-            var leafShard = new Shard();
-            leafShard.AddOrUpdateRange(leafEntries);
-            var result = await UploadShardAsync(leafPrefix, leafShard, cancellationToken); // TODO this can be paralallized bc independent?
-            uploadedStates[leafPrefix] = result.ETag;
-        }
+
+        // Upload the (independent) leaf shards concurrently. ALL must land before any delete: a crash
+        // mid-split must leave the parent intact so parent-wins lookup stays correct.
+        await Parallel.ForEachAsync(
+            leaves,
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (leaf, ct) =>
+            {
+                var leafShard = new Shard();
+                leafShard.AddOrUpdateRange(leaf.Entries);
+                var result = await UploadShardAsync(leaf.Prefix, leafShard, ct);
+                uploadedStates[leaf.Prefix] = result.ETag;
+            });
 
         _logger.LogInformation("Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
+
+        // A brand-new (empty) range had no parent or interrupted-split leftovers, so the post-split
+        // subtree listing and deletes are pure waste — skip them.
+        if (rangeWasEmpty)
+            return;
 
         // Delete the parent and every other blob in range(prefix) that was not just written —
         // including leftovers of a previously interrupted split (their extra entries were never
         // published; the machine that wrote them still has them as pending rows and will re-flush).
+        // The destructive scan reads fresh remote state; deletes run concurrently.
         var written = leaves.Select(leaf => leaf.Prefix.ToString()).ToHashSet(StringComparer.Ordinal);
         var listing = await ListShardSubtreeAsync(root, cancellationToken);
-        foreach (var name in listing.Where(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal) && !written.Contains(name)))
-        {
-            await _blobs.DeleteAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse(name)), cancellationToken);
-            _logger.LogInformation("Deleted stale shard {Name} after split of {Prefix}", name, prefix);
-        }
+        var stale = listing.Where(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal) && !written.Contains(name)).ToList();
+        await Parallel.ForEachAsync(
+            stale,
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (name, ct) =>
+            {
+                await _blobs.DeleteAsync(BlobPaths.ChunkIndexShardPath(PathSegment.Parse(name)), ct);
+                _logger.LogInformation("Deleted stale shard {Name} after split of {Prefix}", name, prefix);
+            });
     }
 
     /// <summary>
