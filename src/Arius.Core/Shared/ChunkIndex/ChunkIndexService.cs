@@ -437,7 +437,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             var leafShard = new Shard();
             leafShard.AddOrUpdateRange(leafEntries);
-            var result = await UploadShardAsync(leafPrefix, leafShard, cancellationToken);
+            var result = await UploadShardAsync(leafPrefix, leafShard, cancellationToken); // TODO this can be paralallized bc independent?
             uploadedStates[leafPrefix] = result.ETag;
         }
 
