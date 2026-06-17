@@ -22,14 +22,38 @@ internal static class ChunkIndexRouter
         => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.MinShardPrefixLength));
 
     /// <summary>
+    /// All proper prefixes (length &gt;= <see cref="ChunkIndexService.MinShardPrefixLength"/>) of the given
+    /// shard names: the depths at which a strictly-deeper shard exists. Built once per subtree so
+    /// <see cref="ResolveTarget(IReadOnlySet{string}, IReadOnlySet{string}, ContentHash)"/> can test
+    /// "does a descendant exist?" in O(1) instead of scanning every shard name at every depth.
+    /// </summary>
+    public static IReadOnlySet<string> BuildDescendantPrefixes(IReadOnlySet<string> existingShardNames)
+    {
+        var descendants = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var name in existingShardNames)
+            for (var length = ChunkIndexService.MinShardPrefixLength; length < name.Length; length++)
+                descendants.Add(name[..length]);
+        return descendants;
+    }
+
+    /// <summary>
+    /// Convenience overload that derives the descendant-prefix set on the fly; prefer the overload
+    /// taking a precomputed set when resolving many hashes against the same subtree.
+    /// </summary>
+    public static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, ContentHash contentHash)
+        => ResolveTarget(existingShardNames, BuildDescendantPrefixes(existingShardNames), contentHash);
+
+    /// <summary>
     /// Resolves the shard for <paramref name="contentHash"/> against the set of existing shard
     /// names in its root subtree, using the parent-wins walk: the shallowest existing shard on the
     /// hash's prefix path is authoritative (an interrupted split leaves the parent intact, and the
     /// parent contains everything any published snapshot references). When no shard on the path
     /// exists, descend while any strictly deeper shard shares the prefix; the resulting depth is
     /// where the range is empty and where new entries for it would be written.
+    /// <paramref name="descendantPrefixes"/> is <see cref="BuildDescendantPrefixes"/> of
+    /// <paramref name="existingShardNames"/>.
     /// </summary>
-    public static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, ContentHash contentHash)
+    public static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, IReadOnlySet<string> descendantPrefixes, ContentHash contentHash)
     {
         var hex = contentHash.ToString();
         var length = ChunkIndexService.MinShardPrefixLength;
@@ -41,7 +65,8 @@ internal static class ChunkIndexRouter
                 // Match
                 return new ShardTarget(PathSegment.Parse(prefix), Exists: true);
 
-            if (!existingShardNames.Any(name => name.Length > length && name.StartsWith(prefix, StringComparison.Ordinal)))
+            // A strictly-deeper shard descends from this prefix iff the prefix is a proper prefix of some name.
+            if (!descendantPrefixes.Contains(prefix))
                 // There will be no further matches: it doesnt exist yet
                 return new ShardTarget(PathSegment.Parse(prefix), Exists: false);
 

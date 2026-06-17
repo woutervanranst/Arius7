@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,6 +11,11 @@ namespace Arius.Core.Shared.ChunkIndex;
 internal sealed class ChunkIndexLocalStore
 {
     private const string SchemaVersion = "1";
+
+    // Deepest coverage-claim prefix FindCoveredPrefixes probes for. A claim at depth d implies ~16^(d-2)
+    // shards per root; depth 8 is ~4 trillion shards — far beyond any real repository. A (never-produced)
+    // deeper claim is simply not matched here and re-validates harmlessly, so this is correctness-safe.
+    private const int MaxCoveragePrefixLength = 8;
 
     private readonly RelativeFileSystem            _fileSystem;
     private readonly ILogger<ChunkIndexLocalStore> _logger;
@@ -95,28 +101,35 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns validated coverage claims under <paramref name="root"/> whose ranges contain the specified hashes
-    /// at the specified snapshot version.
+    /// Returns the validated coverage claim covering each of the specified hashes at the specified snapshot
+    /// version. A hash is covered by at most one (non-overlapping) claim, whose prefix is a prefix of the hash,
+    /// so only those candidate prefixes — each hash's prefix path — are queried, never every claim under the root.
     /// </summary>
-    public IReadOnlyDictionary<ContentHash, PathSegment> FindCoveredPrefixes(PathSegment root, IReadOnlyList<ContentHash> contentHashes, string snapshotVersion)
+    public IReadOnlyDictionary<ContentHash, PathSegment> FindCoveredPrefixes(IReadOnlyList<ContentHash> contentHashes, string snapshotVersion)
     {
         if (contentHashes.Count == 0)
             return new Dictionary<ContentHash, PathSegment>();
 
         try
         {
-            var rootValue = root.ToString();
+            var candidates = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var contentHash in contentHashes)
+            {
+                var hashHex = contentHash.ToString();
+                var maxLength = Math.Min(hashHex.Length, MaxCoveragePrefixLength);
+                for (var length = ChunkIndexService.MinShardPrefixLength; length <= maxLength; length++)
+                    candidates.Add(hashHex[..length]);
+            }
+
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT prefix FROM loaded_prefixes
                 WHERE snapshot_version = $snapshotVersion
-                  AND prefix >= $root
-                  AND prefix < $rootUpper;
+                  AND prefix IN (SELECT value FROM json_each($candidates));
                 """;
             command.Parameters.AddWithValue("$snapshotVersion", snapshotVersion);
-            command.Parameters.AddWithValue("$root", rootValue);
-            command.Parameters.AddWithValue("$rootUpper", rootValue + "g");
+            command.Parameters.AddWithValue("$candidates", JsonSerializer.Serialize(candidates));
 
             var prefixes = new HashSet<string>(StringComparer.Ordinal);
             using (var reader = command.ExecuteReader())
@@ -131,7 +144,8 @@ internal sealed class ChunkIndexLocalStore
                 foreach (var contentHash in contentHashes)
                 {
                     var hashHex = contentHash.ToString();
-                    for (var length = ChunkIndexService.MinShardPrefixLength; length <= hashHex.Length; length++)
+                    var maxLength = Math.Min(hashHex.Length, MaxCoveragePrefixLength);
+                    for (var length = ChunkIndexService.MinShardPrefixLength; length <= maxLength; length++)
                     {
                         var prefix = hashHex[..length];
                         if (!prefixes.Contains(prefix))
@@ -143,7 +157,7 @@ internal sealed class ChunkIndexLocalStore
                 }
             }
 
-            _logger.LogDebug("[chunk-index-local] FindCoveredPrefixes: root={Root} hashes={HashCount} snapshotVersion={SnapshotVersion} covered={CoveredCount}", root, contentHashes.Count, snapshotVersion, covered.Count);
+            _logger.LogDebug("[chunk-index-local] FindCoveredPrefixes: hashes={HashCount} candidates={CandidateCount} snapshotVersion={SnapshotVersion} covered={CoveredCount}", contentHashes.Count, candidates.Count, snapshotVersion, covered.Count);
             return covered;
         }
         catch (SqliteException ex)

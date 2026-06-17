@@ -345,10 +345,10 @@ public class ChunkIndexLocalStoreTests
         var stale = ContentHash.Parse("aa3f".PadRight(64, '9'));
         var otherRange = ContentHash.Parse("bb00".PadRight(64, '9'));
 
-        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered], "snap-1")
+        store.FindCoveredPrefixes([covered], "snap-1")
             .ShouldBe(new Dictionary<ContentHash, PathSegment> { [covered] = PathSegment.Parse("aa") });
-        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [stale], "snap-2").ShouldBeEmpty();
-        store.FindCoveredPrefixes(PathSegment.Parse("bb"), [otherRange], "snap-1").ShouldBeEmpty();
+        store.FindCoveredPrefixes([stale], "snap-2").ShouldBeEmpty();
+        store.FindCoveredPrefixes([otherRange], "snap-1").ShouldBeEmpty();
     }
 
     [Test]
@@ -361,13 +361,27 @@ public class ChunkIndexLocalStoreTests
         var uncoveredSibling = ContentHash.Parse("aa4f".PadRight(64, '9'));
         var otherRoot = ContentHash.Parse("bb00".PadRight(64, '9'));
 
-        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered, uncoveredSibling, otherRoot], "snap-1")
+        store.FindCoveredPrefixes([covered, uncoveredSibling, otherRoot], "snap-1")
             .ShouldBe(new Dictionary<ContentHash, PathSegment>
             {
                 [covered] = PathSegment.Parse("aa3"),
             });
 
-        store.FindCoveredPrefixes(PathSegment.Parse("aa"), [covered], "snap-2").ShouldBeEmpty();
+        store.FindCoveredPrefixes([covered], "snap-2").ShouldBeEmpty();
+    }
+
+    [Test]
+    public void FindCoveredPrefixes_DeepClaim_StillResolvedWithinProbeDepthCap()
+    {
+        var store = CreateStore("coverage-deep");
+        // A claim several levels deep (well within the candidate probe cap) still covers its own hashes only.
+        SeedEmptyPrefix(store, PathSegment.Parse("aa3f0"), "snap-1");
+
+        var covered = ContentHash.Parse("aa3f0".PadRight(64, '9'));
+        var sibling = ContentHash.Parse("aa3f1".PadRight(64, '9'));
+
+        store.FindCoveredPrefixes([covered, sibling], "snap-1")
+            .ShouldBe(new Dictionary<ContentHash, PathSegment> { [covered] = PathSegment.Parse("aa3f0") });
     }
 
     [Test]

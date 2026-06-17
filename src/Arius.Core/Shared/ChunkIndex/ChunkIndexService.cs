@@ -219,7 +219,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     {
         var targets = new Dictionary<ContentHash, PathSegment>(hashes.Count);
         List<ContentHash>? uncovered = null;
-        var coveredPrefixes = _localStore.FindCoveredPrefixes(root, hashes, latestSnapshotVersion);
+        var coveredPrefixes = _localStore.FindCoveredPrefixes(hashes, latestSnapshotVersion);
         foreach (var contentHash in hashes)
         {
             if (coveredPrefixes.TryGetValue(contentHash, out var covered))
@@ -243,12 +243,14 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var (listing, listingGeneration) = await GetShardListingAsync(cancellationToken);
             var existingRemoteShards = listing.GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty;
             var existingRemoteShardNames = existingRemoteShards.Keys.ToHashSet(StringComparer.Ordinal);
+            // Precompute the descendant-prefix set once for the whole root so ResolveTarget is O(depth) per hash.
+            var descendantPrefixes = ChunkIndexRouter.BuildDescendantPrefixes(existingRemoteShardNames);
 
             var emptyPrefixes = new HashSet<PathSegment>();
             var shardsToLoad = new Dictionary<PathSegment, string?>();
             foreach (var contentHash in uncovered)
             {
-                var targetShard = ChunkIndexRouter.ResolveTarget(existingRemoteShardNames, contentHash);
+                var targetShard = ChunkIndexRouter.ResolveTarget(existingRemoteShardNames, descendantPrefixes, contentHash);
                 targets[contentHash] = targetShard.Prefix;
                 if (targetShard.Exists)
                     shardsToLoad[targetShard.Prefix] = existingRemoteShards[targetShard.Prefix.ToString()];
