@@ -4,6 +4,8 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.SnapshotsQuery;
+using Arius.Core.Features.StatsQuery;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -37,6 +39,11 @@ internal sealed class CliHarness
         var repairHandler = Substitute.For<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         var listQueryHandler = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
         var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
+        // Mediator's source generator resolves every command handler when a command is sent, so the
+        // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
+        // ISnapshotService the harness has no reason to wire up).
+        var snapshotsHandler = Substitute.For<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>();
+        var statsHandler = Substitute.For<ICommandHandler<StatsQuery, RepositoryStats>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -73,6 +80,14 @@ internal sealed class CliHarness
             .Handle(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<ChunkHydrationStatusResult>());
 
+        snapshotsHandler
+            .Handle(Arg.Any<SnapshotsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<SnapshotInfo>>([]));
+
+        statsHandler
+            .Handle(Arg.Any<StatsQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<RepositoryStats>(new RepositoryStats(0, 0, 0, 0, IsPending: true)));
+
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
         RepairHandler = repairHandler;
@@ -92,6 +107,8 @@ internal sealed class CliHarness
             services.AddSingleton(repairHandler);
             services.AddSingleton(listQueryHandler);
             services.AddSingleton(hydrationHandler);
+            services.AddSingleton(snapshotsHandler);
+            services.AddSingleton(statsHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }
