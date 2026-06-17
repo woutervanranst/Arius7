@@ -84,6 +84,7 @@ services:
     image: woutervanranst/ariusweb:latest
     container_name: ariusweb
     restart: unless-stopped
+    network_mode: bridge
     ports:
       - "8080:8080"
     environment:
@@ -97,7 +98,6 @@ services:
       - 8.8.8.8
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-
   watchtower:
     image: containrrr/watchtower:latest
     container_name: watchtower
