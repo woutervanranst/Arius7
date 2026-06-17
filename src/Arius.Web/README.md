@@ -75,6 +75,45 @@ docker compose down               # stop and remove
 Edit the `volumes:` in `docker-compose.yml` to match your host shares — the defaults target Synology
 paths (`/volume1/...`).
 
+If you want to deploy the prebuilt `woutervanranst/ariusweb:latest` image instead of building from
+source, use a compose file like this:
+
+```yaml
+services:
+  ariusweb:
+    image: woutervanranst/ariusweb:latest
+    container_name: ariusweb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Europe/Brussels
+    volumes:
+      - /volume1/docker/ariusweb/data:/data
+      - /volume1/folder1:/my-local-archive1
+      - /volume1/folder2:/my-local-archive2
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      --schedule "0 0 4 * * *"
+      --cleanup
+      --label-enable
+```
+
+This keeps Arius.Web on the published image track and asks Watchtower to check for updates every day
+at 04:00, only for containers explicitly labeled with
+`com.centurylinklabs.watchtower.enable=true`.
+
 ### Paths inside the container
 
 | What | Path |
