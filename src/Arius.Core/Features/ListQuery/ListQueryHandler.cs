@@ -63,12 +63,9 @@ public sealed class ListQueryHandler(
                     : $"Snapshot '{opts.Version}' not found.");
         }
 
-        logger.LogInformation("[snapshot] Resolved: {Timestamp} rootHash={RootHash}", snapshot.Timestamp.ToString("o"), snapshot.RootHash.Short8);
-
         var localRoot       = ParseLocalRoot(opts.LocalPath);
         var localFileSystem = localRoot is { } root ? new RelativeFileSystem(root) : null;
         var (treeHash, startDirectory) = await ResolveStartingPointAsync(snapshot.RootHash, opts.Prefix, cancellationToken);
-        logger.LogInformation("[walk] Start: directory={Directory} treeHash={TreeHash} localOverlay={LocalOverlay}", startDirectory, treeHash?.Short8 ?? "(none)", localFileSystem is not null);
 
         // Walk, accumulating summary counters as entries stream past.
         logger.LogInformation("[phase] walk");
@@ -130,7 +127,6 @@ public sealed class ListQueryHandler(
             // Read both halves of the mirror.
             var remote = await ReadRemoteDirectoryAsync(directory.TreeHash, cancellationToken).ConfigureAwait(false);
             var local  = ReadLocalDirectory(localFileSystem, directory);
-            logger.LogDebug("[walk] Directory {Directory}: remoteFiles={RemoteFileCount} remoteDirs={RemoteDirectoryCount} localFiles={LocalFileCount} localDirs={LocalDirectoryCount}", directory.Path, remote.Files.Count, remote.Subdirectories.Count, local.Files.Count, local.Subdirectories.Count);
 
             // Files first: the remote listing is the reference sequence, local overlays it.
             await foreach (var file in MergeFilesAsync(directory.Path, remote, local, filter, cancellationToken).ConfigureAwait(false))
@@ -202,7 +198,6 @@ public sealed class ListQueryHandler(
             indexEntries = await index.LookupAsync(
                 pairs.Select(pair => pair.Remote.ContentHash).Distinct(),
                 cancellationToken).ConfigureAwait(false);
-            logger.LogDebug("[chunk] Directory {Directory}: resolved {ResolvedCount}/{RemoteFileCount} remote file(s)", directory, indexEntries.Count, pairs.Count);
         }
 
         // Emit: remote files in tree order…
