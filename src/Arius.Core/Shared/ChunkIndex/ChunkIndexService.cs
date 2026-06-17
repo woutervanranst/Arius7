@@ -33,17 +33,17 @@ internal sealed class ChunkIndexService : IChunkIndexService
     private readonly int                                              _maxShardEntryCount;
     private          int                                              _acceptingEntries = 1;
 
-    /* Run-scoped listing of the whole chunk-index/ subtree (shard name -> ETag), grouped by root.
+    /* Run-scoped listing of the whole chunk-index/ subtree (shard name -> ETag), grouped by 2-hex root.
      *
-     * Under the single-writer assumption the remote layout is stable for a run, so one listing serves every root/leaf; per-root re-listing on each uncovered lookup is pure waste.
-     * Reset by InvalidateCaches (epoch mismatch) and once on a download 404-race.
-     * The generation counter makes a 404-race reset idempotent across the parallel lookup/flush workers (no re-list storm).
-     * Run-scoped listing of the whole chunk-index/ subtree as shard name -> ETag, grouped by 2-hex root.
-     *
+     * Under the single-writer assumption the remote layout is stable for a run, so one cached listing serves
+     * every root/leaf; per-root re-listing on each uncovered lookup is pure waste. Unlike _latestSnapshotName
+     * (a fixed-for-the-run AsyncLazy), this listing must be droppable: InvalidateCaches (epoch mismatch) and
+     * RepairAsync reset it, a faulted/cancelled fetch is replaced on the next access (so a transient list error
+     * doesn't poison the run), and a 404-race re-lists once. A concurrent-writer split racing many workers may
+     * cause a few redundant re-lists; that is bounded (one retry per call) and outside the single-writer mode.
      */
     private readonly Lock                                                               _shardListingGate = new();
     private          Task<FrozenDictionary<string, FrozenDictionary<string, string?>>>? _shardListing;
-    private          int                                                                _shardListingGeneration;
 
     // -- Construction --------------------------------------------------------
 
@@ -240,7 +240,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         {
             // The run-scoped listing decides, per hash, between "existing shard" (parent-wins walk)
             // and "empty range at this depth" — a missing blob alone can mean either.
-            var (listing, listingGeneration) = await GetShardListingAsync(cancellationToken);
+            var listing = await GetShardListingAsync(cancellationToken);
             var existingRemoteShards = listing.GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty;
             var existingRemoteShardNames = existingRemoteShards.Keys.ToHashSet(StringComparer.Ordinal);
             // Precompute the descendant-prefix set once for the whole root so ResolveTarget is O(depth) per hash.
@@ -269,11 +269,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 async (shard, ct) => await LoadShardAsync(shard.Key, shard.Value, downloaded, revalidated, raced, ct));
 
             // A shard listed at snapshot time but gone at download time means a racing split deleted it.
-            // Reset the shared listing and re-resolve from a fresh one; each call retries at most once, and the
-            // generation guard collapses same-generation concurrent resets so racing workers share one re-list.
+            // Reset the shared listing and re-resolve from a fresh one; the per-call latch bounds this to one
+            // retry (concurrent racers may each reset, costing a few redundant re-lists in that rare case).
             if (!raced.IsEmpty && !retriedListing)
             {
-                ResetShardListing(listingGeneration);
+                ResetShardListing();
                 retriedListing = true;
                 continue;
             }
@@ -338,56 +338,30 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Shard listing cache -------------------------------------------------
 
     /// <summary>
-    /// Returns the run-scoped shard listing (root -> shard name -> ETag), creating it on first use, and the
-    /// generation it was served from so a 404-race reset can be made idempotent.
+    /// Returns the run-scoped shard listing (root -> shard name -> ETag), creating it on first use and
+    /// replacing a faulted/cancelled fetch so a transient list error doesn't poison the run.
     /// </summary>
-    private async Task<(FrozenDictionary<string, FrozenDictionary<string, string?>> Listing, int Generation)> GetShardListingAsync(CancellationToken cancellationToken)
+    private async Task<FrozenDictionary<string, FrozenDictionary<string, string?>>> GetShardListingAsync(CancellationToken cancellationToken)
     {
         Task<FrozenDictionary<string, FrozenDictionary<string, string?>>> task;
-        int generation;
         lock (_shardListingGate)
         {
-            // Replace a null or faulted/cancelled listing with a fresh one so a transient list failure does not
-            // poison the rest of the run — the next caller re-lists (the pre-cache per-call recovery). The shared
-            // listing runs under CancellationToken.None: one caller's token must not cancel the listing every
-            // other worker shares (that would surface a spurious cancellation to them).
+            // Recreate when absent or after a faulted/cancelled attempt. The shared fetch runs under
+            // CancellationToken.None so one caller's token can't cancel the listing every worker shares.
             if (_shardListing is null || _shardListing.IsFaulted || _shardListing.IsCanceled)
-            {
-                _shardListingGeneration++;
                 _shardListing = ListAllShardsAsync(CancellationToken.None);
-            }
-
-            generation = _shardListingGeneration;
             task = _shardListing;
         }
 
         // Observe the caller's token here, not in the shared listing: a cancelled wait fails only this caller.
-        return (await task.WaitAsync(cancellationToken), generation);
+        return await task.WaitAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Drops the cached listing only if it has not already advanced past <paramref name="observedGeneration"/>,
-    /// so concurrent workers racing the same stale listing trigger at most one re-list.
-    /// </summary>
-    private void ResetShardListing(int observedGeneration)
-    {
-        lock (_shardListingGate)
-        {
-            if (observedGeneration != _shardListingGeneration)
-                return;
-            _shardListingGeneration++;
-            _shardListing = null;
-        }
-    }
-
-    /// <summary>Drops the cached listing unconditionally so the next lookup re-lists from remote.</summary>
+    /// <summary>Drops the cached listing so the next lookup re-lists from remote.</summary>
     private void ResetShardListing()
     {
         lock (_shardListingGate)
-        {
-            _shardListingGeneration++;
             _shardListing = null;
-        }
     }
 
     /// <summary>
@@ -553,7 +527,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // Whether range(prefix) held any remote shard before this run's flush. Under the single-writer
         // assumption the run-scoped listing is that pre-flush state (our own leaf uploads below never
         // appear in the immutable snapshot), so an empty range means there is nothing stale to clean.
-        var rangeWasEmpty = !((await GetShardListingAsync(cancellationToken)).Listing.GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty)
+        var rangeWasEmpty = !((await GetShardListingAsync(cancellationToken)).GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty)
             .Keys.Any(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal));
 
         var leaves = ChunkIndexRouter.PartitionIntoLeaves(prefix, shard.Entries.ToList(), _maxShardEntryCount);
