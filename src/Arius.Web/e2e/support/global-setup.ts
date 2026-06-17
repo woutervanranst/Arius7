@@ -82,8 +82,14 @@ export default async function globalSetup() {
  * has a snapshot (a reused dev DB, or a previous CI run against the same container) is left alone.
  */
 async function seedSnapshotIfEmpty(ctx: APIRequestContext, repoId: number) {
-  const snapshots = await (await ctx.get(`${API}/api/repos/${repoId}/snapshots`)).json();
-  if (Array.isArray(snapshots) && snapshots.length > 0) return;
+  // A missing container makes the read-only snapshots endpoint 500 (ContainerNotFound); treat any
+  // non-OK / non-array response as "no snapshot yet". The seed archive below (ReadWrite preflight)
+  // creates the container.
+  const res = await ctx.get(`${API}/api/repos/${repoId}/snapshots`);
+  if (res.ok()) {
+    const snapshots = await res.json();
+    if (Array.isArray(snapshots) && snapshots.length > 0) return;
+  }
 
   // Build a small on-disk tree (a root file + a subfolder so the file browser shows a folder node).
   const seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'arius-e2e-seed-'));
