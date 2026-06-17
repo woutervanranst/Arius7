@@ -362,47 +362,55 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 try
                 {
-                    await foreach (var hashed in hashedChannel.Reader.ReadAllAsync(cancellationToken))
+                    // One batched chunk-index lookup per batch (groups by root, loads cold shards in parallel)
+                    // instead of a remote round-trip per file; the in-run dedup decisions stay per item.
+                    const int batchSize = 256;
+                    await foreach (var batch in hashedChannel.Reader.ReadAllBatchesAsync(batchSize, cancellationToken))
                     {
-                        var isKnown = await _chunkIndex.LookupAsync(hashed.ContentHash, cancellationToken) is not null;
+                        var known = await _chunkIndex.LookupAsync(batch.Select(h => h.ContentHash), cancellationToken);
 
-                        // Check for pointer-only with missing chunk (task 8.5)
-                        if (hashed.FilePair.Binary is null)
+                        foreach (var hashed in batch)
                         {
-                            if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
+                            var isKnown = known.ContainsKey(hashed.ContentHash);
+
+                            // Check for pointer-only with missing chunk (task 8.5)
+                            if (hashed.FilePair.Binary is null)
                             {
-                                _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
+                                if (!isKnown && !inFlightHashes.ContainsKey(hashed.ContentHash))
+                                {
+                                    _logger.LogWarning("Pointer-only file references missing chunk, skipping: {Path}", hashed.FilePair.RelativePath);
+                                    continue;
+                                }
+
+                                // Known dedup: add to manifest only
+                                _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
+                                await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
+                                Interlocked.Increment(ref filesDeduped);
                                 continue;
                             }
 
-                            // Known dedup: add to manifest only
-                            _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
-                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
-                            Interlocked.Increment(ref filesDeduped);
-                            continue;
-                        }
-
-                        if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
-                        {
-                            // Already in index OR already queued in this run → dedup hit
-                            _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
-                            await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
-                            Interlocked.Increment(ref filesDeduped);
-                        }
-                        else
-                        {
-                            // Needs upload → mark in-flight, route by size
-                            inFlightHashes.TryAdd(hashed.ContentHash, true);
-                            var fileSize = fs.GetFileSize(hashed.FilePair.RelativePath);
-                            Interlocked.Add(ref totalSize, fileSize);
-                            var upload = new FileToUpload(hashed, fileSize);
-                            var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
-                            _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})", hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8, fileSize.Bytes().Humanize());
-
-                            if (fileSize >= opts.SmallFileThreshold)
-                                await largeChannel.Writer.WriteAsync(upload, cancellationToken);
+                            if (isKnown || inFlightHashes.ContainsKey(hashed.ContentHash))
+                            {
+                                // Already in index OR already queued in this run → dedup hit
+                                _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
+                                await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
+                                Interlocked.Increment(ref filesDeduped);
+                            }
                             else
-                                await smallChannel.Writer.WriteAsync(upload, cancellationToken);
+                            {
+                                // Needs upload → mark in-flight, route by size
+                                inFlightHashes.TryAdd(hashed.ContentHash, true);
+                                var fileSize = fs.GetFileSize(hashed.FilePair.RelativePath);
+                                Interlocked.Add(ref totalSize, fileSize);
+                                var upload = new FileToUpload(hashed, fileSize);
+                                var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
+                                _logger.LogInformation("[dedup] {Path} -> new/{Route} ({Hash}, {Size})", hashed.FilePair.RelativePath, route, hashed.ContentHash.Short8, fileSize.Bytes().Humanize());
+
+                                if (fileSize >= opts.SmallFileThreshold)
+                                    await largeChannel.Writer.WriteAsync(upload, cancellationToken);
+                                else
+                                    await smallChannel.Writer.WriteAsync(upload, cancellationToken);
+                            }
                         }
                     }
                 }
